@@ -4,6 +4,36 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.1]
+
+- Get remote tags of west workspace
+- Enable West Workspace change for Application
+- Support user .venv on application level
+
+## [0.1.0]
+
+- Enable Board change for Applications
+- Improve UI/UX with more error notification
+- Add setting to change Python Virtual Environment
+- Add delete feature for Application, West Workspace and SDK
+
+## [0.0.9]
+
+- Remove custom Zephyr workbench manifest file
+- Fix "Verify Host Tools" command
+- Fix sample search directories
+- Minor changes on "Other resources" icons and labels
+
+## [0.0.8]
+
+- Fix west configuration parsing
+- Support west workspace topology
+- Other resources
+
+## [0.0.7]
+
+- Fix STM32CubeProgrammer on Windows
+
 ## [0.0.6]
 
 - Support Host tools commands

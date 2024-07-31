@@ -1,0 +1,121 @@
+other_content:
+- tool: yq
+  os:
+    windows:
+      source: https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_windows_amd64.exe
+      sha256: 5EF80368CAFC466A66222956607D09F66EAF7B8FFF93EE9253D847CC5AE38F1A
+    linux:
+      source: https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_linux_amd64
+      sha256: cfbbb9ba72c9402ef4ab9d8f843439693dfb380927921740e51706d90869c7e1
+    darwin:
+      source: https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_darwin_amd64
+      sha256: fdc42b132ac460037f4f0f48caea82138772c651d91cfbb735210075ddfdbaed
+- tool: wget
+  os:
+    windows:
+      source: https://eternallybored.org/misc/wget/1.21.4/64/wget.exe
+      sha256: 6136e66e41acd14c409c2d3eb10d48a32febaba04267303d0460ed3bee746cc5
+- tool: 7z
+  os:
+    windows:
+      source: https://www.7-zip.org/a/7z2405-x64.exe
+      sha256: 12EF1C8127EC3465520E4CFD23605B708D81A5A2CF37BA124F018E5C094DE0D9
+- tool: zstd
+  os:
+    windows:
+      source: https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-v1.5.6-win64.zip
+      sha256: 7B4EFF6719990E38ACA93A4844C2E86A1935090625C4611F7E89675E999C56CC
+- tool: msys2_runtime
+  os:
+    windows:
+      source: https://repo.msys2.org/msys/x86_64/msys2-runtime-3.5.3-4-x86_64.pkg.tar.zst
+      sha256: 838fd8a0a1aca2e5e19eed3155dbb086cc79fa5e701728b58843f2f6b1b1ed1a
+- tool: libyaml
+  os:
+    windows:
+      source: https://repo.msys2.org/msys/x86_64/libyaml-0.2.5-2-x86_64.pkg.tar.zst
+      sha256: 11509c6e3133b3fc63f99cc04e89a1cc5685aa746e96bd5f481e3424fbd4f6c1
+zephyr_content:
+- tool: gperf
+  os:
+    windows:
+      source: https://sourceforge.net/projects/gnuwin32/files/gperf/3.0.1/gperf-3.0.1-bin.zip
+      sha256: 413d9f5562c39c2fcac1e48b3e2155838680a0aec1ddcb95b23cb2f092962dcc
+    linux:
+      source: http://ftp.gnu.org/pub/gnu/gperf/gperf-3.1.tar.gz
+      sha256: b7e7ccdb9dfea72c42798ba1c83d330b319d6f6f829519db3e73c6250c6864f9
+- tool: zephyr_dependencies
+  os:
+    linux:
+      source: https://apt.kitware.com/kitware-archive.sh
+      sha256: b7e7ccdb9dfea72c42798ba1c83d330b319d6f6f829519db3e73c6250c6864f9
+- tool: cmake
+  os:
+    linux:
+      source: https://github.com/Kitware/CMake/releases/download/v3.29.2/cmake-3.29.2-linux-x86_64.tar.gz
+      sha256: 0416c70cf88e8f92efcbfe292e181bc09ead7d70e29ab37b697522c01121eab5
+    windows:
+      source: https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-windows-x86_64.zip
+      sha256: 671332249bc7cc7424523d6c2b5edd3e3de90a43b8b82e8782f42da4fe4c562d
+    darwin:
+      source: https://github.com/Kitware/CMake/releases/download/v3.29.2/cmake-3.29.2-macos-universal.tar.gz
+      sha256: 0b542389345b28d2f73122b72ec9b899947e643fd86cf8f42bae2718884d2ad3
+- tool: ninja
+  os:
+    linux:
+      source: https://github.com/ninja-build/ninja/releases/download/v1.12.0/ninja-linux.zip
+      sha256: ddc96efa3c7c9d41de733d15e2eda07a8a212555cb43f35d727e080d2ca687ab
+    windows:
+      source: https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip
+      sha256: 524b344a1a9a55005eaf868d991e090ab8ce07fa109f1820d40e74642e289abc
+    darwin:
+      source: https://github.com/ninja-build/ninja/releases/download/v1.12.0/ninja-mac.zip
+      sha256: 19806019c9623a062c3d9fa0d5f45b633a3d150f88e73fbd6c0ff6ea5534df10
+- tool: dtc
+  os:
+    windows:
+      source: https://repo.msys2.org/msys/x86_64/dtc-1.7.0-1-x86_64.pkg.tar.zst
+      sha256: 9b257c07696aca8b1f509f63280bd47bc6b60f4f679d8823090c5cb477c45429
+- tool: zephyr_sdk
+  os:
+    windows:
+      source: https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_windows-x86_64.7z
+      sha256: EB1B84BBD193761C9E20696B04D326B2CD732DFA3931A68AB0476098C1384E50
+    linux:
+      source: https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-x86_64.tar.xz
+      sha256: cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7dbc6a
+    darwin:
+      source: https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_macos-aarch64.tar.xz
+      sha256: e06138c1e50cc5b4508646640bd08c50f05f0eb3f2949e756d84d3367f581593
+- tool: openssl
+  os:
+    linux:
+      source: https://cloud.ac6.fr/index.php/s/6fin9KTS8rHKRyw/download
+      sha256: 943437123834d29b546a2d097e7eab7157202cd17669a130eea2eea682043a23
+- tool: git
+  os:
+    windows:
+      source: https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/PortableGit-2.45.2-64-bit.7z.exe
+      sha256: 851a15074dea6b272785b2a2a4697a72970256de2afe7b8e4a9c5e168c27ccdd
+- tool: python
+  os:
+    linux:
+      source: https://cloud.ac6.fr/index.php/s/XzHWd8kpJnicKE5/download
+      sha256: 29ce5c3cc566688d972f4e355d399cfe80fbb5d77dce413d2259a6bf4134ff04
+    windows:
+      source: https://github.com/winpython/winpython/releases/download/6.1.20230527/Winpython64-3.10.11.1dot.exe
+      sha256: ec9345932a86101f15b6171fc261b5a7dca1d71095f6e87fe88ec8bdd099b030
+    darwin:
+      source: https://cloud.ac6.fr/index.php/s/C6McaMwpitnwQgL/download/cpython-3.10.14-macos-arm64.tar.gz
+      sha256: 765e1563b54fc5ee53923a0feb8a76d3583675838cd8c8bd7a12b47080d08bae
+- tool: python_requirements
+  os:
+    windows:
+      source: https://cloud.ac6.fr/index.php/s/g7fiAcgysNjmK8b/download
+      sha256: 23af5ed22a13f67f6305f8ec3d0c8ee951b39569a7eda8d5aaab8c946eb973fd
+    linux:
+      source: https://cloud.ac6.fr/index.php/s/g7fiAcgysNjmK8b/download
+      sha256: 23af5ed22a13f67f6305f8ec3d0c8ee951b39569a7eda8d5aaab8c946eb973fd
+    darwin:
+      source: https://cloud.ac6.fr/index.php/s/g7fiAcgysNjmK8b/download
+      sha256: 23af5ed22a13f67f6305f8ec3d0c8ee951b39569a7eda8d5aaab8c946eb973fd

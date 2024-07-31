@@ -1,0 +1,89 @@
+other_content:
+- tool: yq
+  os:
+    windows:
+      source: https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_windows_amd64.exe
+      sha256: 5EF80368CAFC466A66222956607D09F66EAF7B8FFF93EE9253D847CC5AE38F1A
+    linux:
+      source: https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_linux_amd64
+      sha256: cfbbb9ba72c9402ef4ab9d8f843439693dfb380927921740e51706d90869c7e1
+    darwin:
+      source: https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_darwin_amd64
+      sha256: fdc42b132ac460037f4f0f48caea82138772c651d91cfbb735210075ddfdbaed
+- tool: wget
+  os:
+    windows:
+      source: https://eternallybored.org/misc/wget/1.21.4/64/wget.exe
+      sha256: 6136e66e41acd14c409c2d3eb10d48a32febaba04267303d0460ed3bee746cc5
+- tool: 7z
+  os:
+    windows:
+      source: https://www.7-zip.org/a/7z2405-x64.exe
+      sha256: 12EF1C8127EC3465520E4CFD23605B708D81A5A2CF37BA124F018E5C094DE0D9
+- tool: zstd
+  os:
+    windows:
+      source: https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-v1.5.6-win64.zip
+      sha256: 7B4EFF6719990E38ACA93A4844C2E86A1935090625C4611F7E89675E999C56CC
+- tool: msys2_runtime
+  os:
+    windows:
+      source: https://repo.msys2.org/msys/x86_64/msys2-runtime-3.5.3-4-x86_64.pkg.tar.zst
+      sha256: 838fd8a0a1aca2e5e19eed3155dbb086cc79fa5e701728b58843f2f6b1b1ed1a
+- tool: libyaml
+  os:
+    windows:
+      source: https://repo.msys2.org/msys/x86_64/libyaml-0.2.5-2-x86_64.pkg.tar.zst
+      sha256: 11509c6e3133b3fc63f99cc04e89a1cc5685aa746e96bd5f481e3424fbd4f6c1
+debug_tools:
+- tool: openocd
+  name: OpenOCD
+  version: 0.12.0
+  website: https://openocd.org/
+  group: debug_server
+  install_dir: openocd
+  root: false
+  os:
+    windows:
+      source: https://cloud.ac6.fr/index.php/s/6s9KgQ48o2ks3eY/download/openocd-0.12.0-ST-win32-x86_64.7z
+      sha256: fff6b2bf4bff8003a066c30ea5a5f09d544b08a2ac5018e7c62b7b5cff7d9340
+    linux:
+      source: https://cloud.ac6.fr/index.php/s/EsgiDz9834fcNPC/download/openocd-0.12.0-ST-linux-x86_64.tar.xz
+      sha256: 9bd7f1cf2339475f48d418c88bbbe5960919ba3d38f782ecc98331e5210a9b09
+    darwin:
+      source: xxx
+      sha256: xxx
+- tool: stm32cubeprogrammer
+  name: STM32CubeProgrammer
+  version: 2.17.0 
+  website: https://www.st.com/en/development-tools/stm32cubeprog.html
+  vendor: ST
+  group: flasher
+  root: false
+  os:
+    windows:
+      source: https://cloud.ac6.fr/index.php/s/wppn2BAgQAyJ3xX/download/en.stm32cubeprg-win64-v2-17-0.zip
+      sha256: 9f36a8dd7ecca3eb89e49fb27a4cc7368ace2fa546662bcfab190ee51abd86fa
+    linux:
+      source: https://cloud.ac6.fr/index.php/s/PNj5XNonox4aBf9/download/en.stm32cubeprg-lin-v2-17-0.zip
+      sha256: 44956b76aa2fcff0d899c5c43e353a83a9ea36afc6ad2f6e7b89c5141ccbfde4news
+    darwin:
+      source: https://cloud.ac6.fr/index.php/s/YgHYBAMqze6BBxP/download/en.stm32cubeprg-mac-v2-17-0.zip
+      sha256: de30b60c64a0b068d1cc89b2e770b3371bff71b2b8b91ed693090d1760c51e2e
+- tool: jlink
+  name: J-Link Software
+  version: 7.98a
+  website: https://www.segger.com/downloads/jlink/
+  vendor: Segger
+  group: debug_server
+- tool: linkserver
+  name: LinkServer for Microcontrollers
+  version: 1.6.133
+  website: https://www.nxp.com/design/design-center/software/development-software/mcuxpresso-software-and-tools-/linkserver-for-microcontrollers:LINKERSERVER
+  vendor: NXP
+  group: debug_server
+- tool: pyocd
+  name: pyOCD
+  version: 0.36.0
+  website: https://pyocd.io/
+  group: debug_server

@@ -1,0 +1,286 @@
+import * as vscode from "vscode";
+import { getUri } from "../utilities/getUri";
+import { getNonce } from "../utilities/getNonce";
+import { execCommandWithEnv } from "../execUtils";
+
+export class CreateWestWorkspacePanel {
+  public static currentPanel: CreateWestWorkspacePanel | undefined;
+  private readonly _panel: vscode.WebviewPanel;
+  private _disposables: vscode.Disposable[] = [];
+
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+    this._panel = panel;
+    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    this._panel.webview.html = this._getWebviewContent(this._panel.webview, extensionUri);
+    this._setWebviewMessageListener(this._panel.webview);
+  }
+
+  public openFileDialog() {
+    if (this._panel) {
+      vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        openLabel: 'Select file:',
+      }).then(uri => {
+        if (uri && uri.length > 0) {
+          const selectedFileUri = uri[0];
+          // Send the selected file URI back to the webview
+          this._panel?.webview.postMessage({ command: 'fileSelected', fileUri: selectedFileUri });
+        }
+      });
+    }
+  }
+
+  public openManifestDialog() {
+    if (this._panel) {
+      vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        openLabel: 'Select manifest file',
+        filters: {
+          'Manifest files': ['yml'],
+          'All files': ['*']
+        }
+      }).then(uri => {
+        if (uri && uri.length > 0) {
+          const selectedFileUri = uri[0].fsPath;
+          // Send the selected file URI back to the webview
+          this._panel?.webview.postMessage({ command: 'manifestSelected', fileUri: selectedFileUri, id: 'manifestPath' });
+        }
+      });
+    }
+  }
+
+  public openLocationDialog() {
+    if (this._panel) {
+      vscode.window.showOpenDialog({
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        openLabel: 'Select the workspace location',
+      }).then(uri => {
+        if (uri && uri.length > 0) {
+          const selectedFolderUri = uri[0].fsPath;
+          // Send the selected file URI back to the webview
+          this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: selectedFolderUri, id: 'workspacePath'});
+        }
+      });
+    }
+  }
+
+  public static render(extensionUri: vscode.Uri) {
+    if (CreateWestWorkspacePanel.currentPanel) {
+      CreateWestWorkspacePanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
+    } else {
+      const panel = vscode.window.createWebviewPanel("create-west-workspace-panel", "Create west workspace", vscode.ViewColumn.One, {
+        // Enable javascript in the webview
+        enableScripts: true,
+        // Restrict the webview to only load resources from the `out` directory
+        localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'out')]
+      });
+
+      panel.iconPath = {
+      	light: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'zephyr.svg'),
+      	dark: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'zephyr.svg')
+      };
+
+      CreateWestWorkspacePanel.currentPanel = new CreateWestWorkspacePanel(panel, extensionUri);
+    }
+  }
+
+  public dispose() {
+    CreateWestWorkspacePanel.currentPanel = undefined;
+
+    this._panel.dispose();
+
+    while (this._disposables.length) {
+      const disposable = this._disposables.pop();
+      if (disposable) {
+        disposable.dispose();
+      }
+    }
+  }
+
+  private _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
+    const webviewUri = getUri(webview, extensionUri, ["out", "createwestworkspace.js"]);
+    const styleUri = getUri(webview, extensionUri, ["out", "style.css"]);
+    const nonce = getNonce();
+  
+    return /*html*/ `
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+          <link rel="stylesheet" href="${styleUri}">
+          <title>Create west workspace</title>
+        </head>
+        
+        <body>
+          <h1>Create west workspace</h1>
+          <form>
+            <div class="grid-group-div">
+              <vscode-radio-group id="srcType" orientation="vertical">
+                <label slot="label">Source location:</label>
+                <vscode-radio value="remote" checked>Repository</vscode-radio>
+                <vscode-radio value="local">Local folder</vscode-radio>
+              </vscode-radio-group>
+            </div>
+          </form>
+          <form>
+            <div class="grid-group-div">
+              <vscode-text-field size="50" type="url" id="remotePath" value="https://github.com/zephyrproject-rtos/zephyr">Path:</vscode-text-field>
+            </div>
+
+            <div class="grid-group-div">
+              <div class="grid-header-div">
+                <label for="listBranch">Branch:</label>
+              </div>
+              <div id="listBranch" class="combo-dropdown grid-value-div">
+                <input type="text" id="branchInput" class="combo-dropdown-control" placeholder="Choose the working branch..." data-value="">
+                <div aria-hidden="true" class="indicator" part="indicator">
+                  <slot name="indicator">  
+                    <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                      <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                    </svg>
+                  </slot>
+                </div>
+                <div id="branchDropdown" class="dropdown-content">
+                </div>
+              </div>
+            </div>
+
+            <div class="grid-group-div">
+              <vscode-text-field size="50" type="text" id="workspacePath" value="">Location:</vscode-text-field>
+              <vscode-button id="browseLocationButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+            </div>
+            <div class="grid-group-div">
+              <vscode-text-field size="50" type="text" id="manifestPath" placeholder="(Optional)">Manifest:</vscode-text-field>
+              <vscode-button id="browseManifestButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+            </div>
+            <div class="grid-group-div">
+              <vscode-button id="importButton" class="finish-input-button">Import</vscode-button>
+            <div>
+          </form>
+          <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
+        </body>
+      </html>
+    `;
+  }
+
+  private updateBranches(webview: vscode.Webview, remotePath: any) {
+    getGitTags(remotePath)
+      .then(tags => {
+        let newBranchHTML = '';
+        if(tags && tags.length > 0) {
+          for(let tag of tags) {
+            newBranchHTML += `<div class="dropdown-item" data-value="${tag}" data-label="${tag}">${tag}</div>`;
+          }
+          webview.postMessage({ command: 'updateBranchDropdown', branchHTML: newBranchHTML, branch: tags[0] });
+        }        
+      })
+      .catch(error => {
+        webview.postMessage({ command: 'updateBranchDropdown', branchHTML: '' });
+      });
+  }
+
+  private _setWebviewMessageListener(webview: vscode.Webview) {
+    webview.onDidReceiveMessage(
+      (message: any) => {
+        const command = message.command;
+        let srcType;
+        let remotePath;
+        let remoteBranch;
+        let workspacePath;
+        let manifestPath;
+
+        switch (command) {
+          case 'debug':
+            vscode.window.showInformationMessage(message.text);
+            return;
+          case 'openFileDialog':
+            this.openFileDialog();
+            break;
+          case 'openLocationDialog':
+            this.openLocationDialog();
+            break;
+          case 'openManifestDialog':
+            this.openManifestDialog();
+            break;
+          case 'remotePathChanged':
+            this.updateBranches(webview, message.remotePath);
+            break;
+          case 'create':
+            srcType = message.srcType;
+            remotePath = message.remotePath;
+            remoteBranch = message.remoteBranch;
+            workspacePath = message.workspacePath;
+            manifestPath = message.manifestPath;
+
+            if(srcType === 'remote') {
+              vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath);
+            } else {
+              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-local", workspacePath);
+            }
+            break;
+        }
+      },
+      undefined,
+      this._disposables
+    );
+  }
+  
+}
+
+export async function getGitTags(gitUrl: string): Promise<string[]> {
+
+  const gitCmd = `git ls-remote --tags ${gitUrl}`;
+
+  return new Promise((resolve, reject) => {
+    let tags: string[] = [];
+    execCommandWithEnv(gitCmd, (error: any, stdout: string, stderr: any) => {
+      if (error) {
+        reject(`Error: ${stderr}`);
+      }
+
+      // Process the output and split into an array of tag names
+      const tags = stdout
+        .trim()
+        .split('\n')
+        .filter(line => !line.includes('^{}'))
+        .map(line => { return line.split('\t')[1].replace('refs/tags/', ''); })
+        .sort((a, b) => compareVersions(b, a));
+
+      resolve(tags);
+    });
+  });
+}
+
+
+/**
+ * Compares two version strings in semantic versioning format.
+ * @param v1 - The first version string.
+ * @param v2 - The second version string.
+ * @returns A number: 1 if v1 > v2, -1 if v1 < v2, 0 if equal.
+ */
+function compareVersions(v1: string, v2: string): number {
+  const v1Parts = v1.replace(/^v/, '').split('.').map(Number);
+  const v2Parts = v2.replace(/^v/, '').split('.').map(Number);
+
+  for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
+      const v1Part = v1Parts[i] || 0;
+      const v2Part = v2Parts[i] || 0;
+
+      if (v1Part > v2Part) {
+        return 1;
+      }
+      if (v1Part < v2Part) {
+        return -1;
+      }
+  }
+
+  return 0;
+}

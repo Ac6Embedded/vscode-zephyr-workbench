@@ -1,0 +1,169 @@
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+form {
+  margin-top: 5px;
+  margin-bottom: 10px;
+}
+
+.grid-group-div {
+  margin-bottom: 10px;
+}
+
+.grid-group-div * {
+  vertical-align: bottom;
+}
+
+.grid-header-div , .grid-value-div {
+  display: block;
+}
+
+.grid-header-div {
+  margin-bottom: 4px;
+}
+
+.grid-value-div {
+  margin-bottom: 6px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border-bottom: 1px solid var(--vscode-tab-border);
+  padding: 10px;
+  text-align: left;
+}
+
+#boardImg {
+  max-width: 30vw;
+  max-height: 30vh;
+}
+
+vscode-dropdown {
+  width: calc(var(--design-unit)* 135px);
+  min-width: calc(var(--design-unit)* 60px);
+
+}
+
+vscode-text-field {
+  width: calc(var(--design-unit)* 135px);
+  min-width: calc(var(--design-unit)* 60px);
+
+}
+
+vscode-button {
+  height: calc(var(--input-height)* 1px);
+}
+
+.combo-dropdown {
+  position: relative;
+  display: inline-block;
+  width: calc(var(--design-unit)* 135px);
+  min-width: calc(var(--design-unit)* 60px);
+}
+
+.combo-dropdown .combo-dropdown-control {
+  align-items: center;
+  box-sizing: border-box;
+  background: var(--input-background);
+  color: var(--input-foreground);
+  border: calc(var(--border-width)* 1px) solid var(--dropdown-border);
+  border-radius: calc(var(--corner-radius-round)* 1px);
+  min-width: var(--input-min-width);
+  outline: none;
+  cursor: pointer;
+  min-height: 100%;
+  display: flex;
+  font-family: inherit;
+  font-size: var(--type-ramp-base-font-size);
+  line-height: var(--type-ramp-base-line-height);
+  padding: 2px 6px 2px 8px;
+  width: 100%;
+  height: calc(var(--input-height)* 1px);
+}
+
+.combo-dropdown .combo-dropdown-control:focus {
+  border: calc(var(--border-width)* 1px) solid var(--focus-border);
+}
+
+.combo-dropdown .combo-dropdown-control::placeholder {
+  color: var(--input-placeholder-foreground);
+}
+
+.combo-dropdown-control:disabled {
+  cursor: default;
+  background: color-mix(in srgb, var(--input-background) 30%, transparent);
+  color: color-mix(in srgb, var(--input-foreground) 40%, transparent);
+  border-color: color-mix(in srgb, var(--dropdown-border) 40%, transparent);
+}
+
+.combo-dropdown .indicator, ::slotted(svg), ::slotted(span) {
+  fill: currentcolor;
+  position: absolute;
+  top: 13px;
+  right: 7px;
+  min-height: calc(var(--design-unit)* 4px);
+  min-width: calc(var(--design-unit)* 4px);
+  height: 1em;
+  width: 1em;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.combo-dropdown .indicator {
+  flex: 0 0 auto;
+  margin-inline-start: 1em;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  box-sizing: border-box;
+  background: var(--input-background);
+  border: calc(var(--border-width)* 1px) solid var(--focus-border);
+  border-radius: calc(var(--corner-radius-round)* 1px);
+  min-width: 100%;
+  max-height: var(--dropdown-list-max-height);
+  overflow-y: auto;
+  z-index: 1;
+}
+
+.dropdown-item {
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: var(--type-ramp-base-font-size);
+  padding: 2px 2px;
+  cursor: pointer;
+}
+
+.dropdown-item:hover {
+  background-color: var(--vscode-inputOption-hoverBackground);
+}
+
+.description {
+  color: var(--vscode-editorInlayHint-foreground);
+  font-size: calc(var(--type-ramp-base-font-size) - 2px);
+  padding-left: 5px;
+  text-align: right;
+}
+
+@keyframes spinner {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  position: absolute;
+  top: 0;
+  left: 30px;
+  width: 12px;
+  height: 12px;
+  border: 3px solid rgba(0, 0, 0, 0.3);
+  border-top-color: var(--vscode-statusBar-focusBorder);
+  border-radius: 50%;
+  animation: spinner 0.6s linear infinite;
+}

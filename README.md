@@ -70,11 +70,17 @@ Zephyr Workbench provides a dedicated panel, to access it, click on the "Zephyr 
 2. Select the launch configuration for your project
 3. Click on Run button
 
+### Install Debug tools
+Only OpenOCD and STM32CubeProgrammer are currently support
+1. Click on the "Install Debug tools" menu
+2. The list of supported is displayed here
+3. Click on the "Install" icon to install the tools 
+   <or>
+   Click on the "Website" icon to be redirected to the official website of the tool and manually install it
+Note: As third-party installer cannot be fully controlled, you might need to manually set up your PATH environment variable to use the tool in Zephyr Workbench
 
 ## Known Issues
 
 Error message in "Output" tab with new application project is created.
-
-
-
+Uninstall tools not supported
 
