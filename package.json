@@ -1,31 +1,22 @@
 {
   "name": "zephyr-workbench",
-<<<<<<< Updated upstream
-  "displayName": "Ac6 Zephyr Workbench",
-  "description": "Zephyr application projects support for Visual Studio Code by Ac6",
-  "publisher": "ac6-tools",
-=======
   "displayName": "Zephyr Workbench",
   "description": "Zephyr project support for Visual Studio Code",
   "publisher": "Ac6",
   "icon": "res/zephyr-workbench.png",
->>>>>>> Stashed changes
   "repository": {
     "type": "git",
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
-<<<<<<< Updated upstream
-  "version": "0.0.4",
-=======
   "version": "0.1.2",
->>>>>>> Stashed changes
   "author": {
-    "name": "Ac6-Tools",
+    "name": "Ac6",
     "email": "tools@ac6.fr",
-    "url": "https://www.ac6-tools.com"
+    "url": "https://www.ac6.com"
   },
   "contributors": [
-    "Kevin Tang"
+    "Kevin Tang",
+    "Roy Jamil"
   ],
   "keywords": [
     "cmake",
@@ -53,11 +44,11 @@
   "contributes": {
     "configuration": [
       {
-        "id": "ac6-zephyr",
-        "title": "Ac6 Zephyr",
+        "id": "zephyr-workbench",
+        "title": "Zephyr Workbench",
         "order": 1,
         "properties": {
-          "zephyr.pathToEnvScript": {
+          "zephyr-workbench.pathToEnvScript": {
             "type": "string",
             "examples": [
               "${userHome}/.zinstaller/env.sh"
@@ -65,16 +56,51 @@
             "markdownDescription": "Set the path to the environment script to configure the Zephyr environment. ",
             "scope": "machine"
           },
-          "zephyr.westWorkspace": {
+          "zephyr-workbench.venv.activatePath": {
             "type": "string",
             "default": "",
-            "description": "Attached west workspace",
+            "description": "Path to your python virtual environment activate script. Enter empty value to use default internal environment",
+            "scope": "machine-overridable"
+          },
+          "zephyr-workbench.openocd.execPath": {
+            "type": "string",
+            "description": "Path to internal OpenOCD server.",
+            "scope": "machine"
+          },
+          "zephyr-workbench.openocd.searchDir": {
+            "type": "string",
+            "description": "Path to internal OpenOCD scripts.",
+            "scope": "machine"
+          },
+          "zephyr-workbench.listSDKs": {
+            "type": "array",
+            "default": [],
+            "description": "List of paths which point to Zephyr SDK supported on Zephyr Workbench",
+            "scope": "machine"
+          },
+          "zephyr-workbench.westWorkspace": {
+            "type": "string",
+            "default": "",
+            "description": "The path to the attached west workspace",
             "scope": "resource"
           },
-          "zephyr.board": {
+          "zephyr-workbench.board": {
             "type": "string",
             "default": "",
-            "description": "The project target board",
+            "description": "The identifier of target board",
+            "scope": "resource"
+          },
+          "zephyr-workbench.sdk": {
+            "type": "string",
+            "default": "",
+            "description": "The path to the Zephyr SDK that provide toolchains",
+            "scope": "resource"
+          },
+          "zephyr-workbench.build.pristine": {
+            "type": "string",
+            "enum": ["auto", "always", "none"],
+            "default": "",
+            "description": "The option controls whether the build directory is made pristine before the build.",
             "scope": "resource"
           }
         }
@@ -82,17 +108,175 @@
     ],
     "commands": [
       {
-        "command": "vscode-zephyr-workbench.install-host-tools",
+        "command": "zephyr-workbench.install-host-tools",
         "title": "Zephyr Workbench: Install Host Tools",
         "icon": "$(desktop-download)"
       },
       {
-        "command": "ac6-zephyr-sdk-explorer.import-sdk",
-        "title": "Import Zephyr SDK"
+        "command": "zephyr-workbench.reinstall-venv",
+        "title": "Zephyr Workbench: Reinstall VENV",
+        "icon": "$(desktop-download)"
       },
       {
-        "command": "ac6-zephyr-module-explorer.create-module",
+        "command": "zephyr-workbench.verify-host-tools",
+        "title": "Zephyr Workbench: Verify Host Tools",
+        "icon": "$(desktop-download)"
+      },
+      {
+        "command": "zephyr-workbench.install-debug-tools",
+        "title": "Zephyr Workbench: Install Debug Tools",
+        "icon": "$(desktop-download)"
+      },
+      {
+        "command": "zephyr-workbench-module-explorer.create-module",
         "title": "Create new Zephyr Extra Module"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.open-wizard",
+        "title": "Create new Zephyr Application",
+        "icon": "$(add)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.import-app-wizard",
+        "title": "Import Zephyr Application",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.create-app",
+        "title": "Create new Zephyr Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.import-app",
+        "title": "Import Zephyr Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.build-app",
+        "title": "Build",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.clean-app",
+        "title": "Clean",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.guiconfig-app",
+        "title": "Gui Config",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.menuconfig-app",
+        "title": "Menuconfig",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.spdx-app",
+        "title": "Generate SPDX"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.run-app",
+        "title": "Run",
+        "icon": "$(run)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.debug-app",
+        "title": "Debug",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.delete",
+        "title": "Delete from disk",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.reveal-os",
+        "title": "Open Containing Folder",
+        "icon": "$(explorer-view-icon)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.reveal-explorer",
+        "title": "Open in Explorer",
+        "icon": "$(explorer-view-icon)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.change-board",
+        "title": "Change Board"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.change-west-workspace",
+        "title": "Change West Workspace"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.create-venv",
+        "title": "Create local Python Virtual Environment"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.set-venv",
+        "title": "Set Python virtual environment"
+      },
+      {
+        "command": "zephyr-workbench-module-explorer.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "zephyr-workbench-west-workspace.open-wizard",
+        "title": "Initialize new west workspace",
+        "icon": "$(add)"
+      },
+      {
+        "command": "zephyr-workbench-west-workspace.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "zephyr-workbench-west-workspace.update",
+        "title": "Update"
+      },
+      {
+        "command": "zephyr-workbench-west-workspace.delete",
+        "title": "Delete from disk",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "zephyr-workbench-west-workspace.open-terminal",
+        "title": "Open Terminal",
+        "icon": "$(console)"
+      },
+      {
+        "command": "zephyr-workbench-sdk-explorer.open-wizard",
+        "title": "Add Zephyr SDK",
+        "icon": "$(add)"
+      },
+      {
+        "command": "zephyr-workbench-sdk-explorer.remove-sdk",
+        "title": "Remove Zephyr SDK",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "zephyr-workbench-sdk-explorer.delete",
+        "title": "Delete from disk",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "zephyr-workbench-sdk-explorer.install-requirements",
+        "title": "Install Requirements",
+        "icon": "$(desktop-download)"
+      },
+      {
+        "command": "zephyr-workbench-sdk-explorer.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "zephyr-workbench-status-bar.build",
+        "title": "Build",
+        "icon": "$(gear)"
       },
       {
         "command": "west.version",
@@ -123,79 +307,12 @@
         "command": "west.debug",
         "title": "Flash and interactively debug a Zephyr application [debug]",
         "category": "West"
-      },
-      {
-        "command": "ac6-zephyr-app-explorer.open-app-wizard",
-        "title": "Create new Zephyr Application",
-        "icon": "$(add)"
-      },
-      {
-        "command": "ac6-zephyr-app-explorer.create-app",
-        "title": "Create new Zephyr Application"
-      },
-      {
-        "command": "ac6-zephyr-app-explorer.refresh",
-        "title": "Refresh",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "ac6-zephyr-app-explorer.build-app",
-        "title": "Build",
-        "icon": "$(gear)"
-      },
-      {
-        "command": "ac6-zephyr-app-explorer.run-app",
-        "title": "Run",
-        "icon": "$(run)"
-      },
-      {
-        "command": "ac6-zephyr-app-explorer.debug-app",
-        "title": "Debug",
-        "icon": "$(debug-alt)"
-      },
-      {
-        "command": "ac6-zephyr-app-explorer.open-app",
-        "title": "Open in Explorer",
-        "icon": "$(explorer-view-icon)"
-      },
-      {
-        "command": "ac6-zephyr-module-explorer.refresh",
-        "title": "Refresh",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "ac6-zephyr-west-workspace.init",
-        "title": "Initialize new west workspace",
-        "icon": "$(add)"
-      },
-      {
-        "command": "ac6-zephyr-west-workspace.refresh",
-        "title": "Refresh",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "ac6-zephyr-west-workspace.open-terminal",
-        "title": "Open Terminal",
-        "icon": "$(console)"
-      },
-      {
-        "command": "zephyrSdk.deleteEntry",
-        "title": "Delete"
-      },
-      {
-        "command": "zephyrSdk.refreshEntry",
-        "title": "Refresh",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "zephyrSdk.setActiveEntry",
-        "title": "Set Active"
       }
     ],
     "terminal": {
       "profiles": [
         {
-          "id": "ac6-zephyr.terminal",
+          "id": "zephyr-workbench.terminal",
           "icon": "terminal",
           "title": "Zephyr BuildSystem Terminal"
         }
@@ -204,39 +321,53 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "ac6-zephyr",
-          "title": "Zephyr Project by Ac6",
-          "icon": "res/ac6/AC6.svg"
+          "id": "zephyr-workbench-activitybar",
+          "title": "Zephyr Workbench",
+          "icon": "res/zephyr-workbench.svg"
         }
       ]
     },
     "views": {
-      "ac6-zephyr": [
+      "zephyr-workbench-activitybar": [
         {
-          "id": "ac6-zephyr-workbench",
+          "id": "zephyr-workbench-shortcuts",
           "name": "Zephyr Workbench",
           "contextualTitle": "Zephyr Workbench",
           "icon": "$(project)",
           "type": "tree"
         },
         {
-          "id": "ac6-zephyr-app-explorer",
+          "id": "zephyr-workbench-app-explorer",
           "name": "Applications",
           "contextualTitle": "Zephyr user applications",
           "icon": "$(extensions-view-icon)",
           "type": "tree"
         },
         {
-          "id": "ac6-zephyr-west-workspace",
+          "id": "zephyr-workbench-west-workspace",
           "name": "Zephyr west workspaces",
           "contextualTitle": "west workspaces with Zephyr sources and modules",
           "icon": "$(extensions-view-icon)",
           "type": "tree"
         },
         {
-          "id": "ac6-zephyr-sdk-explorer",
+          "id": "zephyr-workbench-sdk-explorer",
           "name": "Zephyr SDK",
           "contextualTitle": "Zephyr SDK",
+          "icon": "$(extensions-view-icon)",
+          "type": "tree"
+        },
+        {
+          "id": "zephyr-workbench-tools-explorer",
+          "name": "Host tools",
+          "contextualTitle": "Zephyr SDK",
+          "icon": "$(extensions-view-icon)",
+          "type": "tree"
+        },
+        {
+          "id": "zephyr-workbench-other-resources",
+          "name": "Other resources",
+          "contextualTitle": "Other resources",
           "icon": "$(extensions-view-icon)",
           "type": "tree"
         }
@@ -244,91 +375,232 @@
     },
     "viewsWelcome": [
       {
-        "view": "ac6-zephyr-app-explorer",
-        "contents": "[Create Zephyr application](command:ac6-zephyr-app-explorer.open-app-wizard)\n"
+        "view": "zephyr-workbench-app-explorer",
+        "contents": "[Create New Application](command:zephyr-workbench-app-explorer.open-wizard)\n[Import Existing Application](command:zephyr-workbench-app-explorer.import-app-wizard)\n"
       },
       {
-        "view": "ac6-zephyr-west-workspace",
-        "contents": "Import the Zephyr sources from [Github](https://github.com/zephyrproject-rtos/zephyr) or enter your local sources and initialize your workspace\n[Initialize workspace](command:ac6-zephyr-west-workspace.init)\n"
+        "view": "zephyr-workbench-west-workspace",
+        "contents": "Import the Zephyr sources from [Github](https://github.com/zephyrproject-rtos/zephyr) or enter your local sources and initialize your workspace\n[Initialize workspace](command:zephyr-workbench-west-workspace.open-wizard)\n"
       },
       {
-        "view": "ac6-zephyr-sdk-explorer",
+        "view": "zephyr-workbench-sdk-explorer",
         "contents": "The Zephyr SDK is automatically detected after installing the Host Tools"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "zephyr-workbench-app-explorer.configure",
+        "label": "Configure"
+      },
+      {
+        "id": "zephyr-workbench-app-explorer.local-venv",
+        "label": "Local Environment"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "ac6-zephyr-app-explorer.open-app-wizard",
+          "command": "zephyr-workbench-app-explorer.open-wizard",
           "group": "navigation",
-          "when": "view == ac6-zephyr-app-explorer"
+          "when": "view == zephyr-workbench-app-explorer"
         },
         {
-          "command": "ac6-zephyr-app-explorer.refresh",
+          "command": "zephyr-workbench-app-explorer.import-app-wizard",
           "group": "navigation",
-          "when": "view == ac6-zephyr-app-explorer"
+          "when": "view == zephyr-workbench-app-explorer"
         },
         {
-          "command": "ac6-zephyr-module-explorer.refresh",
+          "command": "zephyr-workbench-app-explorer.refresh",
           "group": "navigation",
-          "when": "view == ac6-zephyr-module-explorer"
+          "when": "view == zephyr-workbench-app-explorer"
         },
         {
-          "command": "ac6-zephyr-west-workspace.init",
+          "command": "zephyr-workbench-module-explorer.refresh",
           "group": "navigation",
-          "when": "view == ac6-zephyr-west-workspace"
+          "when": "view == zephyr-workbench-module-explorer"
         },
         {
-          "command": "ac6-zephyr-west-workspace.refresh",
+          "command": "zephyr-workbench-west-workspace.open-wizard",
           "group": "navigation",
-          "when": "view == ac6-zephyr-west-workspace"
+          "when": "view == zephyr-workbench-west-workspace"
         },
         {
-          "command": "zephyrSdk.refreshEntry",
+          "command": "zephyr-workbench-west-workspace.refresh",
           "group": "navigation",
-          "when": "view == ac6-zephyr-sdk-explorer"
+          "when": "view == zephyr-workbench-west-workspace"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.open-wizard",
+          "group": "navigation",
+          "when": "view == zephyr-workbench-sdk-explorer"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.refresh",
+          "group": "navigation",
+          "when": "view == zephyr-workbench-sdk-explorer"
         }
       ],
       "view/item/context": [
         {
-          "command": "ac6-zephyr-app-explorer.build-app",
+          "command": "zephyr-workbench-app-explorer.build-app",
           "group": "0@view/item/context@0",
-          "when": "view == ac6-zephyr-app-explorer && viewItem == zephyr-application"
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "ac6-zephyr-app-explorer.run-app",
+          "command": "zephyr-workbench-app-explorer.clean-app",
           "group": "0@view/item/context@1",
-          "when": "view == ac6-zephyr-app-explorer && viewItem == zephyr-application"
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "ac6-zephyr-app-explorer.debug-app",
+          "submenu": "zephyr-workbench-app-explorer.configure",
           "group": "0@view/item/context@2",
-          "when": "view == ac6-zephyr-app-explorer && viewItem == zephyr-application"
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "ac6-zephyr-app-explorer.open-app",
+          "command": "zephyr-workbench-app-explorer.run-app",
           "group": "0@view/item/context@3",
-          "when": "view == ac6-zephyr-app-explorer && viewItem == zephyr-application"
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "ac6-zephyr-app-explorer.build-app",
+          "command": "zephyr-workbench-app-explorer.debug-app",
+          "group": "0@view/item/context@4",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx-app",
+          "group": "0@view/item/context@5",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.delete",
+          "group": "0@view/item/context@6",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.local-venv",
+          "group": "0@view/item/context@7",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.reveal-os",
+          "group": "0@view/item/context@8",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.reveal-explorer",
+          "group": "0@view/item/context@9",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.change-board",
+          "group": "0@view/item/context@8",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-board"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.change-west-workspace",
+          "group": "0@view/item/context@9",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-workspace"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.build-app",
           "group": "inline@0",
-          "when": "view == ac6-zephyr-app-explorer && viewItem == zephyr-application"
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "ac6-zephyr-app-explorer.run-app",
+          "command": "zephyr-workbench-app-explorer.guiconfig-app",
+          "group": "inline@0",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.run-app",
           "group": "inline@1",
-          "when": "view == ac6-zephyr-app-explorer && viewItem == zephyr-application"
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "ac6-zephyr-app-explorer.debug-app",
+          "command": "zephyr-workbench-app-explorer.debug-app",
           "group": "inline@2",
-          "when": "view == ac6-zephyr-app-explorer && viewItem == zephyr-application"
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "ac6-zephyr-west-workspace.open-terminal",
+          "command": "zephyr-workbench-west-workspace.open-terminal",
           "group": "inline@0",
-          "when": "view == ac6-zephyr-west-workspace && viewItem == west-workspace"
+          "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.update",
+          "group": "0@view/item/context@1",
+          "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.delete",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.open-terminal",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.open-wizard",
+          "group": "0@view/item/context@0",
+          "when": "view == zephyr-workbench-sdk-explorer"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.remove-sdk",
+          "group": "0@view/item/context@1",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.delete",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.install-requirements",
+          "group": "0@view/item/context@3",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.remove-sdk",
+          "group": "inline@0",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
+        }
+      ],
+      "zephyr-workbench-app-explorer.configure": [
+        {
+          
+          "command": "zephyr-workbench-app-explorer.guiconfig-app",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.menuconfig-app",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.change-board",
+          "group": "0@view/item/context@8",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.change-west-workspace",
+          "group": "0@view/item/context@9",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        }
+      ],
+      "zephyr-workbench-app-explorer.local-venv": [
+        {
+          
+          "command": "zephyr-workbench-app-explorer.create-venv",
+          "group": "0@view/item/context@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.set-venv",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ]
     },
@@ -366,6 +638,36 @@
             "description": "West command"
           }
         }
+      },
+      {
+        "type": "zephyr-workbench",
+        "required": [
+          "command"
+        ],
+        "properties": {
+					"command": {
+						"type": "string",
+						"description": "The command line to execute"
+					},
+					"args": {
+						"type": "array",
+						"description": "The list of arguments"
+					},
+          "options": {
+            "type": "object",
+            "description": "Additional options",
+            "properties": {
+              "cwd": {
+                "type": "string",
+                "description": "Working folder. By default, the root of the workspace folder"
+              },
+              "env": {
+                "type": "object",
+                "markdownDescription": "Additional environment variables with the format \"name\" : \"value\"."
+              }
+            }
+          }
+				}
       }
     ]
   },
@@ -381,30 +683,34 @@
   "devDependencies": {
     "@types/mocha": "^10.0.6",
     "@types/node": "18.x",
+    "@types/node-7z": "^2.1.8",
     "@types/vscode": "^1.88.0",
     "@types/vscode-webview": "^1.57.5",
     "@typescript-eslint/eslint-plugin": "^7.7.1",
     "@typescript-eslint/parser": "^7.7.1",
     "@vscode/test-cli": "^0.0.8",
     "@vscode/test-electron": "^2.3.9",
+    "esbuild": "^0.16.10",
     "esbuild-plugin-copy": "^2.1.1",
     "eslint": "^8.57.0",
+    "prettier": "^2.8.1",
     "typescript": "^5.4.5"
   },
   "dependencies": {
+    "@microsoft/vscode-file-downloader-api": "^1.0.1",
     "@vscode/webview-ui-toolkit": "^1.4.0",
+    "7zip-bin": "^5.2.0",
     "JSON": "^1.0.0",
+    "node-7z": "^3.0.0",
     "sudo-prompt": "^9.2.1",
     "yaml": "^2.4.3"
   },
-  "extensionPack": [
+  "extensionDependencies": [
     "ms-vscode.cpptools",
-		"ms-vscode.cpptools-extension-pack",
-		"ms-vscode.vscode-serial-monitor",
-		"ms-vscode.vscode-embedded-tools",
-		"redhat.vscode-yaml",	
-		"marus25.cortex-debug",	
-		"trond-snekvik.kconfig-lang",	
-		"trond-snekvik.devicetree"
+    "ms-vscode.cpptools-extension-pack",
+    "ms-vscode.vscode-serial-monitor",
+    "redhat.vscode-yaml",
+    "marus25.cortex-debug",
+    "mindaro-dev.file-downloader"
   ]
 }
