@@ -4,11 +4,20 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.2]
+
+- Fix "Build" button on status bar
+- Add additional information when creating Application
+- Add clean project choices
+- Fix zephyr workbench project detection
+- Fix initial .west/config setup for local west workspace
+
 ## [0.1.1]
 
 - Get remote tags of west workspace
 - Enable West Workspace change for Application
 - Support user .venv on application level
+- Fix on VSCode portable, settings paths
 
 ## [0.1.0]
 

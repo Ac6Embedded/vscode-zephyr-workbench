@@ -124,7 +124,41 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean-app', async (node: ZephyrApplicationTreeItem) => {
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.pristine', async (node: ZephyrApplicationTreeItem) => {
+		if(node.project.sourceDir) {
+			if(node.project.sourceDir) {
+				const westBuildTask = await findTask('Clean Pristine', node.project.workspaceFolder);
+				if (westBuildTask) {
+					try {
+							await vscode.tasks.executeTask(westBuildTask);
+					} catch (error) {
+							vscode.window.showErrorMessage(`Error executing task: ${error}`);
+					}
+				} else {
+						vscode.window.showErrorMessage('Cannot find Clean task.');
+				}
+			}
+		}
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.delete', async (node: ZephyrApplicationTreeItem) => {
+		if(node.project.sourceDir) {
+			if(node.project.sourceDir) {
+				const westBuildTask = await findTask('Delete Build', node.project.workspaceFolder);
+				if (westBuildTask) {
+					try {
+							await vscode.tasks.executeTask(westBuildTask);
+					} catch (error) {
+							vscode.window.showErrorMessage(`Error executing task: ${error}`);
+					}
+				} else {
+						vscode.window.showErrorMessage('Cannot find Clean task.');
+				}
+			}
+		}
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.simple', async (node: ZephyrApplicationTreeItem) => {
 		if(node.project.sourceDir) {
 			if(node.project.sourceDir) {
 				const westBuildTask = await findTask('Clean', node.project.workspaceFolder);
@@ -668,6 +702,7 @@ export function activate(context: vscode.ExtensionContext) {
 				CreateWestWorkspacePanel.currentPanel?.dispose();
 				if(WestWorkspace.isWestWorkspacePath(workspaceDestPath)) {
 					await addWorkspaceFolder(workspaceDestPath);
+					await westBoardsCommand(workspaceDestPath);
 				} else {
 					vscode.window.showErrorMessage("The folder is not a West workspace");
 				}
@@ -770,10 +805,10 @@ function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
 	return undefined;
 }
 
-function updateStatusBar() {
+async function updateStatusBar() {
 	const currentFolder = getCurrentWorkspaceFolder();
-	if(currentFolder && ZephyrAppProject.isZephyrProjectWorkspaceFolder(currentFolder)) {
-		statusBarItem.tooltip = `Build ${currentFolder.name}`;
+	if(currentFolder && await ZephyrAppProject.isZephyrProjectWorkspaceFolder(currentFolder)) {
+		statusBarItem.tooltip = `Zephyr: Build ${currentFolder.name}`;
 		statusBarItem.show();
 	} else {
 		statusBarItem.hide();

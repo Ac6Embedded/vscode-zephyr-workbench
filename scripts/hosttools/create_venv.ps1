@@ -2,7 +2,6 @@ param (
   [Parameter(Mandatory=$true)]
   [string]$InstallDir
 )
-
 $SelectedOperatingSystem = "windows"
 
 $ScriptPath = $MyInvocation.MyCommand.Path
@@ -216,7 +215,9 @@ foreach ($Tool in $ToolsList) {
 . $ManifestFilePath
 
 # Source environment
-$EnvScript = Join-Path -Path (Split-Path -Path $ENV_FILE -Parent) -ChildPath "env.ps1"
+Write-Output "ENV_FILE: $env:ENV_FILE"
+$ScriptDir = Split-Path -Path "$env:ENV_FILE" -Parent
+$EnvScript = Join-Path -Path "$ScriptDir" -ChildPath "env.ps1"
 . $EnvScript *>$null
 
 Print-Title "Requirements"

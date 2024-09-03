@@ -58,8 +58,8 @@ zephyr_content:
       source: https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-windows-x86_64.zip
       sha256: 671332249bc7cc7424523d6c2b5edd3e3de90a43b8b82e8782f42da4fe4c562d
     darwin:
-      source: xxx
-      sha256: xxx
+      source: https://github.com/Kitware/CMake/releases/download/v3.29.2/cmake-3.29.2-macos-universal.tar.gz
+      sha256: 0b542389345b28d2f73122b72ec9b899947e643fd86cf8f42bae2718884d2ad3
 - tool: ninja
   os:
     linux:
@@ -68,6 +68,9 @@ zephyr_content:
     windows:
       source: https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip
       sha256: 524b344a1a9a55005eaf868d991e090ab8ce07fa109f1820d40e74642e289abc
+    darwin:
+      source: https://github.com/ninja-build/ninja/releases/download/v1.12.0/ninja-mac.zip
+      sha256: 19806019c9623a062c3d9fa0d5f45b633a3d150f88e73fbd6c0ff6ea5534df10
 - tool: dtc
   os:
     windows:
@@ -82,8 +85,8 @@ zephyr_content:
       source: https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-x86_64.tar.xz
       sha256: cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7dbc6a
     darwin:
-      source: xxx
-      sha256: xxx
+      source: https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_macos-aarch64.tar.xz
+      sha256: e06138c1e50cc5b4508646640bd08c50f05f0eb3f2949e756d84d3367f581593
 - tool: openssl
   os:
     linux:
@@ -103,8 +106,8 @@ zephyr_content:
       source: https://github.com/winpython/winpython/releases/download/6.1.20230527/Winpython64-3.10.11.1dot.exe
       sha256: ec9345932a86101f15b6171fc261b5a7dca1d71095f6e87fe88ec8bdd099b030
     darwin:
-      source: xxx
-      sha256: xxx
+      source: https://cloud.ac6.fr/index.php/s/C6McaMwpitnwQgL/download/cpython-3.10.14-macos-arm64.tar.gz
+      sha256: 765e1563b54fc5ee53923a0feb8a76d3583675838cd8c8bd7a12b47080d08bae
 - tool: python_requirements
   os:
     windows:

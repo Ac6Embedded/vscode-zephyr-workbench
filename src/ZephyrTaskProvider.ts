@@ -133,204 +133,6 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
   const activeSdk: ZephyrSDK = getZephyrSDK(project.sdkPath);
   if(westWorkspace && activeSdk) {
-    const internalDir = getInternalDirVSCodePath();
-    
-    // Define tasks.json content
-    // const tasksJsonContent = {
-    //   version: "2.0.0",
-    //   windows: {
-    //     options: {
-    //       shell: {
-    //         executable: "cmd.exe",
-    //         args: [
-    //             "/d", 
-    //             "/c"
-    //         ]
-    //       }
-    //     }
-    //   },
-    //   linux: {
-    //     options: {
-    //       shell: {
-    //         executable: "bash",
-    //         args: [
-    //             "-c"
-    //         ]
-    //       }
-    //     }
-    //   },
-    //   tasks: [
-    //     {
-    //       label: "West Build",
-    //       type: "shell",
-    //       problemMatcher: [ "$gcc" ],
-    //       group: {
-    //         kind: "build",
-    //         isDefault: true
-    //       },
-    //       linux: {
-    //         command: "source " + path.join(internalDir, 'env.sh') + " && west build -p ${config:zephyr-workbench.build.pristine} --board ${config:zephyr-workbench.board} --build-dir " + buildDir
-    //       },
-    //       windows: {
-    //         command: "call " + path.join(internalDir, 'env.bat') + " && west build -p ${config:zephyr-workbench.build.pristine} --board ${config:zephyr-workbench.board} --build-dir " + buildDir
-    //       },
-    //       osx: {
-    //         command: "source " + path.join(internalDir, 'env.sh') + " && west build -p ${config:zephyr-workbench.build.pristine} --board ${config:zephyr-workbench.board} --build-dir " + buildDir
-    //       },
-    //       options: {
-    //         env: {...activeSdk.buildEnvWithVar, 
-    //               ...westWorkspace.buildEnvWithVar },
-    //       }
-    //     },
-    //     {
-    //       label: "Clean",
-    //       type: "shell",
-    //       problemMatcher: [],
-    //       linux: {
-    //         command: "source " + path.join(internalDir, 'env.sh') + " && ninja -C " + buildDir + " pristine"
-    //       },
-    //       windows: {
-    //         command: "call " + path.join(internalDir, 'env.bat') + " && ninja -C " + buildDir + " pristine"
-    //       },
-    //       osx: {
-    //         command: "source " + path.join(internalDir, 'env.sh') + " && ninja -C " + buildDir + " pristine"
-    //       },
-    //       options: {
-    //         env: {...activeSdk.buildEnvWithVar, 
-    //               ...westWorkspace.buildEnvWithVar },
-    //       }
-    //     },
-    //     {
-    //       label: "Gui config",
-    //       type: "shell",
-    //       problemMatcher: [],
-    //       linux: {
-    //         command: "source " + path.join(internalDir, 'env.sh') + " && west build -t guiconfig --board ${config:zephyr-workbench.board} --build-dir " + buildDir
-    //       },
-    //       windows: {
-    //         command: "call " + path.join(internalDir, 'env.bat') + " && west build -t guiconfig --board ${config:zephyr-workbench.board} --build-dir " + buildDir
-    //       },
-    //       osx: {
-    //         command: "source " + path.join(internalDir, 'env.sh') + " && west build -t guiconfig --board ${config:zephyr-workbench.board} --build-dir " + buildDir
-    //       },
-    //       options: {
-    //         env: {...activeSdk.buildEnvWithVar, 
-    //               ...westWorkspace.buildEnvWithVar },
-    //       }
-    //     },
-    //     {
-    //       label: "Menuconfig",
-    //       type: "shell",
-    //       problemMatcher: [],
-    //       linux: {
-    //         command: "source " + path.join(internalDir, 'env.sh') + " && west build -t menuconfig --board ${config:zephyr-workbench.board} --build-dir " + buildDir
-    //       },
-    //       windows: {
-    //         command: "call " + path.join(internalDir, 'env.bat') + " && west build -t menuconfig --board ${config:zephyr-workbench.board} --build-dir " + buildDir
-    //       },
-    //       osx: {
-    //         command: "source " + path.join(internalDir, 'env.sh') + " && west build -t menuconfig --board ${config:zephyr-workbench.board} --build-dir " + buildDir
-    //       },
-    //       options: {
-    //         env: {...activeSdk.buildEnvWithVar, 
-    //               ...westWorkspace.buildEnvWithVar },
-    //       }
-    //     },
-    //     {
-    //       label: "Generate SPDX",
-    //       type: "shell",
-    //       problemMatcher: [],
-    //       linux: {
-    //         command: "source " + path.join(internalDir, 'env.sh') + " && west spdx --init --build-dir " + buildDir
-    //       },
-    //       windows: {
-    //         command: "call " + path.join(internalDir, 'env.bat') + " && west spdx --init --build-dir " + buildDir
-    //       },
-    //       osx: {
-    //         command: "source " + path.join(internalDir, 'env.sh') + " && west spdx --init --build-dir " + buildDir
-    //       },
-    //       options: {
-    //         env: {...activeSdk.buildEnvWithVar, 
-    //               ...westWorkspace.buildEnvWithVar },
-    //       }
-    //     },
-    //     {
-    //       label: "West Flash",
-    //       type: "shell",
-    //       problemMatcher: [],
-    //       linux: {
-    //         command: "source " + path.join(internalDir, 'env.sh') + " && west flash ${input:west.runner} --build-dir " + buildDir
-    //       },
-    //       windows: {
-    //         command: "call " + path.join(internalDir, 'env.bat') + " && west flash ${input:west.runner} --build-dir " + buildDir
-    //       },
-    //       osx: {
-    //         command: "source " + path.join(internalDir, 'env.sh') + " && west flash ${input:west.runner} --build-dir " + buildDir
-    //       },
-    //       options: {
-    //         env: {...activeSdk.buildEnvWithVar, 
-    //               ...westWorkspace.buildEnvWithVar },
-    //       }
-    //     }
-    //   ],
-    //   inputs: [
-    //     {
-    //       id: "west.build.pristine",
-    //       type: "pickString",
-    //       description: "The option controls whether the build directory is made pristine before the build.",
-    //       options: [
-    //         "auto",
-    //         "always",
-    //         "never",
-    //       ],
-    //       default: "auto"
-    //     },
-    //     {
-    //       id: "west.runner",
-    //       type: "pickString",
-    //       description: "Override default runner. Runners can flash and/or debug Zephyr programs.",
-    //       options: [
-    //         "",
-    //         "--runner arc-nsim",
-    //         "--runner blackmagicprobe",
-    //         "--runner bossac",
-    //         "--runner canopen_program",
-    //         "--runner dediprog",
-    //         "--runner dfu-util",
-    //         "--runner esp32",
-    //         "--runner ezflashcli",
-    //         "--runner gd32isp",
-    //         "--runner hifive1",
-    //         "--runner intel_adsp",
-    //         "--runner intel_cyclonev",
-    //         "--runner jlink",
-    //         "--runner linkserver",
-    //         "--runner mdb-hw",
-    //         "--runner mdb-nsim",
-    //         "--runner misc-flasher",
-    //         "--runner nios2",
-    //         "--runner nrfjprog",
-    //         "--runner nrfutil",
-    //         "--runner nsim",
-    //         "--runner nxp_s32dbg",
-    //         "--runner openocd",
-    //         "--runner pyocd",
-    //         "--runner qemu",
-    //         "--runner renode-robot",
-    //         "--runner renode",
-    //         "--runner silabs_commander",
-    //         "--runner spi_burn",
-    //         "--runner stm32cubeprogrammer",
-    //         "--runner stm32flash",
-    //         "--runner teensy",
-    //         "--runner trace32",
-    //         "--runner uf2",
-    //         "--runner xtensa"
-    //       ],
-    //       default: ""
-    //     }
-    //   ]
-    // };
     const tasksJsonContent = {
       version: "2.0.0",
       tasks: [
@@ -352,6 +154,25 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
         },
         {
           label: "Clean",
+          type: "zephyr-workbench",
+          problemMatcher: [],
+          command: "ninja",
+          args: [
+            "-C " + buildDir,
+            "clean",
+          ]
+        },
+        {
+          label: "Delete Build",
+          type: "zephyr-workbench",
+          problemMatcher: [],
+          command: "rm",
+          args: [
+            "-rf " + buildDir,
+          ]
+        },
+        {
+          label: "Clean Pristine",
           type: "zephyr-workbench",
           problemMatcher: [],
           command: "ninja",

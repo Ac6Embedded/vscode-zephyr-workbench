@@ -8,14 +8,6 @@
     },
     // Turn off tsc task auto detection since we have the necessary tasks as npm scripts
     "typescript.tsc.autoDetect": "off",
-    "python.autoComplete.extraPaths": [
-        "${workspaceFolder}/sources/poky/bitbake/lib",
-        "${workspaceFolder}/sources/poky/meta/lib"
-    ],
-    "python.analysis.extraPaths": [
-        "${workspaceFolder}/sources/poky/bitbake/lib",
-        "${workspaceFolder}/sources/poky/meta/lib"
-    ],
     "[python]": {
         "diffEditor.ignoreTrimWhitespace": false,
         "gitlens.codeLens.symbolScopes": [
@@ -29,13 +21,8 @@
         "files.eol": "\n",
         "files.trimTrailingWhitespace": false
     },
-    "files.associations": {
-        "*.conf": "bitbake",
-        "*.inc": "bitbake"
-    },
     "cmake.configureOnOpen": false,
     "cSpell.words": [
         "menuconfig"
-    ],
-    "bitbake.buildConfigurations": []
+    ]
 }

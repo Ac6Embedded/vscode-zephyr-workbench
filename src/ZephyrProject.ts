@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
+import fs from 'fs';
 import path from "path";
-import { fileExists } from './utils';
+import { fileExists, findTask } from './utils';
 import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 export class ZephyrProject {
   
@@ -55,13 +56,25 @@ export class ZephyrProject {
     this.boardId = boardId;
   }
 
-  static isZephyrProjectWorkspaceFolder(folder: vscode.WorkspaceFolder) {
-    const zwFilePath = path.join(folder.uri.fsPath, '.vscode', 'zephyrworkbench.json');
-    return fileExists(zwFilePath);
+  static async isZephyrProjectWorkspaceFolder(folder: vscode.WorkspaceFolder) {
+    const westBuildTask = await findTask('West Build', folder);
+    if(westBuildTask) {
+      return true;
+    }
+    return false;
   }
 
   static isZephyrProjectPath(projectPath: string): boolean {
-    const zwFilePath = path.join(projectPath, '.vscode', 'zephyrworkbench.json');
-    return fileExists(zwFilePath);
+    const zwFilePath = path.join(projectPath, '.vscode', 'tasks.json');
+    if(fileExists(zwFilePath)) {
+      const fileContent = fs.readFileSync(zwFilePath, 'utf-8');
+      const jsonData = JSON.parse(fileContent);
+      for(let task of jsonData.tasks) {
+        if(task.label === 'West Build' && task.type === 'zephyr-workbench') {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 }

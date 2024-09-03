@@ -1,4 +1,4 @@
-# Zephyr Workbench for VS Code (Beta)
+# Zephyr Workbench for VS Code
 
 Ac6 Zephyr Workbench for VS Code extension adds support of Zephyr development to Visual Studio Code, including SDK management, Project wizard, build and debugging features. 
 
@@ -13,7 +13,13 @@ Ac6 Zephyr Workbench for VS Code extension adds support of Zephyr development to
 
 ## Requirements
 To build your project on Zephyr Workbench, No external tools is required. Host tools are installed by the extension itself.
-To flash and to debug the application on your target, external tools are required. Depending on needs, your might have to install some of the following software tools on your workstation
+To flash and to debug the application on your target, external tools are required. Depending on needs, your might have to install some of the following software tools on your workstation:
+* SAM Boot Assistant (SAM-BA)
+* LinkServer Debug Host Tools
+* J-Link Debug Host Tools
+* pyOCD Debug Host Tools
+* Lauterbach TRACE32 Debug Host Tools
+* NXP S32 Debug Probe Host Tools
   
 ## Usage
 Zephyr Workbench provides a dedicated panel, to access it, click on the "Zephyr Workbench" logo on the left 
@@ -77,3 +83,4 @@ Note: As third-party installer cannot be fully controlled, you might need to man
 
 Error message in "Output" tab with new application project is created.
 Uninstall tools not supported
+

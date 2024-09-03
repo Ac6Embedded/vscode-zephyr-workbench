@@ -61,14 +61,14 @@ export class CreateZephyrAppPanel {
     const codiconUri = getUri(webview, extensionUri, ["out", "codicon.css"]);
     
     const nonce = getNonce();
-    let workspacesHTML: string = '<option value=""></option>';
+    let workspacesHTML: string = '';
     for(let westWorkspace of getWestWorkspaces()) {
-      workspacesHTML = workspacesHTML.concat(`<option value="${westWorkspace.rootUri}">${westWorkspace.name}</option>\n`);
+      workspacesHTML = workspacesHTML.concat(`<div class="dropdown-item" data-value="${westWorkspace.rootUri}" data-label="${westWorkspace.name}">${westWorkspace.name}<span class="description">${westWorkspace.rootUri.fsPath}</span></div>`);
     }
 
-    let sdkHTML: string = '<option value=""></option>';
+    let sdkHTML: string = '';
     for(let sdk of await getListZephyrSDKs()) {
-      sdkHTML = sdkHTML.concat(`<option value="${sdk.rootUri}">${sdk.name}</option>\n`);
+      sdkHTML = sdkHTML.concat(`<div class="dropdown-item" data-value="${sdk.rootUri}" data-label="${sdk.name}">${sdk.name}<span class="description">${sdk.rootUri.fsPath}</span></div>`);
     }
       
     return /*html*/ `
@@ -93,10 +93,18 @@ export class CreateZephyrAppPanel {
                   <div class="grid-header-div">
                     <label for="listWorkspaces">Select West Workspace:</label>
                   </div>
-                  <div class="grid-value-div">
-                    <vscode-dropdown id="listWorkspaces" position="below">
+                  <div id="listWorkspaces" class="combo-dropdown grid-value-div">
+                    <input type="text" id="workspaceInput" class="combo-dropdown-control" placeholder="Choose your west workspace..." data-value="">
+                    <div aria-hidden="true" class="indicator" part="indicator">
+                      <slot name="indicator">  
+                        <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                          <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                        </svg>
+                      </slot>
+                    </div>
+                    <div id="workspaceDropdown" class="dropdown-content" style="display: none;">
                       ${workspacesHTML}
-                    </vscode-dropdown>
+                    </div>
                   </div>
                 </div>
 
@@ -104,10 +112,18 @@ export class CreateZephyrAppPanel {
                   <div class="grid-header-div">
                     <label for="listSDKs">Select Zephyr SDK:</label>
                   </div>
-                  <div class="grid-value-div">
-                    <vscode-dropdown id="listSDKs" position="below">
+                  <div id="listSdks" class="combo-dropdown grid-value-div">
+                    <input type="text" id="sdkInput" class="combo-dropdown-control" placeholder="Choose your SDK..." data-value="">
+                    <div aria-hidden="true" class="indicator" part="indicator">
+                      <slot name="indicator">  
+                        <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                          <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                        </svg>
+                      </slot>
+                    </div>
+                    <div id="sdkDropdown" class="dropdown-content" style="display: none;">
                       ${sdkHTML}
-                    </vscode-dropdown>
+                    </div>
                   </div>
                 </div>
 

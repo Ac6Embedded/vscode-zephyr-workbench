@@ -160,8 +160,18 @@
         "icon": "$(gear)"
       },
       {
-        "command": "zephyr-workbench-app-explorer.clean-app",
-        "title": "Clean",
+        "command": "zephyr-workbench-app-explorer.clean.pristine",
+        "title": "Rebuild/Pristine",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.clean.delete",
+        "title": "Delete Build",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.clean.simple",
+        "title": "Ninja Clean",
         "icon": "$(clear-all)"
       },
       {
@@ -345,7 +355,7 @@
         },
         {
           "id": "zephyr-workbench-west-workspace",
-          "name": "Zephyr west workspaces",
+          "name": "West workspaces",
           "contextualTitle": "west workspaces with Zephyr sources and modules",
           "icon": "$(extensions-view-icon)",
           "type": "tree"
@@ -388,6 +398,10 @@
       }
     ],
     "submenus": [
+      {
+        "id": "zephyr-workbench-app-explorer.clean",
+        "label": "Clean"
+      },
       {
         "id": "zephyr-workbench-app-explorer.configure",
         "label": "Configure"
@@ -447,7 +461,7 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.clean-app",
+          "submenu": "zephyr-workbench-app-explorer.clean",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
@@ -567,26 +581,44 @@
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
         }
       ],
+      "zephyr-workbench-app-explorer.clean": [
+        {
+          
+          "command": "zephyr-workbench-app-explorer.clean.pristine",
+          "group": "clean@0",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.clean.delete",
+          "group": "clean@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.clean.simple",
+          "group": "clean@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        }
+      ],
       "zephyr-workbench-app-explorer.configure": [
         {
           
           "command": "zephyr-workbench-app-explorer.guiconfig-app",
-          "group": "0@view/item/context@2",
+          "group": "configure@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
           "command": "zephyr-workbench-app-explorer.menuconfig-app",
-          "group": "0@view/item/context@2",
+          "group": "configure@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
           "command": "zephyr-workbench-app-explorer.change-board",
-          "group": "0@view/item/context@8",
+          "group": "configure@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
           "command": "zephyr-workbench-app-explorer.change-west-workspace",
-          "group": "0@view/item/context@9",
+          "group": "configure@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ],

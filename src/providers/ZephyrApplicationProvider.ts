@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { ZephyrAppProject } from '../ZephyrAppProject';
 import { getWestWorkspace } from '../utils';
+import { WestWorkspace } from '../WestWorkspace';
 
 export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<ZephyrApplicationTreeItem> {
 	private _onDidChangeTreeData: vscode.EventEmitter<ZephyrApplicationTreeItem | undefined | void> = new vscode.EventEmitter<ZephyrApplicationTreeItem | undefined | void>();
@@ -21,7 +22,7 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<Ze
         const items: ZephyrApplicationTreeItem[] = [];
 
         for(let workspaceFolder of vscode.workspace.workspaceFolders) {
-          if(ZephyrAppProject.isApplicationFolder(workspaceFolder)) {
+          if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
             const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
             const item =  new ZephyrApplicationTreeItem(appProject, vscode.TreeItemCollapsibleState.Collapsed);
             items.push(item);
@@ -86,12 +87,16 @@ export class ZephyrApplicationWestWorkspaceTreeItem extends ZephyrApplicationTre
 		public readonly project: ZephyrAppProject,
 	) {
     super(project, vscode.TreeItemCollapsibleState.None);
-    this.label = path.basename(project.westWorkspacePath);
-    this.description = '';
-    this.iconPath = {
-      light: path.join(__filename, '..', '..', 'res', 'icons', 'zephyr.svg'),
-      dark: path.join(__filename, '..', '..', 'res', 'icons', 'zephyr.svg')
-    };
+    let westWorkspace = getWestWorkspace(project.westWorkspacePath);
+    if(westWorkspace) {
+      this.label = westWorkspace.name;
+      this.description = `[${westWorkspace.version}]`;
+      this.iconPath = {
+        light: path.join(__filename, '..', '..', 'res', 'icons', 'zephyr.svg'),
+        dark: path.join(__filename, '..', '..', 'res', 'icons', 'zephyr.svg')
+      };
+    }
+    
 	}
 
   contextValue = 'zephyr-application-workspace';

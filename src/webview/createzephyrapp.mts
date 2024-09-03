@@ -14,6 +14,11 @@ function main() {
   setVSCodeMessageListener();
 
   const listWorkspaces = document.getElementById('listWorkspaces') as Dropdown;
+  const workspaceInput = document.getElementById('workspaceInput') as HTMLInputElement;
+  const sdkInput = document.getElementById('sdkInput') as HTMLInputElement;
+  const workspaceDropdown = document.getElementById('workspaceDropdown') as HTMLElement;
+  const sdkDropdown = document.getElementById('sdkDropdown') as HTMLElement;
+
   const boardInput = document.getElementById('boardInput') as HTMLInputElement;
   const sampleInput = document.getElementById('sampleInput') as HTMLInputElement;
   const boardDropdown = document.getElementById('boardDropdown') as HTMLElement;
@@ -31,6 +36,75 @@ function main() {
       westWorkspaceChanged(selectedWorkspace);
     });
   }
+
+  workspaceInput.addEventListener('focusin', function() {
+    if(workspaceDropdown) {
+      workspaceDropdown.style.display = 'block';
+    }
+  });
+
+  workspaceInput.addEventListener('focusout', function() {
+    if(workspaceDropdown) {
+      workspaceDropdown.style.display = 'none';
+    }
+  });
+
+  workspaceInput.addEventListener('click', function(event) {
+    if(workspaceDropdown) {
+      workspaceDropdown.style.display = 'block';
+    }
+  });
+
+  workspaceInput.addEventListener('input', () => {
+    westWorkspaceChanged(workspaceInput.getAttribute('data-value') as string);
+  });
+
+  workspaceInput.addEventListener('keyup', () => {
+    filterFunction(workspaceInput, workspaceDropdown);
+  });
+
+  workspaceDropdown.addEventListener('mousedown', function(event) {
+    event.preventDefault();
+  });
+
+  workspaceDropdown.addEventListener('mouseup', function(event) {
+    event.preventDefault();
+  });
+
+  addDropdownItemEventListeners(workspaceDropdown, workspaceInput);
+
+  sdkInput.addEventListener('focusin', function() {
+    if(sdkDropdown) {
+      sdkDropdown.style.display = 'block';
+    }
+  });
+
+  sdkInput.addEventListener('focusout', function() {
+    if(sdkDropdown) {
+      sdkDropdown.style.display = 'none';
+    }
+  });
+
+  sdkInput.addEventListener('click', function(event) {
+    if(sdkDropdown) {
+      sdkDropdown.style.display = 'block';
+    }
+  });
+
+  sdkInput.addEventListener('keyup', () => {
+    filterFunction(sdkInput, sdkDropdown);
+  });
+
+  sdkDropdown.addEventListener('mousedown', function(event) {
+    event.preventDefault();
+  });
+
+  sdkDropdown.addEventListener('mouseup', function(event) {
+    event.preventDefault();
+  });
+
+  addDropdownItemEventListeners(sdkDropdown, sdkInput);
+
 
   boardInput.addEventListener('focusin', function() {
     if(boardDropdown) {
@@ -234,8 +308,8 @@ function setLocalPath(id: string, path: string) {
 }
 
 function createHandler(this: HTMLElement, ev: MouseEvent) {
-  const listWorkspaces = document.getElementById('listWorkspaces') as Dropdown;
-  const listSDKs = document.getElementById('listSDKs') as Dropdown;
+  const workspaceInput = document.getElementById('workspaceInput') as HTMLInputElement;
+  const sdkInput = document.getElementById('sdkInput') as HTMLInputElement;
   const boardInput = document.getElementById('boardInput') as HTMLInputElement;
   const sampleInput = document.getElementById('sampleInput') as HTMLInputElement;
   const projectNameText = document.getElementById("projectName") as TextField;
@@ -244,8 +318,8 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   webviewApi.postMessage(
     {
       command: 'create',
-      westWorkspacePath: listWorkspaces.value,
-      zephyrsdkPath: listSDKs.value,
+      westWorkspacePath: workspaceInput.getAttribute('data-value'),
+      zephyrsdkPath: sdkInput.getAttribute('data-value'),
       boardYamlPath: boardInput.getAttribute('data-value'),
       samplePath: sampleInput.getAttribute('data-value'),
       projectName: projectNameText.value,
