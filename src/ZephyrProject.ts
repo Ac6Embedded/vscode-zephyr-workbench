@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from "path";
 import { fileExists, findTask } from './utils';
 import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
+import { ZephyrTaskProvider } from './ZephyrTaskProvider';
 export class ZephyrProject {
   
   readonly workspaceContext: any;
@@ -58,7 +59,7 @@ export class ZephyrProject {
 
   static async isZephyrProjectWorkspaceFolder(folder: vscode.WorkspaceFolder) {
     const westBuildTask = await findTask('West Build', folder);
-    if(westBuildTask) {
+    if(westBuildTask && westBuildTask.definition.type === ZephyrTaskProvider.ZephyrType) {
       return true;
     }
     return false;
@@ -70,7 +71,7 @@ export class ZephyrProject {
       const fileContent = fs.readFileSync(zwFilePath, 'utf-8');
       const jsonData = JSON.parse(fileContent);
       for(let task of jsonData.tasks) {
-        if(task.label === 'West Build' && task.type === 'zephyr-workbench') {
+        if(task.label === 'West Build' && task.type === ZephyrTaskProvider.ZephyrType) {
           return true;
         }
       }

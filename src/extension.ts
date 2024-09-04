@@ -10,7 +10,7 @@ import { ZephyrSDK } from './ZephyrSDK';
 import { ZephyrTaskProvider, createExtensionsJson, createLaunchJson, createTasksJson, setDefaultProjectSettings } from './ZephyrTaskProvider';
 import { changeBoardQuickStep } from './changeBoardQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
-import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
+import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
 import { importProjectQuickStep } from './importProjectQuickStep';
 import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, download, execCommand, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools } from './installUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
@@ -26,6 +26,7 @@ import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommand
 import { extractSDK, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
 import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findTask, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
+import { showPristineQuickPick } from './setupBuildPristineQuickStep';
 
 let statusBarItem: vscode.StatusBarItem;
 let zephyrTaskProvider: vscode.Disposable | undefined;
@@ -100,6 +101,21 @@ export function activate(context: vscode.ExtensionContext) {
 					vscode.commands.executeCommand('zephyr-workbench.install-host-tools');
 				}
 				return;
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-local", async (projectPath) => {
+			if(projectPath) {
+				CreateWestWorkspacePanel.currentPanel?.dispose();
+				if(ZephyrProject.isZephyrProjectPath(projectPath)) {
+					await addWorkspaceFolder(projectPath);
+				} else {
+					vscode.window.showErrorMessage("The folder is not a Zephyr project");
+				}
+			} else {
+				vscode.window.showErrorMessage("The selected location folder is invalid");
 			}
 		})
 	);
@@ -303,6 +319,12 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	vscode.commands.registerCommand("zephyr-workbench-app-explorer.change-pristine", async (node: ZephyrApplicationTreeItem) => {
+		let workspaceFolder = node.project.workspaceFolder;
+		let pristineValue = await showPristineQuickPick();
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
+	});
+
 	vscode.commands.registerCommand('zephyr-workbench-west-workspace.open-terminal', async (node: WestWorkspaceTreeItem) => {
 		if(node.westWorkspace) {
 			let terminal: vscode.Terminal = WestWorkspace.getTerminal(node.westWorkspace);
@@ -468,7 +490,8 @@ export function activate(context: vscode.ExtensionContext) {
 							vscode.window.showErrorMessage("Download failed: " + e);
 						}
 					}		
-					progress.report({message:'Importing SDK done', increment: 100});			
+					progress.report({message:'Importing SDK done', increment: 100});
+					zephyrSdkProvider.refresh();
 				});
 			} else {
 				vscode.window.showErrorMessage('Missing information to download SDK');
@@ -483,6 +506,8 @@ export function activate(context: vscode.ExtensionContext) {
 				ImportZephyrSDKPanel.currentPanel?.dispose();
 				if(ZephyrSDK.isSDKPath(sdkPath)) {
 					await registerZephyrSDK(sdkPath);
+					zephyrSdkProvider.refresh();
+					vscode.window.showInformationMessage("Importing SDK done.");
 				} else {
 					vscode.window.showErrorMessage("The folder is not a Zephyr SDK");
 				}
@@ -495,7 +520,10 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.remove-sdk", async (node: ZephyrSdkTreeItem) => {
 			if(node.sdk) {
-				await unregisterZephyrSDK(node.sdk.rootUri.fsPath);
+				if(await showConfirmMessage(`Remove ${node.sdk.name} from workspace ?`)) {
+					await unregisterZephyrSDK(node.sdk.rootUri.fsPath);
+					zephyrSdkProvider.refresh();
+				}
 			}
 		})
 	);
@@ -746,6 +774,12 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
+	/* Listeners on active editor */
+	context.subscriptions.push(
+		vscode.window.onDidChangeActiveTextEditor(updateStatusBar)
+	);
+
+	/* Listeners on workspace changes */
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeWorkspaceFolders((event: vscode.WorkspaceFoldersChangeEvent) => {
 			zephyrAppProvider.refresh();
@@ -755,8 +789,12 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
+		vscode.workspace.onDidChangeWorkspaceFolders(updateStatusBar)
+	);
+
+	/* Listeners on setttings changes */
+	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration(async (event) => {
-			const currentSettings = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY);
 			if(event.affectsConfiguration(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY)) {
 				zephyrSdkProvider.refresh();
 			}
@@ -774,24 +812,7 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-local", async (projectPath) => {
-			if(projectPath) {
-				CreateWestWorkspacePanel.currentPanel?.dispose();
-				if(ZephyrProject.isZephyrProjectPath(projectPath)) {
-					await addWorkspaceFolder(projectPath);
-				} else {
-					vscode.window.showErrorMessage("The folder is not a Zephyr project");
-				}
-			} else {
-				vscode.window.showErrorMessage("The selected location folder is invalid");
-			}
-		})
-	);
-	vscode.window.onDidChangeActiveTextEditor(updateStatusBar);
-	vscode.workspace.onDidChangeWorkspaceFolders(updateStatusBar);
 	updateStatusBar();
-	
 	setDefaultSettings();
 }
 

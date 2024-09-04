@@ -15,6 +15,7 @@ export async function changeBoardQuickStep(context: ExtensionContext, project: Z
     const options: vscode.QuickPickOptions = {
       title: 'Change Board',
       placeHolder: 'Select a target board',
+      matchOnDescription: true,
       canPickMany: false
     };
 

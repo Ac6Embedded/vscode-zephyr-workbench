@@ -222,6 +222,10 @@
         "title": "Change West Workspace"
       },
       {
+        "command": "zephyr-workbench-app-explorer.change-pristine",
+        "title": "Change Pristine Setting"
+      },
+      {
         "command": "zephyr-workbench-app-explorer.create-venv",
         "title": "Create local Python Virtual Environment"
       },
@@ -391,6 +395,10 @@
       {
         "view": "zephyr-workbench-west-workspace",
         "contents": "Import the Zephyr sources from [Github](https://github.com/zephyrproject-rtos/zephyr) or enter your local sources and initialize your workspace\n[Initialize workspace](command:zephyr-workbench-west-workspace.open-wizard)\n"
+      },
+      {
+        "view": "zephyr-workbench-tools-explorer",
+        "contents": "[Install Host Tools](command:zephyr-workbench.install-host-tools)\n"
       },
       {
         "view": "zephyr-workbench-sdk-explorer",
@@ -619,6 +627,11 @@
         {
           "command": "zephyr-workbench-app-explorer.change-west-workspace",
           "group": "configure@3",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.change-pristine",
+          "group": "configure@4",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ],

@@ -64,21 +64,42 @@ export async function checkEnvFile(): Promise<boolean> {
   }
 }
 
-export async function setDefaultSettings(): Promise<void> {
+export async function autoSetHostToolsSettings(): Promise<void> {
   return new Promise(async (resolve) => {
     // Set default environment script
     let envPath = findDefaultEnvScriptPath();
-    let openocdExecPath = findDefaultOpenOCDPath();
-    let openocdScriptsPath = findDefaultOpenOCDScriptPath();
-
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, envPath, vscode.ConfigurationTarget.Global);
-    
-    if(openocdExecPath.length > 0) {
-      await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, openocdExecPath, vscode.ConfigurationTarget.Global);
-    }
 
-    if(openocdScriptsPath.length > 0) {
-      await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_OPENOCD_SEARCHDIR_SETTING_KEY, openocdScriptsPath, vscode.ConfigurationTarget.Global);
+    // Set default internal Zephyr SDK
+    let sdk = await getInternalZephyrSDK();
+    if(sdk) {
+      let zephyrSDKPaths: string[] | undefined = await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY);
+      if(!zephyrSDKPaths || zephyrSDKPaths.length === 0) {
+        // If the setting is undefined
+        let listSDKs: string[] = [];
+        listSDKs.push(sdk.rootUri.fsPath);
+        await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, listSDKs, vscode.ConfigurationTarget.Global);
+      } else {
+        // If the first entry is not the local internal sdk, push it first
+        if(zephyrSDKPaths.length > 0) {
+          if(zephyrSDKPaths.at(0) !== sdk.rootUri.fsPath) {
+            zephyrSDKPaths.unshift(sdk.rootUri.fsPath);
+          }
+          await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, zephyrSDKPaths, vscode.ConfigurationTarget.Global);
+        }
+      }
+    }
+    resolve();
+  });
+}
+
+export async function setDefaultSettings(): Promise<void> {
+  return new Promise(async (resolve) => {
+    // Set default environment script
+    let envPathSetting = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, "");
+    if(!(envPathSetting && envPathSetting.length > 0)) {
+      let envPath = findDefaultEnvScriptPath();
+      await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, envPath, vscode.ConfigurationTarget.Global);
     }
 
     // Set default internal Zephyr SDK
@@ -102,6 +123,19 @@ export async function setDefaultSettings(): Promise<void> {
     }
     resolve();
   });
+}
+
+export async function setOpenOCDSettings(): Promise<void> {
+  let openocdExecPath = findDefaultOpenOCDPath();
+  let openocdScriptsPath = findDefaultOpenOCDScriptPath();
+
+  if(openocdExecPath.length > 0) {
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, openocdExecPath, vscode.ConfigurationTarget.Global);
+  }
+
+  if(openocdScriptsPath.length > 0) {
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_OPENOCD_SEARCHDIR_SETTING_KEY, openocdScriptsPath, vscode.ConfigurationTarget.Global);
+  }
 }
 
 /**
@@ -137,7 +171,7 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
   if(await checkHostTools()) {
     progress.report({ message: "Successfully Installing host tools", increment: 90 });
     if(await checkEnvFile()) {
-      setDefaultSettings();
+      autoSetHostToolsSettings();
       vscode.window.showInformationMessage("Setup Zephyr environment successful");
       progress.report({ message: "Auto-detect environment file", increment: 100 });
     }
@@ -164,7 +198,7 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
   if(await checkHostTools()) {
     progress.report({ message: "Successfully Installing host tools", increment: 90 });
     if(await checkEnvFile()) {
-      setDefaultSettings();
+      autoSetHostToolsSettings();
       vscode.window.showInformationMessage("Setup Zephyr environment successful");
       progress.report({ message: "Auto-detect environment file", increment: 100 });
     }
