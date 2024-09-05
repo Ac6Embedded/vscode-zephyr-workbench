@@ -13,10 +13,14 @@ install_sdk_bool=false
 reinstall_venv_bool=false
 INSTALL_DIR=""
 
+zinstaller_version="0.3"
+zinstaller_md5=$(md5sum "$BASH_SOURCE")
+tools_yml_md5=$(md5sum "$YAML_FILE")
+
 # Function to display usage information
 usage() {
     cat << EOF
-Usage: $0 [OPTIONS] [installDir]
+Usage: $(basename $0) [OPTIONS] [installDir]
 
 OPTIONS:
   -h, --help                Show this help message and exit.
@@ -25,6 +29,7 @@ OPTIONS:
   --only-check              Only check the installation status of the packages without installing them.
   --install-sdk             Additionally install the SDK after installing the packages.
   --reinstall-venv          Remove existing virtual environment and create a new one.
+  --select-sdk="SDK1 SDK2"  Specify space-separated SDKs to install. E.g., 'arm aarch64'
 
 ARGUMENTS:
   installDir                The directory where the packages should be installed. 
@@ -32,10 +37,9 @@ ARGUMENTS:
 
 DESCRIPTION:
   This script installs host dependencies for Zephyr project on your system.
-  By default, it installs all necessary packages without installing the SDK. 
+  By default, it installs all necessary packages without installing the SDK globally.
   If no installDir is specified, the default directory is used.
 EOF
-    exit 1
 }
 
 # Parse arguments
@@ -43,6 +47,7 @@ while [[ "$#" -gt 0 ]]; do
   case $1 in
     -h | --help)
       usage
+	  exit 0
       ;;
     --only-root)
       non_root_packages=false
@@ -64,12 +69,22 @@ while [[ "$#" -gt 0 ]]; do
       root_packages=false
       check_installed_bool=false
       ;;
+    --select-sdk=*)
+      selected_sdk_list="${1#*=}"
+      ;;
     *)
       if [[ -z "$INSTALL_DIR" ]]; then
-        INSTALL_DIR="$1/.zinstaller"
+        if [[ "$1" = /* ]]; then
+            # $1 is already an absolute path
+            INSTALL_DIR="$1/.zinstaller"
+        else
+            # $1 is a relative path, convert it to an absolute path
+            INSTALL_DIR="$(pwd)/$1/.zinstaller"
+        fi
       else
         echo "Unknown option or multiple installDir values: $1"
         usage
+	    exit 1
       fi
       ;;
   esac
@@ -80,6 +95,8 @@ done
 if [[ -z "$INSTALL_DIR" ]]; then
     INSTALL_DIR=$BASE_DIR
 fi
+
+echo "Installing in $INSTALL_DIR"
 
 TMP_DIR="$INSTALL_DIR/tmp"
 MANIFEST_FILE="$TMP_DIR/manifest.sh"
@@ -150,15 +167,15 @@ install_python_venv() {
     local work_directory=$2
 
     pr_title "Python Requirements"
-    REQUIREMENTS_NAME="requirements-3.6.0"
+    REQUIREMENTS_NAME="requirements"
     REQUIREMENTS_ZIP_NAME="$REQUIREMENTS_NAME".zip
 
     download_and_check_hash ${python_requirements[source]} ${python_requirements[sha256]} "$REQUIREMENTS_ZIP_NAME"
     unzip -o "$DL_DIR/$REQUIREMENTS_ZIP_NAME" -d "$TMP_DIR/"
-    
+
     python3 -m venv "$install_directory/.venv"
     source "$install_directory/.venv/bin/activate"
-    python3 -m pip install setuptools west --quiet
+    python3 -m pip install setuptools wheel west --quiet
     python3 -m pip install -r "$work_directory/$REQUIREMENTS_NAME/requirements.txt" --quiet
 }
 
@@ -177,7 +194,7 @@ if [[ $root_packages == true ]]; then
                 exit 3
             fi
             sudo apt-get update
-            sudo apt -y install --no-install-recommends git gperf ccache dfu-util wget xz-utils file make libsdl2-dev libmagic1
+            sudo apt -y install --no-install-recommends git gperf ccache dfu-util wget xz-utils unzip file make libsdl2-dev libmagic1
             ;;
         fedora)
             echo "This is Fedora."
@@ -256,7 +273,7 @@ if [[ $non_root_packages == true ]]; then
 		if [ -d "$INSTALL_DIR/.venv" ]; then
 			rm -rf "$INSTALL_DIR/.venv"
 		fi
-		source "$ENV_FILE" &> /dev/null 
+		source "$ENV_FILE" &> /dev/null
 		install_python_venv "$INSTALL_DIR" "$TMP_DIR"
 	    rm -rf $TMP_DIR
 		exit 0
@@ -264,14 +281,14 @@ if [[ $non_root_packages == true ]]; then
 	
     pr_title "OpenSSL"
     OPENSSL_FOLDER_NAME="openssl-1.1.1t"
-    OPENSSL_ARCHIVE_NAME="openssl-1.1.1t.tar.bz2"
+    OPENSSL_ARCHIVE_NAME="${OPENSSL_FOLDER_NAME}.tar.bz2"
     download_and_check_hash ${openssl[source]} ${openssl[sha256]} "$OPENSSL_ARCHIVE_NAME"
     tar xf "$DL_DIR/$OPENSSL_ARCHIVE_NAME" -C "$TOOLS_DIR"
 
     pr_title "Python"
-    PYTHON_FOLDER_NAME="3.10.14"
-    PYTHON_ARCHIVE_NAME="cpython-3.10.14-linux-x86_64.tar.gz"
-    download_and_check_hash ${python[source]} ${python[sha256]} "$PYTHON_ARCHIVE_NAME"
+    PYTHON_FOLDER_NAME="3.11.9"
+    PYTHON_ARCHIVE_NAME="cpython-${PYTHON_FOLDER_NAME}-linux-x86_64.tar.gz"
+    download_and_check_hash ${python_portable[source]} ${python_portable[sha256]} "$PYTHON_ARCHIVE_NAME"
     tar xf "$DL_DIR/$PYTHON_ARCHIVE_NAME" -C "$TOOLS_DIR"
 
     pr_title "Ninja"
@@ -282,19 +299,42 @@ if [[ $non_root_packages == true ]]; then
 
     pr_title "CMake"
     CMAKE_FOLDER_NAME="cmake-3.29.2-linux-x86_64"
-    CMAKE_ARCHIVE_NAME="cmake-3.29.2-linux-x86_64.tar.gz"
+    CMAKE_ARCHIVE_NAME="${CMAKE_FOLDER_NAME}.tar.gz"
     download_and_check_hash ${cmake[source]} ${cmake[sha256]} "$CMAKE_ARCHIVE_NAME"
     tar xf "$DL_DIR/$CMAKE_ARCHIVE_NAME" -C "$TOOLS_DIR"
 
     pr_title "Zephyr SDK"
-    ZEPHYR_SDK_FOLDER_NAME="zephyr-sdk-0.16.8"
-    ZEPHYR_SDK_ARCHIVE_NAME="zephyr-sdk-0.16.8_linux-x86_64.tar.xz"
-    download_and_check_hash ${zephyr_sdk[source]} ${zephyr_sdk[sha256]} "$ZEPHYR_SDK_ARCHIVE_NAME"
-    tar xf "$DL_DIR/$ZEPHYR_SDK_ARCHIVE_NAME" -C "$INSTALL_DIR"
+	SDK_VERSION="0.16.8"
+	ZEPHYR_SDK_FOLDER_NAME="zephyr-sdk-${SDK_VERSION}"
 
-    if [[ $install_sdk_bool == true ]]; then
-        pr_title "Install Zephyr SDK"
-        yes | bash "$TOOLS_DIR/$ZEPHYR_SDK_FOLDER_NAME/setup.sh"
+    if [ -n "$selected_sdk_list" ]; then
+      # If --select-sdk was used, download and extract the minimal SDK and specified toolchains
+	  
+      SDK_BASE_URL="https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SDK_VERSION}"
+      SDK_MINIMAL_URL="${SDK_BASE_URL}/zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz"
+      MINIMAL_ARCHIVE_NAME="zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz"
+    
+      echo "Installing minimal SDK for $selected_sdk_list"
+      wget --no-check-certificate -q -O "$DL_DIR/$MINIMAL_ARCHIVE_NAME" "$SDK_MINIMAL_URL"
+      tar xf "$DL_DIR/$MINIMAL_ARCHIVE_NAME" -C "$INSTALL_DIR"
+    
+      # Loop through the selected SDKs and download/extract each toolchain
+      IFS=' ' read -r -a sdk_array <<< "$selected_sdk_list"
+      for sdk in "${sdk_array[@]}"; do
+        toolchain_name="${sdk}-zephyr-elf"
+        [ "$sdk" = "arm" ] && toolchain_name="${sdk}-zephyr-eabi"
+    
+        toolchain_url="${SDK_BASE_URL}/toolchain_linux-x86_64_${toolchain_name}.tar.xz"
+        toolchain_archive_name="toolchain_linux-x86_64_${toolchain_name}.tar.xz"
+    
+        echo "Downloading and extracting $toolchain_name"
+        wget --no-check-certificate -q -O "$DL_DIR/$toolchain_archive_name" "$toolchain_url"
+        tar xf "$DL_DIR/$toolchain_archive_name" -C "$INSTALL_DIR/$ZEPHYR_SDK_FOLDER_NAME"
+      done
+    else
+      ZEPHYR_SDK_ARCHIVE_NAME="zephyr-sdk-${SDK_VERSION}_linux-x86_64.tar.xz"
+      download_and_check_hash ${zephyr_sdk[source]} ${zephyr_sdk[sha256]} "$ZEPHYR_SDK_ARCHIVE_NAME"
+      tar xf "$DL_DIR/$ZEPHYR_SDK_ARCHIVE_NAME" -C "$INSTALL_DIR"
     fi
 	
     cmake_path="$INSTALL_DIR/tools/$CMAKE_FOLDER_NAME/bin"
@@ -304,8 +344,13 @@ if [[ $non_root_packages == true ]]; then
 
     export PATH="$python_path:$ninja_path:$cmake_path:$openssl_path/usr/local/bin:$PATH"
     export LD_LIBRARY_PATH="$openssl_path/usr/local/lib:$LD_LIBRARY_PATH"
-
-    pr_title "Python VENV"
+	
+	if [[ $install_sdk_bool == true ]]; then
+        pr_title "Install Zephyr SDK"
+        yes | bash "$INSTALL_DIR/$ZEPHYR_SDK_FOLDER_NAME/setup.sh"
+    fi
+    
+	pr_title "Python VENV"
 	install_python_venv "$INSTALL_DIR" "$TMP_DIR"
 
     if ! command -v west &> /dev/null; then
@@ -327,24 +372,7 @@ openssl_path="\$base_dir/tools/$OPENSSL_FOLDER_NAME"
 export PATH="\$python_path:\$ninja_path:\$cmake_path:\$openssl_path/usr/local/bin:\$PATH"
 export LD_LIBRARY_PATH="\$openssl_path/usr/local/lib:\$LD_LIBRARY_PATH"
 
-# Default virtual environment activation script path
-default_venv_activate_path="\$base_dir/.venv/bin/activate"
-
-# Use the provided PYTHON_VENV_ACTIVATE_PATH if set and not empty, otherwise use the default path
-if [[ -n "\$PYTHON_VENV_ACTIVATE_PATH" ]]; then
-    venv_activate_path="\$PYTHON_VENV_ACTIVATE_PATH"
-else
-    venv_activate_path="\$default_venv_activate_path"
-fi
-
-# Check if the activation script exists at the specified path
-if [[ -f "\$venv_activate_path" ]]; then
-    # Source the virtual environment activation script
-    source "\$venv_activate_path"
-    echo "Activated virtual environment at \$venv_activate_path"
-else
-    echo "Error: Virtual environment activation script not found at \$venv_activate_path."
-fi
+source \$base_dir/.venv/bin/activate
 
 if ! command -v west &> /dev/null; then
    echo "West is not available. Something is wrong !!"
@@ -356,7 +384,11 @@ EOF
     }
 
     env_script > $ENV_FILE
-
+    cat <<EOF > "$INSTALL_DIR/zinstaller_version"
+Script Version: $zinstaller_version
+Script MD5: $zinstaller_md5
+tools.yml MD5: $tools_yml_md5
+EOF
     echo "Source me: . $ENV_FILE"
     
 	pr_title "Clean up"

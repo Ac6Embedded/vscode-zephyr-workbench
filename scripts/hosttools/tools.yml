@@ -15,11 +15,16 @@ other_content:
     windows:
       source: https://eternallybored.org/misc/wget/1.21.4/64/wget.exe
       sha256: 6136e66e41acd14c409c2d3eb10d48a32febaba04267303d0460ed3bee746cc5
-- tool: SevenZ
+- tool: seven_z
   os:
     windows:
-      source: https://www.7-zip.org/a/7z2405-x64.exe
-      sha256: 12EF1C8127EC3465520E4CFD23605B708D81A5A2CF37BA124F018E5C094DE0D9
+      source: https://7-zip.org/a/7z2408-x64.exe
+      sha256: 67cb9d3452c9dd974b04f4a5fd842dbcba8184f2344ff72e3662d7cdb68b099b
+- tool: seven_z_portable
+  os:
+    windows:
+      source: https://www.ac6-tools.com/downloads/zinstaller/tools/windows/7-Zip-24.08.exe
+      sha256: 07c508289d4dd0a90b8a4622affec1a418f0d61d732dea2a6e7d928cc25a07de
 - tool: zstd
   os:
     windows:
@@ -58,8 +63,8 @@ zephyr_content:
       source: https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-windows-x86_64.zip
       sha256: 671332249bc7cc7424523d6c2b5edd3e3de90a43b8b82e8782f42da4fe4c562d
     darwin:
-      source: https://github.com/Kitware/CMake/releases/download/v3.29.2/cmake-3.29.2-macos-universal.tar.gz
-      sha256: 0b542389345b28d2f73122b72ec9b899947e643fd86cf8f42bae2718884d2ad3
+      source: xxx
+      sha256: xxx
 - tool: ninja
   os:
     linux:
@@ -68,9 +73,6 @@ zephyr_content:
     windows:
       source: https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip
       sha256: 524b344a1a9a55005eaf868d991e090ab8ce07fa109f1820d40e74642e289abc
-    darwin:
-      source: https://github.com/ninja-build/ninja/releases/download/v1.12.0/ninja-mac.zip
-      sha256: 19806019c9623a062c3d9fa0d5f45b633a3d150f88e73fbd6c0ff6ea5534df10
 - tool: dtc
   os:
     windows:
@@ -85,12 +87,12 @@ zephyr_content:
       source: https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-x86_64.tar.xz
       sha256: cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7dbc6a
     darwin:
-      source: https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_macos-aarch64.tar.xz
-      sha256: e06138c1e50cc5b4508646640bd08c50f05f0eb3f2949e756d84d3367f581593
+      source: xxx
+      sha256: xxx
 - tool: openssl
   os:
     linux:
-      source: https://cloud.ac6.fr/index.php/s/6fin9KTS8rHKRyw/download
+      source: https://www.ac6-tools.com/downloads/zinstaller/tools/linux/openssl-1.1.1t.tar.bz2
       sha256: 943437123834d29b546a2d097e7eab7157202cd17669a130eea2eea682043a23
 - tool: git
   os:
@@ -99,23 +101,28 @@ zephyr_content:
       sha256: 851a15074dea6b272785b2a2a4697a72970256de2afe7b8e4a9c5e168c27ccdd
 - tool: python
   os:
-    linux:
-      source: https://cloud.ac6.fr/index.php/s/XzHWd8kpJnicKE5/download
-      sha256: 29ce5c3cc566688d972f4e355d399cfe80fbb5d77dce413d2259a6bf4134ff04
     windows:
-      source: https://github.com/winpython/winpython/releases/download/6.1.20230527/Winpython64-3.10.11.1dot.exe
-      sha256: ec9345932a86101f15b6171fc261b5a7dca1d71095f6e87fe88ec8bdd099b030
+      source: https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
+      sha256: 5ee42c4eee1e6b4464bb23722f90b45303f79442df63083f05322f1785f5fdde
     darwin:
-      source: https://cloud.ac6.fr/index.php/s/C6McaMwpitnwQgL/download/cpython-3.10.14-macos-arm64.tar.gz
-      sha256: 765e1563b54fc5ee53923a0feb8a76d3583675838cd8c8bd7a12b47080d08bae
+      source: xxx
+      sha256: xxx
+- tool: python_portable
+  os:
+    linux:
+      source: https://www.ac6-tools.com/downloads/zinstaller/tools/linux/cpython-3.11.9-linux-x86_64.tar.gz
+      sha256: 1229384bd7c4610b1ba4e80fd78f340bac3f9d8dac189d21105294da03475069
+    windows:
+      source: https://github.com/winpython/winpython/releases/download/7.1.20240203final/Winpython64-3.11.8.0dot.exe
+      sha256: 54c501574df21c3c1883fda4f5e8ff73883ede72844ae6700252143ecc024d47
+    darwin:
+      source: xxx
+      sha256: xxx
 - tool: python_requirements
   os:
-    windows:
-      source: https://cloud.ac6.fr/index.php/s/g7fiAcgysNjmK8b/download
-      sha256: 23af5ed22a13f67f6305f8ec3d0c8ee951b39569a7eda8d5aaab8c946eb973fd
     linux:
-      source: https://cloud.ac6.fr/index.php/s/g7fiAcgysNjmK8b/download
-      sha256: 23af5ed22a13f67f6305f8ec3d0c8ee951b39569a7eda8d5aaab8c946eb973fd
+      source: https://www.ac6-tools.com/downloads/zinstaller/tools/requirements-3.7.0.zip
+      sha256: 112719f1c267be771e73f6c23adc9d9077515895f888bf9b8f364ec74b44cd2a
     darwin:
-      source: https://cloud.ac6.fr/index.php/s/g7fiAcgysNjmK8b/download
-      sha256: 23af5ed22a13f67f6305f8ec3d0c8ee951b39569a7eda8d5aaab8c946eb973fd
+      source: https://www.ac6-tools.com/downloads/zinstaller/tools/requirements-3.7.0.zip
+      sha256: 112719f1c267be771e73f6c23adc9d9077515895f888bf9b8f364ec74b44cd2a
