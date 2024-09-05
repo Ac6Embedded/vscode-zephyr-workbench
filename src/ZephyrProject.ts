@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import fs from 'fs';
 import path from "path";
-import { fileExists, findTask } from './utils';
-import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
+import { fileExists, findTask, getWestWorkspace } from './utils';
+import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { ZephyrTaskProvider } from './ZephyrTaskProvider';
+import { getShell } from './execUtils';
 export class ZephyrProject {
   
   readonly workspaceContext: any;
@@ -53,6 +54,12 @@ export class ZephyrProject {
     return path.basename(this.folderPath);
   }
 
+  get buildEnvWithVar(): { [key: string]: string; } {
+    return {
+      BOARD: this.boardId
+    };
+  }
+
   setBoard(boardId: string) {
     this.boardId = boardId;
   }
@@ -77,5 +84,47 @@ export class ZephyrProject {
       }
     }
     return false;
+  }
+
+  private static openTerminal(zephyrProject: ZephyrProject): vscode.Terminal {
+    let shell = getShell();
+    let westWorkspace = getWestWorkspace(zephyrProject.westWorkspacePath);
+    
+    let opts: vscode.TerminalOptions = {
+      name: zephyrProject.folderName + ' Terminal',
+      shellPath: `${shell}`,
+      env: {...zephyrProject.buildEnvWithVar, ...westWorkspace.buildEnv},
+      cwd: zephyrProject.folderPath
+    };
+    const terminal = vscode.window.createTerminal(opts);
+    return terminal;
+  }
+
+  static getTerminal(zephyrProject: ZephyrProject): vscode.Terminal {
+    const terminals = <vscode.Terminal[]>(<any>vscode.window).terminals;
+    for(let i=0; i<terminals.length; i++) {
+      const cTerminal = terminals[i];
+      if(cTerminal.name === zephyrProject.folderName + ' Terminal') {
+        return cTerminal;
+      }
+    }
+
+    let envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
+    if(!envScript) {
+      throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Ac6 Zephyr');
+    } 
+  
+    let terminal = ZephyrProject.openTerminal(zephyrProject);
+    let srcEnvCmd = `. ${envScript}`;
+    if(process.platform === 'win32') {
+      srcEnvCmd = `call ${envScript}`;
+    }
+    terminal.sendText(srcEnvCmd);
+
+    // terminal.sendText("# =========================================================");
+    // terminal.sendText("# TEST");
+    // terminal.sendText("# =========================================================");
+
+    return terminal;
   }
 }

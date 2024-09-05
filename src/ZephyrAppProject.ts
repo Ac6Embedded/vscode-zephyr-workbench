@@ -30,8 +30,4 @@ export class ZephyrAppProject extends ZephyrProject {
     return vscode.Uri.joinPath(this.workspaceContext.uri, 'west.yaml');
   }
 
-  get buildEnvWithVar(): { [key: string]: string; } {
-    return {};
-  }
-
 }

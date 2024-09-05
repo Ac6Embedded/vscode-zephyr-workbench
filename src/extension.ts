@@ -325,6 +325,13 @@ export function activate(context: vscode.ExtensionContext) {
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
 	});
 
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.open-terminal', async (node: ZephyrApplicationTreeItem) => {
+		if(node.project) {
+			let terminal: vscode.Terminal = ZephyrProject.getTerminal(node.project);
+			terminal.show();
+		}
+	});
+
 	vscode.commands.registerCommand('zephyr-workbench-west-workspace.open-terminal', async (node: WestWorkspaceTreeItem) => {
 		if(node.westWorkspace) {
 			let terminal: vscode.Terminal = WestWorkspace.getTerminal(node.westWorkspace);

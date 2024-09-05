@@ -234,6 +234,11 @@
         "title": "Set Python virtual environment"
       },
       {
+        "command": "zephyr-workbench-app-explorer.open-terminal",
+        "title": "Open Terminal",
+        "icon": "$(console)"
+      },
+      {
         "command": "zephyr-workbench-module-explorer.refresh",
         "title": "Refresh",
         "icon": "$(refresh)"
@@ -511,6 +516,11 @@
         {
           "command": "zephyr-workbench-app-explorer.reveal-explorer",
           "group": "0@view/item/context@9",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.open-terminal",
+          "group": "0@view/item/context@10",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
