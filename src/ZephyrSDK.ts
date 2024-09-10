@@ -5,16 +5,24 @@ import { fileExists } from './utils';
 
 export class ZephyrSDK {
   version!: string;
+  toolchains!: string[];
 
   constructor(
     public rootUri: vscode.Uri
   ) {
     this.parseVersion();
+    this.parseToolchains();
   }
 
   private parseVersion() {
     let filePath = this.versionFile.fsPath;
     this.version = fs.readFileSync(filePath, 'utf-8');
+  }
+
+  private parseToolchains() {
+    let filePath = this.toolchainsFile.fsPath;
+    let content = fs.readFileSync(filePath, 'utf-8');
+    this.toolchains = content.split(/\r?\n/).filter(line => line.trim() !== '');
   }
 
   private get versionFile() {

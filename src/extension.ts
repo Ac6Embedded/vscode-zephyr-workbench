@@ -27,6 +27,7 @@ import { extractSDK, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
 import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findTask, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
+import { DebugManagerPanel } from './panels/DebugManagerPanel';
 
 let statusBarItem: vscode.StatusBarItem;
 let zephyrTaskProvider: vscode.Disposable | undefined;
@@ -433,6 +434,12 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench.install-debug-tools", async () => {
 			DebugToolsPanel.render(context.extensionUri);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench.debug-manager", async () => {
+			DebugManagerPanel.render(context.extensionUri);
 		})
 	);
 

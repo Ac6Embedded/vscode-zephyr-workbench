@@ -4,6 +4,12 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.3]
+
+- Update zinstaller
+- Add terminal access from Application folder
+- Improve UX messages
+
 ## [0.1.2]
 
 - Fix "Build" button on status bar

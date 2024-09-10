@@ -39,6 +39,10 @@ th, td {
   text-align: left;
 }
 
+fieldset {
+  margin-bottom: 10px;
+}
+
 #boardImg {
   max-width: 30vw;
   max-height: 30vh;

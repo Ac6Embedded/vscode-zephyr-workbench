@@ -54,6 +54,12 @@ export class ZephyrProject {
     return path.basename(this.folderPath);
   }
 
+  get buildEnv(): { [key: string]: string; } {
+    return {
+      BOARD: this.boardId
+    };
+  }
+
   get buildEnvWithVar(): { [key: string]: string; } {
     return {
       BOARD: this.boardId

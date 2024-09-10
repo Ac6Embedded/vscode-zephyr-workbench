@@ -82,6 +82,14 @@ const webviewDebugToolsConfig = {
   outfile: "./out/debugtools.js",
 };
 
+const webviewDebugManagerConfig = {
+  ...baseConfig,
+  target: "es2020",
+  format: "esm",
+  entryPoints: ["./src/webview/debugmanager.mts"],
+  outfile: "./out/debugmanager.js",
+};
+
 const webviewNewModuleConfig = {
   ...baseConfig,
   target: "es2020",
@@ -106,6 +114,7 @@ const webviewNewModuleConfig = {
         ...webviewCreateZephyrAppConfig,
         ...webviewNewModuleConfig,
         ...webviewDebugToolsConfig,
+        ...webviewDebugManagerConfig,
         ...watchConfig,
       });
       console.log("[watch] build finished");
@@ -117,6 +126,7 @@ const webviewNewModuleConfig = {
       await build(webviewCreateZephyrAppConfig);
       await build(webviewNewModuleConfig);
       await build(webviewDebugToolsConfig);
+      await build(webviewDebugManagerConfig);
       console.log("build complete");
     }
   } catch (err) {

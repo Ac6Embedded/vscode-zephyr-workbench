@@ -57,6 +57,16 @@ const installDebugToolsMenuItem = new MenuItem(
   }
 );
 
+const debugManagerMenuItem = new MenuItem(
+  'Debug Manager',
+  vscode.TreeItemCollapsibleState.None,
+  'desktop-download',
+  {
+    command: 'zephyr-workbench.debug-manager',
+    title: 'Debug Manager',
+  }
+);
+
 export class ZephyrHostToolsCommandProvider implements vscode.TreeDataProvider<MenuItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<MenuItem | undefined> = new vscode.EventEmitter<MenuItem | undefined>();
   readonly onDidChangeTreeData: vscode.Event<MenuItem | undefined> = this._onDidChangeTreeData.event;
@@ -74,6 +84,7 @@ export class ZephyrHostToolsCommandProvider implements vscode.TreeDataProvider<M
         items.push(reinstallVenvMenuItem);
         items.push(verifyHostToolsMenuItem);
         items.push(installDebugToolsMenuItem);
+        items.push(debugManagerMenuItem);
       }
     } 
     return items;
