@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import fs from 'fs';
 import path from "path";
-import { fileExists, findTask, getWestWorkspace } from './utils';
-import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
+import yaml from 'yaml';
+import { fileExists, findTask, getBoardFromId, getWestWorkspace } from './utils';
+import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { getShell } from './execUtils';
 export class ZephyrProject {
@@ -53,6 +54,10 @@ export class ZephyrProject {
   get folderName(): string {
     return path.basename(this.folderPath);
   }
+  
+  get buildDir(): string {
+    return path.join(this.folderPath, 'build', this.boardId);
+  }
 
   get buildEnv(): { [key: string]: string; } {
     return {
@@ -92,11 +97,32 @@ export class ZephyrProject {
     return false;
   }
 
+  public async getCompatibleRunners(): Promise<string[]> {
+    let runners: string[] = [];
+
+    // Search in project build directory runners.yaml
+    const runnersYAMLFilepath = path.join(this.buildDir, ZEPHYR_DIRNAME, 'runners.yaml');
+    if(fileExists(runnersYAMLFilepath)) {
+      const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
+      const data = yaml.parse(runnersYAMLFile);
+      runners = data.runners;
+    }
+
+    // Search in board.cmake if runners.yaml does not exists
+    if(runners.length === 0) {
+      const westWorkspace = getWestWorkspace(this.westWorkspacePath);
+      const board = await getBoardFromId(this.boardId, westWorkspace);
+      runners = board.getCompatibleRunners();
+    }
+
+    return runners;
+  }
+
   private static openTerminal(zephyrProject: ZephyrProject): vscode.Terminal {
-    let shell = getShell();
-    let westWorkspace = getWestWorkspace(zephyrProject.westWorkspacePath);
+    const shell = getShell();
+    const westWorkspace = getWestWorkspace(zephyrProject.westWorkspacePath);
     
-    let opts: vscode.TerminalOptions = {
+    const opts: vscode.TerminalOptions = {
       name: zephyrProject.folderName + ' Terminal',
       shellPath: `${shell}`,
       env: {...zephyrProject.buildEnvWithVar, ...westWorkspace.buildEnv},

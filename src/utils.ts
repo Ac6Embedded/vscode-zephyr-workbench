@@ -10,6 +10,7 @@ import { ZephyrSample } from "./ZephyrSample";
 import { getEnvVarFormat, getShell } from "./execUtils";
 import { checkHostTools } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
+import { ZephyrProject } from './ZephyrProject';
 
 export function getInternalDirVSCodePath(): string {
   if(!isPortableMode()) {
@@ -320,6 +321,17 @@ export function getZephyrSDK(sdkPath: string): ZephyrSDK {
     return new ZephyrSDK(vscode.Uri.file(sdkPath));
   }
   throw new Error('Cannot parse the Zephyr SDK');
+}
+
+export async function getZephyrProject(projectPath: string): Promise<ZephyrProject> {
+  for(let workspaceFolder of vscode.workspace.workspaceFolders as vscode.WorkspaceFolder[]) {
+    if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
+      if(workspaceFolder.uri.fsPath === projectPath) {
+        return new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
+      }
+    }
+  }
+  throw new Error(`Cannot find project ${projectPath}`);
 }
 
 export async function getListZephyrSDKs(): Promise<ZephyrSDK[]> {

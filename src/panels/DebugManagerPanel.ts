@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { createLaunchString, createWestWrapper, getDebugRunners, getRunner } from "../debugUtils";
+import { createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, writeLaunchJson } from "../debugUtils";
 import { ZephyrAppProject } from "../ZephyrAppProject";
-import { getWestWorkspace } from '../utils';
-import { createLaunchJson } from '../ZephyrTaskProvider';
+import { getWestWorkspace, getZephyrProject } from '../utils';
+import { WestRunner } from '../debug/runners/WestRunner';
+import { ZephyrProject } from '../ZephyrProject';
 
 export class DebugManagerPanel {
   public static currentPanel: DebugManagerPanel | undefined;
@@ -51,6 +52,23 @@ export class DebugManagerPanel {
     }
   }
 
+  public openFileDialog(elementId: string) {
+    if (this._panel) {
+      vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        openLabel: 'Select',
+      }).then(uri => {
+        if (uri && uri.length > 0) {
+          const selectedFileUri = uri[0];
+          // Send the selected file URI back to the webview
+          this._panel?.webview.postMessage({ command: 'fileSelected', id: elementId, fileUri: selectedFileUri.fsPath });
+        }
+      });
+    }
+  }
+
   private async _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
     const webviewUri = getUri(webview, extensionUri, ["out", "debugmanager.js"]);
     const styleUri = getUri(webview, extensionUri, ["out", "style.css"]);
@@ -58,13 +76,14 @@ export class DebugManagerPanel {
 
     let applicationsHTML: string = '';
 
-    for(let workspaceFolder of vscode.workspace.workspaceFolders as vscode.WorkspaceFolder[]) {
-      if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
-        const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-        applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.sourceDir}" data-label="${appProject.folderName}">${appProject.folderName} <span class="description">${appProject.sourceDir}</span></div>`);
+    if(vscode.workspace.workspaceFolders) {
+      for(let workspaceFolder of vscode.workspace.workspaceFolders) {
+        if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
+          const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
+          applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.sourceDir}" data-label="${appProject.folderName}">${appProject.folderName} <span class="description">${appProject.sourceDir}</span></div>`);
+        }
       }
     }
-
 
     let runnersHTML: string = '';
     for(let runner of getDebugRunners()) {
@@ -97,6 +116,7 @@ export class DebugManagerPanel {
                     <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
                       <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
                     </svg>
+                    <div class="spinner" id="applicationsDropdownSpinner" style="display:none;"></div>
                   </slot>
                 </div>
                 <div id="applicationsDropdown" class="dropdown-content" style="display: none;">
@@ -105,6 +125,14 @@ export class DebugManagerPanel {
               </div>
             </div>
 
+            <!-- Program -->
+            <fieldset>
+              <legend>Program</legend> 
+              <div class="grid-group-div">
+                <vscode-text-field size="50" type="text" id="programPath" value="">Program Path:</vscode-text-field>
+                <vscode-button id="browseProgramButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+              </div>
+            </fieldset>
 
             <!-- GDB 
               - path (inside sdk)
@@ -115,15 +143,15 @@ export class DebugManagerPanel {
               <legend>GDB</legend> 
               <div class="grid-group-div">
                 <vscode-text-field size="50" type="text" id="gdbPath" value="">GDB Path:</vscode-text-field>
-                <vscode-button id="browseLocationButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+                <vscode-button id="browseGdbButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
               </div>
 
               <div class="grid-group-div">
-                <vscode-text-field size="50" type="text" id="gdbPath" value="localhost">GDB Address:</vscode-text-field>
+                <vscode-text-field size="50" type="text" id="gdbAddress" value="">GDB Address:</vscode-text-field>
               </div>
 
               <div class="grid-group-div">
-                <vscode-text-field size="50" type="text" id="gdbPath" value="3333">GDB Port:</vscode-text-field>
+                <vscode-text-field size="50" type="text" id="gdbPort" value="">GDB Port:</vscode-text-field>
               </div>
             </fieldset>
 
@@ -152,10 +180,17 @@ export class DebugManagerPanel {
                   </div>
                 </div>
               </div>
+
+              <div class="grid-group-div">
+                <vscode-text-field size="50" type="text" id="runnerPath" value="">Runner Path:</vscode-text-field>
+                <vscode-button id="browseRunnerButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+              </div>
             </fieldset>
 
-            <!-- Debug button -->
+            <!-- Control buttons -->
             <div class="grid-group-div">
+              <vscode-button id="resetButton" class="finish-input-button">Reset Default</vscode-button>
+              <vscode-button id="applyButton" class="finish-input-button">Apply</vscode-button>
               <vscode-button id="debugButton" class="finish-input-button">Debug</vscode-button>
             <div>
           </form>
@@ -170,30 +205,80 @@ export class DebugManagerPanel {
       async (message: any) => {
         const command = message.command;
         switch (command) {
-          case 'debug':
+          case 'projectChanged': {
+            const projectPath = message.project;
+            const appProject = await getZephyrProject(projectPath);
+            if(appProject) {
+              await updateConfiguration(appProject);
+            }
+            break;
+          }
+          case 'runnerChanged': {
+            const runnerName = message.runner;
+            const runner = getRunner(runnerName);
+            if(runner) {
+              updateRunner(runner);
+            }
+            break;
+          }
+          case 'browseProgram': {
+            this.openFileDialog('programPath');
+            break;
+          }
+          case 'browseGdb': {
+            this.openFileDialog('gdbPath');
+            break;
+          }
+          case 'browseRunner': {
+            this.openFileDialog('runnerPath');
+            break;
+          }
+          case 'apply': {
+            const projectPath = message.project;
+            const runnerName = message.runner;
+            const appProject = await getZephyrProject(projectPath);
+            const programPath = message.programPath;
+            const gdbPath = message.gdbPath;
+            const gdbAddress = message.gdbAddress;
+            const gdbPort = message.gdbPort;
+            const debugServerAddress = `${gdbAddress}:${gdbPort}`;
+
+            if(appProject) {
+              let [launchJson, config] = await getLaunchConfiguration(appProject);
+              config.program = programPath;
+              config.miDebuggerPath = gdbPath;
+              config.miDebuggerServerAddress = debugServerAddress;
+
+              writeLaunchJson(appProject, launchJson);
+            }
+            break;
+          }
+          case 'debug': {
             let projectPath = message.project;
             let runnerName = message.runner;
-            let appProject;
-
-            for(let workspaceFolder of vscode.workspace.workspaceFolders as vscode.WorkspaceFolder[]) {
-              if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
-                if(workspaceFolder.uri.fsPath === projectPath) {
-                  appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-                  break;
-                }
-              }
-            }
+            let appProject = await getZephyrProject(projectPath);
+            const programPath = message.programPath;
+            const gdbPath = message.gdbPath;
+            const gdbAddress = message.gdbAddress;
+            const gdbPort = message.gdbPort;
+            const debugServerAddress = `${gdbAddress}:${gdbPort}`;
             
             if(appProject) {
+              let [launchJson, config] = await getLaunchConfiguration(appProject);
               const runner = getRunner(runnerName);
               const westWorkspace = getWestWorkspace(appProject.westWorkspacePath);
 
-              createWestWrapper(appProject, westWorkspace);
-              const value = createLaunchString();
-              vscode.window.showInformationMessage(value);
-            }
+              // Update configuration
+              config.program = programPath;
+              config.miDebuggerPath = gdbPath;
+              config.miDebuggerServerAddress = debugServerAddress;
 
+              writeLaunchJson(appProject, launchJson);
+              createWestWrapper(appProject, westWorkspace);
+              runDebug();
+            }
             break;
+          }
           default:
             break;
         }
@@ -201,5 +286,55 @@ export class DebugManagerPanel {
       undefined,
       this._disposables
     );
+
+    async function updateConfiguration(project: ZephyrProject) {
+      // Extract information from configuration
+      let [launchJson, config] = await getLaunchConfiguration(project);
+      const programPath = config.program;
+      const gdbPath = config.miDebuggerPath;
+      const serverAddress = config.miDebuggerServerAddress;
+      let gdbAddress = 'localhost';
+      let gdbPort = '3333';
+      if(serverAddress) {
+        if (serverAddress.includes(':')) {
+          [gdbAddress, gdbPort] = serverAddress.split(':');
+        } else {
+          gdbAddress = serverAddress;
+          gdbPort = '3333';
+        }
+      }
+
+      let newRunnersHTML = '';
+      for(let runner of getDebugRunners()) {
+        if((await project.getCompatibleRunners()).includes(runner.name)) {
+          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.name}">${runner.name} (compatible)</div>`);
+        } else {
+          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.name}">${runner.name}</div>`);
+        }
+      }
+      const serverArgs = config.debugServerArgs;
+      
+      webview.postMessage({ 
+        command: 'updateConfig', 
+        programPath: `${programPath}`,
+        gdbPath: `${gdbPath}`,
+        gdbAddress: `${gdbAddress}`,
+        gdbPort: `${gdbPort}`,
+        runnersHTML: `${newRunnersHTML}`,
+        serverArgs: `${serverArgs}`
+      });
+    }
+
+    function updateRunner(runner: WestRunner) {
+
+      webview.postMessage({ 
+        command: 'updateRunner', 
+      });
+    }
   }
 }
+
+function runDebug() {
+  throw new Error('Function not implemented.');
+}
+

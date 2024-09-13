@@ -384,5 +384,4 @@ export async function setDefaultProjectSettings(workspaceFolder: vscode.Workspac
     vscode.window.showWarningMessage('Cannot setup C/C++ settings on project');
   }
   
-  
 }

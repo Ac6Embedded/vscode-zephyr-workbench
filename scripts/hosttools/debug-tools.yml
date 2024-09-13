@@ -82,6 +82,17 @@ debug_tools:
   website: https://www.nxp.com/design/design-center/software/development-software/mcuxpresso-software-and-tools-/linkserver-for-microcontrollers:LINKERSERVER
   vendor: NXP
   group: debug_server
+  root: true
+  os:
+    windows:
+      source: https://www.nxp.com/lgfiles/bsps/LinkServer_1.6.133.exe
+      sha256: b067dc3b7612435f2a406c5c328ade53c730661482362c2ccfed400bae326e47
+    linux:
+      source: https://www.nxp.com/downloads/en/debugging-and-visualization-tools/LinkServer_1.6.133.x86_64.deb.bin
+      sha256: e398fa28ff059a04625672a0cb4d12f8c8c86322b08b07a898e75855315990f9
+    darwin:
+      source: https://www.nxp.com/downloads/en/debugging-and-visualization-tools/LinkServer_1.6.133.aarch64.pkg
+      sha256: 1110f1a9d9691af865ae44734c4af364593c866c2fce0d790a0a799c0d5a355b
 - tool: pyocd
   name: pyOCD
   version: 0.36.0

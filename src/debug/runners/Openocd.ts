@@ -5,10 +5,20 @@ export class Openocd extends WestRunner {
   serverStartedPattern = 'halted due to debug-request, current mode: Thread';
   scriptDir?: string;
 
+  get executable(): string | undefined{
+    const exec = super.executable;
+    if(!exec) {
+      return 'openocd';
+    }
+  }
+
   getCmdArgs(buildDir : string): string {
-    return `${super.getCmdArgs(buildDir)} 
-      --openocd ${this.serverPath} 
-      --openocd-search ${this.scriptDir}`;
+    let cmdArgs = super.getCmdArgs(buildDir);
+    if(this.serverPath) {
+      cmdArgs += ` --openocd ${this.serverPath}`;
+    }
+    cmdArgs += ` --openocd-search ${this.scriptDir}`;
+    return cmdArgs;
   }
 
 }

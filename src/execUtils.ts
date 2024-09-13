@@ -25,7 +25,7 @@ export function getEnvVarFormat(shell: string, env: string): string {
     case 'cmd.exe':
       return `%${env}%`;
     case 'powershell.exe':
-      return `$${env}`;
+      return `$env:${env}`;
     default:
       return `$${env}`;
   }

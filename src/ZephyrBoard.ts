@@ -56,4 +56,19 @@ export class ZephyrBoard {
     return path.join(this.docDirPath, 'index.rst');
   }
 
+  public getCompatibleRunners(): string[] {
+    let runners: string[] = [];
+    const boardCMakePath = path.join(this.rootPath, 'board.cmake');
+    const data = fs.readFileSync(boardCMakePath, 'utf-8');
+
+    const regex = /include\(\$\{ZEPHYR_BASE\}\/boards\/common\/(.*)\.board\.cmake\)/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(data)) !== null) {
+      runners.push(match[1]);
+    }
+
+    return runners;
+  }
+
 }
