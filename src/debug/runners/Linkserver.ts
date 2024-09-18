@@ -2,7 +2,7 @@ import { WestRunner } from "./WestRunner";
 
 export class Linkserver extends WestRunner {
   name = 'linkserver';
-  serverStartedPattern = 'halted due to debug-request, current mode: Thread';
+  serverStartedPattern = 'GDB server listening on port';
 
   get executable(): string | undefined{
     const exec = super.executable;
@@ -11,8 +11,21 @@ export class Linkserver extends WestRunner {
     }
   }
 
-  getCmdArgs(buildDir : string): string {
-    let cmdArgs = super.getCmdArgs(buildDir);
+  loadArgs(args: string) {
+    super.loadArgs(args);
+
+    const pathRegex = /--linkserver\s+("[^"]+"|\S+)/;
+    const pathMatch = args.match(pathRegex);
+
+    if(pathMatch) {
+      this.serverPath = pathMatch[1];
+    }
+
+    this.loadUserArgs(args);
+  }
+
+  get autoArgs(): string {
+    let cmdArgs = super.autoArgs;
     if(this.serverPath) {
       cmdArgs += ` --linkserver ${this.serverPath}`;
     }

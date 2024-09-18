@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, writeLaunchJson } from "../debugUtils";
+import { createConfiguration as createDefaultConfiguration, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getServerAddressFromConfig, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../debugUtils";
 import { ZephyrAppProject } from "../ZephyrAppProject";
-import { getWestWorkspace, getZephyrProject } from '../utils';
+import { getZephyrProject } from '../utils';
 import { WestRunner } from '../debug/runners/WestRunner';
 import { ZephyrProject } from '../ZephyrProject';
 
@@ -85,6 +85,7 @@ export class DebugManagerPanel {
       }
     }
 
+    // Init runners
     let runnersHTML: string = '';
     for(let runner of getDebugRunners()) {
       runnersHTML = runnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.name}">${runner.name}</div>`);
@@ -185,6 +186,10 @@ export class DebugManagerPanel {
                 <vscode-text-field size="50" type="text" id="runnerPath" value="">Runner Path:</vscode-text-field>
                 <vscode-button id="browseRunnerButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
               </div>
+            
+              <div class="grid-group-div">
+                <vscode-text-field size="50" type="text" id="runnerArgs" value="">Additional arguments:</vscode-text-field>
+              </div>
             </fieldset>
 
             <!-- Control buttons -->
@@ -217,7 +222,7 @@ export class DebugManagerPanel {
             const runnerName = message.runner;
             const runner = getRunner(runnerName);
             if(runner) {
-              updateRunner(runner);
+              updateRunnerConfiguration(runner);
             }
             break;
           }
@@ -233,50 +238,16 @@ export class DebugManagerPanel {
             this.openFileDialog('runnerPath');
             break;
           }
+          case 'reset': {
+            await resetHandler(message);
+          }
           case 'apply': {
-            const projectPath = message.project;
-            const runnerName = message.runner;
-            const appProject = await getZephyrProject(projectPath);
-            const programPath = message.programPath;
-            const gdbPath = message.gdbPath;
-            const gdbAddress = message.gdbAddress;
-            const gdbPort = message.gdbPort;
-            const debugServerAddress = `${gdbAddress}:${gdbPort}`;
-
-            if(appProject) {
-              let [launchJson, config] = await getLaunchConfiguration(appProject);
-              config.program = programPath;
-              config.miDebuggerPath = gdbPath;
-              config.miDebuggerServerAddress = debugServerAddress;
-
-              writeLaunchJson(appProject, launchJson);
-            }
+            await applyHandler(message);
             break;
           }
           case 'debug': {
-            let projectPath = message.project;
-            let runnerName = message.runner;
-            let appProject = await getZephyrProject(projectPath);
-            const programPath = message.programPath;
-            const gdbPath = message.gdbPath;
-            const gdbAddress = message.gdbAddress;
-            const gdbPort = message.gdbPort;
-            const debugServerAddress = `${gdbAddress}:${gdbPort}`;
-            
-            if(appProject) {
-              let [launchJson, config] = await getLaunchConfiguration(appProject);
-              const runner = getRunner(runnerName);
-              const westWorkspace = getWestWorkspace(appProject.westWorkspacePath);
-
-              // Update configuration
-              config.program = programPath;
-              config.miDebuggerPath = gdbPath;
-              config.miDebuggerServerAddress = debugServerAddress;
-
-              writeLaunchJson(appProject, launchJson);
-              createWestWrapper(appProject, westWorkspace);
-              runDebug();
-            }
+            await applyHandler(message);
+            await debugHandler(message);
             break;
           }
           default:
@@ -292,7 +263,7 @@ export class DebugManagerPanel {
       let [launchJson, config] = await getLaunchConfiguration(project);
       const programPath = config.program;
       const gdbPath = config.miDebuggerPath;
-      const serverAddress = config.miDebuggerServerAddress;
+      const serverAddress = getServerAddressFromConfig(config);
       let gdbAddress = 'localhost';
       let gdbPort = '3333';
       if(serverAddress) {
@@ -304,6 +275,77 @@ export class DebugManagerPanel {
         }
       }
 
+      let newRunnersHTML = '';
+      for(let runner of getDebugRunners()) {
+        if((await project.getCompatibleRunners()).includes(runner.name)) {
+          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.name}">${runner.name} (compatible)</div>`);
+        } else {
+          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.name}">${runner.name}</div>`);
+        }
+      }
+      const runnerName = WestRunner.extractRunner(config.debugServerArgs);
+      let runnerPath = "";
+      let runnerArgs = "";
+
+      if(runnerName) {
+        const runner = getRunner(runnerName);
+        if(runner) {
+          runner.loadArgs(config.debugServerArgs);
+          if(runner.serverPath) {
+            runnerPath = runner.serverPath;
+          }
+          if(runner.userArgs) {
+            runnerArgs = runner.userArgs;
+          }
+        }
+        
+      }
+
+      webview.postMessage({ 
+        command: 'updateConfig', 
+        programPath: `${programPath}`,
+        gdbPath: `${gdbPath}`,
+        gdbAddress: `${gdbAddress}`,
+        gdbPort: `${gdbPort}`,
+        runnersHTML: `${newRunnersHTML}`,
+        runnerName: `${runnerName}`,
+        runnerPath: `${runnerPath}`,
+        runnerArgs: `${runnerArgs}`
+      });
+    }
+
+    function updateRunnerConfiguration(runner: WestRunner) {
+      webview.postMessage({ 
+        command: 'updateRunnerConfig', 
+        runnerPath: runner.serverPath? runner.serverPath:'',
+        runnerArgs: runner.userArgs? runner.userArgs:''
+      });
+    }
+
+    async function resetHandler(message: any) {
+      const projectPath = message.project;
+      const appProject = await getZephyrProject(projectPath);
+      if(appProject) {
+        await resetConfiguration(appProject);
+      }
+    }
+    
+    async function resetConfiguration(project: ZephyrProject) {
+      let config = await createDefaultConfiguration(project);
+      const programPath = config.program;
+      const gdbPath = config.miDebuggerPath;
+      const serverAddress = getServerAddressFromConfig(config);
+      let gdbAddress = 'localhost';
+      let gdbPort = '3333';
+      if(serverAddress) {
+        if (serverAddress.includes(':')) {
+          [gdbAddress, gdbPort] = serverAddress.split(':');
+        } else {
+          gdbAddress = serverAddress;
+          gdbPort = '3333';
+        }
+      }
+    
       let newRunnersHTML = '';
       for(let runner of getDebugRunners()) {
         if((await project.getCompatibleRunners()).includes(runner.name)) {
@@ -324,17 +366,48 @@ export class DebugManagerPanel {
         serverArgs: `${serverArgs}`
       });
     }
-
-    function updateRunner(runner: WestRunner) {
-
-      webview.postMessage({ 
-        command: 'updateRunner', 
-      });
+    
+    async function applyHandler(message: any) {
+      const projectPath = message.project;
+      const appProject = await getZephyrProject(projectPath);
+      const programPath = message.programPath;
+      const gdbPath = message.gdbPath;
+      const gdbAddress = message.gdbAddress;
+      const gdbPort = message.gdbPort;
+      const runnerName = message.runner;
+      const runner = getRunner(runnerName);
+      const runnerPath = message.runnerPath;
+      const runnerArgs = message.runnerArgs;
+    
+      if(appProject) {
+        let [launchJson, config] = await getLaunchConfiguration(appProject);
+        config.program = programPath;
+        config.miDebuggerPath = gdbPath;
+    
+        if(runner) {
+          runner.loadArgs(runnerArgs);
+          runner.serverPath = runnerPath;
+          runner.serverAddress = gdbAddress;
+          runner.serverPort = gdbPort;
+          config.serverStarted = runner.serverStartedPattern;
+          config.debugServerArgs = runner.getWestArgs();
+          config.setupCommands = [];
+          for(const arg of runner.getSetupCommands(programPath)) {
+            config.setupCommands.push(arg);
+          }
+        }
+        writeLaunchJson(appProject, launchJson);
+      }
     }
-  }
+    
+    async function debugHandler(message: any) {
+      const projectPath = message.project;
+      const appProject = await getZephyrProject(projectPath);
+      vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug', 
+        appProject.workspaceFolder,
+        ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME);
+    }
+  }  
 }
 
-function runDebug() {
-  throw new Error('Function not implemented.');
-}
 

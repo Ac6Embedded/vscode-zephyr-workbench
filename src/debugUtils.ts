@@ -10,6 +10,8 @@ import { WestWorkspace } from "./WestWorkspace";
 import { ZephyrProject } from "./ZephyrProject";
 import { getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
 
+export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
+
 export function getDebugRunners(): WestRunner[] {
   return [ new Openocd(), 
     new Linkserver() ];
@@ -116,7 +118,6 @@ ${debugServerCommand}
 }
 
 export async function createConfiguration(project: ZephyrProject): Promise<any> {
-  
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
   const zephyrSDK = getZephyrSDK(project.sdkPath);
   const listBoards = await getSupportedBoards(westWorkspace);
@@ -156,7 +157,7 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
     type: "cppdbg",
     request: "launch",
     cwd: "${workspaceFolder}",
-    program: `"${program}"`,
+    program: `${program}`,
     args: [],
     stopAtEntry: true,
     environment: [],
@@ -164,14 +165,25 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
     serverLaunchTimeout: 20000,
     filterStderr: true,
     filterStdout: true,
-    serverStarted: "${serverStartPattern}",
+    serverStarted: "",
     MIMode: "gdb",
-    miDebuggerPath: `"${zephyrSDK.getDebuggerPath(targetArch)}"`,
-    miDebuggerServerAddress: "localhost:3333",
-    debugServerPath: `"$\{workspaceFolder\}/${wrapper}"`,
-    debugServerArgs: "debugserver --runner openocd --build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}",
-    setupCommands: [],
-    logging: {}
+    miDebuggerPath: `${zephyrSDK.getDebuggerPath(targetArch)}`,
+    debugServerPath: `\${workspaceFolder}/${wrapper}`,
+    debugServerArgs: "debugserver --build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board} --runner openocd",
+    setupCommands: [
+      { 
+        text: "-target-select remote localhost:3333", 
+        description: "connect to target",
+        ignoreFailures: false 
+      },
+    ],
+    logging: {
+      moduleLoad: true,
+      trace: true,
+      engineLogging: true,
+      programOutput: true,
+      exceptions: true
+    }
   };
 
   return launchJson;
@@ -179,67 +191,13 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
 
 export async function createLaunchJson(project: ZephyrProject): Promise<any> {
   
-  const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-  const zephyrSDK = getZephyrSDK(project.sdkPath);
-  const listBoards = await getSupportedBoards(westWorkspace);
-
-  let targetBoard;
-  for(let board of listBoards) {
-    if(board.identifier === project.boardId) {
-      targetBoard = board;
-    }
-  }
-  if(!targetBoard) {
-    return;
-  }
-
-  const targetArch = targetBoard.arch;
-  const program = path.join('${workspaceFolder}', 'build', '${config:zephyr-workbench.board}', ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
-
-  const shell: string = getShell();
-  let wrapper = '';
-  switch (shell) {
-    case 'bash': 
-      wrapper = 'west_wrapper.sh';
-      break;
-    case 'cmd.exe':
-      wrapper = 'west_wrapper.bat';
-      break;
-    case 'powershell.exe':
-      wrapper = 'west_wrapper.ps1';
-      break;
-    default:
-      wrapper = 'west_wrapper';
-      break;
-  }
-
-  const launchJson = {
+  const launchJson : any = {
     version: "0.2.0",
-    configurations: [
-      {
-        name: "Zephyr Workbench Debug",
-        type: "cppdbg",
-        request: "launch",
-        cwd: "${workspaceFolder}",
-        program: `"${program}"`,
-        args: [],
-        stopAtEntry: true,
-        environment: [],
-        externalConsole: false,
-        serverLaunchTimeout: 20000,
-        filterStderr: true,
-        filterStdout: true,
-        serverStarted: "${serverStartPattern}",
-        MIMode: "gdb",
-        miDebuggerPath: `"${zephyrSDK.getDebuggerPath(targetArch)}"`,
-        miDebuggerServerAddress: "localhost:3333",
-        debugServerPath: `"$\{workspaceFolder\}/${wrapper}"`,
-        debugServerArgs: "debugserver --runner openocd --build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}",
-        setupCommands: [],
-        logging: {}
-      },
-    ]
+    configurations: []
   };
+
+  let config = await createConfiguration(project);
+  launchJson.configurations.push(config);
 
   return launchJson;
 }
@@ -255,10 +213,11 @@ export function writeLaunchJson(project: ZephyrProject, launchJson: any) {
 
 export async function findLaunchConfiguration(project: ZephyrProject, launchJson: any): Promise<any> {
   for(let configuration of launchJson.configurations) {
-    if(configuration.name === 'Zephyr Workbench Debug') {
+    if(configuration.name === ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME) {
       return configuration;
     }
   }
+  
   launchJson.configurations.push(await createConfiguration(project));
   return await findLaunchConfiguration(project, launchJson);
 }
@@ -274,4 +233,17 @@ export async function getLaunchConfiguration(project: ZephyrProject): Promise<[a
     return [launchJson, configurationJson];
   }
   return [undefined, undefined];
+}
+
+export function getServerAddressFromConfig(config: any) : any | undefined {
+  for(const setupCmd of config.setupCommands) {
+    if(setupCmd.description === 'connect to target') {
+      const regex = /\S*:\S*/g;
+      const matches = setupCmd.text.match(regex);
+      if(matches) {
+        return matches[0];
+      }
+    }
+  }
+  return undefined;
 }

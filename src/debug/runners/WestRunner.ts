@@ -15,6 +15,8 @@ export class WestRunner {
   serverStartedPattern?: string;
   serverAddress?: string;
   serverPort?: string;
+  args: { [key: string]: string } = {};
+  userArgs?: string;
 
   private getSettingKey(key: string): string {
     return `debug.${this.name}.${key}`;
@@ -28,23 +30,53 @@ export class WestRunner {
     }
   }
 
-  getCmdArgs(buildDir : string): string {
-    let cmdArgs = `debugserver --runner ${this.name} --build-dir ${buildDir}`;
-    if(this.serverPort) {
-      cmdArgs += ` --gdb-port ${this.serverPort}`;
-    }
-    return cmdArgs;
+  loadArgs(args: string) {
+
   }
 
-  public loadSettings() {
+  protected loadUserArgs(args: string) {
+    this.userArgs = args.replace(new RegExp(`^.*${this.autoArgs}\\s*`), '');
+  }
+
+  getWestArgs(): string {
+    return `debugserver --build-dir \${workspaceFolder}/build/\${config:zephyr-workbench.board} ${this.autoArgs} ${this.userArgs}`;
+  }
+
+  get autoArgs(): string {
+    return `--runner ${this.name}`;
+  }
+
+  getSetupCommands(program: string): any[] {
+    return [
+      { "text": "-target-select remote " + `${this.serverAddress}:${this.serverPort}`, "description": "connect to target", "ignoreFailures": false },
+      { "text": "-file-exec-and-symbols " + `${program}`, "description": "load file", "ignoreFailures": false},
+      { "text": "-interpreter-exec console \"monitor reset\"", "ignoreFailures": false },
+      { "text": "-target-download", "description": "flash target", "ignoreFailures": false },
+      { "text": "set breakpoint pending on", "description": "Set pending", "ignoreFailures": false },
+      { "text": "tbreak main", "description": "Set a breakpoint at main", "ignoreFailures": true },
+    ];
+  }
+
+  loadSettings() {
     let pathExec: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(this.getSettingKey('pathExec'));
     if(pathExec) {
       this.serverPath = pathExec;
     }
   }
 
-  public saveSettings() {
+  saveSettings() {
     vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(this.getSettingKey('pathExec'), this.serverPath, vscode.ConfigurationTarget.Global);
+  }
+
+  static extractRunner(args: any): string | undefined {
+    const runnerRegex = /--runner\s+("[^"]+"|\S+)/;
+    const runnerMatch = args.match(runnerRegex);
+
+    if(runnerMatch) {
+      return runnerMatch[1];
+    }
+
+    return undefined;
   }
 
 }

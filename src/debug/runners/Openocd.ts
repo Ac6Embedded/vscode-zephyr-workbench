@@ -3,7 +3,6 @@ import { WestRunner } from "./WestRunner";
 export class Openocd extends WestRunner {
   name = 'openocd';
   serverStartedPattern = 'halted due to debug-request, current mode: Thread';
-  scriptDir?: string;
 
   get executable(): string | undefined{
     const exec = super.executable;
@@ -12,12 +11,32 @@ export class Openocd extends WestRunner {
     }
   }
 
-  getCmdArgs(buildDir : string): string {
-    let cmdArgs = super.getCmdArgs(buildDir);
+  loadArgs(args: string) {
+    super.loadArgs(args);
+
+    const pathRegex = /--openocd\s+("[^"]+"|\S+)/;
+    const scriptsRegex = /--openocd-search\s+("[^"]+"|\S+)/;
+    const pathMatch = args.match(pathRegex);
+    const scriptsMatch = args.match(scriptsRegex);
+
+    if(pathMatch) {
+      this.serverPath = pathMatch[1];
+    }
+    if(scriptsMatch) {
+      this.args['scriptDir'] = scriptsMatch[1];
+    } 
+
+    this.loadUserArgs(args);
+  }
+
+  get autoArgs(): string {
+    let cmdArgs = super.autoArgs;
     if(this.serverPath) {
       cmdArgs += ` --openocd ${this.serverPath}`;
     }
-    cmdArgs += ` --openocd-search ${this.scriptDir}`;
+    // if(this.args['scriptDir']) {
+    //   cmdArgs += ` --openocd-search ${this.args['scriptDir']}`;
+    // }
     return cmdArgs;
   }
 

@@ -11,8 +11,8 @@ export class JLink extends WestRunner {
     }
   }
 
-  getCmdArgs(buildDir : string): string {
-    let cmdArgs = super.getCmdArgs(buildDir);
+  get autoArgs(buildDir : string): string {
+    let cmdArgs = super.get autoArgs(buildDir);
     if(this.serverPath) {
       cmdArgs += ` --jlink ${this.serverPath}`;
     }

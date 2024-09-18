@@ -444,6 +444,13 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench.debug-manager.debug", async (folder: vscode.WorkspaceFolder, configName: string) => {
+			DebugManagerPanel.currentPanel?.dispose();
+			await vscode.debug.startDebugging(folder, configName);
+		})
+	);
+
+	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench.run-install-debug-tools", async (panel, listTools) => {
 			vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,

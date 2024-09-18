@@ -70,14 +70,25 @@ function setVSCodeMessageListener() {
   window.addEventListener("message", (event) => {
     const command = event.data.command;
     switch(command) {
-      case 'updateConfig':
+      case 'updateConfig': {
         const programPath = event.data.programPath;
         const gdbPath = event.data.gdbPath;
         const gdbAddress = event.data.gdbAddress;
         const gdbPort = event.data.gdbPort;
         const runnersHTML = event.data.runnersHTML;
+        const runner = event.data.runnerName;
+        const runnerPath = event.data.runnerPath;
+        const runnerArgs = event.data.runnerArgs;
         
-        updateConfig(programPath, gdbPath, gdbAddress, gdbPort, runnersHTML);
+        updateConfig(programPath, gdbPath, gdbAddress, gdbPort, runnersHTML, runner, runnerPath, runnerArgs);
+        break;
+      }
+      case 'updateRunnerConfig': {
+        const runnerPath = event.data.runnerPath;
+        const runnerArgs = event.data.runnerArgs;
+        updateRunnerConfig(runnerPath, runnerArgs);
+        break;
+      }
       case 'fileSelected':
         setLocalPath(event.data.id, event.data.fileUri);
         break;
@@ -129,30 +140,46 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
   const gdbPath = document.getElementById('gdbPath') as TextField;
   const gdbAddress = document.getElementById('gdbAddress') as TextField;
   const gdbPort = document.getElementById('gdbPort') as TextField;
-  const runnerInput = document.getElementById('runnerInput') as TextField;
+  const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
+  const runnerPath = document.getElementById('runnerPath') as TextField;
+  const runnerArgs = document.getElementById('runnerArgs') as TextField;
 
   webviewApi.postMessage(
     {
       command: 'apply',
-      runner: runnerInput.getAttribute('data-value'),
       project: applicationInput.getAttribute('data-value'),
       programPath: programPath.value,
       gdbPath: gdbPath.value,
       gdbAddress: gdbAddress.value,
-      gdbPort: gdbPort.value
+      gdbPort: gdbPort.value,
+      runner: runnerInput.getAttribute('data-value'),
+      runnerPath: runnerPath.value,
+      runnerArgs: runnerArgs.value
     }
   );
 }
 
 function debugHandler(this: HTMLElement, ev: MouseEvent) {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
+  const programPath = document.getElementById('programPath') as TextField;
+  const gdbPath = document.getElementById('gdbPath') as TextField;
+  const gdbAddress = document.getElementById('gdbAddress') as TextField;
+  const gdbPort = document.getElementById('gdbPort') as TextField;
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
+  const runnerPath = document.getElementById('runnerPath') as TextField;
+  const runnerArgs = document.getElementById('runnerArgs') as TextField;
 
   webviewApi.postMessage(
     {
       command: 'debug',
-      runner: runnerInput.getAttribute('data-value'),
       project: applicationInput.getAttribute('data-value'),
+      programPath: programPath.value,
+      gdbPath: gdbPath.value,
+      gdbAddress: gdbAddress.value,
+      gdbPort: gdbPort.value,
+      runner: runnerInput.getAttribute('data-value'),
+      runnerPath: runnerPath.value,
+      runnerArgs: runnerArgs.value
     }
   );
 }
@@ -252,7 +279,8 @@ function initRunnersDropdown() {
   addDropdownItemEventListeners(runnersDropdown, runnerInput);
 }
 
-function updateConfig(programPath: string, gdbPath: string, gdbAddress: string = 'localhost', gdbPort: string = '3333', runnersHTML: string) {
+function updateConfig(programPath: string, gdbPath: string, gdbAddress: string = 'localhost', gdbPort: string = '3333', runnersHTML: string,
+  server: string, runnerPath: string, runnerArgs: string) {
   const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement; 
   const programPathText = document.getElementById('programPath') as TextField;
   const gdbPathText = document.getElementById('gdbPath') as TextField;
@@ -260,6 +288,8 @@ function updateConfig(programPath: string, gdbPath: string, gdbAddress: string =
   const gdbPortText = document.getElementById('gdbPort') as TextField;
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
   const runnersDropdown = document.getElementById('runnersDropdown') as HTMLElement;
+  const runnerPathText = document.getElementById('runnerPath') as TextField;
+  const runnerArgsText = document.getElementById('runnerArgs') as TextField;
 
   programPathText.value = programPath;
   gdbPathText.value = gdbPath;
@@ -271,7 +301,18 @@ function updateConfig(programPath: string, gdbPath: string, gdbAddress: string =
     addDropdownItemEventListeners(runnersDropdown, runnerInput);
   }
 
+  runnerInput.value = server;
+  runnerInput.setAttribute('data-value', server);
+  runnerPathText.value = runnerPath;
+  runnerArgsText.value = runnerArgs;
+
   // Hide loading spinner
   applicationDropdownSpinner.style.display = 'none';
 }
 
+function updateRunnerConfig(runnerPath: string, runnerArgs: string) {
+  const runnerPathText = document.getElementById('runnerPath') as TextField;
+  const runnerArgsText = document.getElementById('runnerArgs') as TextField;
+  runnerPathText.value = runnerPath;
+  runnerArgsText.value = runnerArgs;
+}
