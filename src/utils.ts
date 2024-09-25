@@ -370,9 +370,30 @@ export async function getInternalZephyrSDK(): Promise<ZephyrSDK | undefined> {
   });
 }
 
+async function fetchTasksFromWorkspaceFolder(workspaceFolder: vscode.WorkspaceFolder) {
+  try {
+      // Fetch all tasks
+      const allTasks = await vscode.tasks.fetchTasks();
+      
+      // Filter tasks that belong to the given workspace folder
+      const tasksInWorkspaceFolder = allTasks.filter(task => {
+          const folder = task.scope as vscode.WorkspaceFolder;
+          return folder && folder.uri.toString() === workspaceFolder.uri.toString();
+      });
+
+      return tasksInWorkspaceFolder;
+  } catch (error) {
+      console.error('Error fetching tasks:', error);
+      return [];
+  }
+}
+
 export async function findTask(taskLabel: string, workspaceFolder: vscode.WorkspaceFolder): Promise<vscode.Task | undefined> {
   const tasks = await vscode.tasks.fetchTasks();
-  return tasks.find(task => task.name === taskLabel && task.scope === workspaceFolder);
+  return tasks.find(task => {
+    const folder = task.scope as vscode.WorkspaceFolder;
+    return folder && folder.uri.toString() === workspaceFolder.uri.toString() && task.name === taskLabel;
+});
 }
 
 export async function getSupportedBoards(westWorkspace: WestWorkspace): Promise<ZephyrBoard[]> {

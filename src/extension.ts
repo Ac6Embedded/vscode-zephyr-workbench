@@ -28,6 +28,7 @@ import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findTask, get
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
 import { DebugManagerPanel } from './panels/DebugManagerPanel';
+import { ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
 
 let statusBarItem: vscode.StatusBarItem;
 let zephyrTaskProvider: vscode.Disposable | undefined;
@@ -238,11 +239,29 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}
 	});
+
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.debug-app', async (node: ZephyrApplicationTreeItem) => {
-		if(node.project.sourceDir) {
-			vscode.commands.executeCommand('west.debug', node.project);
+		if(node.project) {
+			const launchConfig = vscode.workspace.getConfiguration('launch', node.project.workspaceFolder.uri);
+			if(launchConfig) {
+				const configurations: vscode.DebugConfiguration[] = launchConfig.get('configurations', []);
+				if(configurations) {
+					if(configurations.some((config: { name: string }) => config.name === ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME)) {
+						await vscode.debug.startDebugging(node.project.workspaceFolder, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME);
+						return;
+					}
+				}
+			}
+			
+			const debugManagerItem = 'Open Debug Manager';
+			const choice = await vscode.window.showErrorMessage("No debug configuration found", debugManagerItem);
+			if(choice === debugManagerItem) {
+				vscode.commands.executeCommand('zephyr-workbench.debug-manager');
+			}
 		}
+
 	});
+
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx-app', async (node: ZephyrApplicationTreeItem) => {
 		if(node.project.sourceDir) {
 			const westFlashTask = await findTask('Generate SPDX', node.project.workspaceFolder);
@@ -321,9 +340,11 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	vscode.commands.registerCommand("zephyr-workbench-app-explorer.change-pristine", async (node: ZephyrApplicationTreeItem) => {
-		let workspaceFolder = node.project.workspaceFolder;
-		let pristineValue = await showPristineQuickPick();
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
+		if(node.project) {
+			let workspaceFolder = node.project.workspaceFolder;
+			let pristineValue = await showPristineQuickPick();
+			await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
+		}
 	});
 
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.open-terminal', async (node: ZephyrApplicationTreeItem) => {
