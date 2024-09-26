@@ -102,6 +102,36 @@
             "default": "",
             "description": "The option controls whether the build directory is made pristine before the build.",
             "scope": "resource"
+          },
+          "zephyr-workbench.debug.openocd.pathExec": {
+            "type": "string",
+            "default": "",
+            "description": "Path to OpenOCD executable",
+            "scope": "machine-overridable"
+          },
+          "zephyr-workbench.debug.linkserver.pathExec": {
+            "type": "string",
+            "default": "",
+            "description": "Path to LinkServer executable",
+            "scope": "machine-overridable"
+          },
+          "zephyr-workbench.debug.jlink.pathExec": {
+            "type": "string",
+            "default": "",
+            "description": "Path to J-Link executable",
+            "scope": "machine-overridable"
+          },
+          "zephyr-workbench.debug.pyocd.pathExec": {
+            "type": "string",
+            "default": "",
+            "description": "Path to pyOCD executable",
+            "scope": "machine-overridable"
+          },
+          "zephyr-workbench.debug.stm32cubeprogrammer.pathExec": {
+            "type": "string",
+            "default": "",
+            "description": "Path to STM32_Programmer_CLI executable",
+            "scope": "machine-overridable"
           }
         }
       }

@@ -1,25 +1,23 @@
 import { RunnerType, WestRunner } from "./WestRunner";
 
-export class Openocd extends WestRunner {
-  name = 'openocd';
-  label = 'OpenOCD';
+export class PyOCD extends WestRunner {
+  name = 'pyocd';
+  label = 'pyOCD';
   types = [ RunnerType.FLASH, RunnerType.DEBUG ];
-  serverStartedPattern = 'halted due to debug-request, current mode: Thread';
+  serverStartedPattern = '';
 
   get executable(): string | undefined{
     const exec = super.executable;
     if(!exec) {
-      return 'openocd';
+      return 'pyocd';
     }
   }
 
   loadArgs(args: string) {
     super.loadArgs(args);
 
-    const pathRegex = /--openocd\s+("[^"]+"|\S+)/;
-    const scriptsRegex = /--openocd-search\s+("[^"]+"|\S+)/;
+    const pathRegex = /--pyocd\s+("[^"]+"|\S+)/;
     const pathMatch = args.match(pathRegex);
-    const scriptsMatch = args.match(scriptsRegex);
 
     if(pathMatch) {
       this.serverPath = pathMatch[1];
@@ -30,9 +28,6 @@ export class Openocd extends WestRunner {
       }
     }
 
-    if(scriptsMatch) {
-      this.args['scriptDir'] = scriptsMatch[1];
-    } 
 
     this.loadUserArgs(args);
   }
@@ -40,11 +35,8 @@ export class Openocd extends WestRunner {
   get autoArgs(): string {
     let cmdArgs = super.autoArgs;
     if(this.serverPath) {
-      cmdArgs += ` --openocd ${this.serverPath}`;
+      cmdArgs += ` --pyocd ${this.serverPath}`;
     }
     return cmdArgs;
   }
-
-
-
 }

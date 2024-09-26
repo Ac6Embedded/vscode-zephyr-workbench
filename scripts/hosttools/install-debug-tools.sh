@@ -171,6 +171,26 @@ extract_archive() {
     fi
 }
 
+install_package() {
+    local package_file="$1"
+
+    if [[ ! -f "$package_file" ]]; then
+        pr_error 1 "Package file '$package_file' not found."
+        exit 1
+    fi
+
+    if [[ "$package_file" == *.deb ]]; then
+        pr_info "Installing DEB archive... $package_file"
+        dpkg -i "$package_file"
+    elif [[ "$package_file" == *.rpm ]]; then
+        pr_info "Installing RPM archive... $package_file"
+        rpm -i "$package_file"
+    else
+        pr_error 2 "Unsupported package format for file '$package_file'."
+        exit 2
+    fi
+}
+
 has_install_script() {
     local tool="$1"
     if [ -f "$SCRIPT_DIR/debug/${tool}.sh" ]; then
@@ -197,6 +217,18 @@ is_archive() {
     esac
 }
 
+is_package() {
+    local file="$1"
+    case "$file" in
+        *.deb|*.rpm)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 install() {
     local tool="$1"
     local file="$2"
@@ -205,6 +237,8 @@ install() {
         run_install_script "$tool" "$file" "$dest_folder"
     elif is_archive "$file"; then
         extract_archive "$file" "$dest_folder"
+    elif is_package "$file"; then
+        install_package "$file"
     else
         pr_error 2 "'$file' has an unsupported format."
         return 2

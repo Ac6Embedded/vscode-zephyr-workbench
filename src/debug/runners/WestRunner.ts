@@ -1,15 +1,17 @@
 import * as vscode from 'vscode';
 import path from "path";
 import { ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
+import { execCommand } from '../../installUtils';
 
 export const ZEPHYR_WORKBENCH_DEBUG_PATH_SETTING_KEY = 'pathExec';
 
-enum RunnerType {
+export enum RunnerType {
   FLASH,
   DEBUG
 }
 export class WestRunner {
   name!: string;
+  label!: string;
   types?: RunnerType[];
   serverPath?: string;
   serverStartedPattern?: string;
@@ -31,15 +33,18 @@ export class WestRunner {
   }
 
   loadArgs(args: string) {
-
   }
 
   protected loadUserArgs(args: string) {
     this.userArgs = args.replace(new RegExp(`^.*${this.autoArgs}\\s*`), '');
   }
 
-  getWestArgs(): string {
+  getWestDebugArgs(): string {
     return `debugserver --build-dir \${workspaceFolder}/build/\${config:zephyr-workbench.board} ${this.autoArgs} ${this.userArgs}`;
+  }
+
+  getWestFlashArgs(): string {
+    return `flash --build-dir \${workspaceFolder}/build/\${config:zephyr-workbench.board} ${this.autoArgs} ${this.userArgs}`;
   }
 
   get autoArgs(): string {
@@ -64,8 +69,32 @@ export class WestRunner {
     }
   }
 
-  saveSettings() {
+  updateSettings() {
     vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(this.getSettingKey('pathExec'), this.serverPath, vscode.ConfigurationTarget.Global);
+  }
+
+  getSetting(key: string): string | undefined {
+    return vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(this.getSettingKey(key));
+  }
+
+  updateSetting(key: string, value: string) {
+    vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(this.getSettingKey(key), value);
+  }
+
+  async detect(): Promise<boolean> {
+    let execPath = '';
+    if(this.serverPath) {
+      execPath = this.serverPath;
+    } else if(this.executable) {
+      execPath = this.executable;
+    }
+    
+    try {
+      await execCommand(`${execPath} --version`);
+      return true;
+    } catch (error) {
+      return false;
+    }
   }
 
   static extractRunner(args: any): string | undefined {

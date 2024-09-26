@@ -1,25 +1,23 @@
 import { RunnerType, WestRunner } from "./WestRunner";
 
-export class Openocd extends WestRunner {
-  name = 'openocd';
-  label = 'OpenOCD';
-  types = [ RunnerType.FLASH, RunnerType.DEBUG ];
-  serverStartedPattern = 'halted due to debug-request, current mode: Thread';
+export class STM32CubeProgrammer extends WestRunner {
+  name = 'stm32cubeprogrammer';
+  label = 'STM32CubeProgrammer';
+  types = [ RunnerType.FLASH ];
+  serverStartedPattern = '';
 
-  get executable(): string | undefined{
+  get executable(): string | undefined {
     const exec = super.executable;
     if(!exec) {
-      return 'openocd';
+      return 'STM32_Programmer_CLI';
     }
   }
 
   loadArgs(args: string) {
     super.loadArgs(args);
 
-    const pathRegex = /--openocd\s+("[^"]+"|\S+)/;
-    const scriptsRegex = /--openocd-search\s+("[^"]+"|\S+)/;
+    const pathRegex = /--extload\s+("[^"]+"|\S+)/;
     const pathMatch = args.match(pathRegex);
-    const scriptsMatch = args.match(scriptsRegex);
 
     if(pathMatch) {
       this.serverPath = pathMatch[1];
@@ -30,21 +28,14 @@ export class Openocd extends WestRunner {
       }
     }
 
-    if(scriptsMatch) {
-      this.args['scriptDir'] = scriptsMatch[1];
-    } 
-
     this.loadUserArgs(args);
   }
 
   get autoArgs(): string {
     let cmdArgs = super.autoArgs;
     if(this.serverPath) {
-      cmdArgs += ` --openocd ${this.serverPath}`;
+      cmdArgs += ` --extload ${this.serverPath}`;
     }
     return cmdArgs;
   }
-
-
-
 }

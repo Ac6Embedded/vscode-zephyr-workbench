@@ -1,7 +1,9 @@
-import { WestRunner } from "./WestRunner";
+import { RunnerType, WestRunner } from "./WestRunner";
 
 export class Linkserver extends WestRunner {
   name = 'linkserver';
+  label = 'LinkServer';
+  types = [ RunnerType.FLASH, RunnerType.DEBUG ];
   serverStartedPattern = 'GDB server listening on port';
 
   get executable(): string | undefined{
@@ -19,7 +21,13 @@ export class Linkserver extends WestRunner {
 
     if(pathMatch) {
       this.serverPath = pathMatch[1];
+    } else {
+      let pathExecSetting = this.getSetting('pathExec');
+      if(pathExecSetting) {
+        this.serverPath = pathExecSetting;
+      }
     }
+
 
     this.loadUserArgs(args);
   }

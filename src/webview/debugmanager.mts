@@ -16,13 +16,25 @@ function main() {
   initApplicationsDropdown();
   initRunnersDropdown();
   
+  const runnerPathText = document.getElementById('runnerPath') as TextField;
   const browseProgramButton = document.getElementById("browseProgramButton") as Button;
   const browseGdbButton = document.getElementById("browseGdbButton") as Button;
   const browseRunnerButton = document.getElementById("browseRunnerButton") as Button;
   const resetButton = document.getElementById("resetButton") as Button;
   const applyButton = document.getElementById("applyButton") as Button;
   const debugButton = document.getElementById("debugButton") as Button;
-  
+
+  runnerPathText.addEventListener('input', function() {
+    const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
+    webviewApi.postMessage(
+      {
+        command: 'runnerPathChanged',
+        runner: runnerInput.getAttribute('data-value'),
+        runnerPath: runnerPathText.value
+      }
+    );
+  });
+
   browseProgramButton?.addEventListener("click", browseProgramHandler);
   browseGdbButton?.addEventListener("click", browseGdbHandler);
   browseRunnerButton?.addEventListener("click", browseRunnerHandler);
@@ -63,7 +75,9 @@ function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
 
 function setLocalPath(id: string, path: string) {
   const localPath = document.getElementById(id) as TextField;
-  localPath.value = path;
+  if(path) {
+    localPath.value = path;
+  }
 }
 
 function setVSCodeMessageListener() {
@@ -86,8 +100,13 @@ function setVSCodeMessageListener() {
       case 'updateRunnerConfig': {
         const runnerPath = event.data.runnerPath;
         const runnerArgs = event.data.runnerArgs;
+        const runnerDetect = event.data.runnerDetect;
         updateRunnerConfig(runnerPath, runnerArgs);
         break;
+      }
+      case 'updateRunnerDetect': {
+        const runnerDetect = event.data.runnerDetect;
+        updateRunnerDetect(runnerDetect === 'true'?true:false);
       }
       case 'fileSelected':
         setLocalPath(event.data.id, event.data.fileUri);
@@ -301,10 +320,13 @@ function updateConfig(programPath: string, gdbPath: string, gdbAddress: string =
     addDropdownItemEventListeners(runnersDropdown, runnerInput);
   }
 
-  runnerInput.value = server;
-  runnerInput.setAttribute('data-value', server);
+  const selectedRunner = runnersDropdown.querySelector(`.dropdown-item[data-label="${server}"]`) as HTMLDivElement;
+  if (selectedRunner) {
+    selectedRunner.click();
+  }
   runnerPathText.value = runnerPath;
   runnerArgsText.value = runnerArgs;
+  runnerPathText.dispatchEvent(new Event('input'));
 
   // Hide loading spinner
   applicationDropdownSpinner.style.display = 'none';
@@ -313,6 +335,21 @@ function updateConfig(programPath: string, gdbPath: string, gdbAddress: string =
 function updateRunnerConfig(runnerPath: string, runnerArgs: string) {
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const runnerArgsText = document.getElementById('runnerArgs') as TextField;
+
   runnerPathText.value = runnerPath;
   runnerArgsText.value = runnerArgs;
+  runnerPathText.dispatchEvent(new Event('input'));
+}
+
+function updateRunnerDetect(runnerDetect: boolean) {
+  const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
+  if(runnerDetect === true) {
+    runnerDetectSpan.innerHTML = "(Runner executable found)";
+    runnerDetectSpan.style.color = "#00aa00";
+  } else if (runnerDetect === false) {
+    runnerDetectSpan.innerHTML = "(Runner not found in PATH, please enter runner location)";
+    runnerDetectSpan.style.color = "#aa0000";
+  } else {
+    console.warn('Unexpected value for runnerDetect:', runnerDetect);
+  }
 }

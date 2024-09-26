@@ -9,12 +9,29 @@ import { concatCommands, getShell, getShellSourceCommand } from './execUtils';
 import { WestWorkspace } from "./WestWorkspace";
 import { ZephyrProject } from "./ZephyrProject";
 import { getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
+import { STM32CubeProgrammer } from './debug/runners/STM32CubeProgrammer';
+import { JLink } from './debug/runners/JLink';
+import { PyOCD } from './debug/runners/PyOCD';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 
 export function getDebugRunners(): WestRunner[] {
-  return [ new Openocd(), 
-    new Linkserver() ];
+  return [ 
+    new Openocd(), 
+    new Linkserver(),
+    new JLink(),
+    new PyOCD()
+  ];
+}
+
+export function getRunRunners(): WestRunner[] {
+  return [ 
+    new Openocd(), 
+    new Linkserver(),
+    new STM32CubeProgrammer(),
+    new JLink(),
+    new PyOCD()
+  ];
 }
 
 export function getRunner(runnerName: string): WestRunner | undefined {
@@ -23,6 +40,12 @@ export function getRunner(runnerName: string): WestRunner | undefined {
       return new Openocd();
     case 'linkserver':
       return new Linkserver();
+    case 'j-link':
+      return new JLink();
+    case 'pyocd':
+      return new PyOCD();
+    case 'stm32cubeprogrammer':
+      return new STM32CubeProgrammer();
     default: 
       return undefined;
   }

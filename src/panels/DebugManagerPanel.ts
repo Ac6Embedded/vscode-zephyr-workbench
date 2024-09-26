@@ -88,7 +88,7 @@ export class DebugManagerPanel {
     // Init runners
     let runnersHTML: string = '';
     for(let runner of getDebugRunners()) {
-      runnersHTML = runnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.name}">${runner.name}</div>`);
+      runnersHTML = runnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
     }
   
     return /*html*/ `
@@ -165,7 +165,7 @@ export class DebugManagerPanel {
               <legend>Debug Server</legend> 
               <div class="grid-group-div">
                 <div class="grid-header-div">
-                  <label for="listRunners">Select the runner:</label>
+                  <label for="listRunners">Select the runner:&nbsp;<span class="tooltip" data-tooltip="Select the compatible debug server program">?</span></label>
                 </div>
                 <div id="listRunners" class="combo-dropdown grid-value-div">
                   <input type="text" id="runnerInput" class="combo-dropdown-control" placeholder="Choose debug runner..." data-value="">
@@ -183,12 +183,12 @@ export class DebugManagerPanel {
               </div>
 
               <div class="grid-group-div">
-                <vscode-text-field size="50" type="text" id="runnerPath" value="">Runner Path:</vscode-text-field>
+                <vscode-text-field size="50" type="text" id="runnerPath" value="">Runner Path:&nbsp;<span class="tooltip" data-tooltip="Enter to debug server location">?</span>&nbsp;&nbsp;&nbsp;<span id="runnerDetect"></span></vscode-text-field>
                 <vscode-button id="browseRunnerButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
               </div>
             
               <div class="grid-group-div">
-                <vscode-text-field size="50" type="text" id="runnerArgs" value="">Additional arguments:</vscode-text-field>
+                <vscode-text-field size="50" type="text" id="runnerArgs" value="">Additional arguments:&nbsp;<span class="tooltip" data-tooltip="Additional options to provide to debug server">?</span></vscode-text-field>
               </div>
             </fieldset>
 
@@ -222,7 +222,16 @@ export class DebugManagerPanel {
             const runnerName = message.runner;
             const runner = getRunner(runnerName);
             if(runner) {
-              updateRunnerConfiguration(runner);
+              await updateRunnerConfiguration(runner);
+            }
+            break;
+          }
+          case 'runnerPathChanged': {
+            const runnerName = message.runner;
+            const runner = getRunner(runnerName);
+            if(runner) {
+              runner.serverPath = message.runnerPath;
+              await updateRunnerDetect(runner);
             }
             break;
           }
@@ -278,12 +287,13 @@ export class DebugManagerPanel {
       let newRunnersHTML = '';
       for(let runner of getDebugRunners()) {
         if((await project.getCompatibleRunners()).includes(runner.name)) {
-          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.name}">${runner.name} (compatible)</div>`);
+          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
         } else {
-          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.name}">${runner.name}</div>`);
+          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
         }
       }
       const runnerName = WestRunner.extractRunner(config.debugServerArgs);
+      let runnerLabel = "";
       let runnerPath = "";
       let runnerArgs = "";
 
@@ -291,6 +301,9 @@ export class DebugManagerPanel {
         const runner = getRunner(runnerName);
         if(runner) {
           runner.loadArgs(config.debugServerArgs);
+          if(runner.label) {
+            runnerLabel = runner.label;
+          }
           if(runner.serverPath) {
             runnerPath = runner.serverPath;
           }
@@ -308,17 +321,25 @@ export class DebugManagerPanel {
         gdbAddress: `${gdbAddress}`,
         gdbPort: `${gdbPort}`,
         runnersHTML: `${newRunnersHTML}`,
-        runnerName: `${runnerName}`,
+        runnerName: `${runnerLabel}`,
         runnerPath: `${runnerPath}`,
         runnerArgs: `${runnerArgs}`
       });
     }
 
-    function updateRunnerConfiguration(runner: WestRunner) {
+    async function updateRunnerConfiguration(runner: WestRunner) {
       webview.postMessage({ 
         command: 'updateRunnerConfig', 
         runnerPath: runner.serverPath? runner.serverPath:'',
-        runnerArgs: runner.userArgs? runner.userArgs:''
+        runnerArgs: runner.userArgs? runner.userArgs:'',
+      });
+    }
+
+    async function updateRunnerDetect(runner: WestRunner) {
+      let found = await runner.detect();
+      webview.postMessage({ 
+        command: 'updateRunnerDetect', 
+        runnerDetect: found?'true':'false'
       });
     }
 
@@ -349,9 +370,9 @@ export class DebugManagerPanel {
       let newRunnersHTML = '';
       for(let runner of getDebugRunners()) {
         if((await project.getCompatibleRunners()).includes(runner.name)) {
-          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.name}">${runner.name} (compatible)</div>`);
+          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
         } else {
-          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.name}">${runner.name}</div>`);
+          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
         }
       }
       const serverArgs = config.debugServerArgs;
@@ -390,7 +411,7 @@ export class DebugManagerPanel {
           runner.serverAddress = gdbAddress;
           runner.serverPort = gdbPort;
           config.serverStarted = runner.serverStartedPattern;
-          config.debugServerArgs = runner.getWestArgs();
+          config.debugServerArgs = runner.getWestDebugArgs();
           config.setupCommands = [];
           for(const arg of runner.getSetupCommands(programPath)) {
             config.setupCommands.push(arg);
