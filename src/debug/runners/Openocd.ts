@@ -1,4 +1,7 @@
+import fs from 'fs';
+import path from "path";
 import { RunnerType, WestRunner } from "./WestRunner";
+import { getInternalDirRealPath } from "../../utils";
 
 export class Openocd extends WestRunner {
   name = 'openocd';
@@ -37,12 +40,31 @@ export class Openocd extends WestRunner {
     this.loadUserArgs(args);
   }
 
+  async loadInternalArgs() {
+    if(!this.serverPath || this.serverPath.length === 0) {
+      this.serverPath = await this.searchServerPath();
+    }
+  }
+
   get autoArgs(): string {
     let cmdArgs = super.autoArgs;
     if(this.serverPath) {
       cmdArgs += ` --openocd ${this.serverPath}`;
     }
     return cmdArgs;
+  }
+
+  async searchServerPath(): Promise<string> {
+    let internalOpenOCDPath = path.join(getInternalDirRealPath(), 'tools', 'openocd', 'bin', 'openocd');
+    try {
+      const stats = await fs.promises.stat(internalOpenOCDPath);
+      if(stats.isFile()) {
+        return internalOpenOCDPath;
+      }
+    } catch (error: unknown) {
+      return '';
+    }
+    return '';
   }
 
 

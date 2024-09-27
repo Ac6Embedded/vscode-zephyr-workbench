@@ -52,13 +52,14 @@ export class DebugManagerPanel {
     }
   }
 
-  public openFileDialog(elementId: string) {
+  public openFileDialog(elementId: string, filters: any = { 'All': ['*'] }) {
     if (this._panel) {
       vscode.window.showOpenDialog({
         canSelectFiles: true,
         canSelectFolders: false,
         canSelectMany: false,
         openLabel: 'Select',
+        filters: filters,
       }).then(uri => {
         if (uri && uri.length > 0) {
           const selectedFileUri = uri[0];
@@ -132,6 +133,10 @@ export class DebugManagerPanel {
               <div class="grid-group-div">
                 <vscode-text-field size="50" type="text" id="programPath" value="">Program Path:</vscode-text-field>
                 <vscode-button id="browseProgramButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+              </div>
+              <div class="grid-group-div">
+                <vscode-text-field size="50" type="text" id="svdPath" value="">SVD File:</vscode-text-field>
+                <vscode-button id="browseSvdButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
               </div>
             </fieldset>
 
@@ -219,11 +224,11 @@ export class DebugManagerPanel {
             break;
           }
           case 'runnerChanged': {
-            const runnerName = message.runner;
+            /*const runnerName = message.runner;
             const runner = getRunner(runnerName);
             if(runner) {
               await updateRunnerConfiguration(runner);
-            }
+            }*/
             break;
           }
           case 'runnerPathChanged': {
@@ -236,7 +241,11 @@ export class DebugManagerPanel {
             break;
           }
           case 'browseProgram': {
-            this.openFileDialog('programPath');
+            this.openFileDialog('programPath', { 'Binary File': ['bin'],  'Elf File': ['elf'], 'Hex File': ['hex'], 'All': ['*']});
+            break;
+          }
+          case 'browseSvd': {
+            this.openFileDialog('svdPath', { 'SVD File': ['svd'], 'All': ['*'] });
             break;
           }
           case 'browseGdb': {
@@ -271,6 +280,7 @@ export class DebugManagerPanel {
       // Extract information from configuration
       let [launchJson, config] = await getLaunchConfiguration(project);
       const programPath = config.program;
+      const svdPath = config.svdPath;
       const gdbPath = config.miDebuggerPath;
       const serverAddress = getServerAddressFromConfig(config);
       let gdbAddress = 'localhost';
@@ -301,6 +311,7 @@ export class DebugManagerPanel {
         const runner = getRunner(runnerName);
         if(runner) {
           runner.loadArgs(config.debugServerArgs);
+          await runner.loadInternalArgs();
           if(runner.label) {
             runnerLabel = runner.label;
           }
@@ -317,6 +328,7 @@ export class DebugManagerPanel {
       webview.postMessage({ 
         command: 'updateConfig', 
         programPath: `${programPath}`,
+        svdPath: `${svdPath}`,
         gdbPath: `${gdbPath}`,
         gdbAddress: `${gdbAddress}`,
         gdbPort: `${gdbPort}`,
@@ -392,6 +404,7 @@ export class DebugManagerPanel {
       const projectPath = message.project;
       const appProject = await getZephyrProject(projectPath);
       const programPath = message.programPath;
+      const svdPath = message.svdPath;
       const gdbPath = message.gdbPath;
       const gdbAddress = message.gdbAddress;
       const gdbPort = message.gdbPort;
@@ -403,6 +416,7 @@ export class DebugManagerPanel {
       if(appProject) {
         let [launchJson, config] = await getLaunchConfiguration(appProject);
         config.program = programPath;
+        config.svdPath = svdPath;
         config.miDebuggerPath = gdbPath;
     
         if(runner) {
@@ -417,6 +431,7 @@ export class DebugManagerPanel {
             config.setupCommands.push(arg);
           }
         }
+        createWestWrapper(appProject)
         writeLaunchJson(appProject, launchJson);
       }
     }

@@ -51,7 +51,8 @@ export function getRunner(runnerName: string): WestRunner | undefined {
   }
 }
 
-export function createWestWrapper(project: ZephyrProject, westWorkspace: WestWorkspace) {
+export function createWestWrapper(project: ZephyrProject) {
+  const westWorkspace = getWestWorkspace(project.westWorkspacePath);
   let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
   if(!envScript) {
     throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',

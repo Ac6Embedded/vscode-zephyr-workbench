@@ -35,6 +35,9 @@ export class WestRunner {
   loadArgs(args: string) {
   }
 
+  async loadInternalArgs() {
+  }
+
   protected loadUserArgs(args: string) {
     this.userArgs = args.replace(new RegExp(`^.*${this.autoArgs}\\s*`), '');
   }
@@ -90,7 +93,11 @@ export class WestRunner {
     }
     
     try {
-      await execCommand(`${execPath} --version`);
+      let versionCmd = `${execPath} --version`;
+      if(process.platform === 'linux' || process.platform === 'darwin') {
+        versionCmd = `${versionCmd} 2>&1`;
+      }
+      await execCommand(`${versionCmd}`);
       return true;
     } catch (error) {
       return false;

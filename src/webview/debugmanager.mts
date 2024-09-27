@@ -18,6 +18,7 @@ function main() {
   
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const browseProgramButton = document.getElementById("browseProgramButton") as Button;
+  const browseSvdButton = document.getElementById("browseSvdButton") as Button;
   const browseGdbButton = document.getElementById("browseGdbButton") as Button;
   const browseRunnerButton = document.getElementById("browseRunnerButton") as Button;
   const resetButton = document.getElementById("resetButton") as Button;
@@ -36,6 +37,7 @@ function main() {
   });
 
   browseProgramButton?.addEventListener("click", browseProgramHandler);
+  browseSvdButton?.addEventListener("click", browseSvdHandler);
   browseGdbButton?.addEventListener("click", browseGdbHandler);
   browseRunnerButton?.addEventListener("click", browseRunnerHandler);
 
@@ -86,6 +88,7 @@ function setVSCodeMessageListener() {
     switch(command) {
       case 'updateConfig': {
         const programPath = event.data.programPath;
+        const svdPath = event.data.svdPath;
         const gdbPath = event.data.gdbPath;
         const gdbAddress = event.data.gdbAddress;
         const gdbPort = event.data.gdbPort;
@@ -94,13 +97,12 @@ function setVSCodeMessageListener() {
         const runnerPath = event.data.runnerPath;
         const runnerArgs = event.data.runnerArgs;
         
-        updateConfig(programPath, gdbPath, gdbAddress, gdbPort, runnersHTML, runner, runnerPath, runnerArgs);
+        updateConfig(programPath, svdPath, gdbPath, gdbAddress, gdbPort, runnersHTML, runner, runnerPath, runnerArgs);
         break;
       }
       case 'updateRunnerConfig': {
         const runnerPath = event.data.runnerPath;
         const runnerArgs = event.data.runnerArgs;
-        const runnerDetect = event.data.runnerDetect;
         updateRunnerConfig(runnerPath, runnerArgs);
         break;
       }
@@ -122,6 +124,14 @@ function browseProgramHandler(this: HTMLElement, ev: MouseEvent) {
   webviewApi.postMessage(
     {
       command: 'browseProgram',
+    }
+  );
+}
+
+function browseSvdHandler(this: HTMLElement, ev: MouseEvent) {
+  webviewApi.postMessage(
+    {
+      command: 'browseSvd',
     }
   );
 }
@@ -156,6 +166,7 @@ function resetHandler(this: HTMLElement, ev: MouseEvent) {
 function applyHandler(this: HTMLElement, ev: MouseEvent) {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
   const programPath = document.getElementById('programPath') as TextField;
+  const svdPath = document.getElementById('svdPath') as TextField;
   const gdbPath = document.getElementById('gdbPath') as TextField;
   const gdbAddress = document.getElementById('gdbAddress') as TextField;
   const gdbPort = document.getElementById('gdbPort') as TextField;
@@ -168,6 +179,7 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
       command: 'apply',
       project: applicationInput.getAttribute('data-value'),
       programPath: programPath.value,
+      svdPath: svdPath.value,
       gdbPath: gdbPath.value,
       gdbAddress: gdbAddress.value,
       gdbPort: gdbPort.value,
@@ -298,10 +310,13 @@ function initRunnersDropdown() {
   addDropdownItemEventListeners(runnersDropdown, runnerInput);
 }
 
-function updateConfig(programPath: string, gdbPath: string, gdbAddress: string = 'localhost', gdbPort: string = '3333', runnersHTML: string,
+// Ugly method to refactor/split
+function updateConfig(programPath: string, svdPath: string, gdbPath: string, 
+  gdbAddress: string = 'localhost', gdbPort: string = '3333', runnersHTML: string,
   server: string, runnerPath: string, runnerArgs: string) {
   const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement; 
   const programPathText = document.getElementById('programPath') as TextField;
+  const svdPathText = document.getElementById('svdPath') as TextField;
   const gdbPathText = document.getElementById('gdbPath') as TextField;
   const gdbAddressText = document.getElementById('gdbAddress') as TextField;
   const gdbPortText = document.getElementById('gdbPort') as TextField;
@@ -310,10 +325,11 @@ function updateConfig(programPath: string, gdbPath: string, gdbAddress: string =
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const runnerArgsText = document.getElementById('runnerArgs') as TextField;
 
-  programPathText.value = programPath;
-  gdbPathText.value = gdbPath;
-  gdbAddressText.value = gdbAddress;
-  gdbPortText.value = gdbPort;
+  programPathText.value = programPath?programPath:'';
+  svdPathText.value = svdPath?svdPath:'';
+  gdbPathText.value = gdbPath?gdbPath:'';
+  gdbAddressText.value = gdbAddress?gdbAddress:'';
+  gdbPortText.value = gdbPort?gdbPort:'';
 
   if(runnersHTML.length > 0) {
     runnersDropdown.innerHTML = runnersHTML;
