@@ -389,7 +389,7 @@ async function fetchTasksFromWorkspaceFolder(workspaceFolder: vscode.WorkspaceFo
 }
 
 export async function findTask(taskLabel: string, workspaceFolder: vscode.WorkspaceFolder): Promise<vscode.Task | undefined> {
-  const tasks = await vscode.tasks.fetchTasks();
+  const tasks = await vscode.tasks.fetchTasks({type: 'zephyr-workbench'});
   return tasks.find(task => {
     const folder = task.scope as vscode.WorkspaceFolder;
     return folder && folder.uri.toString() === workspaceFolder.uri.toString() && task.name === taskLabel;

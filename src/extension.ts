@@ -7,7 +7,7 @@ import { WestWorkspace } from './WestWorkspace';
 import { ZephyrAppProject } from './ZephyrAppProject';
 import { ZephyrProject } from './ZephyrProject';
 import { ZephyrSDK } from './ZephyrSDK';
-import { ZephyrTaskProvider, createExtensionsJson, createLaunchJson, createTasksJson, setDefaultProjectSettings } from './ZephyrTaskProvider';
+import { ZephyrTaskProvider, createExtensionsJson, createTasksJson, setDefaultProjectSettings } from './ZephyrTaskProvider';
 import { changeBoardQuickStep } from './changeBoardQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
 import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
@@ -161,19 +161,15 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.delete', async (node: ZephyrApplicationTreeItem) => {
-		if(node.project.sourceDir) {
-			if(node.project.sourceDir) {
-				const westBuildTask = await findTask('Delete Build', node.project.workspaceFolder);
-				if (westBuildTask) {
-					try {
-							await vscode.tasks.executeTask(westBuildTask);
-					} catch (error) {
-							vscode.window.showErrorMessage(`Error executing task: ${error}`);
-					}
-				} else {
-						vscode.window.showErrorMessage('Cannot find Clean task.');
+		if(node.project) {
+			vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+								title: "Deleting Zephyr Application build directory",
+								cancellable: false,
+				}, async () => {
+					deleteFolder(path.join(node.project.folderPath, 'build'));
 				}
-			}
+			);
 		}
 	});
 
@@ -702,7 +698,6 @@ export function activate(context: vscode.ExtensionContext) {
 			if(workspaceFolder) {
 				await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK);
 				await createTasksJson(workspaceFolder);
-				await createLaunchJson(workspaceFolder, zephyrSDK);
 				await createExtensionsJson(workspaceFolder);
 				vscode.window.showInformationMessage(`Creating Application '${workspaceFolder.name}' done`);
 			}

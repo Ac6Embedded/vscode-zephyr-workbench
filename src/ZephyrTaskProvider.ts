@@ -5,10 +5,10 @@ import { WestWorkspace } from './WestWorkspace';
 import { ZephyrAppProject } from './ZephyrAppProject';
 import { ZephyrBoard } from './ZephyrBoard';
 import { ZephyrSDK } from './ZephyrSDK';
-import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
+import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
 import { concatCommands, getShell, getShellArgs } from './execUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
+import { getWestWorkspace, getZephyrSDK } from './utils';
 
 export interface ZephyrTaskDefinition extends vscode.TaskDefinition {
   label: string;
@@ -50,23 +50,6 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     let args = _task.definition.args.join(' ');
     const envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
     const activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder).get(ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY);
-
-    // Adapt 'Delete Build' command for different OS
-    if(_task.name === 'Delete Build') {
-      switch(process.platform) {
-        case 'win32': {
-          cmd = 'rd';
-          args = [ '/s', '/q', '${workspaceFolder}/build/${config:zephyr-workbench.board}'].join(' ');
-          break;
-        }
-        case 'linux':
-        case 'darwin': {
-          cmd = 'rm';
-          args = [ '-rf', '${workspaceFolder}/build/${config:zephyr-workbench.board}'].join(' ');
-          break;
-        }
-      }
-    }
 
     if(!envScript) {
       throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
@@ -179,11 +162,6 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
             "-C " + buildDir,
             "clean",
           ]
-        },
-        {
-          label: "Delete Build",
-          type: "zephyr-workbench",
-          problemMatcher: [],
         },
         {
           label: "Clean Pristine",
