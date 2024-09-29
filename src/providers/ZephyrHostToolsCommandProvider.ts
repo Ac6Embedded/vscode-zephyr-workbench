@@ -21,7 +21,7 @@ const reinstallHostToolsMenuItem = new MenuItem(
   vscode.TreeItemCollapsibleState.None,
   'desktop-download',
   {
-    command: 'zephyr-workbench.install-host-tools',
+    command: 'zephyr-workbench.install-host-tools.open-manager',
     title: 'Reinstall Host Tools',
     arguments: ['true']
   }

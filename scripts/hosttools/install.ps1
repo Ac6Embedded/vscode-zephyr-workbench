@@ -3,6 +3,7 @@ param (
     [switch]$OnlyCheck,
     [switch]$ReinstallVenv,
     [switch]$Global,
+    [string]$SkipSdk,
     [string]$SelectSdk,
     [switch]$Help,
     [switch]$Version
@@ -28,6 +29,7 @@ Options:
   -Help                  Show this help message and exit
   -Version               Show version and hash of the current script
   -OnlyCheck             Perform only a check for required software packages without installing
+  -SkipSdk               Skip default SDK download and installation
   -InstallSdk            Additionally install the SDK after installing the packages
   -ReinstallVenv         Remove .venv folder, create a new .venv, install requirements and west
   -Global                Install Python and 7z as global packages (not portable)
@@ -490,68 +492,74 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     # Extract and wait
     Start-Process -FilePath "$DownloadDirectory\$GitSetupFilename" -ArgumentList "-o`"$ToolsDirectory\git`" -y" -Wait
     
-    Print-Title "Default Zephyr SDK"
-	$SdkVersion = "0.16.8"
-	$SdkName = "zephyr-sdk-${SdkVersion}"
-	if ($SelectSdk) {
-		$SdkBaseUrl = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SdkVersion}"
-		$SdkMinimalUrl = "${SdkBaseUrl}/zephyr-sdk-${SdkVersion}_windows-x86_64_minimal.7z"
-		Write-Host "Installing minimal SDK for $SdkList"
-		Download-WithoutCheck "${SdkMinimalUrl}" "${SdkName}.7z"
-		Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\${SdkName}.7z" -DestinationDirectory $ToolsDirectory
+    if(! $SkipSdk) {
+      Print-Title "Default Zephyr SDK"
+      $SdkVersion = "0.16.8"
+      $SdkName = "zephyr-sdk-${SdkVersion}"
+      if ($SelectSdk) {
+		    $SdkBaseUrl = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SdkVersion}"
+		    $SdkMinimalUrl = "${SdkBaseUrl}/zephyr-sdk-${SdkVersion}_windows-x86_64_minimal.7z"
+		    Write-Host "Installing minimal SDK for $SdkList"
+		    Download-WithoutCheck "${SdkMinimalUrl}" "${SdkName}.7z"
+		    Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\${SdkName}.7z" -DestinationDirectory $ToolsDirectory
 
-		$SdkList = $SelectSdk.Split(" ")
-		
-		foreach ($sdk in $SdkList) {
-			$ToolchainName = "${sdk}-zephyr-elf"
-			if ($sdk -eq "arm") { $ToolchainName = "${sdk}-zephyr-eabi" }
-			
-			$ToolchainUrl = "${SdkBaseUrl}/toolchain_windows-x86_64_${ToolchainName}.7z"
-			Download-WithoutCheck "${ToolchainUrl}" "${ToolchainName}.7z"
-			Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\${ToolchainName}.7z" -DestinationDirectory "$ToolsDirectory\${SdkName}"
-		}
-	} else {
-		$SdkZipName = $SdkName + "_windows-x86_64.7z"
-		Download-FileWithHashCheck $zephyr_sdk_array[0] $zephyr_sdk_array[1] $SdkZipName
-		Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$SdkZipName" -DestinationDirectory "$InstallDirectory"
-	}
-
+		    $SdkList = $SelectSdk.Split(" ")
+		    
+		    foreach ($sdk in $SdkList) {
+			    $ToolchainName = "${sdk}-zephyr-elf"
+			    if ($sdk -eq "arm") { $ToolchainName = "${sdk}-zephyr-eabi" }
+			    
+			    $ToolchainUrl = "${SdkBaseUrl}/toolchain_windows-x86_64_${ToolchainName}.7z"
+			    Download-WithoutCheck "${ToolchainUrl}" "${ToolchainName}.7z"
+			    Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\${ToolchainName}.7z" -DestinationDirectory "$ToolsDirectory\${SdkName}"
+		    }
+      } else {
+		    $SdkZipName = $SdkName + "_windows-x86_64.7z"
+		    Download-FileWithHashCheck $zephyr_sdk_array[0] $zephyr_sdk_array[1] $SdkZipName
+		    Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$SdkZipName" -DestinationDirectory "$InstallDirectory"
+      }
+      
+      if ($InstallSdk) {
+        Print-Title "Install Default Zephyr SDK"
+        & "$InstallDirectory\$SdkName\setup.cmd" /c
+      }
+    }
     
     Print-Title "Python"
-	if($Global){
-        $PythonSetupFilename = "python_installer.exe"
-        Download-FileWithHashCheck $python_array[0] $python_array[1] $PythonSetupFilename
+	  if($Global){
+          $PythonSetupFilename = "python_installer.exe"
+          Download-FileWithHashCheck $python_array[0] $python_array[1] $PythonSetupFilename
 
-		Start-Process -FilePath "$DownloadDirectory\$PythonSetupFilename" -ArgumentList "/quiet", "PrependPath=1" -Wait
-		
-		#check if python is installed
-        $python = Get-Command python -ErrorAction SilentlyContinue
-        if ($python) {
-            Write-Output "Python is installed. Version: $(python --version)"
-        } else {
-            Write-Output "Python is not installed."
-        }
-		
-		#Python should be added automatically to path thanks to PrependPath=1
-        $PythonPath=""
-	}
-	else {
-        $WinPythonSetupFilename = "Winpython64.exe"
-        Download-FileWithHashCheck $python_portable_array[0] $python_portable_array[1] $WinPythonSetupFilename
-    
-        $WinPythonVersion = "3.11.8"
-        $PythonInstallDirectory = "$ToolsDirectory\python"
-    
-        # Extract and wait
-        Start-Process -FilePath "$DownloadDirectory\$WinPythonSetupFilename" -ArgumentList "-o`"$ToolsDirectory`" -y" -Wait
-        if (Test-Path -Path $ToolsDirectory\python) {
-        Remove-Item -Path $ToolsDirectory\python -Recurse -Force
-        }
-        #Rename the folder that starts with WPy64- to python
-        Rename-Item -Path (Get-ChildItem -Directory -Filter "WPy64-*" -Path $ToolsDirectory | Select-Object -First 1).FullName -NewName "python"
-        Copy-Item -Path "$ToolsDirectory\python\python-${WinPythonVersion}.amd64\python.exe" -Destination "$ToolsDirectory\python\python-${WinPythonVersion}.amd64\python3.exe"
-		$PythonPath = "$ToolsDirectory\python\python-${WinPythonVersion}.amd64;$ToolsDirectory\python\python-${WinPythonVersion}.amd64\Scripts"
-	}
+		  Start-Process -FilePath "$DownloadDirectory\$PythonSetupFilename" -ArgumentList "/quiet", "PrependPath=1" -Wait
+		  
+		  #check if python is installed
+          $python = Get-Command python -ErrorAction SilentlyContinue
+          if ($python) {
+              Write-Output "Python is installed. Version: $(python --version)"
+          } else {
+              Write-Output "Python is not installed."
+          }
+		  
+		  #Python should be added automatically to path thanks to PrependPath=1
+          $PythonPath=""
+	  }
+	  else {
+          $WinPythonSetupFilename = "Winpython64.exe"
+          Download-FileWithHashCheck $python_portable_array[0] $python_portable_array[1] $WinPythonSetupFilename
+      
+          $WinPythonVersion = "3.11.8"
+          $PythonInstallDirectory = "$ToolsDirectory\python"
+      
+          # Extract and wait
+          Start-Process -FilePath "$DownloadDirectory\$WinPythonSetupFilename" -ArgumentList "-o`"$ToolsDirectory`" -y" -Wait
+          if (Test-Path -Path $ToolsDirectory\python) {
+          Remove-Item -Path $ToolsDirectory\python -Recurse -Force
+          }
+          #Rename the folder that starts with WPy64- to python
+          Rename-Item -Path (Get-ChildItem -Directory -Filter "WPy64-*" -Path $ToolsDirectory | Select-Object -First 1).FullName -NewName "python"
+          Copy-Item -Path "$ToolsDirectory\python\python-${WinPythonVersion}.amd64\python.exe" -Destination "$ToolsDirectory\python\python-${WinPythonVersion}.amd64\python3.exe"
+		  $PythonPath = "$ToolsDirectory\python\python-${WinPythonVersion}.amd64;$ToolsDirectory\python\python-${WinPythonVersion}.amd64\Scripts"
+	  }
 
     # Update path
     $CmakePath = "$ToolsDirectory\cmake\bin"
@@ -563,11 +571,8 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     # $PythonPath & $SevenZPath already defined previously based on portable or global
 
     $env:PATH = "$CmakePath;$DtcPath;$GperfPath;$NinjaPath;$PythonPath;$WgetPath;$GitPath;$SevenZPath;" + $env:PATH
-    
-	if ($InstallSdk) {
-        Print-Title "Install Default Zephyr SDK"
-        & "$InstallDirectory\$SdkName\setup.cmd" /c
-    }
+      
+	  
     Print-Title "Python VENV"
     Install-PythonVenv -InstallDirectory $InstallDirectory
     

@@ -4,6 +4,12 @@ import path from "path";
 import { execCommand, extract, getFirstDirectoryName7z } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "./constants";
 
+export const listToolchainArch = [ 'aarch64', 'arm', 'arc', 'arc64', 'microblazeel', 'mips',  'nios2', 
+	'riscv64', 'sparc', 'x86_64', 'xtensa-dc233c', 'xtensa-espressif_esp32', 'xtensa-espressif_esp32s2',
+	'xtensa-espressif_esp32s3', 'xtensa-intel_ace15_mtpm', 'xtensa-intel_tgl_adsp', 'xtensa-mtk_mt8195_adsp',
+	'xtensa-nxp_imx_adsp', 'xtensa-nxp_imx8m_adsp', 'xtensa-nxp_imx8ulp_adsp', 'xtensa-nxp_rt500_adsp',
+	'xtensa-nxp_rt600_adsp', 'xtensa-sample_controller'
+];
 
 export async function registerZephyrSDK(sdkPath: string) {
 	let listSDKs: string[] | undefined = await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY);

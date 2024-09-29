@@ -1,6 +1,7 @@
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { ZephyrProject } from './ZephyrProject';
-import { concatCommands, execShellCommand, execShellCommandWithEnv, getShell, getShellArgs, getShellNullRedirect } from './execUtils';
+import { execShellCommandWithEnv, getShell, getShellNullRedirect } from './execUtils';
 import { WestWorkspace } from './WestWorkspace';
 import { fileExists, getZephyrSDK } from './utils';
 import { ZephyrSDK } from './ZephyrSDK';
@@ -12,9 +13,29 @@ export function registerWestCommands(context: vscode.ExtensionContext): void {
 }
 
 export async function westInitCommand(srcUrl: string, srcRev: string, workspacePath: string, manifestPath: string = ''): Promise<void> {
-  let command = `west init -m ${srcUrl} --mr ${srcRev} ${workspacePath}`;
-  if(manifestPath !== '' && fileExists(manifestPath)) {
-    command = command + ` -mf ${manifestPath}`;
+  let command = '';
+  // If init remote repository
+  if(srcUrl && srcUrl !== '') {
+    command = `west init -m ${srcUrl} --mr ${srcRev} ${workspacePath}`;
+    if(manifestPath !== '') {
+      command += ` --mf ${manifestPath}`;
+    }
+  } else {
+    if(manifestPath !== '' && fileExists(manifestPath)) {
+      // If init from manifest, prepare directory
+      if(!fileExists(workspacePath)) {
+        fs.mkdirSync(workspacePath);
+      }
+      let manifestDir = path.join(workspacePath, 'manifest');
+      fs.mkdirSync(manifestDir);
+
+      let manifestFile = path.basename(manifestPath);
+      const destFilePath = path.join(manifestDir, manifestFile);
+      if(!fileExists(destFilePath)) {
+        fs.cpSync(manifestPath, destFilePath);
+      }
+      command = `west init -l --mf ${manifestFile} ${manifestDir}`;
+    }
   }
 
   let options: vscode.ShellExecutionOptions = {

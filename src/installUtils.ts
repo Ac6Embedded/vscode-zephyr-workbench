@@ -150,6 +150,8 @@ export async function verifyInstallScript(): Promise<void> {
  * @param context 
  */
 export async function runInstallHostTools(context: vscode.ExtensionContext, 
+                                          skipSdk: boolean, 
+                                          listToolchains: string,
                                           progress: vscode.Progress<{
                                             message?: string | undefined;
                                             increment?: number | undefined;
@@ -164,7 +166,7 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
   if(await checkHostTools()) {
     progress.report({ message: "Host tools already installed", increment: 100 });
   } else {
-    await installHostTools(context, activeTerminal);
+    await installHostTools(context, skipSdk, listToolchains);
   }
 
   progress.report({ message: "Check if environment is well set up", increment: 80 });
@@ -182,6 +184,8 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
 }
 
 export async function forceInstallHostTools(context: vscode.ExtensionContext, 
+                                            skipSdk: boolean, 
+                                            listToolchains: string,
                                             progress: vscode.Progress<{
                                             message?: string | undefined;
                                             increment?: number | undefined;
@@ -192,7 +196,7 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
 
   removeHostTools();
   progress.report({ message: "Reinstalling host tools into user directory" });
-  await installHostTools(context, activeTerminal);
+  await installHostTools(context, skipSdk, listToolchains);
 
   progress.report({ message: "Check if environment is well set up", increment: 80 });
   if(await checkHostTools()) {
@@ -208,7 +212,31 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
   }
 }
 
-export async function installHostTools(context: vscode.ExtensionContext, terminal: vscode.Terminal) {
+export async function getInstallHostToolsArgs(option: string, listSdks: string[]) {
+  if(option === 'skip') {
+    switch(process.platform) {
+      case 'linux': 
+      case 'darwin':
+        return '--skip-sdk';
+      case 'win32':
+        return '-SkipSdk ';
+    }
+  } else if(option === 'all') {
+    return '';
+  } else {
+    if(listSdks) {
+      switch(process.platform) {
+        case 'linux': 
+        case 'darwin':
+          return `--select-sdk="${listSdks.join(' ')}"`;
+        case 'win32':
+          return `-SelectSdk "${listSdks.join(' ')}"`;
+      }
+    }
+  }
+}
+
+export async function installHostTools(context: vscode.ExtensionContext, skipSdk: boolean = false, listTools: string = "") {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   if(installDirUri) {
     let installScript: string = "";
@@ -222,6 +250,11 @@ export async function installHostTools(context: vscode.ExtensionContext, termina
       case 'linux': {
         installScript = 'install.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        if(skipSdk) {
+          installArgs += '--skip-sdk';
+        } else if(listTools.length > 0) {
+          installArgs += `--select-sdk="${listTools}"`;
+        }
         installArgs += ` ${destDir}`;
         shell = 'bash';
         break; 
@@ -229,6 +262,11 @@ export async function installHostTools(context: vscode.ExtensionContext, termina
       case 'win32': {
         installScript = 'install.ps1';
         installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        if(skipSdk) {
+          installArgs += '-SkipSdk ';
+        } else if(listTools.length > 0) {
+          installArgs += `-SelectSdk "${listTools}"`;
+        }
         installArgs += ` -InstallDir ${destDir}`;
         shell = 'powershell.exe';
         break; 
@@ -236,6 +274,11 @@ export async function installHostTools(context: vscode.ExtensionContext, termina
       case 'darwin': {
         installScript = 'install.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        if(skipSdk) {
+          installArgs += '--skip-sdk';
+        } else if(listTools.length > 0) {
+          installArgs += `--select-sdk="${listTools}"`;
+        }
         installArgs += ` ${destDir}`;
         shell = 'bash';
         break; 
@@ -347,21 +390,21 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
       case 'linux': {
         installScript = 'install.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += ` ${destDir}`;
+        installArgs += `${destDir}`;
         shell = 'bash';
         break; 
       }
       case 'win32': {
         installScript = 'install.ps1';
         installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += ` -InstallDir ${destDir}`;
+        installArgs += `-InstallDir ${destDir}`;
         shell = 'powershell.exe';
         break; 
       }
       case 'darwin': {
         installScript = 'install.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += ` ${destDir}`;
+        installArgs += `${destDir}`;
         shell = 'bash';
         break; 
       }

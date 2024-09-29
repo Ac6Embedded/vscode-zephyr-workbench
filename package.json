@@ -8,7 +8,7 @@
     "type": "git",
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
-  "version": "0.1.3",
+  "version": "0.1.4",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -140,6 +140,11 @@
       {
         "command": "zephyr-workbench.install-host-tools",
         "title": "Zephyr Workbench: Install Host Tools",
+        "icon": "$(desktop-download)"
+      },
+      {
+        "command": "zephyr-workbench.install-host-tools.open-manager",
+        "title": "Zephyr Workbench: Open Host Tools Manager",
         "icon": "$(desktop-download)"
       },
       {
@@ -438,7 +443,7 @@
       },
       {
         "view": "zephyr-workbench-tools-explorer",
-        "contents": "[Install Host Tools](command:zephyr-workbench.install-host-tools)\n"
+        "contents": "[Install Host Tools](command:zephyr-workbench.install-host-tools.open-manager)\n"
       },
       {
         "view": "zephyr-workbench-sdk-explorer",

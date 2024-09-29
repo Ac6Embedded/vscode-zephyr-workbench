@@ -389,16 +389,18 @@ export function activate(context: vscode.ExtensionContext) {
 	// vscode.commands.registerCommand('zephyr-workbench-module-explorer.refresh', () => zephyrModuleProvider.refresh());
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench.install-host-tools", async (force = false) => {
+		vscode.commands.registerCommand("zephyr-workbench.install-host-tools", async (force = false, skipSdk = false, listToolchains = "") => {
 			vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
 								title: "Installing host tools",
 								cancellable: true,
 				}, async (progress, token) => {
+					SDKManagerPanel.currentPanel?.dispose();
+					
 					if(!force) {
-						await runInstallHostTools(context, progress, token);
+						await runInstallHostTools(context, skipSdk, listToolchains, progress, token);
 					} else {
-						await forceInstallHostTools(context, progress, token);
+						await forceInstallHostTools(context, skipSdk, listToolchains, progress, token);
 					}
 					
 					zephyrSdkProvider.refresh();
@@ -406,6 +408,12 @@ export function activate(context: vscode.ExtensionContext) {
 					zephyrToolsCommandProvider.refresh();
 				}
 			);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench.install-host-tools.open-manager", async (force = false) => {
+			SDKManagerPanel.render(context.extensionUri, force);
 		})
 	);
 
@@ -423,8 +431,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench.verify-host-tools", async () => {
-			SDKManagerPanel.render(context.extensionUri);
-
 			vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
 								title: "Verify host tools",

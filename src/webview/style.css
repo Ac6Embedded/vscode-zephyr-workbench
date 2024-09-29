@@ -45,6 +45,11 @@ fieldset {
   width: calc(var(--design-unit)* 160px);
 }
 
+fieldset.no-border  {
+  border: 0 none;
+  width: calc(var(--design-unit)* 140px);
+}
+
 #boardImg {
   max-width: 30vw;
   max-height: 30vh;

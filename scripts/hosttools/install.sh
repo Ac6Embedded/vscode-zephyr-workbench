@@ -9,6 +9,7 @@ YAML_FILE="$SCRIPT_DIR/tools.yml"
 root_packages=true
 non_root_packages=true
 check_installed_bool=true
+skip_sdk_bool=false
 install_sdk_bool=false
 reinstall_venv_bool=false
 INSTALL_DIR=""
@@ -27,6 +28,7 @@ OPTIONS:
   --only-root               Only install packages that require root privileges.
   --only-without-root       Only install packages that do not require root privileges.
   --only-check              Only check the installation status of the packages without installing them.
+  --skip-sdk                Skip default SDK download
   --install-sdk             Additionally install the SDK after installing the packages.
   --reinstall-venv          Remove existing virtual environment and create a new one.
   --select-sdk="SDK1 SDK2"  Specify space-separated SDKs to install. E.g., 'arm aarch64'
@@ -60,6 +62,9 @@ while [[ "$#" -gt 0 ]]; do
     --only-check)
       root_packages=false
       non_root_packages=false
+      ;;
+    --skip-sdk)
+      skip_sdk_bool=true
       ;;
     --install-sdk)
       install_sdk_bool=true
@@ -175,7 +180,7 @@ install_python_venv() {
 
     python3 -m venv "$install_directory/.venv"
     source "$install_directory/.venv/bin/activate"
-    python3 -m pip install setuptools wheel west --quiet
+    python3 -m pip install setuptools wheel west pyocd --quiet
     python3 -m pip install -r "$work_directory/$REQUIREMENTS_NAME/requirements.txt" --quiet
 }
 
@@ -268,16 +273,16 @@ if [[ $non_root_packages == true ]]; then
 
     source $MANIFEST_FILE
 
-	if [[ $reinstall_venv_bool == true ]]; then
-		pr_title "Reinstalling Python VENV"
-		if [ -d "$INSTALL_DIR/.venv" ]; then
-			rm -rf "$INSTALL_DIR/.venv"
-		fi
-		source "$ENV_FILE" &> /dev/null
-		install_python_venv "$INSTALL_DIR" "$TMP_DIR"
+    if [[ $reinstall_venv_bool == true ]]; then
+      pr_title "Reinstalling Python VENV"
+      if [ -d "$INSTALL_DIR/.venv" ]; then
+        rm -rf "$INSTALL_DIR/.venv"
+      fi
+      source "$ENV_FILE" &> /dev/null
+      install_python_venv "$INSTALL_DIR" "$TMP_DIR"
 	    rm -rf $TMP_DIR
-		exit 0
-	fi
+      exit 0
+    fi
 	
     pr_title "OpenSSL"
     OPENSSL_FOLDER_NAME="openssl-1.1.1t"
@@ -303,38 +308,44 @@ if [[ $non_root_packages == true ]]; then
     download_and_check_hash ${cmake[source]} ${cmake[sha256]} "$CMAKE_ARCHIVE_NAME"
     tar xf "$DL_DIR/$CMAKE_ARCHIVE_NAME" -C "$TOOLS_DIR"
 
-    pr_title "Zephyr SDK"
-	SDK_VERSION="0.16.8"
-	ZEPHYR_SDK_FOLDER_NAME="zephyr-sdk-${SDK_VERSION}"
-
-    if [ -n "$selected_sdk_list" ]; then
-      # If --select-sdk was used, download and extract the minimal SDK and specified toolchains
-	  
-      SDK_BASE_URL="https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SDK_VERSION}"
-      SDK_MINIMAL_URL="${SDK_BASE_URL}/zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz"
-      MINIMAL_ARCHIVE_NAME="zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz"
-    
-      echo "Installing minimal SDK for $selected_sdk_list"
-      wget --no-check-certificate -q -O "$DL_DIR/$MINIMAL_ARCHIVE_NAME" "$SDK_MINIMAL_URL"
-      tar xf "$DL_DIR/$MINIMAL_ARCHIVE_NAME" -C "$INSTALL_DIR"
-    
-      # Loop through the selected SDKs and download/extract each toolchain
-      IFS=' ' read -r -a sdk_array <<< "$selected_sdk_list"
-      for sdk in "${sdk_array[@]}"; do
-        toolchain_name="${sdk}-zephyr-elf"
-        [ "$sdk" = "arm" ] && toolchain_name="${sdk}-zephyr-eabi"
-    
-        toolchain_url="${SDK_BASE_URL}/toolchain_linux-x86_64_${toolchain_name}.tar.xz"
-        toolchain_archive_name="toolchain_linux-x86_64_${toolchain_name}.tar.xz"
-    
-        echo "Downloading and extracting $toolchain_name"
-        wget --no-check-certificate -q -O "$DL_DIR/$toolchain_archive_name" "$toolchain_url"
-        tar xf "$DL_DIR/$toolchain_archive_name" -C "$INSTALL_DIR/$ZEPHYR_SDK_FOLDER_NAME"
-      done
-    else
-      ZEPHYR_SDK_ARCHIVE_NAME="zephyr-sdk-${SDK_VERSION}_linux-x86_64.tar.xz"
-      download_and_check_hash ${zephyr_sdk[source]} ${zephyr_sdk[sha256]} "$ZEPHYR_SDK_ARCHIVE_NAME"
-      tar xf "$DL_DIR/$ZEPHYR_SDK_ARCHIVE_NAME" -C "$INSTALL_DIR"
+    if [ $skip_sdk_bool = false ]; then
+      pr_title "Zephyr SDK"
+      SDK_VERSION="0.16.8"
+      ZEPHYR_SDK_FOLDER_NAME="zephyr-sdk-${SDK_VERSION}"
+      if [ -n "$selected_sdk_list" ]; then
+        # If --select-sdk was used, download and extract the minimal SDK and specified toolchains
+	    
+        SDK_BASE_URL="https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SDK_VERSION}"
+        SDK_MINIMAL_URL="${SDK_BASE_URL}/zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz"
+        MINIMAL_ARCHIVE_NAME="zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz"
+      
+        echo "Installing minimal SDK for $selected_sdk_list"
+        wget --no-check-certificate -q -O "$DL_DIR/$MINIMAL_ARCHIVE_NAME" "$SDK_MINIMAL_URL"
+        tar xf "$DL_DIR/$MINIMAL_ARCHIVE_NAME" -C "$INSTALL_DIR"
+      
+        # Loop through the selected SDKs and download/extract each toolchain
+        IFS=' ' read -r -a sdk_array <<< "$selected_sdk_list"
+        for sdk in "${sdk_array[@]}"; do
+          toolchain_name="${sdk}-zephyr-elf"
+          [ "$sdk" = "arm" ] && toolchain_name="${sdk}-zephyr-eabi"
+      
+          toolchain_url="${SDK_BASE_URL}/toolchain_linux-x86_64_${toolchain_name}.tar.xz"
+          toolchain_archive_name="toolchain_linux-x86_64_${toolchain_name}.tar.xz"
+      
+          echo "Downloading and extracting $toolchain_name"
+          wget --no-check-certificate -q -O "$DL_DIR/$toolchain_archive_name" "$toolchain_url"
+          tar xf "$DL_DIR/$toolchain_archive_name" -C "$INSTALL_DIR/$ZEPHYR_SDK_FOLDER_NAME"
+        done
+      else
+        ZEPHYR_SDK_ARCHIVE_NAME="zephyr-sdk-${SDK_VERSION}_linux-x86_64.tar.xz"
+        download_and_check_hash ${zephyr_sdk[source]} ${zephyr_sdk[sha256]} "$ZEPHYR_SDK_ARCHIVE_NAME"
+        tar xf "$DL_DIR/$ZEPHYR_SDK_ARCHIVE_NAME" -C "$INSTALL_DIR"
+      fi
+      
+      if [[ $install_sdk_bool == true ]]; then
+          pr_title "Install Zephyr SDK"
+          yes | bash "$INSTALL_DIR/$ZEPHYR_SDK_FOLDER_NAME/setup.sh"
+      fi
     fi
 	
     cmake_path="$INSTALL_DIR/tools/$CMAKE_FOLDER_NAME/bin"
@@ -345,13 +356,9 @@ if [[ $non_root_packages == true ]]; then
     export PATH="$python_path:$ninja_path:$cmake_path:$openssl_path/usr/local/bin:$PATH"
     export LD_LIBRARY_PATH="$openssl_path/usr/local/lib:$LD_LIBRARY_PATH"
 	
-	if [[ $install_sdk_bool == true ]]; then
-        pr_title "Install Zephyr SDK"
-        yes | bash "$INSTALL_DIR/$ZEPHYR_SDK_FOLDER_NAME/setup.sh"
-    fi
-    
-	pr_title "Python VENV"
-	install_python_venv "$INSTALL_DIR" "$TMP_DIR"
+
+    pr_title "Python VENV"
+    install_python_venv "$INSTALL_DIR" "$TMP_DIR"
 
     if ! command -v west &> /dev/null; then
     echo "West is not available. Something is wrong !!"
@@ -391,7 +398,7 @@ tools.yml MD5: $tools_yml_md5
 EOF
     echo "Source me: . $ENV_FILE"
     
-	pr_title "Clean up"
+    pr_title "Clean up"
     rm -rf $TMP_DIR
 fi
 
