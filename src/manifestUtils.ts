@@ -1,0 +1,25 @@
+
+export const listHals: any[] = [
+  { label: "Altera", name: "hal_altera" },
+  { label: "Ambiq", name: "hal_ambiq" },
+  { label: "Atmel", name: "hal_atmel" },
+  { label: "Espressif", name: "hal_espressif" },
+  { label: "Ethos-U", name: "hal_ethos_u" },
+  { label: "GigaDevice", name: "hal_gigadevice" },
+  { label: "Infineon", name: "hal_infineon" },
+  { label: "Intel", name: "hal_intel" },
+  { label: "Microchip", name: "hal_microchip" },
+  { label: "Nordic", name: "hal_nordic" },
+  { label: "Nuvoton", name: "hal_nuvoton" },
+  { label: "NXP", name: "hal_nxp" },
+  { label: "OpenISA", name: "hal_openisa" },
+  { label: "QuickLogic", name: "hal_quicklogic" },
+  { label: "Renesas", name: "hal_renesas" },
+  { label: "Raspberry Pi Pico", name: "hal_rpi_pico" },
+  { label: "Silicon Labs", name: "hal_silabs" },
+  { label: "STM32", name: "hal_stm32" },
+  { label: "Telink", name: "hal_telink" },
+  { label: "Texas Instruments", name: "hal_ti" },
+  { label: "Würth Elektronik", name: "hal_wurthelektronik" },
+  { label: "xtensa", name: "hal_xtensa" }
+];

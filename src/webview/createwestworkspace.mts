@@ -190,12 +190,19 @@ function modifySrcTypeHandler(this: HTMLElement) {
     srcRemotePath.removeAttribute('disabled');
     srcRemoteBranch.removeAttribute('disabled');
     manifestPath.removeAttribute('disabled');
+    manifestPath.setAttribute('placeholder', '(Optional)'),
     browseManifestButton.removeAttribute('disabled');
   } else if(srcTypeRadioGroup.value === 'local') {
     srcRemotePath.setAttribute('disabled', '');
     srcRemoteBranch.setAttribute('disabled', '');
     manifestPath.setAttribute('disabled', '');
     browseManifestButton.setAttribute('disabled', '');
+  } else if(srcTypeRadioGroup.value === 'manifest') {
+    srcRemotePath.setAttribute('disabled', '');
+    srcRemoteBranch.setAttribute('disabled', '');
+    manifestPath.removeAttribute('disabled');
+    manifestPath.setAttribute('placeholder', ''),
+    browseManifestButton.removeAttribute('disabled');
   }
 }
 

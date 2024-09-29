@@ -127,6 +127,7 @@ export class CreateWestWorkspacePanel {
                 <label slot="label">Source location:</label>
                 <vscode-radio value="remote" checked>Repository</vscode-radio>
                 <vscode-radio value="local">Local folder</vscode-radio>
+                <vscode-radio value="manifest">Local manifest</vscode-radio>
               </vscode-radio-group>
             </div>
           </form>
@@ -222,8 +223,10 @@ export class CreateWestWorkspacePanel {
 
             if(srcType === 'remote') {
               vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath);
-            } else {
+            } else if(srcType === 'local') {
               vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-local", workspacePath);
+            } else if(srcType === 'manifest') {
+              vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestPath);
             }
             break;
         }

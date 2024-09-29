@@ -1,0 +1,20 @@
+manifest:
+  remotes:
+    - name: zephyrproject
+      url-base: https://github.com/zephyrproject-rtos
+  projects:
+    - name: zephyr
+      repo-path: zephyr
+      remote: zephyrproject
+      revision: v3.7.0
+      import:
+        path-prefix: deps
+        name-allowlist:
+          - cmsis
+          - cmsis-dsp
+          - segger
+          - hal_stm32
+          - trusted-firmware-m
+          - percepio
+          - mbedtls
+          - mcuboot
