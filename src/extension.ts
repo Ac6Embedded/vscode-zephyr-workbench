@@ -29,6 +29,7 @@ import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './z
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
 import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
+import { SDKManagerPanel } from './panels/SDKManagerPanel';
 
 let statusBarItem: vscode.StatusBarItem;
 let zephyrTaskProvider: vscode.Disposable | undefined;
@@ -426,6 +427,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench.verify-host-tools", async () => {
+			SDKManagerPanel.render(context.extensionUri);
+
 			vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
 								title: "Verify host tools",
@@ -682,7 +685,6 @@ export function activate(context: vscode.ExtensionContext) {
 					if(workspaceFolder) {
 						await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK);
 						await createTasksJson(workspaceFolder);
-						await createLaunchJson(workspaceFolder, zephyrSDK);
 						await createExtensionsJson(workspaceFolder);
 						CreateZephyrAppPanel.currentPanel?.dispose();
 						vscode.window.showInformationMessage(`New Application '${workspaceFolder.name}' created !`);

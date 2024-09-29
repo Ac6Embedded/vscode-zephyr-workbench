@@ -8,7 +8,7 @@ import { ZephyrSDK } from './ZephyrSDK';
 import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
 import { concatCommands, getShell, getShellArgs } from './execUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { getInternalDirVSCodePath, getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
+import { getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
 
 export interface ZephyrTaskDefinition extends vscode.TaskDefinition {
   label: string;
@@ -45,10 +45,28 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     await this.runPreTask(_task, project);
 
     const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-    const cmd = _task.definition.command;
-    const args = _task.definition.args.join(' ');
+
+    let cmd = _task.definition.command;
+    let args = _task.definition.args.join(' ');
     const envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
     const activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder).get(ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY);
+
+    // Adapt 'Delete Build' command for different OS
+    if(_task.name === 'Delete Build') {
+      switch(process.platform) {
+        case 'win32': {
+          cmd = 'rd';
+          args = [ '/s', '/q', '${workspaceFolder}/build/${config:zephyr-workbench.board}'].join(' ');
+          break;
+        }
+        case 'linux':
+        case 'darwin': {
+          cmd = 'rm';
+          args = [ '-rf', '${workspaceFolder}/build/${config:zephyr-workbench.board}'].join(' ');
+          break;
+        }
+      }
+    }
 
     if(!envScript) {
       throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
@@ -166,10 +184,6 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
           label: "Delete Build",
           type: "zephyr-workbench",
           problemMatcher: [],
-          command: "rm",
-          args: [
-            "-rf " + buildDir,
-          ]
         },
         {
           label: "Clean Pristine",
@@ -278,59 +292,6 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
     // Write tasks.json file
     fs.writeFileSync(tasksJsonPath, JSON.stringify(tasksJsonContent, null, 2));
   }
-}
-
-export async function createLaunchJson(workspaceFolder: vscode.WorkspaceFolder, zephyrSDK: ZephyrSDK): Promise<void> {
-  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
-  const launchJsonPath = path.join(vscodeFolderPath, 'launch.json');
-  const project = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-  const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-  let targetBoard;
-
-  const listBoards = await getSupportedBoards(westWorkspace);
-  for(let board of listBoards) {
-    if(board.identifier === project.boardId) {
-      targetBoard = board;
-    }
-  }
-  if(!targetBoard) {
-    return;
-  }
-
-  let targetArch = targetBoard.arch;
-  // Ensure .vscode directory exists
-  if (!fs.existsSync(vscodeFolderPath)) {
-    fs.mkdirSync(vscodeFolderPath);
-  }
-
-  const executable = path.join('${workspaceFolder}', 'build', '${config:zephyr-workbench.board}', ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
-  const launchJsonContent = {
-    version: "0.2.0",
-    configurations: [
-      {
-        name: "Launch with OpenOCD",
-        cwd: "${workspaceFolder}",
-        executable: executable,
-        request: "launch",
-        type: "cortex-debug",
-        runToEntryPoint: "main",
-        serverpath: "${config:zephyr-workbench.openocd.execPath}",
-        servertype: "openocd",
-        interface: "swd",
-        gdbPath: `${zephyrSDK.getDebuggerPath(targetArch)}`,
-        preLaunchTask: "West Build",
-        searchDir: [
-          "${config:zephyr-workbench.openocd.searchDir}"
-        ],
-        configFiles: [
-          path.join(targetBoard.rootPath,'support','openocd.cfg')
-        ]
-      },
-    ]
-  };
-
-  // Write launch.json file
-  fs.writeFileSync(launchJsonPath, JSON.stringify(launchJsonContent, null, 2));
 }
 
 export async function createExtensionsJson(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
