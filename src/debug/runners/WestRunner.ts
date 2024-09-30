@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import path from "path";
 import { ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
-import { execCommand } from '../../installUtils';
+import { execCommandWithEnv } from '../../execUtils';
 
 export const ZEPHYR_WORKBENCH_DEBUG_PATH_SETTING_KEY = 'pathExec';
 
@@ -97,7 +97,7 @@ export class WestRunner {
       if(process.platform === 'linux' || process.platform === 'darwin') {
         versionCmd = `${versionCmd} 2>&1`;
       }
-      await execCommand(`${versionCmd}`);
+      await execCommandWithEnv(`${versionCmd}`);
       return true;
     } catch (error) {
       return false;

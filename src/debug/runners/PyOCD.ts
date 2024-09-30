@@ -4,7 +4,7 @@ export class PyOCD extends WestRunner {
   name = 'pyocd';
   label = 'pyOCD';
   types = [ RunnerType.FLASH, RunnerType.DEBUG ];
-  serverStartedPattern = '';
+  serverStartedPattern = 'GDB server started on port';
 
   get executable(): string | undefined{
     const exec = super.executable;

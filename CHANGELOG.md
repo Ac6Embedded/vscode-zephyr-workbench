@@ -4,6 +4,16 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.1.4]
+
+- Add Debug Manager to generate launch.json
+  - Autodetect debugger and runner binary in PATH
+- Support manifest to initialize west workspace
+- Add toolchain selection while creating SDK
+- Fix build directory delete task
+- Fix tasks.json fetch and project detection
+- Improve UX with tooltip help
+
 ## [0.1.3]
 
 - Update zinstaller
