@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { execCommandWithEnv, getGitTags } from "../execUtils";
+import { listHals } from "../manifestUtils";
 
 export class CreateWestWorkspacePanel {
   public static currentPanel: CreateWestWorkspacePanel | undefined;
@@ -107,6 +108,11 @@ export class CreateWestWorkspacePanel {
     const webviewUri = getUri(webview, extensionUri, ["out", "createwestworkspace.js"]);
     const styleUri = getUri(webview, extensionUri, ["out", "style.css"]);
     const nonce = getNonce();
+    
+    let templatesHTML = '';
+    for(let hal of listHals) {
+      templatesHTML = templatesHTML.concat(`<div class="dropdown-item" data-value="${hal.name}" data-label="${hal.label}">${hal.label}</div>`)
+    }
   
     return /*html*/ `
       <!DOCTYPE html>
@@ -125,7 +131,8 @@ export class CreateWestWorkspacePanel {
             <div class="grid-group-div">
               <vscode-radio-group id="srcType" orientation="vertical">
                 <label slot="label">Source location:</label>
-                <vscode-radio value="remote" checked>Repository</vscode-radio>
+                <vscode-radio value="template" checked>Minimal from template</vscode-radio>
+                <vscode-radio value="remote">Repository</vscode-radio>
                 <vscode-radio value="local">Local folder</vscode-radio>
                 <vscode-radio value="manifest">Local manifest</vscode-radio>
               </vscode-radio-group>
@@ -133,10 +140,29 @@ export class CreateWestWorkspacePanel {
           </form>
           <form>
             <div class="grid-group-div">
-              <vscode-text-field size="50" type="url" id="remotePath" value="https://github.com/zephyrproject-rtos/zephyr">Path:</vscode-text-field>
+              <vscode-text-field size="50" type="url" id="remotePath" value="https://github.com/zephyrproject-rtos">Path:</vscode-text-field>
             </div>
 
-            <div class="grid-group-div">
+            <div class="grid-group-div" id="templatesGroup">
+              <div class="grid-header-div">
+                <label for="listTemplates">Template:</label>
+              </div>
+              <div id="listTemplates" class="combo-dropdown grid-value-div">
+                <input type="text" id="templateInput" class="combo-dropdown-control" placeholder="Choose a template..." data-value="">
+                <div aria-hidden="true" class="indicator" part="indicator">
+                  <slot name="indicator">  
+                    <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                      <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                    </svg>
+                  </slot>
+                </div>
+                <div id="templatesDropdown" class="dropdown-content">
+                  ${templatesHTML}
+                </div>
+              </div>
+            </div>
+
+            <div class="grid-group-div" id="branchGroup">
               <div class="grid-header-div">
                 <label for="listBranch">Branch:</label>
               </div>
@@ -154,14 +180,16 @@ export class CreateWestWorkspacePanel {
               </div>
             </div>
 
-            <div class="grid-group-div">
-              <vscode-text-field size="50" type="text" id="workspacePath" value="">Location:</vscode-text-field>
-              <vscode-button id="browseLocationButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
-            </div>
-            <div class="grid-group-div">
+            <div class="grid-group-div" id="manifestGroup">
               <vscode-text-field size="50" type="text" id="manifestPath" placeholder="(Optional)">Manifest:</vscode-text-field>
               <vscode-button id="browseManifestButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
             </div>
+
+            <div class="grid-group-div" id="locationGroup">
+              <vscode-text-field size="50" type="text" id="workspacePath" value="">Location:</vscode-text-field>
+              <vscode-button id="browseLocationButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+            </div>
+
             <div class="grid-group-div">
               <vscode-button id="importButton" class="finish-input-button">Import</vscode-button>
             <div>
@@ -172,8 +200,12 @@ export class CreateWestWorkspacePanel {
     `;
   }
 
-  private updateBranches(webview: vscode.Webview, remotePath: any) {
-    getGitTags(remotePath)
+  private updateBranches(webview: vscode.Webview, remotePath: string) {
+    let zephyrRepoUrl = remotePath;
+    if(!remotePath.endsWith('/zephyr')) {
+      zephyrRepoUrl = remotePath.concat('/zephyr');
+    }
+    getGitTags(zephyrRepoUrl)
       .then(tags => {
         let newBranchHTML = '';
         if(tags && tags.length > 0) {
@@ -197,6 +229,7 @@ export class CreateWestWorkspacePanel {
         let remoteBranch;
         let workspacePath;
         let manifestPath;
+        let templateHal;
 
         switch (command) {
           case 'debug':
@@ -220,6 +253,7 @@ export class CreateWestWorkspacePanel {
             remoteBranch = message.remoteBranch;
             workspacePath = message.workspacePath;
             manifestPath = message.manifestPath;
+            templateHal = message.templateHal;
 
             if(srcType === 'remote') {
               vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath);
@@ -227,7 +261,9 @@ export class CreateWestWorkspacePanel {
               vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-local", workspacePath);
             } else if(srcType === 'manifest') {
               vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestPath);
-            }
+            } else if(srcType === 'template') {
+              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal);
+            } 
             break;
         }
       },

@@ -80,12 +80,15 @@ export class ImportZephyrSDKPanel {
 
     let defaultSDKUrl = '';
     let versionHTML = '';
+    let defaultVersionValue = '';
     if(versions.length > 0) {
       for(let version of versions) {
         const versionValue = version.replace(/^v/, ''); // Remove the 'v'
         versionHTML = versionHTML.concat(`<div class="dropdown-item" data-value="${versionValue}" data-label="${version}">${version}</div>`);
       }
+      defaultVersionValue = versions[0].replace(/^v/, '');
     }
+    
 
     let toolsListHTML = '';
     const nbTools = listToolchainArch.length;
@@ -143,7 +146,7 @@ export class ImportZephyrSDKPanel {
                 <label for="listVersion">Version:</label>
               </div>
               <div id="listVersion" class="combo-dropdown grid-value-div">
-                <input type="text" id="versionInput" class="combo-dropdown-control" placeholder="Choose the SDK version..." data-value="">
+                <input type="text" id="versionInput" class="combo-dropdown-control" placeholder="Choose the SDK version..." data-value="${defaultVersionValue}">
                 <div aria-hidden="true" class="indicator" part="indicator">
                   <slot name="indicator">  
                     <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">

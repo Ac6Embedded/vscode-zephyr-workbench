@@ -22,18 +22,23 @@ export async function westInitCommand(srcUrl: string, srcRev: string, workspaceP
     }
   } else {
     if(manifestPath !== '' && fileExists(manifestPath)) {
-      // If init from manifest, prepare directory
-      if(!fileExists(workspacePath)) {
-        fs.mkdirSync(workspacePath);
-      }
       let manifestDir = path.join(workspacePath, 'manifest');
-      fs.mkdirSync(manifestDir);
-
       let manifestFile = path.basename(manifestPath);
       const destFilePath = path.join(manifestDir, manifestFile);
-      if(!fileExists(destFilePath)) {
-        fs.cpSync(manifestPath, destFilePath);
+
+      // If the manifest is not already in the destination folder 
+      if(destFilePath !== manifestPath) {
+        // If init from manifest, prepare directory
+        if(!fileExists(workspacePath)) {
+          fs.mkdirSync(workspacePath);
+        }
+        fs.mkdirSync(manifestDir);
+
+        if(!fileExists(destFilePath)) {
+          fs.cpSync(manifestPath, destFilePath);
+        }
       }
+      
       command = `west init -l --mf ${manifestFile} ${manifestDir}`;
     }
   }

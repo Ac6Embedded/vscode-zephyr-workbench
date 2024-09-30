@@ -159,6 +159,12 @@ function initVersionsDropdown() {
   });
 
   addDropdownItemEventListeners(versionsDropdown, versionInput);
+
+  // Select first value
+  const firstItem = versionsDropdown.querySelector('.dropdown-item') as HTMLElement;
+  if (firstItem) {
+    firstItem.click();
+  }
 }
 
 function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputElement) {

@@ -1,3 +1,8 @@
+import * as vscode from "vscode";
+import fs from "fs";
+import yaml from 'yaml';
+import { fileExists } from "./utils";
+import path from "path";
 
 export const listHals: any[] = [
   { label: "Altera", name: "hal_altera" },
@@ -23,3 +28,24 @@ export const listHals: any[] = [
   { label: "Würth Elektronik", name: "hal_wurthelektronik" },
   { label: "xtensa", name: "hal_xtensa" }
 ];
+
+export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string) {
+  let templateManifestUri = vscode.Uri.joinPath(context.extensionUri, 'west_manifests', 'minimal_west.yml');
+  const templateFile = fs.readFileSync(templateManifestUri.fsPath, 'utf8');
+  const manifestYaml = yaml.parse(templateFile);
+  manifestYaml.manifest.remotes[0]['url-base'] = remotePath;
+  manifestYaml.manifest.projects[0]['revision'] = remoteBranch;
+  manifestYaml.manifest.projects[0]['import']['name-allowlist'].push(templateHal);
+
+  if(!fileExists(workspacePath)) {
+    fs.mkdirSync(workspacePath);
+  }
+  let manifestDir = path.join(workspacePath, 'manifest');
+  fs.mkdirSync(manifestDir);
+
+  const destFilePath = path.join(manifestDir, 'west.yml');
+  const westManifestContent = yaml.stringify(manifestYaml);
+  fs.writeFileSync(destFilePath, westManifestContent, 'utf8');
+
+  return destFilePath;
+}

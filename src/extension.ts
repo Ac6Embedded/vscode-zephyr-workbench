@@ -30,6 +30,7 @@ import { showPristineQuickPick } from './setupBuildPristineQuickStep';
 import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
+import { generateWestManifest } from './manifestUtils';
 
 let statusBarItem: vscode.StatusBarItem;
 let zephyrTaskProvider: vscode.Disposable | undefined;
@@ -101,7 +102,7 @@ export function activate(context: vscode.ExtensionContext) {
 				const installHostToolsItem = 'Install Host Tools';
 				const choice = await vscode.window.showErrorMessage("Host tools are missing, please install them first", installHostToolsItem);
 				if(choice === installHostToolsItem) {
-					vscode.commands.executeCommand('zephyr-workbench.install-host-tools');
+					vscode.commands.executeCommand('zephyr-workbench.install-host-tools.open-manager');
 				}
 				return;
 			}
@@ -392,8 +393,8 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand("zephyr-workbench.install-host-tools", async (force = false, skipSdk = false, listToolchains = "") => {
 			vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
-								title: "Installing host tools",
-								cancellable: true,
+				title: "Installing host tools",
+				cancellable: true,
 				}, async (progress, token) => {
 					SDKManagerPanel.currentPanel?.dispose();
 					
@@ -413,7 +414,11 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench.install-host-tools.open-manager", async (force = false) => {
-			SDKManagerPanel.render(context.extensionUri, force);
+			// FIXME: ByPass SDK Manager for now. Uncomment when ready
+			//SDKManagerPanel.render(context.extensionUri, force);
+
+			// TODO: When SDKManagerPanel will be used, remove this line 
+			vscode.commands.executeCommand('zephyr-workbench.install-host-tools', force, true, "");
 		})
 	);
 
@@ -852,6 +857,17 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			} else {
 				vscode.window.showErrorMessage("The west workspace location folder is invalid or already exists");
+			}
+    })
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal) => {
+			if(remotePath && remoteBranch && workspacePath && templateHal ) {
+				// Generate west.xml from template
+				let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal);
+				// Run west init to the newly create manifest
+				vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestFile);
 			}
     })
 	);

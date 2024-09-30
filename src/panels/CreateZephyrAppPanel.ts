@@ -209,7 +209,13 @@ export class CreateZephyrAppPanel {
             updateBoardImage(webview, message.boardYamlPath);
             break; 
           case 'openLocationDialog':
-            this.openLocationDialog();
+            const westWorkspacePath = message.westWorkspacePath;
+            if(westWorkspacePath && westWorkspacePath.length > 0) {
+              this.openLocationDialog(vscode.Uri.parse(message.westWorkspacePath, false));
+            } else {
+              this.openLocationDialog(undefined);
+            }
+            
             break;
           case 'create':
             checkCreateParameters(message);
@@ -228,12 +234,13 @@ export class CreateZephyrAppPanel {
     );
   }
 
-  public openLocationDialog() {
+  public openLocationDialog(uri: vscode.Uri | undefined) {
     if (this._panel) {
       vscode.window.showOpenDialog({
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
+        defaultUri: uri,
         openLabel: 'Select the project parent location',
       }).then(uri => {
         if (uri && uri.length > 0) {

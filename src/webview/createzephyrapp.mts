@@ -329,9 +329,11 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
 }
 
 function browseParentHandler(this: HTMLElement, ev: MouseEvent) {
+  const workspaceInput = document.getElementById('workspaceInput') as HTMLInputElement;
   webviewApi.postMessage(
     { 
       command: 'openLocationDialog', 
+      westWorkspacePath: workspaceInput.getAttribute('data-value')
     }
   );
 }

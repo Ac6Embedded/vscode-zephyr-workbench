@@ -45,14 +45,14 @@ function main() {
 }
 
 function setVSCodeMessageListener() {
-    window.addEventListener("message", (event) => {
-      const command = event.data.command;
-      switch(command) {
-        case 'exec-done':
-          const progress = document.getElementById(`progress-${event.data.tool}`) as HTMLElement;
-          progress.style.display = 'none';
-          break;
-      }
-  
-    });
-  }
+  window.addEventListener("message", (event) => {
+    const command = event.data.command;
+    switch(command) {
+      case 'exec-done':
+        const progress = document.getElementById(`progress-${event.data.tool}`) as HTMLElement;
+        progress.style.display = 'none';
+        break;
+    }
+
+  });
+}
