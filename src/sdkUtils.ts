@@ -3,6 +3,10 @@ import * as vscode from "vscode";
 import path from "path";
 import { execCommand, extract, getFirstDirectoryName7z } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "./constants";
+import { getGitTags } from "./execUtils";
+import { url } from "inspector";
+
+export const sdkRepoURL = "https://github.com/zephyrproject-rtos/sdk-ng/";
 
 export const listToolchainArch = [ 'aarch64', 'arm', 'arc', 'arc64', 'microblazeel', 'mips',  'nios2', 
 	'riscv64', 'sparc', 'x86_64', 'xtensa-dc233c', 'xtensa-espressif_esp32', 'xtensa-espressif_esp32s2',
@@ -10,6 +14,94 @@ export const listToolchainArch = [ 'aarch64', 'arm', 'arc', 'arc64', 'microblaze
 	'xtensa-nxp_imx_adsp', 'xtensa-nxp_imx8m_adsp', 'xtensa-nxp_imx8ulp_adsp', 'xtensa-nxp_rt500_adsp',
 	'xtensa-nxp_rt600_adsp', 'xtensa-sample_controller'
 ];
+
+export const sdkType = [ 'full', 'minimal' ];
+export const sdkOSes = [ 'linux', 'windows', 'macos' ];
+export const sdkArch = [ 'aarch64', 'x86_64'];
+export const sdkExt = [ 'tar.xz' , '7z'];
+
+export const minSdkURL = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${os}-${arch}_minimal.${ext}";
+export const fullSdkURL = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${os}-${arch}.${ext}";
+export const toolsSdkURL = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/toolchain_${os}-${arch}_${toolchain}.${ext}";
+
+export async function getSdkVersion(): Promise<any[]> {
+	try {
+		const tags = await getGitTags(sdkRepoURL);
+		let versions = [];
+		if(tags && tags.length > 0) {
+			for(let tag of tags) {
+				// do not keep -alpha, -beta, -rc versions
+				if(!tag.includes('-')) {
+					versions.push(tag);
+				}
+			}
+		}
+		return versions;
+	} catch (error) {
+		return [];
+	}
+}
+
+export function generateSdkUrls(type: string, version: string, toolchains: string[]): string[] {
+	let urls: string[] = [];
+	let os = undefined;
+	let arch = undefined;
+	let ext = undefined;
+	
+	switch(process.platform) {
+		case 'linux': {
+			os = 'linux';
+			ext = 'tar.xz';
+			break;
+		}
+		case 'win32': {
+			os = 'windows';
+			ext = '7z';
+			break;
+		}
+		case 'darwin': {
+			os = 'macos';
+			ext = 'tar.xz';
+			break;
+		}	
+		default:
+			break;
+	}
+
+	switch(process.arch) {
+		case 'x64': {
+			arch = 'x86_64';
+			break;
+		}
+		case 'arm64': {
+			arch = 'aarch64';
+			break;
+		}
+		default:
+			break;
+	}
+
+	if(os && arch) {
+		if(type === 'full') {
+			const fullUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${os}-${arch}.${ext}`;
+			urls.push(fullUrl);
+		} else if(type === 'minimal') {
+			const minUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${os}-${arch}_minimal.${ext}`;
+			urls.push(minUrl);
+
+			for(let tArch of toolchains) {
+				let toolchain = `${tArch}-zephyr-elf`;
+				if(tArch === 'arm') {
+					toolchain = `${tArch}-zephyr-eabi`;
+				}
+				const toolUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/toolchain_${os}-${arch}_${toolchain}.${ext}`;
+				urls.push(toolUrl);
+			}
+		} 
+	}
+	
+	return urls;
+}
 
 export async function registerZephyrSDK(sdkPath: string) {
 	let listSDKs: string[] | undefined = await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY);

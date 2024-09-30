@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { fileExists } from './utils';
+import { compareVersions, fileExists } from './utils';
 import { ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
 import { ExecException, ExecOptions, exec } from 'child_process';
 
@@ -215,4 +215,28 @@ export async function execCommandWithEnv(cmd: string, callback?: ((error: ExecEx
   options.shell = shell;
   
   exec(command, options, callback);
+}
+
+export async function getGitTags(gitUrl: string): Promise<string[]> {
+
+  const gitCmd = `git ls-remote --tags ${gitUrl}`;
+
+  return new Promise((resolve, reject) => {
+    let tags: string[] = [];
+    execCommandWithEnv(gitCmd, (error: any, stdout: string, stderr: any) => {
+      if (error) {
+        reject(`Error: ${stderr}`);
+      }
+
+      // Process the output and split into an array of tag names
+      const tags = stdout
+        .trim()
+        .split('\n')
+        .filter(line => !line.includes('^{}'))
+        .map(line => { return line.split('\t')[1].replace('refs/tags/', ''); })
+        .sort((a, b) => compareVersions(b, a));
+
+      resolve(tags);
+    });
+  });
 }

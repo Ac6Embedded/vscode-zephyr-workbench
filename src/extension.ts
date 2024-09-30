@@ -23,7 +23,7 @@ import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsComma
 import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
-import { extractSDK, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
+import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
 import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findTask, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
@@ -501,6 +501,77 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
 	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.import-official-sdk", async (sdkType, sdkVersion, listToolchains, parentPath) => {
+			if(sdkType && sdkVersion && parentPath) {
+				ImportZephyrSDKPanel.currentPanel?.dispose();
+				vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: "Importing Zephyr SDK",
+					cancellable: true,
+				}, async (progress, token) => {
+					let toolchains = listToolchains.split(' ');
+					let urls = generateSdkUrls(sdkType, sdkVersion, toolchains);
+
+					try {
+						let url = urls[0];
+						if(url) {
+							// Download SDK then extract SDK and get the first level extracted folder
+							progress.report({
+								message: `Download ${url}`,
+								increment: 0,
+							});
+							let downloadedFileUri = await download(url, parentPath, context, progress, token);
+
+							progress.report({
+								message: `Extracting ${downloadedFileUri}`,
+								increment: 40,
+							});
+							let zephyrSDKPath = await extractSDK(downloadedFileUri.fsPath, parentPath, progress, token);
+							
+							// If toolchain urls exist, download them
+							if(urls.length > 1) {
+								for(let i=1; i<urls.length; i++) {
+									progress.report({
+										message: `Download ${urls[i]}`,
+									});
+									let downloadedFileUri = await download(urls[i], parentPath, context, progress, token);
+									progress.report({
+										message: `Extracting ${downloadedFileUri}`,
+									});
+									await extractSDK(downloadedFileUri.fsPath, zephyrSDKPath, progress, token);
+								}
+							}
+
+							progress.report({
+								message: `Importing SDK done`,
+								increment: 60,
+							});
+							
+							// Register the SDK into settings
+							if(zephyrSDKPath) {
+								await registerZephyrSDK(zephyrSDKPath);
+								await cleanupDownloadDir(context);
+							}
+						}
+					} catch(e: any) {
+						if(e.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+							vscode.window.showInformationMessage("Download cancelled");
+						} else if(e.code === 'TAR_BAD_ARCHIVE') {
+							vscode.window.showErrorMessage("Extracting SDK failed");
+						} else {
+							vscode.window.showErrorMessage("Download failed: " + e);
+						}
+					}		
+					progress.report({message:'Importing SDK done', increment: 100});
+					zephyrSdkProvider.refresh();
+				});
+			} else {
+				vscode.window.showErrorMessage('Missing information to download SDK');
+			}
+		})
+	);
+
+	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.import-remote-sdk", async (remotePath, parentPath) => {
 			if(remotePath && parentPath) {
 				ImportZephyrSDKPanel.currentPanel?.dispose();
@@ -581,8 +652,8 @@ export function activate(context: vscode.ExtensionContext) {
 				if(await showConfirmMessage(`Delete ${node.sdk.name} permanently ?`)) {
 					vscode.window.withProgress({
 						location: vscode.ProgressLocation.Notification,
-										title: "Deleting Zephyr SDK",
-										cancellable: false,
+						title: "Deleting Zephyr SDK",
+						cancellable: false,
 						}, async () => {
 							await unregisterZephyrSDK(node.sdk.rootUri.fsPath);
 							deleteFolder(node.sdk.rootUri.fsPath);

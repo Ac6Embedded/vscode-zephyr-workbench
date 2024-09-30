@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { execCommandWithEnv } from "../execUtils";
+import { execCommandWithEnv, getGitTags } from "../execUtils";
 
 export class CreateWestWorkspacePanel {
   public static currentPanel: CreateWestWorkspacePanel | undefined;
@@ -236,54 +236,4 @@ export class CreateWestWorkspacePanel {
     );
   }
   
-}
-
-export async function getGitTags(gitUrl: string): Promise<string[]> {
-
-  const gitCmd = `git ls-remote --tags ${gitUrl}`;
-
-  return new Promise((resolve, reject) => {
-    let tags: string[] = [];
-    execCommandWithEnv(gitCmd, (error: any, stdout: string, stderr: any) => {
-      if (error) {
-        reject(`Error: ${stderr}`);
-      }
-
-      // Process the output and split into an array of tag names
-      const tags = stdout
-        .trim()
-        .split('\n')
-        .filter(line => !line.includes('^{}'))
-        .map(line => { return line.split('\t')[1].replace('refs/tags/', ''); })
-        .sort((a, b) => compareVersions(b, a));
-
-      resolve(tags);
-    });
-  });
-}
-
-
-/**
- * Compares two version strings in semantic versioning format.
- * @param v1 - The first version string.
- * @param v2 - The second version string.
- * @returns A number: 1 if v1 > v2, -1 if v1 < v2, 0 if equal.
- */
-function compareVersions(v1: string, v2: string): number {
-  const v1Parts = v1.replace(/^v/, '').split('.').map(Number);
-  const v2Parts = v2.replace(/^v/, '').split('.').map(Number);
-
-  for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
-      const v1Part = v1Parts[i] || 0;
-      const v2Part = v2Parts[i] || 0;
-
-      if (v1Part > v2Part) {
-        return 1;
-      }
-      if (v1Part < v2Part) {
-        return -1;
-      }
-  }
-
-  return 0;
 }

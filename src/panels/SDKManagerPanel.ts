@@ -109,7 +109,9 @@ export class SDKManagerPanel {
                 <vscode-radio value="select">Select toolchains</vscode-radio>
               </vscode-radio-group>
               <fieldset class="no-border">
-                ${toolsListHTML}
+                <div class="toolchains-container">
+                  ${toolsListHTML}
+                </div>
               </fieldset>
              </fieldset>
           </form>

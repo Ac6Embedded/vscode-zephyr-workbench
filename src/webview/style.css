@@ -50,6 +50,17 @@ fieldset.no-border  {
   width: calc(var(--design-unit)* 140px);
 }
 
+.toolchains-container {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px; 
+}
+
+.toolchains-container vscode-checkbox {
+
+}
+
+
 #boardImg {
   max-width: 30vw;
   max-height: 30vh;

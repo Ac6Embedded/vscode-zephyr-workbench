@@ -7,10 +7,10 @@ import os from 'os';
 import path from "path";
 import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
+import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCHDIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs } from "./execUtils";
 import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSDK } from "./utils";
 import { getZephyrTerminal } from "./zephyrTerminalUtils";
-import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCHDIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 
 export let output = vscode.window.createOutputChannel("Installing Host Tools");
 
@@ -599,7 +599,6 @@ export async function download(url: string, destDir: string, context: vscode.Ext
       const increment = (downloadedBytes / totalBytes) * 100;
       progress.report({
         message: `Downloading... ${Math.round(increment)}%`,
-        increment: 1
       });
     }
   };
@@ -637,7 +636,6 @@ export async function extractTar(filePath: string, destPath: string, progress: v
     await execCommand(cmd);
     progress.report({
       message: `Extracting...`,
-      increment: 100
     });
   } catch (error) {
     throw new Error('Cannot extract archive');
