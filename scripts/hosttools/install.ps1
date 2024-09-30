@@ -3,7 +3,7 @@ param (
     [switch]$OnlyCheck,
     [switch]$ReinstallVenv,
     [switch]$Global,
-    [string]$SkipSdk,
+    [switch]$SkipSdk,
     [string]$SelectSdk,
     [switch]$Help,
     [switch]$Version
