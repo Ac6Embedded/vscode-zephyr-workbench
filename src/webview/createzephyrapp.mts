@@ -1,4 +1,4 @@
-import { Button, Dropdown, TextField, allComponents,
+import { Button, Dropdown, RadioGroup, TextField, allComponents,
   provideVSCodeDesignSystem } from "@vscode/webview-ui-toolkit/";
 
 provideVSCodeDesignSystem().register(
@@ -314,7 +314,8 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const sampleInput = document.getElementById('sampleInput') as HTMLInputElement;
   const projectNameText = document.getElementById("projectName") as TextField;
   const projectParentPathText = document.getElementById("projectParentPath") as TextField;
-  
+  const pristineRadioGroup = document.getElementById("pristineMode") as RadioGroup;
+
   webviewApi.postMessage(
     {
       command: 'create',
@@ -324,6 +325,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       samplePath: sampleInput.getAttribute('data-value'),
       projectName: projectNameText.value,
       projectParentPath: projectParentPathText.value,
+      pristine: pristineRadioGroup.value,
     }
   );
 }

@@ -118,11 +118,4 @@ zephyr_content:
     darwin:
       source: xxx
       sha256: xxx
-- tool: python_requirements
-  os:
-    linux:
-      source: https://www.ac6-tools.com/downloads/zinstaller/tools/requirements-3.7.0.zip
-      sha256: 112719f1c267be771e73f6c23adc9d9077515895f888bf9b8f364ec74b44cd2a
-    darwin:
-      source: https://www.ac6-tools.com/downloads/zinstaller/tools/requirements-3.7.0.zip
-      sha256: 112719f1c267be771e73f6c23adc9d9077515895f888bf9b8f364ec74b44cd2a
+      

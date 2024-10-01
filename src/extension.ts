@@ -733,7 +733,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', zephyrSDK) => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', zephyrSDK, pristineValue = 'auto') => {
 			if(!westWorkspace) {
 				vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
 				return;
@@ -782,7 +782,11 @@ export function activate(context: vscode.ExtensionContext) {
 						await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK);
 						await createTasksJson(workspaceFolder);
 						await createExtensionsJson(workspaceFolder);
+						await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
 						CreateZephyrAppPanel.currentPanel?.dispose();
+						
+						// Note: Force refresh as the first refresh is sometime done before the tasks.json is generated 
+						zephyrAppProvider.refresh();
 						vscode.window.showInformationMessage(`New Application '${workspaceFolder.name}' created !`);
 					}
 				}

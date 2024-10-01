@@ -179,6 +179,15 @@ export class CreateZephyrAppPanel {
                 </div>
 
                 <div class="grid-group-div">
+                  <vscode-radio-group id="pristineMode" orientation="vertical">
+                    <label slot="label">Pristine Builds option:</label>
+                    <vscode-radio value="auto" checked>auto (detect if build directory needs to be made pristine before build)</vscode-radio>
+                    <vscode-radio value="always">always (force the build directory pristine before build)</vscode-radio>
+                    <vscode-radio value="none">none</vscode-radio>
+                  </vscode-radio-group>
+                </div>
+
+                <div class="grid-group-div">
                   <vscode-button id="createButton">Create</vscode-button>
                 </div>
               </form>
@@ -225,7 +234,8 @@ export class CreateZephyrAppPanel {
             let sample = await getSample(message.samplePath);
             let projectName = message.projectName;
             let projectLoc = message.projectParentPath;
-            vscode.commands.executeCommand("zephyr-workbench-app-explorer.create-app", westWorkspace, sample, board, projectLoc, projectName, sdk);
+            let pristineMode = message.pristine;
+            vscode.commands.executeCommand("zephyr-workbench-app-explorer.create-app", westWorkspace, sample, board, projectLoc, projectName, sdk, pristineMode);
             break;
         }
       },

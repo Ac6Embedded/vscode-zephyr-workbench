@@ -2,7 +2,7 @@ param (
     [string]$InstallDir = "$env:USERPROFILE",
     [switch]$OnlyCheck,
     [switch]$ReinstallVenv,
-    [switch]$Global,
+    [switch]$Portable,
     [switch]$SkipSdk,
     [string]$SelectSdk,
     [switch]$Help,
@@ -32,7 +32,7 @@ Options:
   -SkipSdk               Skip default SDK download and installation
   -InstallSdk            Additionally install the SDK after installing the packages
   -ReinstallVenv         Remove .venv folder, create a new .venv, install requirements and west
-  -Global                Install Python and 7z as global packages (not portable)
+  -Portable              Install portable Python and 7z instead of global
   -SelectSdk             Specify space-separated SDKs to install. E.g., 'arm aarch64'
 
 Arguments:
@@ -131,10 +131,10 @@ function Install-PythonVenv {
 	Download-WithoutCheck "${$RequirementsBaseUrl}/requirements-build-test.txt" "requirements-build-test.txt"
 	Download-WithoutCheck "${$RequirementsBaseUrl}/requirements-base.txt" "requirements-base.txt"
 	Move-Item -Path "$DownloadDirectory/require*.txt" -Destination "$RequirementsDirectory"
-	
+
     python -m venv "$InstallDirectory\.venv"
     . "$InstallDirectory\.venv\Scripts\Activate.ps1"
-    python -m pip install setuptools wheel windows-curses west pyelftools pyocd --quiet
+    python -m pip install setuptools wheel windows-curses west pyelftools --quiet
     python -m pip install -r "$RequirementsDirectory\requirements.txt" --quiet
 }
 
@@ -353,7 +353,17 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 		#if 7z installed in a non default place it will fail, you should use the portable version without -Global
     } else {
         Write-Host "7-Zip is not installed."
-		if($Global) {
+		if($Portable) {
+            Write-Host "Installing now 7z Portable..."
+            $SevenZPortableFolderName = "7-Zip"
+            $SevenZPortableInstallerName = "7-Zip.exe"
+            Download-FileWithHashCheck $seven_z_portable_array[0] $seven_z_portable_array[1] $SevenZPortableInstallerName
+            Start-Process -FilePath "$DownloadDirectory\$SevenZPortableInstallerName" -ArgumentList "-o${ToolsDirectory} -y" -Wait
+
+            $SevenZ = "$ToolsDirectory\$SevenZPortableFolderName\7z.exe"
+			Test-FileExistence -FilePath $SevenZ
+			$SevenZPath = "$ToolsDirectory\$SevenZPortableFolderName"
+		} else {
             Write-Host "Installing now 7z Global..."
             $SevenZInstallerName = "7z-installer.exe"
             Download-FileWithHashCheck $seven_z_array[0] $seven_z_array[1] $SevenZInstallerName
@@ -372,18 +382,8 @@ if (! $OnlyCheck -or $ReinstallVenv) {
             $SevenZ = "C:\Program Files\7-Zip\7z.exe"
 			$SevenZPath = "C:\Program Files\7-Zip"
 			Test-FileExistence -FilePath $SevenZ
-		} else {
-            Write-Host "Installing now 7z Portable..."
-            $SevenZPortableFolderName = "7-Zip"
-            $SevenZPortableInstallerName = "7-Zip.exe"
-            Download-FileWithHashCheck $seven_z_portable_array[0] $seven_z_portable_array[1] $SevenZPortableInstallerName
-            Start-Process -FilePath "$DownloadDirectory\$SevenZPortableInstallerName" -ArgumentList "-o${ToolsDirectory} -y" -Wait
-
-            $SevenZ = "$ToolsDirectory\$SevenZPortableFolderName\7z.exe"
-			Test-FileExistence -FilePath $SevenZ
-			$SevenZPath = "$ToolsDirectory\$SevenZPortableFolderName"
 		}
-		Write-Host "7-Zip Portable installation completed."
+		Write-Host "7-Zip installation completed."
     }
 
 	if ($ReinstallVenv) {
@@ -501,7 +501,7 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 		    $SdkMinimalUrl = "${SdkBaseUrl}/zephyr-sdk-${SdkVersion}_windows-x86_64_minimal.7z"
 		    Write-Host "Installing minimal SDK for $SdkList"
 		    Download-WithoutCheck "${SdkMinimalUrl}" "${SdkName}.7z"
-		    Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\${SdkName}.7z" -DestinationDirectory $ToolsDirectory
+		    Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\${SdkName}.7z" -DestinationDirectory $InstallDirectory
 
 		    $SdkList = $SelectSdk.Split(" ")
 		    
@@ -511,7 +511,7 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 			    
 			    $ToolchainUrl = "${SdkBaseUrl}/toolchain_windows-x86_64_${ToolchainName}.7z"
 			    Download-WithoutCheck "${ToolchainUrl}" "${ToolchainName}.7z"
-			    Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\${ToolchainName}.7z" -DestinationDirectory "$ToolsDirectory\${SdkName}"
+			    Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\${ToolchainName}.7z" -DestinationDirectory "$InstallDirectory\${SdkName}"
 		    }
       } else {
 		    $SdkZipName = $SdkName + "_windows-x86_64.7z"
@@ -526,47 +526,48 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     }
     
     Print-Title "Python"
-	  if($Global){
-          $PythonSetupFilename = "python_installer.exe"
-          Download-FileWithHashCheck $python_array[0] $python_array[1] $PythonSetupFilename
+    if($Portable) {
+        $WinPythonSetupFilename = "Winpython64.exe"
+        Download-FileWithHashCheck $python_portable_array[0] $python_portable_array[1] $WinPythonSetupFilename
 
-		  Start-Process -FilePath "$DownloadDirectory\$PythonSetupFilename" -ArgumentList "/quiet", "PrependPath=1" -Wait
-		  
-		  #check if python is installed
-          $python = Get-Command python -ErrorAction SilentlyContinue
-          if ($python) {
-              Write-Output "Python is installed. Version: $(python --version)"
-          } else {
-              Write-Output "Python is not installed."
-          }
-		  
-		  #Python should be added automatically to path thanks to PrependPath=1
-          $PythonPath=""
-	  }
-	  else {
-          $WinPythonSetupFilename = "Winpython64.exe"
-          Download-FileWithHashCheck $python_portable_array[0] $python_portable_array[1] $WinPythonSetupFilename
-      
-          $WinPythonVersion = "3.11.8"
-          $PythonInstallDirectory = "$ToolsDirectory\python"
-      
-          # Extract and wait
-          Start-Process -FilePath "$DownloadDirectory\$WinPythonSetupFilename" -ArgumentList "-o`"$ToolsDirectory`" -y" -Wait
-          if (Test-Path -Path $ToolsDirectory\python) {
-          Remove-Item -Path $ToolsDirectory\python -Recurse -Force
-          }
-          #Rename the folder that starts with WPy64- to python
-          Rename-Item -Path (Get-ChildItem -Directory -Filter "WPy64-*" -Path $ToolsDirectory | Select-Object -First 1).FullName -NewName "python"
-          Copy-Item -Path "$ToolsDirectory\python\python-${WinPythonVersion}.amd64\python.exe" -Destination "$ToolsDirectory\python\python-${WinPythonVersion}.amd64\python3.exe"
-		  $PythonPath = "$ToolsDirectory\python\python-${WinPythonVersion}.amd64;$ToolsDirectory\python\python-${WinPythonVersion}.amd64\Scripts"
-	  }
+        $WinPythonVersion = "3.11.8"
+        $PythonInstallDirectory = "$ToolsDirectory\python"
+
+        # Extract and wait
+        Start-Process -FilePath "$DownloadDirectory\$WinPythonSetupFilename" -ArgumentList "-o`"$ToolsDirectory`" -y" -Wait
+        if (Test-Path -Path $ToolsDirectory\python) {
+            Remove-Item -Path $ToolsDirectory\python -Recurse -Force
+        }
+        #Rename the folder that starts with WPy64- to python
+        Rename-Item -Path (Get-ChildItem -Directory -Filter "WPy64-*" -Path $ToolsDirectory | Select-Object -First 1).FullName -NewName "python"
+        Copy-Item -Path "$ToolsDirectory\python\python-${WinPythonVersion}.amd64\python.exe" -Destination "$ToolsDirectory\python\python-${WinPythonVersion}.amd64\python3.exe"
+        $PythonPath = "$ToolsDirectory\python\python-${WinPythonVersion}.amd64;$ToolsDirectory\python\python-${WinPythonVersion}.amd64\Scripts"
+    } else {
+        $PythonSetupFilename = "python_installer.exe"
+        Download-FileWithHashCheck $python_array[0] $python_array[1] $PythonSetupFilename
+
+        Start-Process -FilePath "$DownloadDirectory\$PythonSetupFilename" -ArgumentList "/quiet", "PrependPath=1" -Wait
+        
+        #check if python is installed
+        $python = Get-Command python -ErrorAction SilentlyContinue
+        if ($python) {
+            Write-Output "Python is installed. Version: $(python --version)"
+        } else {
+            Write-Output "Python is not installed."
+        }
+        
+        #Python should be added automatically to path thanks to PrependPath=1
+        $PythonPath=""
+	#Reload Path variable
+	$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    }
 
     # Update path
     $CmakePath = "$ToolsDirectory\cmake\bin"
     $DtcPath = "$ToolsDirectory\dtc\usr\bin"
     $GperfPath = "$ToolsDirectory\gperf\bin"
     $NinjaPath = "$ToolsDirectory\ninja"
-    $GitPath = "$ToolsDirectory\git"
+    $GitPath = "$ToolsDirectory\git\bin"
     $WgetPath = "$ToolsDirectory\wget"
     # $PythonPath & $SevenZPath already defined previously based on portable or global
 

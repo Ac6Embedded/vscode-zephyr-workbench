@@ -24,26 +24,10 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     return [];
   }
 
-  public async runPreTask(_task: vscode.Task, project: ZephyrAppProject): Promise<void> {
-    const workspaceFolder = project.workspaceFolder;
-    
-    if(_task.name === 'West Build') {
-      // Check pristine option
-      let pristineOpt = await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).get(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY);
-      if(!pristineOpt || pristineOpt === '') {
-        let pristineValue = await showPristineQuickPick();
-        await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
-      }
-    }
-  }
-
   public async resolveTask(_task: vscode.Task, token: vscode.CancellationToken): Promise<vscode.Task> {
     const folder = _task.scope as vscode.WorkspaceFolder;
     const project = new ZephyrAppProject(folder, folder.uri.fsPath);
     const activeSdk = getZephyrSDK(project.sdkPath);
-
-    await this.runPreTask(_task, project);
-
     const westWorkspace = getWestWorkspace(project.westWorkspacePath);
 
     let cmd = _task.definition.command;

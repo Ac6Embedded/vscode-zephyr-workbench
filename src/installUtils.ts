@@ -251,10 +251,11 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
         installScript = 'install.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         if(skipSdk) {
-          installArgs += '--skip-sdk';
+          installArgs += ' --skip-sdk';
         } else if(listTools.length > 0) {
-          installArgs += `--select-sdk="${listTools}"`;
+          installArgs += ` --select-sdk="${listTools}"`;
         }
+        installArgs += ' --portable';
         installArgs += ` ${destDir}`;
         shell = 'bash';
         break; 
@@ -263,10 +264,11 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
         installScript = 'install.ps1';
         installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         if(skipSdk) {
-          installArgs += '-SkipSdk ';
+          installArgs += ' -SkipSdk ';
         } else if(listTools.length > 0) {
-          installArgs += `-SelectSdk "${listTools}"`;
+          installArgs += ` -SelectSdk "${listTools}"`;
         }
+        installArgs += ' --Portable';
         installArgs += ` -InstallDir ${destDir}`;
         shell = 'powershell.exe';
         break; 
@@ -275,10 +277,11 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
         installScript = 'install.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         if(skipSdk) {
-          installArgs += '--skip-sdk';
+          installArgs += ' --skip-sdk';
         } else if(listTools.length > 0) {
-          installArgs += `--select-sdk="${listTools}"`;
+          installArgs += ` --select-sdk="${listTools}"`;
         }
+        installArgs += ' --portable';
         installArgs += ` ${destDir}`;
         shell = 'bash';
         break; 
