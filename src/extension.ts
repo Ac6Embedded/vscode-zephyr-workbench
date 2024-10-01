@@ -380,6 +380,7 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.commands.registerCommand('zephyr-workbench-west-workspace.update', async (node: WestWorkspaceTreeItem) => {
 		if(node.westWorkspace) {
 			await westUpdateCommand(node.westWorkspace.rootUri.fsPath);
+			await westBoardsCommand(node.westWorkspace.rootUri.fsPath);
 		}
 	});
 
