@@ -204,9 +204,9 @@ export class DebugManagerPanel {
 
             <!-- Control buttons -->
             <div class="grid-group-div">
-              <vscode-button id="resetButton" class="finish-input-button">Reset Default</vscode-button>
-              <vscode-button id="applyButton" class="finish-input-button">Apply</vscode-button>
-              <vscode-button id="debugButton" class="finish-input-button">Debug</vscode-button>
+              <vscode-button id="resetButton" appearance="secondary" class="finish-input-button">Reset Default</vscode-button>
+              <vscode-button id="applyButton" appearance="secondary" class="finish-input-button">Apply</vscode-button>
+              <vscode-button id="debugButton" appearance="primary" class="finish-input-button">Debug</vscode-button>
             <div>
           </form>
           <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
