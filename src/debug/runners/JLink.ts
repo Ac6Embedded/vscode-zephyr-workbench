@@ -1,35 +1,41 @@
 import { RunnerType, WestRunner } from "./WestRunner";
 
 export class JLink extends WestRunner {
-  name = 'j-link';
+  name = 'jlink';
   label = 'J-Link';
   types = [ RunnerType.FLASH, RunnerType.DEBUG ];
   serverStartedPattern = '';
 
-  get executable(): string | undefined{
+  get executable(): string | undefined {
     const exec = super.executable;
     if(!exec) {
       return 'JLinkGDBServer';
     }
   }
 
-  loadArgs(args: string) {
+  loadArgs(args: string | undefined) {
     super.loadArgs(args);
 
-    const pathRegex = /--gdbserver\s+("[^"]+"|\S+)/;
-    const pathMatch = args.match(pathRegex);
+    if(args) {
+      const pathRegex = /--gdbserver\s+("[^"]+"|\S+)/;
+      const pathMatch = args.match(pathRegex);
 
-    if(pathMatch) {
-      this.serverPath = pathMatch[1];
-    } else {
+      if(pathMatch) {
+        this.serverPath = pathMatch[1];
+      } 
+    }
+    
+    // Search if serverPath is set in settings
+    if(!this.serverPath || this.serverPath.length === 0 ) {
       let pathExecSetting = this.getSetting('pathExec');
       if(pathExecSetting) {
         this.serverPath = pathExecSetting;
       }
     }
 
-
-    this.loadUserArgs(args);
+    if(args) {
+      this.loadUserArgs(args);
+    }
   }
 
   get autoArgs(): string {

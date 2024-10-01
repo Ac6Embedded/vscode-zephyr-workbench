@@ -32,7 +32,7 @@ export class WestRunner {
     }
   }
 
-  loadArgs(args: string) {
+  loadArgs(args: string | undefined) {
   }
 
   async loadInternalArgs() {

@@ -72,10 +72,9 @@ export class ZephyrOtherResourcesCommandProvider implements vscode.TreeDataProvi
     const items: MenuItem[] = [];
 
     items.push(trainingProgramMenuItem);
+    items.push(tutorialMenuItem);
     items.push(documentationMenuItem);
     items.push(awesomeMenuItem);
-    items.push(tutorialMenuItem);
-
     return items;
   }
 

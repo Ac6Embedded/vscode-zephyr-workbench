@@ -81,6 +81,11 @@ vscode-button {
   height: calc(var(--input-height)* 1px);
 }
 
+.runner-install {
+  position: absolute;
+  margin-left: 5px;
+}
+
 .combo-dropdown {
   position: relative;
   display: inline-block;
@@ -210,7 +215,7 @@ vscode-button {
   top: -40px;
   left: 50%;
   transform: translateX(-50%);
-  width: 300px;
+  width: 250px;
   max-width: 90vw;
   border-radius: 5px;
   color: #fff;
@@ -244,6 +249,60 @@ vscode-button {
 
 @media screen and (max-width: 300px) {
   .tooltip::after {
+    left: 0;
+    right: auto;
+    transform: translateX(10%);
+  }
+}
+
+
+.no-icon-tooltip {
+  
+}
+
+.no-icon-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  background: rgba(0,0,0,0.8);
+  top: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 250px;
+  max-width: 90vw;
+  border-radius: 5px;
+  color: #fff;
+  padding: 8px;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  white-space: normal;
+  pointer-events: none;
+  visibility: hidden;
+  font-family: var(--font-family);
+  font-size: var(--type-ramp-base-font-size);
+}
+
+.no-icon-tooltip:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+.no-icon-tooltip[data-tooltip]:hover::after {
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: normal;
+}
+
+@media screen and (max-width: 400px) {
+  .no-icon-tooltip::after {
+    right: 0;
+    left: auto;
+    transform: translateX(-10%);
+  }
+}
+
+@media screen and (max-width: 300px) {
+  .no-icon-tooltip::after {
     left: 0;
     right: auto;
     transform: translateX(10%);

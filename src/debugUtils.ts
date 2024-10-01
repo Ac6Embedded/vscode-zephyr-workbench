@@ -40,7 +40,7 @@ export function getRunner(runnerName: string): WestRunner | undefined {
       return new Openocd();
     case 'linkserver':
       return new Linkserver();
-    case 'j-link':
+    case 'jlink':
       return new JLink();
     case 'pyocd':
       return new PyOCD();
@@ -181,13 +181,14 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
     type: "cppdbg",
     request: "launch",
     cwd: "${workspaceFolder}",
+    preLaunchTask: "West Build",
     program: `${program}`,
     args: [],
     stopAtEntry: true,
     svdPath: "",
     environment: [],
     externalConsole: false,
-    serverLaunchTimeout: 20000,
+    serverLaunchTimeout: 10000,
     filterStderr: true,
     filterStdout: true,
     serverStarted: "",

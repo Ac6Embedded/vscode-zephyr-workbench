@@ -32,7 +32,8 @@ import { ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { generateWestManifest } from './manifestUtils';
 
-let statusBarItem: vscode.StatusBarItem;
+let statusBarBuildItem: vscode.StatusBarItem;
+let statusBarDebugItem: vscode.StatusBarItem;
 let zephyrTaskProvider: vscode.Disposable | undefined;
 
 // This method is called when your extension is activated
@@ -54,11 +55,17 @@ export function activate(context: vscode.ExtensionContext) {
 	const workspacePath = (vscode.workspace.workspaceFolders && (vscode.workspace.workspaceFolders.length > 0))
 	? vscode.workspace.workspaceFolders[0].uri.fsPath : undefined;
 
-	statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-	statusBarItem.text = "$(gear) Build";
-	statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-  statusBarItem.command = "zephyr-workbench-status-bar.build";
-  context.subscriptions.push(statusBarItem);
+	statusBarBuildItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 101);
+	statusBarBuildItem.text = "$(gear) Build";
+	statusBarBuildItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+  statusBarBuildItem.command = "zephyr-workbench-status-bar.build";
+	statusBarDebugItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+	statusBarDebugItem.text = "$(debug-alt) Debug";
+	statusBarDebugItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+  statusBarDebugItem.command = "zephyr-workbench-status-bar.debug";
+
+  context.subscriptions.push(statusBarBuildItem);
+	context.subscriptions.push(statusBarDebugItem);
 
 	const zephyrShortcutProvider = new ZephyrShortcutCommandProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-shortcuts', zephyrShortcutProvider);
@@ -83,6 +90,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	vscode.commands.registerCommand('zephyr-workbench-status-bar.build', async () => {
 		vscode.commands.executeCommand("zephyr-workbench-app-explorer.build-app", getCurrentWorkspaceFolder());
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-status-bar.debug', async () => {
+		vscode.commands.executeCommand("zephyr-workbench-app-explorer.debug-app", getCurrentWorkspaceFolder());
 	});
 
 	vscode.commands.registerCommand('zephyr-workbench.open-webpage', async (site_url: string) => {
@@ -238,21 +249,28 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	vscode.commands.registerCommand('zephyr-workbench-app-explorer.debug-app', async (node: ZephyrApplicationTreeItem) => {
-		if(node.project) {
-			const launchConfig = vscode.workspace.getConfiguration('launch', node.project.workspaceFolder.uri);
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.debug-app', async (node: ZephyrApplicationTreeItem | vscode.WorkspaceFolder) => {
+		let workspaceFolder: any = node ;
+		if(node instanceof ZephyrApplicationTreeItem) {
+			if(node.project) {
+				workspaceFolder = node.project.workspaceFolder;
+			}
+		}
+		
+		if(workspaceFolder) {
+			const launchConfig = vscode.workspace.getConfiguration('launch', workspaceFolder.uri);
 			if(launchConfig) {
 				const configurations: vscode.DebugConfiguration[] = launchConfig.get('configurations', []);
 				if(configurations) {
 					if(configurations.some((config: { name: string }) => config.name === ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME)) {
-						await vscode.debug.startDebugging(node.project.workspaceFolder, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME);
+						await vscode.debug.startDebugging(workspaceFolder, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME);
 						return;
 					}
 				}
 			}
 			
 			const debugManagerItem = 'Open Debug Manager';
-			const choice = await vscode.window.showErrorMessage("No debug configuration found", debugManagerItem);
+			const choice = await vscode.window.showWarningMessage('No debug launch configuration found, please configure the debug session on the Debug Manager', debugManagerItem);
 			if(choice === debugManagerItem) {
 				vscode.commands.executeCommand('zephyr-workbench.debug-manager');
 			}
@@ -944,7 +962,6 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	updateStatusBar();
 	setDefaultSettings();
 }
 
@@ -961,10 +978,13 @@ function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
 async function updateStatusBar() {
 	const currentFolder = getCurrentWorkspaceFolder();
 	if(currentFolder && await ZephyrAppProject.isZephyrProjectWorkspaceFolder(currentFolder)) {
-		statusBarItem.tooltip = `Zephyr: Build ${currentFolder.name}`;
-		statusBarItem.show();
+		statusBarBuildItem.tooltip = `Zephyr: Build ${currentFolder.name}`;
+		statusBarDebugItem.tooltip = `Zephyr: Debug ${currentFolder.name}`;
+		statusBarBuildItem.show();
+		statusBarDebugItem.show();
 	} else {
-		statusBarItem.hide();
+		statusBarBuildItem.hide();
+		statusBarDebugItem.hide();
 	}
 }
 
@@ -977,12 +997,4 @@ export async function showConfirmMessage(message: string): Promise<boolean> {
 
 // This method is called when your extension is deactivated
 export function deactivate() {}
-
-async function isWestInstalled() {
-	try {
-		await execCommand('west --version');
-	} catch (error) {
-		throw new Error('West is not installed. Please install it to run this command.');
-	}
-}
 

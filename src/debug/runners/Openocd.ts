@@ -16,28 +16,34 @@ export class Openocd extends WestRunner {
     }
   }
 
-  loadArgs(args: string) {
+  loadArgs(args: string | undefined) {
     super.loadArgs(args);
 
-    const pathRegex = /--openocd\s+("[^"]+"|\S+)/;
-    const scriptsRegex = /--openocd-search\s+("[^"]+"|\S+)/;
-    const pathMatch = args.match(pathRegex);
-    const scriptsMatch = args.match(scriptsRegex);
+    if(args) {
+      const pathRegex = /--openocd\s+("[^"]+"|\S+)/;
+      const scriptsRegex = /--openocd-search\s+("[^"]+"|\S+)/;
+      const pathMatch = args.match(pathRegex);
+      const scriptsMatch = args.match(scriptsRegex);
 
-    if(pathMatch) {
-      this.serverPath = pathMatch[1];
-    } else {
+      if(pathMatch) {
+        this.serverPath = pathMatch[1];
+      } 
+      if(scriptsMatch) {
+        this.args['scriptDir'] = scriptsMatch[1];
+      } 
+    }
+    
+    // Search if serverPath is set in settings
+    if(!this.serverPath || this.serverPath.length === 0 ) {
       let pathExecSetting = this.getSetting('pathExec');
       if(pathExecSetting) {
         this.serverPath = pathExecSetting;
       }
     }
 
-    if(scriptsMatch) {
-      this.args['scriptDir'] = scriptsMatch[1];
-    } 
-
-    this.loadUserArgs(args);
+    if(args) {
+      this.loadUserArgs(args);
+    }
   }
 
   async loadInternalArgs() {

@@ -38,6 +38,7 @@
     "Programming Languages"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "workspaceContains:prj.conf"
   ],
   "main": "./out/extension.js",

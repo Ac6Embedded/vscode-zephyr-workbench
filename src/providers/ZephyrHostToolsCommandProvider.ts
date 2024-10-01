@@ -60,7 +60,7 @@ const installDebugToolsMenuItem = new MenuItem(
 const debugManagerMenuItem = new MenuItem(
   'Debug Manager',
   vscode.TreeItemCollapsibleState.None,
-  'desktop-download',
+  'bug',
   {
     command: 'zephyr-workbench.debug-manager',
     title: 'Debug Manager',

@@ -66,6 +66,17 @@ const newSDKMenuItem = new MenuItem(
   }
 );
 
+const debugManagerMenuItem = new MenuItem(
+  'Debug Manager',
+  vscode.TreeItemCollapsibleState.None,
+  'bug',
+  {
+    command: 'zephyr-workbench.debug-manager',
+    title: 'Debug Manager',
+  }
+);
+
+
 export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<MenuItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<MenuItem | undefined> = new vscode.EventEmitter<MenuItem | undefined>();
   readonly onDidChangeTreeData: vscode.Event<MenuItem | undefined> = this._onDidChangeTreeData.event;
@@ -85,6 +96,7 @@ export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<Me
       items.push(newWestWorkspaceMenuItem);
       items.push(newAppMenuItem);
       items.push(newSDKMenuItem);
+      items.push(debugManagerMenuItem);
     } 
     return items;
   }

@@ -73,6 +73,7 @@ export class DebugManagerPanel {
   private async _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
     const webviewUri = getUri(webview, extensionUri, ["out", "debugmanager.js"]);
     const styleUri = getUri(webview, extensionUri, ["out", "style.css"]);
+    const codiconUri = getUri(webview, extensionUri, ["out", "codicon.css"]);
     const nonce = getNonce();
 
     let applicationsHTML: string = '';
@@ -98,8 +99,9 @@ export class DebugManagerPanel {
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-          <link rel="stylesheet" href="${styleUri}">
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+          <link nonce="${nonce}" rel="stylesheet" href="${styleUri}">
+          <link nonce="${nonce}" rel="stylesheet" href="${codiconUri}">
           <title>Debug Manager</title>
         </head>
         
@@ -135,7 +137,7 @@ export class DebugManagerPanel {
                 <vscode-button id="browseProgramButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
               </div>
               <div class="grid-group-div">
-                <vscode-text-field size="50" type="text" id="svdPath" value="">SVD File:</vscode-text-field>
+                <vscode-text-field size="50" type="text" id="svdPath" value="" placeholder="(Optional)" >SVD File:</vscode-text-field>
                 <vscode-button id="browseSvdButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
               </div>
             </fieldset>
@@ -170,7 +172,7 @@ export class DebugManagerPanel {
               <legend>Debug Server</legend> 
               <div class="grid-group-div">
                 <div class="grid-header-div">
-                  <label for="listRunners">Select the runner:&nbsp;<span class="tooltip" data-tooltip="Select the compatible debug server program">?</span></label>
+                  <label for="listRunners">Select the runner:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Select the compatible debug server program">?</span></label>
                 </div>
                 <div id="listRunners" class="combo-dropdown grid-value-div">
                   <input type="text" id="runnerInput" class="combo-dropdown-control" placeholder="Choose debug runner..." data-value="">
@@ -185,15 +187,18 @@ export class DebugManagerPanel {
                     ${runnersHTML}
                   </div>
                 </div>
+                <vscode-button appearance="icon" id="installRunnerButton" class="runner-install" style="vertical-align: top">
+                  <span class="codicon codicon-desktop-download no-icon-tooltip" data-tooltip="Install debug runners"></span>
+                </vscode-button>
               </div>
 
               <div class="grid-group-div">
-                <vscode-text-field size="50" type="text" id="runnerPath" value="">Runner Path:&nbsp;<span class="tooltip" data-tooltip="Enter to debug server location">?</span>&nbsp;&nbsp;&nbsp;<span id="runnerDetect"></span></vscode-text-field>
+                <vscode-text-field size="50" type="text" id="runnerPath" value="">Runner Path:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Enter to debug server's location if not found automatically in PATH">?</span>&nbsp;&nbsp;&nbsp;<span id="runnerDetect"></span></vscode-text-field>
                 <vscode-button id="browseRunnerButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
               </div>
             
               <div class="grid-group-div">
-                <vscode-text-field size="50" type="text" id="runnerArgs" value="">Additional arguments:&nbsp;<span class="tooltip" data-tooltip="Additional options to provide to debug server">?</span></vscode-text-field>
+                <vscode-text-field size="50" type="text" id="runnerArgs" value="" placeholder="(Optional)">Additional arguments:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Additional options to provide to debug server">?</span></vscode-text-field>
               </div>
             </fieldset>
 
@@ -255,6 +260,9 @@ export class DebugManagerPanel {
           case 'browseRunner': {
             this.openFileDialog('runnerPath');
             break;
+          }
+          case 'install': {
+            vscode.commands.executeCommand('zephyr-workbench.install-debug-tools');
           }
           case 'reset': {
             await resetHandler(message);

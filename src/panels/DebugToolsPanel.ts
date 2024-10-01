@@ -4,6 +4,7 @@ import yaml from 'yaml';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { installHostDebugTools } from "../installUtils";
+import { getRunner } from "../debugUtils";
 
 const toolsMap = new Map<string, string>();
 /*toolsMap.set("OpenOCD", "openocd");
@@ -64,16 +65,27 @@ export class DebugToolsPanel {
     }
   }
 
-  private getToolsHTML(): string {
+  private async getToolsHTML(): Promise<string> {
     let toolsHTML = '';
     const yamlFile = fs.readFileSync(vscode.Uri.joinPath(this._extensionUri, 'scripts', 'hosttools', 'debug-tools.yml').fsPath, 'utf8');
     const data = yaml.parse(yamlFile);
     for(let tool of data.debug_tools) {
+      let runner = getRunner(tool.tool);
+      if(runner) {
+        runner.loadArgs(undefined);
+        let found = await runner.detect();
+        if(found) {
+          tool.found = "installed";
+        } else {
+          tool.found = "not found";
+        }
+      }
+
       toolsHTML += `<tr id="row-${tool.tool}">
         <td><!--input type="checkbox"--></td>
         <td>${tool.name}</td>
         <td>${tool.version}</td>
-        <td></td>
+        <td>${tool.found}</td>
         <td>`;
 
       if(tool.os) {
@@ -103,7 +115,7 @@ export class DebugToolsPanel {
     const codiconUri = getUri(webview, extensionUri, ["out", "codicon.css"]);
     
     const nonce = getNonce();
-    const toolsHTML = this.getToolsHTML();
+    const toolsHTML = await this.getToolsHTML();
       
     return /*html*/ `
       <!DOCTYPE html>

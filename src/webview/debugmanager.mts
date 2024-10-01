@@ -21,6 +21,7 @@ function main() {
   const browseSvdButton = document.getElementById("browseSvdButton") as Button;
   const browseGdbButton = document.getElementById("browseGdbButton") as Button;
   const browseRunnerButton = document.getElementById("browseRunnerButton") as Button;
+  const installButton = document.getElementById("installRunnerButton") as Button;
   const resetButton = document.getElementById("resetButton") as Button;
   const applyButton = document.getElementById("applyButton") as Button;
   const debugButton = document.getElementById("debugButton") as Button;
@@ -41,6 +42,7 @@ function main() {
   browseGdbButton?.addEventListener("click", browseGdbHandler);
   browseRunnerButton?.addEventListener("click", browseRunnerHandler);
 
+  installButton.addEventListener("click", installHandler);
   resetButton.addEventListener("click", resetHandler);
   applyButton.addEventListener("click", applyHandler);
   debugButton.addEventListener("click", debugHandler);
@@ -148,6 +150,14 @@ function browseRunnerHandler(this: HTMLElement, ev: MouseEvent) {
   webviewApi.postMessage(
     {
       command: 'browseRunner',
+    }
+  );
+}
+
+function installHandler(this: HTMLElement, ev: MouseEvent) {
+  webviewApi.postMessage(
+    {
+      command: 'install',
     }
   );
 }

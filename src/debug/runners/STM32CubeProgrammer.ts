@@ -13,22 +13,29 @@ export class STM32CubeProgrammer extends WestRunner {
     }
   }
 
-  loadArgs(args: string) {
+  loadArgs(args: string | undefined) {
     super.loadArgs(args);
 
-    const pathRegex = /--extload\s+("[^"]+"|\S+)/;
-    const pathMatch = args.match(pathRegex);
+    if(args) {
+      const pathRegex = /--extload\s+("[^"]+"|\S+)/;
+      const pathMatch = args.match(pathRegex);
 
-    if(pathMatch) {
-      this.serverPath = pathMatch[1];
-    } else {
+      if(pathMatch) {
+        this.serverPath = pathMatch[1];
+      } 
+    }
+    
+    // Search if serverPath is set in settings
+    if(!this.serverPath || this.serverPath.length === 0 ) {
       let pathExecSetting = this.getSetting('pathExec');
       if(pathExecSetting) {
         this.serverPath = pathExecSetting;
       }
     }
 
-    this.loadUserArgs(args);
+    if(args) {
+      this.loadUserArgs(args);
+    }
   }
 
   get autoArgs(): string {
