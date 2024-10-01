@@ -6,6 +6,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [1.0.0]
 
+- Update host tools installation
+- Update "Create Zephyr Application" webview
+- Move pristine build option
 
 ## [0.1.5]
 
@@ -14,7 +17,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Fix build directory delete task
 - Fix tasks.json fetch and project detection
 - Improve UX with tooltip help
-- 
+
 ## [0.1.4]
 
 - Add Debug Manager to generate launch.json
