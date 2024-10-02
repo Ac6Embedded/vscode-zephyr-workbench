@@ -85,7 +85,7 @@ export class Linkserver extends WestRunner {
   findSystemLinkServer(): string | undefined {
     let directoryPath = '';
     if(process.platform === 'win32') {
-      directoryPath = 'C:\\NXP';
+      directoryPath = path.win32.join('c:\\', 'NXP');
     } else {
       directoryPath = '/usr/local';
     }
