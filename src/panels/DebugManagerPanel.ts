@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { createConfiguration as createDefaultConfiguration, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getServerAddressFromConfig, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../debugUtils";
+import { createConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getServerAddressFromConfig, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../debugUtils";
 import { ZephyrAppProject } from "../ZephyrAppProject";
 import { getZephyrProject } from '../utils';
 import { WestRunner } from '../debug/runners/WestRunner';
@@ -229,11 +229,17 @@ export class DebugManagerPanel {
             break;
           }
           case 'runnerChanged': {
-            /*const runnerName = message.runner;
+            const runnerName = message.runner;
+            const runnerPath = message.runnerPath;
             const runner = getRunner(runnerName);
             if(runner) {
-              await updateRunnerConfiguration(runner);
-            }*/
+              if(runnerPath && runnerPath.length > 0) {
+                runner.serverPath = runnerPath;
+              }
+              // FIXME: Does not take has the runnerPath value before detection
+              //await updateRunnerConfiguration(runner);
+              await updateRunnerDetect(runner);
+            }
             break;
           }
           case 'runnerPathChanged': {
@@ -424,7 +430,7 @@ export class DebugManagerPanel {
       if(appProject) {
         let [launchJson, config] = await getLaunchConfiguration(appProject);
         config.program = programPath;
-        config.svdPath = svdPath;
+        config.svdPath = svdPath? svdPath:'';
         config.miDebuggerPath = gdbPath;
     
         if(runner) {
@@ -439,7 +445,8 @@ export class DebugManagerPanel {
             config.setupCommands.push(arg);
           }
         }
-        createWestWrapper(appProject)
+        createWestWrapper(appProject);
+        createOpenocdCfg(appProject);
         writeLaunchJson(appProject, launchJson);
       }
     }

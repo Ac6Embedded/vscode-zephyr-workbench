@@ -81,6 +81,7 @@ function setLocalPath(id: string, path: string) {
   const localPath = document.getElementById(id) as TextField;
   if(path) {
     localPath.value = path;
+    localPath.dispatchEvent(new Event('input'));
   }
 }
 
@@ -277,7 +278,8 @@ function initApplicationsDropdown() {
 function initRunnersDropdown() {
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
   const runnersDropdown = document.getElementById('runnersDropdown') as HTMLElement;
-  
+  const runnerPath = document.getElementById('runnerPath') as TextField;
+
   runnerInput.addEventListener('focusin', function() {
     if(runnersDropdown) {
       runnersDropdown.style.display = 'block';
@@ -301,6 +303,7 @@ function initRunnersDropdown() {
       { 
         command: 'runnerChanged',
         runner: runnerInput.getAttribute('data-value'),
+        runnerPath: runnerPath.value ? runnerPath.value : '',
       }
     );
   });

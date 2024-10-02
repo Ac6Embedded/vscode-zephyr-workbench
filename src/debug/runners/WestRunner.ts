@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import path from "path";
 import { ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
 import { execCommandWithEnv } from '../../execUtils';
+import { platform } from 'os';
+import { formatWindowsPath } from '../../utils';
 
 export const ZEPHYR_WORKBENCH_DEBUG_PATH_SETTING_KEY = 'pathExec';
 
@@ -12,13 +14,14 @@ export enum RunnerType {
 export class WestRunner {
   name!: string;
   label!: string;
+  binDirPath: string = "";
   types?: RunnerType[];
   serverPath?: string;
   serverStartedPattern?: string;
   serverAddress?: string;
   serverPort?: string;
   args: { [key: string]: string } = {};
-  userArgs?: string;
+  userArgs: string = "";
 
   private getSettingKey(key: string): string {
     return `debug.${this.name}.${key}`;
@@ -33,13 +36,24 @@ export class WestRunner {
   }
 
   loadArgs(args: string | undefined) {
+    if(args) {
+      const gdbPortRegex = /gdb-port\s+(\d+)/;
+      const gdbPortMatch = args.match(gdbPortRegex);
+
+      if(gdbPortMatch) {
+        this.serverPort = gdbPortMatch[1];
+      } 
+    }
   }
 
   async loadInternalArgs() {
   }
 
   protected loadUserArgs(args: string) {
-    this.userArgs = args.replace(new RegExp(`^.*${this.autoArgs}\\s*`), '');
+    // For windows, to escape regex special characters
+    let autoArgs = this.autoArgs.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Strip autoArgs to extract user args
+    this.userArgs = args.replace(new RegExp(`^.*${autoArgs}\\s*`), '');
   }
 
   getWestDebugArgs(): string {
@@ -51,18 +65,34 @@ export class WestRunner {
   }
 
   get autoArgs(): string {
-    return `--runner ${this.name}`;
+    let args = `--runner ${this.name}`;
+    if(this.serverPort && this.serverPort !== '3333') {
+       args += ` --gdb-port ${this.serverPort}`;
+    }
+    return args;
   }
 
   getSetupCommands(program: string): any[] {
+    let basename = path.basename(program);
+    let dirname = path.dirname(program);
     return [
+      { "text": "-environment-cd " +`${formatWindowsPath(dirname)}`},
       { "text": "-target-select remote " + `${this.serverAddress}:${this.serverPort}`, "description": "connect to target", "ignoreFailures": false },
-      { "text": "-file-exec-and-symbols " + `${program}`, "description": "load file", "ignoreFailures": false},
+      { "text": "-file-exec-and-symbols " + `${basename}`, "description": "load file", "ignoreFailures": false},
       { "text": "-interpreter-exec console \"monitor reset\"", "ignoreFailures": false },
       { "text": "-target-download", "description": "flash target", "ignoreFailures": false },
       { "text": "set breakpoint pending on", "description": "Set pending", "ignoreFailures": false },
       { "text": "tbreak main", "description": "Set a breakpoint at main", "ignoreFailures": true },
     ];
+
+    // return [
+    //   { "text": "-target-select remote " + `${this.serverAddress}:${this.serverPort}`, "description": "connect to target", "ignoreFailures": false },
+    //   { "text": "-file-exec-and-symbols " + `${program}`, "description": "load file", "ignoreFailures": false},
+    //   { "text": "-interpreter-exec console \"monitor reset\"", "ignoreFailures": false },
+    //   { "text": "-target-download", "description": "flash target", "ignoreFailures": false },
+    //   { "text": "set breakpoint pending on", "description": "Set pending", "ignoreFailures": false },
+    //   { "text": "tbreak main", "description": "Set a breakpoint at main", "ignoreFailures": true },
+    // ];
   }
 
   loadSettings() {
@@ -88,20 +118,25 @@ export class WestRunner {
     let execPath = '';
     if(this.serverPath) {
       execPath = this.serverPath;
+    } else if(this.getSetting('pathExec')) {
+      execPath = this.getSetting('pathExec') as string;
     } else if(this.executable) {
       execPath = this.executable;
     }
-    
-    try {
-      let versionCmd = `${execPath} --version`;
-      if(process.platform === 'linux' || process.platform === 'darwin') {
-        versionCmd = `${versionCmd} 2>&1`;
-      }
-      await execCommandWithEnv(`${versionCmd}`);
-      return true;
-    } catch (error) {
-      return false;
+
+    let versionCmd = `${execPath} --version`;
+    if(process.platform === 'linux' || process.platform === 'darwin') {
+      versionCmd = `${versionCmd} 2>&1`;
     }
+    return new Promise<boolean>((resolve, reject) => {
+      execCommandWithEnv(`${versionCmd}`, (error: any, stdout: string, stderr: any) => {
+        if (error) {
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      });
+    });
   }
 
   static extractRunner(args: any): string | undefined {

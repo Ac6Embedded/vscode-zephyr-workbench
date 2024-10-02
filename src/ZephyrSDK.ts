@@ -69,7 +69,11 @@ export class ZephyrSDK {
 
   public getDebuggerPath(arch: string): string {
     let compilerPrefix = ZephyrSDK.getToolchainPrefix(arch);
-    return path.join('${config:zephyr-workbench.sdk}', compilerPrefix, 'bin', `${compilerPrefix}-gdb`);
+    let ext = '';
+    if(process.platform === 'win32') {
+      ext = '.exe';
+    }
+    return path.join('${config:zephyr-workbench.sdk}', compilerPrefix, 'bin', `${compilerPrefix}-gdb${ext}`);
   }
 
   static isSDKFolder(folder: vscode.WorkspaceFolder) {

@@ -24,11 +24,11 @@ import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherReso
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
-import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findTask, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
+import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findTask, getInstallDirRealPath, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
 import { DebugManagerPanel } from './panels/DebugManagerPanel';
-import { ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
+import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { generateWestManifest } from './manifestUtils';
 
@@ -508,7 +508,16 @@ export function activate(context: vscode.ExtensionContext) {
 								cancellable: true,
 				}, async (progress, token) => {
 					await installHostDebugTools(context, listTools);
+					
 					for(let tool of listTools) {
+						let runner = getRunner(tool);
+						if(runner && runner.executable) {
+							let runnerPath = path.join(getInternalToolsDirRealPath(), runner.name, runner.binDirPath, runner.executable);
+							if(fileExists(runnerPath)) {
+								runner.serverPath = runnerPath;
+								runner.updateSettings();
+							}
+						}
 						panel.webview.postMessage({ command: 'exec-done', tool: `${tool}` });
 					}
 				}

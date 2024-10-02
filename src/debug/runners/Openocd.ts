@@ -6,13 +6,18 @@ import { getInternalDirRealPath } from "../../utils";
 export class Openocd extends WestRunner {
   name = 'openocd';
   label = 'OpenOCD';
+  binDirPath = 'bin';
   types = [ RunnerType.FLASH, RunnerType.DEBUG ];
   serverStartedPattern = 'halted due to debug-request, current mode: Thread';
 
-  get executable(): string | undefined{
+  get executable(): string | undefined {
     const exec = super.executable;
     if(!exec) {
-      return 'openocd';
+      if(process.platform === 'win32') {
+        return 'openocd.exe';
+      } else {
+        return 'openocd';
+      }
     }
   }
 
@@ -54,9 +59,18 @@ export class Openocd extends WestRunner {
 
   get autoArgs(): string {
     let cmdArgs = super.autoArgs;
-    if(this.serverPath) {
+    if(this.serverPath && this.serverPath.length !== 0) {
       cmdArgs += ` --openocd ${this.serverPath}`;
+    } else {
+      let pathExecSetting = this.getSetting('pathExec');
+      if(pathExecSetting) {
+        cmdArgs += ` --openocd ${pathExecSetting}`;
+      }
     }
+    
+    cmdArgs += ' --config openocd.cfg';
+    cmdArgs += ' --config ${workspaceFolder}/build/${config:zephyr-workbench.board}/gdb.cfg';
+
     return cmdArgs;
   }
 

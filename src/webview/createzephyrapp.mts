@@ -170,7 +170,7 @@ function main() {
 
   sampleInput.addEventListener('input', () => {
     if(projectNameText.value.length === 0) {
-      projectNameText.value = sampleInput.textContent || '';
+      projectNameText.value = sampleInput.value || '';
     }
   });
 

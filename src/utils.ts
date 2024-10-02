@@ -32,6 +32,10 @@ export function getInternalDirRealPath(): string {
   return path.join(getInstallDirRealPath(), '.zinstaller');
 }
 
+export function getInternalToolsDirRealPath(): string {
+  return path.join(getInternalDirRealPath(), 'tools');
+}
+
 export function getInstallDirRealPath(): string {
   if(isPortableMode()) {
     if(process.env['VSCODE_PORTABLE']) {
@@ -112,6 +116,10 @@ export function getPortableModePath(): string {
     return process.env['VSCODE_PORTABLE'];
   }
   return "";
+}
+
+export function formatWindowsPath(path: string): string {
+  return path.replace(/\\/g, '\\\\');
 }
 
 export function getWorkspaceFolder(path: string): vscode.WorkspaceFolder | undefined {

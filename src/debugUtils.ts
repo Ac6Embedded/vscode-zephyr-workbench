@@ -6,7 +6,6 @@ import { Linkserver } from "./debug/runners/Linkserver";
 import { Openocd } from "./debug/runners/Openocd";
 import { WestRunner } from "./debug/runners/WestRunner";
 import { concatCommands, getShell, getShellSourceCommand } from './execUtils';
-import { WestWorkspace } from "./WestWorkspace";
 import { ZephyrProject } from "./ZephyrProject";
 import { getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
 import { STM32CubeProgrammer } from './debug/runners/STM32CubeProgrammer';
@@ -113,7 +112,7 @@ ${envVarsCommands}
 # Source environment and execute West
 ${debugServerCommand}
 `;
-      wrapperPath = path.join(project.sourceDir, 'west_wrapper.sh');
+      wrapperPath = path.join(project.buildDir, 'west_wrapper.sh');
       fs.writeFileSync(wrapperPath, wrapperScript, { mode: 0o755 });
       break;
     case 'cmd.exe':
@@ -124,7 +123,7 @@ ${envVarsCommands}
 REM Source environment and execute West
 ${debugServerCommand}
 `;
-      wrapperPath = path.join(project.sourceDir, 'west_wrapper.bat');
+      wrapperPath = path.join(project.buildDir, 'west_wrapper.bat');
       fs.writeFileSync(wrapperPath, wrapperScript);
       break;
     case 'powershell.exe':
@@ -133,12 +132,22 @@ ${debugServerCommand}
 # Source environment and execute West
 ${debugServerCommand}
 `;
-      wrapperPath = path.join(project.sourceDir, 'west_wrapper.ps1');
+      wrapperPath = path.join(project.buildDir, 'west_wrapper.ps1');
       fs.writeFileSync(wrapperPath, wrapperScript);
       break;
     default:
       break;
   }
+}
+
+export function createOpenocdCfg(project: ZephyrProject) {
+  let cfgPath = path.join(project.buildDir, 'gdb.cfg');
+  const cfgContent = `# Workaround to force OpenOCD to shutdown when gdb is detached
+
+  $_TARGETNAME configure -event gdb-detach {
+  shutdown
+}`;
+  fs.writeFileSync(cfgPath, cfgContent);
 }
 
 export async function createConfiguration(project: ZephyrProject): Promise<any> {
@@ -194,8 +203,8 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
     serverStarted: "",
     MIMode: "gdb",
     miDebuggerPath: `${zephyrSDK.getDebuggerPath(targetArch)}`,
-    debugServerPath: `\${workspaceFolder}/${wrapper}`,
-    debugServerArgs: "debugserver --build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board} --runner openocd",
+    debugServerPath: `\${workspaceFolder}/build/\${config:zephyr-workbench.board}/${wrapper}`,
+    debugServerArgs: "",
     setupCommands: [
       { 
         text: "-target-select remote localhost:3333", 

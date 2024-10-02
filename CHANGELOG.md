@@ -4,6 +4,14 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.2]
+
+- Fix windows version of the launch.json configuration
+- Fix wrong "undefined" value for svdPath and Additional flags
+- Auto-complete project name when creating application
+- Auto-detect debug tool (OpenOCD and LinkServer) binary after installation
+- Workaround to shutdown openocd after debug termination
+
 ## [1.0.1]
 
 - Quickfix on west update to regenerate .west/config

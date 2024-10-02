@@ -3,16 +3,7 @@ import fs from "fs";
 import yaml from 'yaml';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { installHostDebugTools } from "../installUtils";
 import { getRunner } from "../debugUtils";
-
-const toolsMap = new Map<string, string>();
-/*toolsMap.set("OpenOCD", "openocd");
-toolsMap.set("STM32CubeProgrammer", "stm32cubeprogrammer");
-
-toolsMap.set("ST-Link Driver", "stlink-driver");
-toolsMap.set("J-Link Driver", "jlink-driver");
-toolsMap.set("CMSIS-DAP Driver", "cmsisdap-driver");*/
 
 export class DebugToolsPanel {
 	
@@ -75,18 +66,18 @@ export class DebugToolsPanel {
         runner.loadArgs(undefined);
         let found = await runner.detect();
         if(found) {
-          tool.found = "installed";
+          tool.found = "Installed";
         } else {
-          tool.found = "not found";
+          tool.found = "Not found";
         }
       }
 
       toolsHTML += `<tr id="row-${tool.tool}">
         <td><!--input type="checkbox"--></td>
-        <td>${tool.name}</td>
-        <td>${tool.version}</td>
-        <td>${tool.found}</td>
-        <td>`;
+        <td id="name-${tool.tool}">${tool.name}</td>
+        <td id="version-${tool.tool}">${tool.version}</td>
+        <td id="detect-${tool.tool}">${tool.found}</td>
+        <td id="buttons-${tool.tool}">`;
 
       if(tool.os) {
         toolsHTML +=`<vscode-button appearance="icon" class="install-button" data-tool="${tool.tool}">
@@ -157,10 +148,22 @@ export class DebugToolsPanel {
 
   private _setWebviewMessageListener(webview: vscode.Webview) {
     webview.onDidReceiveMessage(
-      (message: any) => {
+      async (message: any) => {
         const command = message.command;
 
         switch (command) {
+          case 'detect': {
+            let runner = getRunner(message.tool);
+            if(runner) {
+              runner.loadArgs(undefined);
+              let found = await runner.detect();
+              webview.postMessage({ 
+                command: 'detect-done', 
+                tool: message.tool,
+                found: found? 'true':'false',
+              });
+            }
+          }
           case 'debug':
             vscode.window.showInformationMessage(message.text);
             return;

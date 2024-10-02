@@ -48,10 +48,23 @@ function setVSCodeMessageListener() {
   window.addEventListener("message", (event) => {
     const command = event.data.command;
     switch(command) {
-      case 'exec-done':
+      case 'exec-done': {
         const progress = document.getElementById(`progress-${event.data.tool}`) as HTMLElement;
         progress.style.display = 'none';
+        webviewApi.postMessage({
+          command: 'detect',
+          tool: event.data.tool
+        });
         break;
+      }
+      case 'detect-done': {
+        const cell = document.getElementById(`detect-${event.data.tool}`) as HTMLElement;
+        if(event.data.found === 'true') {
+          cell.textContent = 'Installed';
+        } else {
+          cell.textContent = 'Not found';
+        }
+      }
     }
 
   });
