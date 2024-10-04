@@ -15,7 +15,7 @@ $ScriptPath = $MyInvocation.MyCommand.Path
 $ScriptDirectory = Split-Path -Parent $ScriptPath
 $YamlFilePath = "$ScriptDirectory\tools.yml"
 
-$ZinstallerVersion="0.3"
+$ZinstallerVersion="0.7"
 $ZinstallerMd5 = Get-FileHash -Path $ScriptPath -Algorithm MD5 | Select-Object -ExpandProperty Hash
 $ToolsYmlMd5 = Get-FileHash -Path $YamlFilePath -Algorithm MD5 | Select-Object -ExpandProperty Hash
 
@@ -124,12 +124,12 @@ function Install-PythonVenv {
 	
 	New-Item -Path "$RequirementsDirectory" -ItemType Directory -Force > $null 2>&1
 	
-	Download-WithoutCheck "${$RequirementsBaseUrl}/requirements.txt" "requirements.txt"
-	Download-WithoutCheck "${$RequirementsBaseUrl}/requirements-run-test.txt" "requirements-run-test.txt"
-	Download-WithoutCheck "${$RequirementsBaseUrl}/requirements-extras.txt" "requirements-extras.txt"
-	Download-WithoutCheck "${$RequirementsBaseUrl}/requirements-compliance.txt" "requirements-compliance.txt"
-	Download-WithoutCheck "${$RequirementsBaseUrl}/requirements-build-test.txt" "requirements-build-test.txt"
-	Download-WithoutCheck "${$RequirementsBaseUrl}/requirements-base.txt" "requirements-base.txt"
+	Download-WithoutCheck "$RequirementsBaseUrl/requirements.txt" "requirements.txt"
+	Download-WithoutCheck "$RequirementsBaseUrl/requirements-run-test.txt" "requirements-run-test.txt"
+	Download-WithoutCheck "$RequirementsBaseUrl/requirements-extras.txt" "requirements-extras.txt"
+	Download-WithoutCheck "$RequirementsBaseUrl/requirements-compliance.txt" "requirements-compliance.txt"
+	Download-WithoutCheck "$RequirementsBaseUrl/requirements-build-test.txt" "requirements-build-test.txt"
+	Download-WithoutCheck "$RequirementsBaseUrl/requirements-base.txt" "requirements-base.txt"
 	Move-Item -Path "$DownloadDirectory/require*.txt" -Destination "$RequirementsDirectory"
 
     python -m venv "$InstallDirectory\.venv"
@@ -594,7 +594,21 @@ set "seven_z_path=$SevenZPath"
 
 set "PATH=%python_path%;%cmake_path%;%dtc_path%;%gperf_path%;%ninja_path%;%wget_path%;%git_path%;%seven_z_path%;%PATH%"
 
-call "%PYTHON_VENV%\Scripts\activate.bat"
+set "DEFAULT_VENV_ACTIVATE_PATH=%PYTHON_VENV%\Scripts\activate.bat"
+
+if defined PYTHON_VENV_ACTIVATE_PATH (
+    set "VENV_ACTIVATE_PATH=%PYTHON_VENV_ACTIVATE_PATH%"
+) else (
+    set "VENV_ACTIVATE_PATH=%DEFAULT_VENV_ACTIVATE_PATH%"
+)
+
+if exist "%VENV_ACTIVATE_PATH%" (
+    call "%VENV_ACTIVATE_PATH%"
+    echo Activated virtual environment at "%VENV_ACTIVATE_PATH%"
+) else (
+    echo Error: Virtual environment activation script not found at "%VENV_ACTIVATE_PATH%".
+)
+    
 "@ | Out-File -FilePath "$InstallDirectory\env.bat" -Encoding ASCII
 
 @"
@@ -612,7 +626,22 @@ call "%PYTHON_VENV%\Scripts\activate.bat"
 
 `$env:PATH = `"`$cmake_path;`$dtc_path;`$gperf_path;`$ninja_path;`$python_path;`$wget_path;`$git_path;`$seven_z_path;`" + `$env:PATH
 
-. `"`$BaseDir\.venv\Scripts\Activate.ps1`"
+`$DefaultVenvActivatePath = `"`$BaseDir\.venv\Scripts\Activate.ps1`"
+
+if (`$env:PYTHON_VENV_ACTIVATE_PATH -and `$env:PYTHON_VENV_ACTIVATE_PATH.Trim() -ne "") {
+    `$VenvActivatePath = `$env:PYTHON_VENV_ACTIVATE_PATH
+} else {
+    `$VenvActivatePath = `$DefaultVenvActivatePath
+}
+
+# Check if the activation script exists at the specified path
+if (Test-Path `$VenvActivatePath) {
+    # Source the virtual environment activation script
+    . `"`$VenvActivatePath`"
+    Write-Output `"Activated virtual environment at `$VenvActivatePath`"
+} else {
+    Write-Output `"Error: Virtual environment activation script not found at `$VenvActivatePath.`"
+}
 
 "@ | Out-File -FilePath "$InstallDirectory\env.ps1" -Encoding ASCII
 

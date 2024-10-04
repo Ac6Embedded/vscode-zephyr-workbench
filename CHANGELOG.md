@@ -4,6 +4,12 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.3]
+
+- Fix verify tools 
+- Fix external/local virtual python environment
+- Fix auto-complete project name
+
 ## [1.0.2]
 
 - Fix windows version of the launch.json configuration

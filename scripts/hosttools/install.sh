@@ -15,7 +15,7 @@ reinstall_venv_bool=false
 portable=false
 INSTALL_DIR=""
 
-zinstaller_version="0.3"
+zinstaller_version="0.7"
 zinstaller_md5=$(md5sum "$BASH_SOURCE")
 tools_yml_md5=$(md5sum "$YAML_FILE")
 
@@ -235,10 +235,12 @@ install_python_venv() {
 if [[ $root_packages == true ]]; then
     pr_title "Install non portable tools"
 
-    # Install Python3 as package if not portable 
+    # Install Python3 & OpenSSL as packages if not portable 
     python_pkg=""
+    openssl_pkg=""
     if [ $portable = false ]; then
       python_pkg="python3"
+      openssl_pkg="openssl"
     fi
 
     if [[ -f /etc/os-release ]]; then
@@ -253,7 +255,7 @@ if [[ $root_packages == true ]]; then
                 exit 3
             fi
             sudo apt-get update
-            sudo apt -y install --no-install-recommends git gperf ccache dfu-util wget xz-utils unzip file make libsdl2-dev libmagic1 ${python_pkg}
+            sudo apt -y install --no-install-recommends git gperf ccache dfu-util wget xz-utils unzip file make libsdl2-dev libmagic1 ${python_pkg} ${openssl_pkg}
             ;;
         fedora)
             echo "This is Fedora."
@@ -337,19 +339,25 @@ if [[ $non_root_packages == true ]]; then
 	    rm -rf $TMP_DIR
       exit 0
     fi
-	
-    pr_title "OpenSSL"
-    OPENSSL_FOLDER_NAME="openssl-1.1.1t"
-    OPENSSL_ARCHIVE_NAME="${OPENSSL_FOLDER_NAME}.tar.bz2"
-    download_and_check_hash ${openssl[source]} ${openssl[sha256]} "$OPENSSL_ARCHIVE_NAME"
-    tar xf "$DL_DIR/$OPENSSL_ARCHIVE_NAME" -C "$TOOLS_DIR"
 
-    if [ $portable = true ]; then
+	  if [ $portable = true ]; then
+      pr_title "OpenSSL"
+      OPENSSL_FOLDER_NAME="openssl-1.1.1t"
+      OPENSSL_ARCHIVE_NAME="${OPENSSL_FOLDER_NAME}.tar.bz2"
+      download_and_check_hash ${openssl[source]} ${openssl[sha256]} "$OPENSSL_ARCHIVE_NAME"
+      tar xf "$DL_DIR/$OPENSSL_ARCHIVE_NAME" -C "$TOOLS_DIR"
+      openssl_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME/usr/local/bin"
+      openssl_lib_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME/usr/local/lib"
+      export LD_LIBRARY_PATH="$openssl_lib_path:$LD_LIBRARY_PATH"
+      export PATH="$openssl_path:$PATH"
+
       pr_title "Python"
       PYTHON_FOLDER_NAME="3.11.9"
       PYTHON_ARCHIVE_NAME="cpython-${PYTHON_FOLDER_NAME}-linux-x86_64.tar.gz"
       download_and_check_hash ${python_portable[source]} ${python_portable[sha256]} "$PYTHON_ARCHIVE_NAME"
       tar xf "$DL_DIR/$PYTHON_ARCHIVE_NAME" -C "$TOOLS_DIR"
+      python_path="$INSTALL_DIR/tools/$PYTHON_FOLDER_NAME/bin"
+      export PATH="$python_path:$PATH"
     fi
 
     pr_title "Ninja"
@@ -405,14 +413,10 @@ if [[ $non_root_packages == true ]]; then
     fi
 	
     cmake_path="$INSTALL_DIR/tools/$CMAKE_FOLDER_NAME/bin"
-    python_path="$INSTALL_DIR/tools/$PYTHON_FOLDER_NAME/bin"
     ninja_path="$INSTALL_DIR/tools/ninja"
-    openssl_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME"
-
-    export PATH="$python_path:$ninja_path:$cmake_path:$openssl_path/usr/local/bin:$PATH"
-    export LD_LIBRARY_PATH="$openssl_path/usr/local/lib:$LD_LIBRARY_PATH"
-	
-
+    
+    export PATH="$ninja_path:$cmake_path:/usr/local/bin:$PATH"
+    
     pr_title "Python VENV"
     install_python_venv "$INSTALL_DIR" "$TMP_DIR"
 
@@ -435,7 +439,24 @@ openssl_path="\$base_dir/tools/$OPENSSL_FOLDER_NAME"
 export PATH="\$python_path:\$ninja_path:\$cmake_path:\$openssl_path/usr/local/bin:\$PATH"
 export LD_LIBRARY_PATH="\$openssl_path/usr/local/lib:\$LD_LIBRARY_PATH"
 
-source \$base_dir/.venv/bin/activate
+# Default virtual environment activation script path
+default_venv_activate_path="\$base_dir/.venv/bin/activate"
+
+# Use the provided PYTHON_VENV_ACTIVATE_PATH if set and not empty, otherwise use the default path
+if [[ -n "\$PYTHON_VENV_ACTIVATE_PATH" ]]; then
+    venv_activate_path="\$PYTHON_VENV_ACTIVATE_PATH"
+else
+    venv_activate_path="\$default_venv_activate_path"
+fi
+
+# Check if the activation script exists at the specified path
+if [[ -f "\$venv_activate_path" ]]; then
+    # Source the virtual environment activation script
+    source "\$venv_activate_path"
+    echo "Activated virtual environment at \$venv_activate_path"
+else
+    echo "Error: Virtual environment activation script not found at \$venv_activate_path."
+fi
 
 if ! command -v west &> /dev/null; then
    echo "West is not available. Something is wrong !!"

@@ -372,7 +372,7 @@ export async function installVenv(context: vscode.ExtensionContext) {
     if(process.platform === 'linux' || process.platform === 'darwin') {
       await execShellCommand('Installing Venv', installCmd + " --reinstall-venv " + installArgs, shellOpts);
     } else {
-      await execShellCommand('Installing Venv', installCmd + " -ReinstallVenv" + installArgs, shellOpts);
+      await execShellCommand('Installing Venv', installCmd + " -ReinstallVenv " + installArgs, shellOpts);
     }
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");
@@ -426,7 +426,7 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
     if(process.platform === 'linux' || process.platform === 'darwin') {
       await execShellCommandWithEnv('Installing Host tools', installCmd + " --only-check " + installArgs, shellOpts);
     } else {
-      await execShellCommandWithEnv('Installing Host tools', installCmd + " -OnlyCheck" + installArgs, shellOpts);
+      await execShellCommandWithEnv('Installing Host tools', installCmd + " -OnlyCheck " + installArgs, shellOpts);
     }
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");
@@ -577,7 +577,7 @@ export function findVenvActivateScript(destDir: string): string | undefined {
   if(process.platform === 'linux' || process.platform === 'darwin') {
     venvPath = path.join(destDir, '.venv', 'bin', 'activate');
   } else {
-    venvPath = path.join(destDir, '.venv', 'Scripts', 'Activate.ps1');
+    venvPath = path.join(destDir, '.venv', 'Scripts', 'activate.bat');
   }
   if(fileExists(venvPath)) {
     return venvPath;

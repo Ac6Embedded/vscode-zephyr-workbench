@@ -169,9 +169,7 @@ function main() {
   });
 
   sampleInput.addEventListener('input', () => {
-    if(projectNameText.value.length === 0) {
-      projectNameText.value = sampleInput.value || '';
-    }
+    projectNameText.value = sampleInput.value || '';
   });
 
   samplesDropdown.addEventListener('mousedown', function(event) {

@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from "path";
 import yaml from 'yaml';
 import { fileExists, findTask, getBoardFromId, getWestWorkspace } from './utils';
-import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
+import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
 import { ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { getShell } from './execUtils';
 export class ZephyrProject {
@@ -121,13 +121,24 @@ export class ZephyrProject {
   private static openTerminal(zephyrProject: ZephyrProject): vscode.Terminal {
     const shell = getShell();
     const westWorkspace = getWestWorkspace(zephyrProject.westWorkspacePath);
-    
+    let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY);
+    if(!activatePath || activatePath.length === 0) {
+      activatePath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.workspaceFolder.uri).get(ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY);
+    }
+
     const opts: vscode.TerminalOptions = {
       name: zephyrProject.folderName + ' Terminal',
       shellPath: `${shell}`,
       env: {...zephyrProject.buildEnvWithVar, ...westWorkspace.buildEnv},
       cwd: zephyrProject.folderPath
     };
+
+    if(activatePath) {
+      opts.env =  {
+        PYTHON_VENV_ACTIVATE_PATH: activatePath,
+        ...opts.env
+      };
+    }
     const terminal = vscode.window.createTerminal(opts);
     return terminal;
   }
@@ -152,10 +163,6 @@ export class ZephyrProject {
       srcEnvCmd = `call ${envScript}`;
     }
     terminal.sendText(srcEnvCmd);
-
-    // terminal.sendText("# =========================================================");
-    // terminal.sendText("# TEST");
-    // terminal.sendText("# =========================================================");
 
     return terminal;
   }

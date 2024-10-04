@@ -325,4 +325,5 @@ foreach ($Tool in $TOOLS) {
     Install $Tool "$Installer" $ToolsDirectory
 }
 
-#should remove tmp dir
+Remove-Item "$TemporaryDirectory" -Recurse -Force -ErrorAction SilentlyContinue
+

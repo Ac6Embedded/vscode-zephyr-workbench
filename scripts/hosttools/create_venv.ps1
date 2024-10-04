@@ -45,7 +45,7 @@ function Print-Warning {
 
 function Show-Help {
   $helpText = @"
-Usage: install.ps1 [options] [InstallDir]
+Usage: create_venv.ps1 [options] [InstallDir]
 
 Options:
 -h, --help, /?         Show this help message and exit.
@@ -54,7 +54,7 @@ Arguments:
 InstallDir             Optional. The directory where the Zephyr environment will be installed. Defaults to '$env:USERPROFILE\.zinstaller'.
 
 Examples:
-install.ps1 "C:\my\install\path"
+create_venv.ps1 "C:\my\install\path"
 "@
   Write-Host $helpText
 }
@@ -102,6 +102,35 @@ function Download-FileWithHashCheck {
       Print-Error 2 "Computed: $ComputedHash"
       exit 2
   }
+}
+
+function Download-WithoutCheck {
+  param (
+      [string]$SourceUrl,
+      [string]$Filename
+  )
+
+  # Full path where the file will be saved
+  $FilePath = Join-Path -Path $DownloadDirectory -ChildPath $Filename
+
+  Write-Output "Downloading: $Filename ..."
+
+  if ($UseWget) {
+      # Using wget for downloading
+      & $Wget -q $SourceUrl -O $FilePath
+  } else {
+      # Using Invoke-WebRequest for downloading, make it silent, if not it will be very slow
+      & {
+           $ProgressPreference = 'SilentlyContinue'
+           Invoke-WebRequest -Uri $SourceUrl -OutFile $FilePath -ErrorAction Stop
+      }
+  }   
+  # Check if the download was successful
+  if (-Not (Test-Path -Path $FilePath)) {
+      Print-Error 1 "Error: Failed to download the file."
+      exit 1
+  }
+
 }
 
 function Test-FileExistence {
@@ -155,6 +184,31 @@ function Extract-ArchiveFile {
   } else {
       Print-Error $LastExitCode "Failed to extract $ZipFilePath"
   }
+}
+
+function Install-PythonVenv {
+  param (
+      [string]$InstallDirectory
+  )
+
+  Print-Title "Zephyr Python-Requirements"
+  $RequirementsDirectory = "$TemporaryDirectory\requirements"
+  $RequirementsBaseUrl = "https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
+
+  New-Item -Path "$RequirementsDirectory" -ItemType Directory -Force > $null 2>&1
+
+  Download-WithoutCheck "$RequirementsBaseUrl/requirements.txt" "requirements.txt"
+  Download-WithoutCheck "$RequirementsBaseUrl/requirements-run-test.txt" "requirements-run-test.txt"
+  Download-WithoutCheck "$RequirementsBaseUrl/requirements-extras.txt" "requirements-extras.txt"
+  Download-WithoutCheck "$RequirementsBaseUrl/requirements-compliance.txt" "requirements-compliance.txt"
+  Download-WithoutCheck "$RequirementsBaseUrl/requirements-build-test.txt" "requirements-build-test.txt"
+  Download-WithoutCheck "$RequirementsBaseUrl/requirements-base.txt" "requirements-base.txt"
+  Move-Item -Path "$DownloadDirectory/require*.txt" -Destination "$RequirementsDirectory"
+
+  python -m venv "$InstallDirectory\.venv"
+  . "$InstallDirectory\.venv\Scripts\Activate.ps1"
+  python -m pip install setuptools wheel windows-curses west pyelftools --quiet
+  python -m pip install -r "$RequirementsDirectory\requirements.txt" --quiet
 }
 
 $TemporaryDirectory = "$InstallDirectory\.zinstaller"
@@ -220,20 +274,6 @@ $ScriptDir = Split-Path -Path "$env:ENV_FILE" -Parent
 $EnvScript = Join-Path -Path "$ScriptDir" -ChildPath "env.ps1"
 . $EnvScript *>$null
 
-Print-Title "Requirements"
-$RequirementName = "requirements-3.6.0"
-$RequirementZipName =  $RequirementName + ".zip"
-Download-FileWithHashCheck $python_requirements_array[0] $python_requirements_array[1] $RequirementZipName
-Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$RequirementZipName" -DestinationDirectory "$WorkDirectory"
-
-
-Print-Title "Python VENV"
-    
-# Create and activate virtual environment
-python -m venv "$InstallDir\.venv"
-. "$InstallDir\.venv\Scripts\Activate.ps1"
-
-python -m pip install setuptools wheel west --quiet
-python -m pip install -r "$WorkDirectory\$RequirementName\requirements.txt" --quiet
+Install-PythonVenv -InstallDirectory $InstallDirectory -WorkDirectory $WorkDirectory
 
 Remove-Item -Path $TemporaryDirectory -Recurse -Force

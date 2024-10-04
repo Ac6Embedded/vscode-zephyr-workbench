@@ -70,6 +70,10 @@ if [[ -z "$INSTALL_DIR" ]]; then
   usage
 fi
 
+TMP_DIR="$INSTALL_DIR/.zinstaller"
+MANIFEST_FILE="$TMP_DIR/manifest.sh"
+DL_DIR="$TMP_DIR/downloads"
+
 # Function to download the file and check its SHA-256 hash
 download_and_check_hash() {
   local source=$1
@@ -102,9 +106,24 @@ download_and_check_hash() {
   fi
 }
 
-TMP_DIR="$INSTALL_DIR/.zinstaller"
-MANIFEST_FILE="$TMP_DIR/manifest.sh"
-DL_DIR="$TMP_DIR/downloads"
+# Function to download the file and check its SHA-256 hash
+download() {
+    local source=$1
+    local filename=$2
+
+    # Full path where the file will be saved
+    local file_path="$DL_DIR/$filename"
+
+    # Download the file using wget
+    wget --no-check-certificate -q "$source" -O "$file_path"
+
+    # Check if the download was successful
+    if [ ! -f "$file_path" ]; then
+        pr_error 1 "Error: Failed to download the file."
+        exit 1
+    fi
+}
+
 
 mkdir -p "$TMP_DIR"
 mkdir -p "$DL_DIR"
@@ -144,6 +163,35 @@ function generate_manifest_entries {
     fi
 }
 
+function install_python_venv() {
+    local install_directory=$1
+    local work_directory=$2
+    pr_title "Zephyr Python Requirements"
+
+    REQUIREMENTS_DIR="$TMP_DIR/requirements"
+    REQUIREMENTS_BASEURL="https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
+    
+    mkdir -p "$REQUIREMENTS_DIR"
+
+    download "$REQUIREMENTS_BASEURL/requirements.txt" "requirements.txt"
+    download "$REQUIREMENTS_BASEURL/requirements-run-test.txt" "requirements-run-test.txt"
+    download "$REQUIREMENTS_BASEURL/requirements-extras.txt" "requirements-extras.txt"
+    download "$REQUIREMENTS_BASEURL/requirements-compliance.txt" "requirements-compliance.txt"
+    download "$REQUIREMENTS_BASEURL/requirements-build-test.txt" "requirements-build-test.txt"
+    download "$REQUIREMENTS_BASEURL/requirements-base.txt" "requirements-base.txt"
+    mv "$DL_DIR/requirements.txt" "$REQUIREMENTS_DIR"
+    mv "$DL_DIR/requirements-run-test.txt" "$REQUIREMENTS_DIR"
+    mv "$DL_DIR/requirements-extras.txt" "$REQUIREMENTS_DIR"
+    mv "$DL_DIR/requirements-compliance.txt" "$REQUIREMENTS_DIR"
+    mv "$DL_DIR/requirements-build-test.txt" "$REQUIREMENTS_DIR"
+    mv "$DL_DIR/requirements-base.txt" "$REQUIREMENTS_DIR"
+
+    python3 -m venv "$install_directory/.venv"
+    source "$install_directory/.venv/bin/activate"
+    python3 -m pip install setuptools wheel west --quiet
+    python3 -m pip install -r "$REQUIREMENTS_DIR/requirements.txt" --quiet
+}
+
 pr_title "Parse YAML and generate manifest"
 
 # List all tools from the YAML file
@@ -156,16 +204,6 @@ done
 
 source $MANIFEST_FILE
 
-pr_title "Python Requirements"
-REQUIREMENTS_NAME="requirements-3.6.0"
-REQUIREMENTS_ZIP_NAME="$REQUIREMENTS_NAME".zip
-download_and_check_hash ${python_requirements[source]} ${python_requirements[sha256]} "$REQUIREMENTS_ZIP_NAME"
-unzip -o "$DL_DIR/$REQUIREMENTS_ZIP_NAME" -d "$TMP_DIR/"
-
-pr_title "Python VENV"
-python3 -m venv $INSTALL_DIR/.venv
-source $INSTALL_DIR/.venv/bin/activate
-python3 -m pip install setuptools west py
-python3 -m pip install -r "$TMP_DIR/$REQUIREMENTS_NAME/requirements.txt" --quiet
+install_python_venv "$INSTALL_DIR" "$TMP_DIR"
 
 rm -rf $TMP_DIR
