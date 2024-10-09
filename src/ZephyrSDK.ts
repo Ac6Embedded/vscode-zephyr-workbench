@@ -49,11 +49,26 @@ export class ZephyrSDK {
     };
   }
 
-  public static getToolchainPrefix(arch: string) {
+  public static getToolchainPrefix(arch: string, socToolchainName: string | undefined = undefined) {
     let prefix = '';
     switch(arch) {
       case 'arm': 
-        prefix = `${arch}-zephyr-eabi`;
+        prefix = 'arm-zephyr-eabi';
+        break;
+      case 'arm64': 
+        prefix = 'aarch64-zephyr-eabi';
+        break;
+      case 'riscv':
+        prefix = 'riscv64-zephyr-elf';
+        break;
+      case 'microblaze':
+        prefix = 'microblazeel-zephyr-elf';
+        break;
+      case 'x86':
+        prefix = 'x86_64-zephyr-elf';
+        break;
+      case 'xtensa':
+        prefix = `xtensa-${socToolchainName}_zephyr-elf`;
         break;
       default:
         prefix = `${arch}-zephyr-elf`;

@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import path from 'path';
 import * as vscode from 'vscode';
-import { westBoardsCommand, westDebugCommand, westFlashCommand, westInitCommand, westUpdateCommand } from './WestCommands';
+import { execWestCommandWithEnv, westBoardsCommand, westDebugCommand, westFlashCommand, westInitCommand, westUpdateCommand } from './WestCommands';
 import { WestWorkspace } from './WestWorkspace';
 import { ZephyrAppProject } from './ZephyrAppProject';
 import { ZephyrProject } from './ZephyrProject';
@@ -31,6 +31,7 @@ import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { generateWestManifest } from './manifestUtils';
+import { execCommandWithEnv } from './execUtils';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -368,6 +369,108 @@ export function activate(context: vscode.ExtensionContext) {
 			let terminal: vscode.Terminal = ZephyrProject.getTerminal(node.project);
 			terminal.show();
 		}
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.ram-report', async (node: ZephyrApplicationTreeItem | vscode.WorkspaceFolder) => {
+		let folder: any = node ;
+		if(node instanceof ZephyrApplicationTreeItem) {
+			if(node.project) {
+				folder = node.project.workspaceFolder;
+			}
+		}
+
+		const ramReportTask = await findTask('West RAM Report', folder);
+		if (ramReportTask) {
+			try {
+				await vscode.tasks.executeTask(ramReportTask);
+			} catch (error) {
+				vscode.window.showErrorMessage(`Error executing task: ${error}`);
+			}
+		} else {
+				vscode.window.showErrorMessage('Cannot find "West RAM Report" task.');
+		}
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.rom-report', async (node: ZephyrApplicationTreeItem | vscode.WorkspaceFolder) => {
+		let folder: any = node ;
+		if(node instanceof ZephyrApplicationTreeItem) {
+			if(node.project) {
+				folder = node.project.workspaceFolder;
+			}
+		}
+
+		const romReportTask = await findTask('West ROM Report', folder);
+		if (romReportTask) {
+			try {
+				await vscode.tasks.executeTask(romReportTask);
+			} catch (error) {
+				vscode.window.showErrorMessage(`Error executing task: ${error}`);
+			}
+		} else {
+				vscode.window.showErrorMessage('Cannot find "West ROM Report" task.');
+		}
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.puncover', async (node: ZephyrApplicationTreeItem | vscode.WorkspaceFolder) => {
+		let folder: any = node ;
+		if(node instanceof ZephyrApplicationTreeItem) {
+			if(node.project) {
+				folder = node.project.workspaceFolder;
+			}
+		}
+
+		const puncoverTask = await findTask('West Puncover', folder);
+		if (puncoverTask) {
+			try {
+	
+				let taskExec = await vscode.tasks.executeTask(puncoverTask);
+
+				const taskStartListener = vscode.tasks.onDidStartTask(async (event) => {
+					if (event.execution === taskExec) {
+						const stopItem = 'Terminate';
+						const choice = await vscode.window.showWarningMessage('Puncover server is running...', stopItem);
+						if (choice === stopItem) {
+							taskExec.terminate();
+							taskStartListener.dispose();
+						};
+					}
+				});
+
+
+			} catch (error) {
+				vscode.window.showErrorMessage(`Error executing task: ${error}`);
+			}
+		} else {
+				vscode.window.showErrorMessage('Cannot find "West Puncover" task.');
+		}
+
+		// vscode.window.withProgress({
+		// 		location: vscode.ProgressLocation.Notification,
+		// 		title: "Running Puncover server",
+		// 		cancellable: true,
+		// 	}, async (progress, token) => {
+		// 		const command = 'west build -t puncover';
+		// 		let process = execWestCommandWithEnv(command, folder);
+
+		// 		process.stdout?.on('data', (data) => {
+		// 			console.log(`stdout: ${data}`);
+		// 		});
+				
+		// 		process.stderr?.on('data', (data) => {
+		// 			console.error(`stderr: ${data}`);
+		// 		});
+				
+		// 		process.on('close', (code) => {
+		// 			console.log(`child process exited with code ${code}`);
+		// 		});
+
+		// 		token.onCancellationRequested(() => {
+		// 			if(process) {
+		// 				process.kill();
+		// 			}
+		// 		});
+		// 	}
+		// );
 	});
 
 	vscode.commands.registerCommand('zephyr-workbench-west-workspace.open-terminal', async (node: WestWorkspaceTreeItem) => {

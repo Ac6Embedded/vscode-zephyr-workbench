@@ -194,18 +194,6 @@ install_python_venv() {
     local install_directory=$1
     local work_directory=$2
 
-    # pr_title "Python Requirements"
-    # REQUIREMENTS_NAME="requirements"
-    # REQUIREMENTS_ZIP_NAME="$REQUIREMENTS_NAME".zip
-
-    # download_and_check_hash ${python_requirements[source]} ${python_requirements[sha256]} "$REQUIREMENTS_ZIP_NAME"
-    # unzip -o "$DL_DIR/$REQUIREMENTS_ZIP_NAME" -d "$TMP_DIR/"
-
-    # python3 -m venv "$install_directory/.venv"
-    # source "$install_directory/.venv/bin/activate"
-    # python3 -m pip install setuptools wheel west pyocd --quiet
-    # python3 -m pip install -r "$work_directory/$REQUIREMENTS_NAME/requirements.txt" --quiet
-
     pr_title "Zephyr Python Requirements"
 
     REQUIREMENTS_DIR="$TMP_DIR/requirements"
@@ -229,6 +217,8 @@ install_python_venv() {
     python3 -m venv "$install_directory/.venv"
     source "$install_directory/.venv/bin/activate"
     python3 -m pip install setuptools wheel west --quiet
+    python3 -m pip install git+https://github.com/HBehrens/puncover --user --quiet
+    python3 -m pip install anytree --quiet
     python3 -m pip install -r "$REQUIREMENTS_DIR/requirements.txt" --quiet
 }
 

@@ -1,11 +1,13 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { ZephyrProject } from './ZephyrProject';
-import { execShellCommandWithEnv, getShell, getShellNullRedirect } from './execUtils';
+import { spawnCommandWithEnv, execShellCommandWithEnv, getShell, getShellNullRedirect } from './execUtils';
 import { WestWorkspace } from './WestWorkspace';
-import { fileExists, getZephyrSDK } from './utils';
+import { fileExists, getWestWorkspace, getZephyrSDK } from './utils';
 import { ZephyrSDK } from './ZephyrSDK';
 import path from 'path';
+import { ChildProcess, ExecException, ExecOptions } from 'child_process';
+import { ZephyrAppProject } from './ZephyrAppProject';
 
 export function registerWestCommands(context: vscode.ExtensionContext): void {
   // TODO use this function to register every west command 
@@ -133,3 +135,16 @@ export async function westDebugCommand(zephyrProject: ZephyrProject, westWorkspa
 export async function execWestCommand(cmdName: string, cmd: string, options: vscode.ShellExecutionOptions) {
   await execShellCommandWithEnv(cmdName, cmd, options);
 } 
+
+export function execWestCommandWithEnv(cmd: string, folder: vscode.WorkspaceFolder): ChildProcess {
+  const project = new ZephyrAppProject(folder, folder.uri.fsPath);
+  const activeSdk = getZephyrSDK(project.sdkPath);
+  const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+  let options: ExecOptions = {};
+  options.cwd = folder.uri.fsPath;
+  options.env = { ...activeSdk.buildEnv, 
+    ...westWorkspace.buildEnv, 
+    ...project.buildEnv};
+  
+  return spawnCommandWithEnv(cmd, options);
+}

@@ -129,7 +129,7 @@ export class WestRunner {
       versionCmd = `${versionCmd} 2>&1`;
     }
     return new Promise<boolean>((resolve, reject) => {
-      execCommandWithEnv(`${versionCmd}`, (error: any, stdout: string, stderr: any) => {
+      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
         if (error) {
           resolve(false);
         } else {

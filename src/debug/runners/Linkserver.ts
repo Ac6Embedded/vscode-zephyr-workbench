@@ -71,7 +71,7 @@ export class Linkserver extends WestRunner {
         versionCmd = `${versionCmd} 2>&1`;
       }
       
-      execCommandWithEnv(`${versionCmd}`, (error: any, stdout: string, stderr: any) => {
+      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
         if (error) {
           resolve(false);
         } else {

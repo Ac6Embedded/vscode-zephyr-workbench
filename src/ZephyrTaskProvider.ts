@@ -201,6 +201,39 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
             "${input:west.runner}",
             "--build-dir " + buildDir
           ]
+        },
+        {
+          label: "West RAM Report",
+          type: "zephyr-workbench",
+          problemMatcher: [],
+          command: "west",
+          args: [
+            "build",
+            "-t ram_report",
+            "--build-dir " + buildDir
+          ]
+        },
+        {
+          label: "West ROM Report",
+          type: "zephyr-workbench",
+          problemMatcher: [],
+          command: "west",
+          args: [
+            "build",
+            "-t rom_report",
+            "--build-dir " + buildDir
+          ]
+        }
+        ,
+        {
+          label: "West Puncover",
+          type: "zephyr-workbench",
+          problemMatcher: [],
+          command: "west",
+          args: [
+            "build",
+            "-t puncover"
+          ]
         }
       ],
       inputs: [

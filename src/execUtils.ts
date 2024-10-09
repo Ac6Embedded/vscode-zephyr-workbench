@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { compareVersions, fileExists } from './utils';
 import { ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
-import { ExecException, ExecOptions, exec } from 'child_process';
+import { ChildProcess, ExecException, ExecOptions, SpawnOptions, SpawnOptionsWithoutStdio, exec, spawn } from 'child_process';
 
 let _channel: vscode.OutputChannel;
 
@@ -186,7 +186,7 @@ export async function execShellCommandWithEnv(cmdName: string, cmd: string, opti
   await execShellCommand(cmdName, concatCommands(shell, cmdEnv, cmd), options);
 } 
 
-export async function execCommandWithEnv(cmd: string, callback?: ((error: ExecException | null, stdout: string, stderr: string) => void)) {
+export async function execCommandWithEnv(cmd: string, cwd?: string | undefined, callback?: ((error: ExecException | null, stdout: string, stderr: string) => void)): Promise<ChildProcess> {
   let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
   let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY);
   let options: ExecOptions = {};
@@ -206,6 +206,10 @@ export async function execCommandWithEnv(cmd: string, callback?: ((error: ExecEx
       }
     };
   }
+
+  if(cwd) {
+    options.cwd = cwd;
+  }
   
   const shell: string = getShell();
   const redirect = getShellNullRedirect(shell);
@@ -214,7 +218,35 @@ export async function execCommandWithEnv(cmd: string, callback?: ((error: ExecEx
 
   options.shell = shell;
   
-  exec(command, options, callback);
+  return exec(command, options, callback);
+}
+
+export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): ChildProcess {
+  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
+  let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY);
+  if(!envScript) {
+    throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
+       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY}` });
+  } 
+
+  if(activatePath && !fileExists(activatePath)) {
+    throw new Error('Invalid Python Virtual Environment.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Venv: Activate Path',
+       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY}`});
+  } else {
+    options.env = {
+      ...options.env,
+      'PYTHON_VENV_ACTIVATE_PATH': activatePath,
+    };
+  }
+  
+  const shell: string = getShell();
+  const redirect = getShellNullRedirect(shell);
+  const cmdEnv = `${getShellSourceCommand(shell, envScript)} ${redirect}`;
+  const command = concatCommands(shell, cmdEnv, cmd);
+
+  options.shell = shell;
+
+  return spawn(command, options);
 }
 
 export async function getGitTags(gitUrl: string): Promise<string[]> {
@@ -223,7 +255,7 @@ export async function getGitTags(gitUrl: string): Promise<string[]> {
 
   return new Promise((resolve, reject) => {
     let tags: string[] = [];
-    execCommandWithEnv(gitCmd, (error: any, stdout: string, stderr: any) => {
+    execCommandWithEnv(gitCmd, undefined, (error: any, stdout: string, stderr: any) => {
       if (error) {
         reject(`Error: ${stderr}`);
       }
