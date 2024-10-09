@@ -3,7 +3,7 @@
 Ac6 Zephyr Workbench for VS Code extension adds support of Zephyr development to Visual Studio Code, including SDK management, Project wizard, build and debugging features. 
 
 <p align="center">
-  <img alt="Zephyr Workbench Overview" src="">
+  <img alt="Zephyr Workbench Overview" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_overview.png" width="80%">
 </p>
 
 ## Features
@@ -33,7 +33,7 @@ Zephyr Workbench provides a dedicated panel, to access it, click on the "Zephyr 
 1. Click on "Install Host Tools" to download and to install the native tools in ${USERDIR}/.zinstaller (takes ~5mins)
 
 <p align="center">
-  <img alt="Host tools" src="">
+  <img alt="Host tools" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_1_host_tools.png" width="80%">
 </p>
 
 Note: Some tools needs administration right to be installed on your system.
@@ -52,7 +52,8 @@ Note: Some tools needs administration right to be installed on your system.
 3. Click on "Import"
    
 <p align="center">
-  <img alt="West Workspace" src="">
+  <img alt="West Workspace" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_3_west_workspace_new.png" width="80%">
+  <img alt="West Workspace" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_3_west_workspace_import.png" width="80%">
 </p>
 
 This process creates then parse the west manifest file to set up your west workspace and the subset of projects. More information about [West Workspaces](https://docs.zephyrproject.org/latest/develop/west/workspaces.html).
@@ -69,7 +70,8 @@ This process creates then parse the west manifest file to set up your west works
 3. Click on "Import"
 
 <p align="center">
-  <img alt="Zephyr SDK" src="">
+  <img alt="Zephyr SDK" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_2_sdk_new.png" width="80%">
+  <img alt="Zephyr SDK" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_2_sdk_import.png" width="80%">
 </p>
 
 This process imports to toolchains to build and to debug your Zephyr applications. More information about [Zephyr SDK](https://docs.zephyrproject.org/latest/develop/toolchains/zephyr_sdk.html).
@@ -87,13 +89,19 @@ The previous steps ("Import West Workspace" and "Import Zephyr SDK") are mandato
 8. Select the Pristine Build option (More information on [Pristine Builds](https://docs.zephyrproject.org/latest/develop/west/build-flash-debug.html#pristine-builds))
 
 <p align="center">
-  <img alt="New Application" src="">
+  <img alt="New Application" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_4_app_new.png" width="80%">
+  <img alt="New Application" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_4_app_create.png" width="80%">
 </p>
 
 ### Build your project
 1. Click on the "Build" button in the status bar below.
    Alternatively, Use command key Ctrl+B then select the folder to build.
 2. The build output is display in the Terminal
+
+<p align="center">
+  <img alt="Configure Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_6_build.png" width="80%">
+  <img alt="Configure Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_6_app_build_done.png" width="80%">
+</p>
 
 ### Configure your debug session
 (Warning) The debug server tool for your board must be installed on your system.
@@ -110,7 +118,7 @@ The previous steps ("Import West Workspace" and "Import Zephyr SDK") are mandato
 11. Press "Apply" to save the configuration into the .vscode/launch.json or "Debug" to apply then run the debug session
 
 <p align="center">
-  <img alt="Configure Debug Session" src="">
+  <img alt="Configure Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_manager.png" width="80%">
 </p>
 
 The newly debug configuration is named "Zephyr Workbench Debug"
@@ -121,34 +129,35 @@ If the launch configuration was already created, you don't need to open the **De
 3. Click on the Run button
 4. 
 <p align="center">
-  <img alt="Launch Debug Session" src="">
+  <img alt="Launch Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_start_debug_session.png" width="80%">
 </p>
 
 ### Debug your application
 
 After starting the debug session, the code should breaks on main or early (depends on optimization on your project). 
 <p align="center">
-  <img alt="Debug: Overview" src="">
+  <img alt="Debug: Overview" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_overview.png" width="80%">
 </p>
 
 The "Debug Toolbar" allows you to **Continue/Pause**, **Step Over**, **Step Into**, **Step Out**, **Restart** or , **Stop**
 <p align="center">
-  <img alt="Debug: Toolbar" src="">
+  <img alt="Debug: Toolbar" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_toolbar.png" width="80%">
 </p>
 
 Inspect variables and CPU registers on the left panel
 <p align="center">
-  <img alt="Debug: Variables and Registers" src="">
+  <img alt="Debug: Variables and Registers" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_variables.png" width="80%">
 </p>
 
 If the SVD file was set in the debug configuration, the peripherals are displayed in the "xperipherals" view.
 <p align="center">
-  <img alt="Debug: XPeripherals" src="">
+  <img alt="Debug: XPeripherals" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_xperipherals.png" width="80%">
 </p>
 
 To debug in disassembly, right-click on the code then select "Open Disassembly View"
 <p align="center">
-  <img alt="Debug: Disassembly" src="">
+  <img alt="Debug: Disassembly" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_open_disasm.png" width="80%">
+  <img alt="Debug: Disassembly" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_disasm.png" width="80%">
 </p>
 
 More information about [Debugging on VSCODE](https://code.visualstudio.com/docs/editor/debugging)
@@ -163,7 +172,7 @@ Only OpenOCD and STM32CubeProgrammer are currently supported
 Note: As third-party installer cannot be fully controlled, you might need to manually set up your PATH environment variable to use the tool in Zephyr Workbench
 
 <p align="center">
-  <img alt="Debug tools" src="">
+  <img alt="Debug tools" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_8_install_debug_tools.png" width="80%">
 </p>
 
 ## Known Issues
