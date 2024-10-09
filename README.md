@@ -141,17 +141,17 @@ After starting the debug session, the code should breaks on main or early (depen
 
 The "Debug Toolbar" allows you to **Continue/Pause**, **Step Over**, **Step Into**, **Step Out**, **Restart** or , **Stop**
 <p align="center">
-  <img alt="Debug: Toolbar" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_toolbar.png" width="80%">
+  <img alt="Debug: Toolbar" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_toolbar.png" width="20%">
 </p>
 
 Inspect variables and CPU registers on the left panel
 <p align="center">
-  <img alt="Debug: Variables and Registers" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_variables.png" width="80%">
+  <img alt="Debug: Variables and Registers" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_variables.png" width="20%">
 </p>
 
 If the SVD file was set in the debug configuration, the peripherals are displayed in the "xperipherals" view.
 <p align="center">
-  <img alt="Debug: XPeripherals" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_xperipherals.png" width="80%">
+  <img alt="Debug: XPeripherals" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_xperipherals.png" width="20%">
 </p>
 
 To debug in disassembly, right-click on the code then select "Open Disassembly View"

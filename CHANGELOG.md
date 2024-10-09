@@ -6,8 +6,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [1.0.4]
 
-- Fix Toolchain finder (not complete yet)
-- Add memory analysis tools
+- Fix Toolchain (GCC and GDB) finder (xtensa not supported yet)
+- Add memory analysis tools (ram_report, rom_report, puncover)
+- Update README.MD and add screenshots
   
 ## [1.0.3]
 
