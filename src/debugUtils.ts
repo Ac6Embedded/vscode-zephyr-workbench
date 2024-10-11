@@ -7,7 +7,7 @@ import { Openocd } from "./debug/runners/Openocd";
 import { WestRunner } from "./debug/runners/WestRunner";
 import { concatCommands, getShell, getShellSourceCommand } from './execUtils';
 import { ZephyrProject } from "./ZephyrProject";
-import { getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
+import { getConfigValue, getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
 import { STM32CubeProgrammer } from './debug/runners/STM32CubeProgrammer';
 import { JLink } from './debug/runners/JLink';
 import { PyOCD } from './debug/runners/PyOCD';
@@ -166,6 +166,9 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
   }
 
   const targetArch = targetBoard.arch;
+	const dotConfig = path.join(project.buildDir, 'zephyr', '.config');
+	const socToolchainName = getConfigValue(dotConfig, 'SOC_TOOLCHAIN_NAME');
+
   const program = path.join('${workspaceFolder}', 'build', '${config:zephyr-workbench.board}', ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
 
   const shell: string = getShell();
@@ -202,7 +205,7 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
     filterStdout: true,
     serverStarted: "",
     MIMode: "gdb",
-    miDebuggerPath: `${zephyrSDK.getDebuggerPath(targetArch)}`,
+    miDebuggerPath: `${zephyrSDK.getDebuggerPath(targetArch, socToolchainName)}`,
     debugServerPath: `\${workspaceFolder}/build/\${config:zephyr-workbench.board}/${wrapper}`,
     debugServerArgs: "",
     setupCommands: [

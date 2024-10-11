@@ -6,16 +6,22 @@ import path from "path";
 export class ZephyrBoard {
   identifier!: string;
   name!: string;
+  boardName!: string; /* Real parent board name NOTE: Zephyr board concept is boardname[@revision][/SoC[/CPU cluster][/variant]]*/
+  rev!: string;
+  soc!: string;
+  cpuCluster!: string;
+  variant!: string;
   vendor!: string;
   type!: string;
   arch!: string;
   supported!: string[];
-  socs!: string[];
+  
   readonly yamlFileUri: vscode.Uri ;
 
   public constructor(yamlFileUri: vscode.Uri) {
     this.yamlFileUri = yamlFileUri;
     this.parseYAML();
+    this.parseBoardTerm();
   }
 
   private parseYAML() {
@@ -29,12 +35,24 @@ export class ZephyrBoard {
       this.type = data.type;
       this.arch = data.arch;
       this.supported = data.supported;
-    }
 
-    if(fs.existsSync(this.boardYMLPath)) {
-      const boardFile2 = fs.readFileSync(this.boardYMLPath, 'utf8');
-      const data = yaml.parse(boardFile2);
-      this.socs = data.board.socs;
+    }
+  }
+
+  private parseBoardTerm() {
+    if(this.identifier) {
+      const regex = /^([^@\/]+)(?:@([^\/]+))?(?:\/([^\/]+)(?:\/([^\/]+)(?:\/([^\/]+))?)?)?$/;
+      const match = this.identifier.match(regex);
+      
+      if (!match) {
+        throw new Error("Identifier format invalid");
+      }
+
+      this.boardName = match[1];
+      this.rev = match[2];
+      this.soc = match[3];
+      this.cpuCluster = match[4];
+      this.variant = match[5];
     }
   }
 

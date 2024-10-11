@@ -77,13 +77,24 @@ export class ZephyrSDK {
     return prefix;
   }
 
-  public getCompilerPath(arch: string): string {
-    let compilerPrefix = ZephyrSDK.getToolchainPrefix(arch);
+  public getCompilerPath(arch: string, socToolchain: string | undefined = undefined): string {
+    let compilerPrefix = '';
+    if(arch === 'xtensa' && socToolchain) {
+      compilerPrefix = ZephyrSDK.getToolchainPrefix(arch, socToolchain);
+    } else {
+      compilerPrefix = ZephyrSDK.getToolchainPrefix(arch);
+    }
     return path.join(this.rootUri.fsPath, compilerPrefix, 'bin', `${compilerPrefix}-gcc`);
   }
 
-  public getDebuggerPath(arch: string): string {
-    let compilerPrefix = ZephyrSDK.getToolchainPrefix(arch);
+  public getDebuggerPath(arch: string, socToolchain: string | undefined = undefined): string {
+    let compilerPrefix = '';
+    if(arch === 'xtensa' && socToolchain) {
+      compilerPrefix = ZephyrSDK.getToolchainPrefix(arch, socToolchain);
+    } else {
+      compilerPrefix = ZephyrSDK.getToolchainPrefix(arch);
+    }
+    
     let ext = '';
     if(process.platform === 'win32') {
       ext = '.exe';

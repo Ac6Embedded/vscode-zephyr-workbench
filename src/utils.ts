@@ -477,3 +477,20 @@ export function compareVersions(v1: string, v2: string): number {
 
   return 0;
 }
+
+/**
+ * Helper function to get value from .config file
+ * @param option 
+ * @param configFile 
+ * @returns 
+ */
+export function getConfigValue(configFile: string, option: string): string | undefined {
+  try {
+    const configContent = fs.readFileSync(configFile, 'utf-8');
+    const regex = new RegExp(`^CONFIG_${option}="?(.*?)"?$`, 'm');
+    const match = configContent.match(regex);
+    return match ? match[1] : undefined;
+  } catch (err) {
+    return undefined;
+  }
+}

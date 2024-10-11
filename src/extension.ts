@@ -24,7 +24,7 @@ import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherReso
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
-import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findTask, getInstallDirRealPath, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
+import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findTask, getBoardFromId, getConfigValue, getInstallDirRealPath, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
 import { DebugManagerPanel } from './panels/DebugManagerPanel';
@@ -148,6 +148,14 @@ export function activate(context: vscode.ExtensionContext) {
 		if (westBuildTask) {
 			try {
 				await vscode.tasks.executeTask(westBuildTask);
+
+				// After first build, parse toolchain name from .config
+				let gccPath: string | undefined = vscode.workspace.getConfiguration('C_Cpp', folder).get('default.compilerPath');
+				if(gccPath && gccPath.includes('undefined')) {
+					const project = new ZephyrAppProject(folder, folder.uri.fsPath);
+					await updateCompileSetting(project);
+				}
+
 			} catch (error) {
 				vscode.window.showErrorMessage(`Error executing task: ${error}`);
 			}
@@ -1114,4 +1122,16 @@ export async function showConfirmMessage(message: string): Promise<boolean> {
 
 // This method is called when your extension is deactivated
 export function deactivate() {}
+
+async function updateCompileSetting(project: ZephyrAppProject) {
+	const zephyrSDK = getZephyrSDK(project.sdkPath);
+	const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+	const board = await getBoardFromId(project.boardId, westWorkspace);
+	
+	let dotConfig = path.join(project.buildDir, 'zephyr', '.config');
+	let socToolchainName = getConfigValue(dotConfig, 'SOC_TOOLCHAIN_NAME');
+	if(socToolchainName) {
+		await vscode.workspace.getConfiguration('C_Cpp', project.workspaceFolder).update('default.compilerPath', zephyrSDK.getCompilerPath(board.arch, socToolchainName), vscode.ConfigurationTarget.WorkspaceFolder);
+	}
+}
 

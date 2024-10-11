@@ -7,7 +7,6 @@ import { ZephyrBoard } from './ZephyrBoard';
 import { ZephyrSDK } from './ZephyrSDK';
 import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
 import { concatCommands, getShell, getShellArgs } from './execUtils';
-import { showPristineQuickPick } from './setupBuildPristineQuickStep';
 import { getWestWorkspace, getZephyrSDK } from './utils';
 
 export interface ZephyrTaskDefinition extends vscode.TaskDefinition {

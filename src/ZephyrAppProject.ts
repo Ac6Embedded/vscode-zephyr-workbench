@@ -1,11 +1,6 @@
 import * as vscode from 'vscode';
-import fs from "fs";
 import { ZephyrProject } from "./ZephyrProject";
-import { WestWorkspace } from './WestWorkspace';
-import { ZephyrBoard } from './ZephyrBoard';
-import path from 'path';
 import { fileExists } from './utils';
-import { ZephyrSDK } from './ZephyrSDK';
 
 export class ZephyrAppProject extends ZephyrProject {
 

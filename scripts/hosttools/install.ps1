@@ -135,7 +135,7 @@ function Install-PythonVenv {
     python -m venv "$InstallDirectory\.venv"
     . "$InstallDirectory\.venv\Scripts\Activate.ps1"
     python -m pip install setuptools wheel windows-curses west pyelftools --quiet
-    python -m pip install git+https://github.com/HBehrens/puncover --user --quiet
+    python -m pip install git+https://github.com/HBehrens/puncover --quiet
     python -m pip install anytree --quiet
     python -m pip install -r "$RequirementsDirectory\requirements.txt" --quiet
 }

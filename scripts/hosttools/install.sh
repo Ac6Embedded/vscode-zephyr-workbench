@@ -217,7 +217,7 @@ install_python_venv() {
     python3 -m venv "$install_directory/.venv"
     source "$install_directory/.venv/bin/activate"
     python3 -m pip install setuptools wheel west --quiet
-    python3 -m pip install git+https://github.com/HBehrens/puncover --user --quiet
+    python3 -m pip install git+https://github.com/HBehrens/puncover --quiet
     python3 -m pip install anytree --quiet
     python3 -m pip install -r "$REQUIREMENTS_DIR/requirements.txt" --quiet
 }
