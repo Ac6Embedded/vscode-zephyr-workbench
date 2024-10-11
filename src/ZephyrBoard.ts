@@ -10,7 +10,7 @@ export class ZephyrBoard {
   type!: string;
   arch!: string;
   supported!: string[];
-  soc!: string;
+  socs!: string[];
   readonly yamlFileUri: vscode.Uri ;
 
   public constructor(yamlFileUri: vscode.Uri) {
@@ -30,10 +30,20 @@ export class ZephyrBoard {
       this.arch = data.arch;
       this.supported = data.supported;
     }
+
+    if(fs.existsSync(this.boardYMLPath)) {
+      const boardFile2 = fs.readFileSync(this.boardYMLPath, 'utf8');
+      const data = yaml.parse(boardFile2);
+      this.socs = data.board.socs;
+    }
   }
 
   get rootPath(): string {
     return path.dirname(this.yamlFileUri.fsPath);
+  }
+
+  get boardYMLPath(): string {
+    return path.join(this.rootPath, 'board.yml');
   }
 
   get docDirPath(): string {

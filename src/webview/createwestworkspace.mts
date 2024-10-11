@@ -284,6 +284,8 @@ function modifySrcTypeHandler(this: HTMLElement) {
     manifestGroup.style.display  = "block";
   } else if(srcTypeRadioGroup.value === 'template') {
     srcRemotePath.value = "https://github.com/zephyrproject-rtos";
+    srcRemotePath.removeAttribute('disabled');
+    srcRemoteBranch.removeAttribute('disabled');
     templatesGroup.style.display = "block";
     srcRemotePath.style.display = "block";
     srcRemoteBranchGroup.style.display = "block";

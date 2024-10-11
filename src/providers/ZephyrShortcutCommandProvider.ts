@@ -93,8 +93,8 @@ export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<Me
         items.push(installHostToolsMenuItem);
       }
 
-      items.push(newWestWorkspaceMenuItem);
       items.push(newAppMenuItem);
+      items.push(newWestWorkspaceMenuItem);
       items.push(newSDKMenuItem);
       items.push(debugManagerMenuItem);
     } 

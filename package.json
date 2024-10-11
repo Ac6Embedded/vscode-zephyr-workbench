@@ -8,7 +8,7 @@
     "type": "git",
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
-  "version": "1.0.4",
+  "version": "1.0.5",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -62,16 +62,6 @@
             "default": "",
             "description": "Path to your python virtual environment activate script. Enter empty value to use default internal environment",
             "scope": "machine-overridable"
-          },
-          "zephyr-workbench.openocd.execPath": {
-            "type": "string",
-            "description": "Path to internal OpenOCD server.",
-            "scope": "machine"
-          },
-          "zephyr-workbench.openocd.searchDir": {
-            "type": "string",
-            "description": "Path to internal OpenOCD scripts.",
-            "scope": "machine"
           },
           "zephyr-workbench.listSDKs": {
             "type": "array",
@@ -337,11 +327,6 @@
         "command": "zephyr-workbench-sdk-explorer.delete",
         "title": "Delete from disk",
         "icon": "$(trash)"
-      },
-      {
-        "command": "zephyr-workbench-sdk-explorer.install-requirements",
-        "title": "Install Requirements",
-        "icon": "$(desktop-download)"
       },
       {
         "command": "zephyr-workbench-sdk-explorer.refresh",
@@ -651,11 +636,6 @@
         {
           "command": "zephyr-workbench-sdk-explorer.delete",
           "group": "0@view/item/context@2",
-          "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
-        },
-        {
-          "command": "zephyr-workbench-sdk-explorer.install-requirements",
-          "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
         },
         {

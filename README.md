@@ -2,29 +2,24 @@
 
 Ac6 Zephyr Workbench for VS Code extension adds support of Zephyr development to Visual Studio Code, including SDK management, Project wizard, build and debugging features. 
 
-<p align="center">
-  <img alt="Zephyr Workbench Overview" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_overview.png" width="80%">
-</p>
-
 ## Features
 * Install native Host Tools (python, cmake, ...)
 * Install and auto-detect default Zephyr SDK
 * Import West workspaces from remote repository using west or from local folder 
 * Parse west workspace data from config file
 * Create application projects for specific board from sample
-* Configure application KConfig
 * Build/Flash application
 * Debug application
+
+<p align="center">
+  <img alt="Zephyr Workbench Overview" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_overview.png" width="80%">
+</p>
 
 ## Requirements
 To build your project on Zephyr Workbench, No external tools is required. Host tools are installed by the extension itself.
 To flash and to debug the application on your target, external tools are required. Depending on needs, your might have to install some of the following software tools on your workstation:
-* SAM Boot Assistant (SAM-BA)
 * LinkServer Debug Host Tools
 * J-Link Debug Host Tools
-* pyOCD Debug Host Tools
-* Lauterbach TRACE32 Debug Host Tools
-* NXP S32 Debug Probe Host Tools
   
 ## Usage
 Zephyr Workbench provides a dedicated panel, to access it, click on the "Zephyr Workbench" logo on the left 
@@ -127,13 +122,12 @@ If the launch configuration was already created, you don't need to open the **De
 1. Go to the "Run and Debug" (Ctrl+Shift+D) activity panel
 2. Select the launch configuration for your project
 3. Click on the Run button
-4. 
+
 <p align="center">
   <img alt="Launch Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_start_debug_session.png" width="80%">
 </p>
 
 ### Debug your application
-
 After starting the debug session, the code should breaks on main or early (depends on optimization on your project). 
 <p align="center">
   <img alt="Debug: Overview" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_overview.png" width="80%">
