@@ -204,6 +204,7 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
 function debugHandler(this: HTMLElement, ev: MouseEvent) {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
   const programPath = document.getElementById('programPath') as TextField;
+  const svdPath = document.getElementById('svdPath') as TextField;
   const gdbPath = document.getElementById('gdbPath') as TextField;
   const gdbAddress = document.getElementById('gdbAddress') as TextField;
   const gdbPort = document.getElementById('gdbPort') as TextField;
@@ -216,6 +217,7 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
       command: 'debug',
       project: applicationInput.getAttribute('data-value'),
       programPath: programPath.value,
+      svdPath: svdPath.value,
       gdbPath: gdbPath.value,
       gdbAddress: gdbAddress.value,
       gdbPort: gdbPort.value,
