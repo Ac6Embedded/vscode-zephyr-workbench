@@ -10,7 +10,7 @@ import { ZephyrSDK } from './ZephyrSDK';
 import { ZephyrTaskProvider, createExtensionsJson, createTasksJson, setDefaultProjectSettings } from './ZephyrTaskProvider';
 import { changeBoardQuickStep } from './changeBoardQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
-import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
+import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { importProjectQuickStep } from './importProjectQuickStep';
 import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, download, execCommand, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools } from './installUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
@@ -31,7 +31,7 @@ import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { generateWestManifest } from './manifestUtils';
-import { execCommandWithEnv } from './execUtils';
+import { execCommandWithEnv, getPyOCDTargets } from './execUtils';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -184,9 +184,9 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.delete', async (node: ZephyrApplicationTreeItem) => {
 		if(node.project) {
 			vscode.window.withProgress({
-				location: vscode.ProgressLocation.Notification,
-								title: "Deleting Zephyr Application build directory",
-								cancellable: false,
+					location: vscode.ProgressLocation.Notification,
+					title: "Deleting Zephyr Application build directory",
+					cancellable: false,
 				}, async () => {
 					deleteFolder(path.join(node.project.folderPath, 'build'));
 				}
@@ -292,12 +292,12 @@ export function activate(context: vscode.ExtensionContext) {
 			const westFlashTask = await findTask('Generate SPDX', node.project.workspaceFolder);
 			if (westFlashTask) {
 				try {
-						await vscode.tasks.executeTask(westFlashTask);
+					await vscode.tasks.executeTask(westFlashTask);
 				} catch (error) {
-						vscode.window.showErrorMessage(`Error executing task: ${error}`);
+					vscode.window.showErrorMessage(`Error executing task: ${error}`);
 				}
 			} else {
-					vscode.window.showErrorMessage('Cannot find SPDX task.');
+				vscode.window.showErrorMessage('Cannot find SPDX task.');
 			}
 		}
 	});
@@ -306,9 +306,9 @@ export function activate(context: vscode.ExtensionContext) {
 		if(node.project) {
 			if(await showConfirmMessage(`Delete ${node.project.folderName} permanently ?`)) {
 				vscode.window.withProgress({
-					location: vscode.ProgressLocation.Notification,
-									title: "Deleting Zephyr Application",
-									cancellable: false,
+						location: vscode.ProgressLocation.Notification,
+						title: "Deleting Zephyr Application",
+						cancellable: false,
 					}, async () => {
 						removeWorkspaceFolder(node.project.workspaceFolder);
 						deleteFolder(node.project.sourceDir);
@@ -319,17 +319,17 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	vscode.commands.registerCommand("zephyr-workbench-app-explorer.set-venv", async (node: ZephyrApplicationTreeItem) => {
-		vscode.commands.executeCommand('workbench.action.openSettings', `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY}`);
+		vscode.commands.executeCommand('workbench.action.openSettings', `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}`);
 	});
 
 	vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-venv", async (node: ZephyrApplicationTreeItem) => {
 		vscode.window.withProgress({
-			location: vscode.ProgressLocation.Notification,
+				location: vscode.ProgressLocation.Notification,
 				title: "Create new local environment",
 				cancellable: false,
 			}, async () => {
 				let venvPath = await createLocalVenv(context, node.project.workspaceFolder);
-				await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+				await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
 			}
 		);
 	});
@@ -430,9 +430,7 @@ export function activate(context: vscode.ExtensionContext) {
 		const puncoverTask = await findTask('West Puncover', folder);
 		if (puncoverTask) {
 			try {
-	
 				let taskExec = await vscode.tasks.executeTask(puncoverTask);
-
 				const taskStartListener = vscode.tasks.onDidStartTask(async (event) => {
 					if (event.execution === taskExec) {
 						const stopItem = 'Terminate';
@@ -443,42 +441,12 @@ export function activate(context: vscode.ExtensionContext) {
 						};
 					}
 				});
-
-
 			} catch (error) {
 				vscode.window.showErrorMessage(`Error executing task: ${error}`);
 			}
 		} else {
 				vscode.window.showErrorMessage('Cannot find "West Puncover" task.');
 		}
-
-		// vscode.window.withProgress({
-		// 		location: vscode.ProgressLocation.Notification,
-		// 		title: "Running Puncover server",
-		// 		cancellable: true,
-		// 	}, async (progress, token) => {
-		// 		const command = 'west build -t puncover';
-		// 		let process = execWestCommandWithEnv(command, folder);
-
-		// 		process.stdout?.on('data', (data) => {
-		// 			console.log(`stdout: ${data}`);
-		// 		});
-				
-		// 		process.stderr?.on('data', (data) => {
-		// 			console.error(`stderr: ${data}`);
-		// 		});
-				
-		// 		process.on('close', (code) => {
-		// 			console.log(`child process exited with code ${code}`);
-		// 		});
-
-		// 		token.onCancellationRequested(() => {
-		// 			if(process) {
-		// 				process.kill();
-		// 			}
-		// 		});
-		// 	}
-		// );
 	});
 
 	vscode.commands.registerCommand('zephyr-workbench-west-workspace.open-terminal', async (node: WestWorkspaceTreeItem) => {
@@ -499,9 +467,9 @@ export function activate(context: vscode.ExtensionContext) {
 		if(node.westWorkspace) {
 			if(await showConfirmMessage(`Delete ${node.westWorkspace.name} permanently ?`)) {
 				vscode.window.withProgress({
-					location: vscode.ProgressLocation.Notification,
-									title: "Deleting West Workspace",
-									cancellable: false,
+						location: vscode.ProgressLocation.Notification,
+						title: "Deleting West Workspace",
+						cancellable: false,
 					}, async () => {
 						let workspaceFolder = getWorkspaceFolder(node.westWorkspace.rootUri.fsPath);
 						if(workspaceFolder) {
@@ -558,7 +526,7 @@ export function activate(context: vscode.ExtensionContext) {
 				location: vscode.ProgressLocation.Notification,
 				title: "Reinstalling Virtual environment",
 				cancellable: false,
-			}, async (progress, token) => {
+			}, async () => {
 				await installVenv(context);
 			});
 		})
@@ -568,27 +536,26 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand("zephyr-workbench.verify-host-tools", async () => {
 			vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
-								title: "Verify host tools",
-								cancellable: true,
-				}, async (progress, token) => {
-					try {
-						await verifyHostTools(context);
-					} catch (error) {
+				title: "Verify host tools",
+				cancellable: true,
+			}, async () => {
+				try {
+					await verifyHostTools(context);
+				} catch (error) {
 
-						if (error instanceof Error) {
-							if((error as any).cause.startsWith(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)) {
-								const openSettingItem = 'Open Setting';
-								const choice = await vscode.window.showErrorMessage(`Fail verifying tools...\n${error}`, openSettingItem);
-								if(choice === openSettingItem) {
-									vscode.commands.executeCommand('workbench.action.openSettings', (error as any).cause);
-								}
-							} else {
-								vscode.window.showErrorMessage(`Fail verifying tools...\n${error}`);
+					if (error instanceof Error) {
+						if((error as any).cause.startsWith(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)) {
+							const openSettingItem = 'Open Setting';
+							const choice = await vscode.window.showErrorMessage(`Fail verifying tools...\n${error}`, openSettingItem);
+							if(choice === openSettingItem) {
+								vscode.commands.executeCommand('workbench.action.openSettings', (error as any).cause);
 							}
+						} else {
+							vscode.window.showErrorMessage(`Fail verifying tools...\n${error}`);
 						}
 					}
 				}
-			);
+			});
 		})
 	);
 
@@ -607,6 +574,9 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench.debug-manager.debug", async (folder: vscode.WorkspaceFolder, configName: string) => {
 			DebugManagerPanel.currentPanel?.dispose();
+
+			// TODO: If PyOCD runner, we should check if target is installed
+
 			await vscode.debug.startDebugging(folder, configName);
 		})
 	);
@@ -615,28 +585,25 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand("zephyr-workbench.run-install-debug-tools", async (panel, listTools) => {
 			vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
-								title: "Download and install debug host tools",
-								cancellable: true,
-				}, async (progress, token) => {
-					await installHostDebugTools(context, listTools);
-					
-					for(let tool of listTools) {
-						let runner = getRunner(tool);
-						if(runner && runner.executable) {
-							let runnerPath = path.join(getInternalToolsDirRealPath(), runner.name, runner.binDirPath, runner.executable);
-							if(fileExists(runnerPath)) {
-								runner.serverPath = runnerPath;
-								runner.updateSettings();
-							}
+				title: "Download and install debug host tools",
+				cancellable: true,
+			}, async () => {
+				await installHostDebugTools(context, listTools);
+				
+				for(let tool of listTools) {
+					let runner = getRunner(tool);
+					if(runner && runner.executable) {
+						let runnerPath = path.join(getInternalToolsDirRealPath(), runner.name, runner.binDirPath, runner.executable);
+						if(fileExists(runnerPath)) {
+							runner.serverPath = runnerPath;
+							runner.updateSettings();
 						}
-						panel.webview.postMessage({ command: 'exec-done', tool: `${tool}` });
 					}
+					panel.webview.postMessage({ command: 'exec-done', tool: `${tool}` });
 				}
-			);
+			});
 		})
 	);
-
-
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.open-wizard", async () => {
@@ -952,36 +919,35 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("west.init", async (srcUrl, srcRev, workspaceDestPath, manifestPath) => {
 			if(workspaceDestPath && !isWorkspaceFolder(workspaceDestPath)) {
-					vscode.window.withProgress({
-						location: vscode.ProgressLocation.Notification,
-						title: "Initializing west workspace",
-						cancellable: false,
-					}, async (progress, token) => {
-						try {
-							await westInitCommand(srcUrl, srcRev, workspaceDestPath, manifestPath);
-							await westUpdateCommand(workspaceDestPath);
-							await westBoardsCommand(workspaceDestPath);
-							CreateWestWorkspacePanel.currentPanel?.dispose();
-							await addWorkspaceFolder(workspaceDestPath);
-							westWorkspaceProvider.refresh();
-						} catch(e) {
-							if (e instanceof Error) {
-								if((e as any).cause.startsWith(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)) {
-									const openSettingItem = 'Open Setting';
-									const choice = await vscode.window.showErrorMessage(`Fail to execute west init command...\n${e}`, openSettingItem);
-									if(choice === openSettingItem) {
-										vscode.commands.executeCommand('workbench.action.openSettings', (e as any).cause);
-									}
-								} else {
-									vscode.window.showErrorMessage(`Fail to execute west init command...\n${e}`);
+				vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: "Initializing west workspace",
+					cancellable: false,
+				}, async (progress, token) => {
+					try {
+						await westInitCommand(srcUrl, srcRev, workspaceDestPath, manifestPath);
+						await westUpdateCommand(workspaceDestPath);
+						await westBoardsCommand(workspaceDestPath);
+						CreateWestWorkspacePanel.currentPanel?.dispose();
+						await addWorkspaceFolder(workspaceDestPath);
+						westWorkspaceProvider.refresh();
+					} catch(e) {
+						if (e instanceof Error) {
+							if((e as any).cause.startsWith(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)) {
+								const openSettingItem = 'Open Setting';
+								const choice = await vscode.window.showErrorMessage(`Fail to execute west init command...\n${e}`, openSettingItem);
+								if(choice === openSettingItem) {
+									vscode.commands.executeCommand('workbench.action.openSettings', (e as any).cause);
 								}
 							} else {
-								vscode.window.showErrorMessage('Fail to execute west init command...\n Error: Unknown');
+								vscode.window.showErrorMessage(`Fail to execute west init command...\n${e}`);
 							}
-							return;
-						}	
-					}
-				);
+						} else {
+							vscode.window.showErrorMessage('Fail to execute west init command...\n Error: Unknown');
+						}
+						return;
+					}	
+				});
 			} else {
 				vscode.window.showErrorMessage("The west workspace location folder is invalid or already exists");
 			}
@@ -1074,7 +1040,7 @@ export function activate(context: vscode.ExtensionContext) {
 				zephyrSdkProvider.refresh();
 			}
 
-			if(event.affectsConfiguration(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY)) {
+			if(event.affectsConfiguration(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY)) {
 				zephyrShortcutProvider.refresh();
 				zephyrToolsCommandProvider.refresh();
 			}
@@ -1113,6 +1079,17 @@ async function updateStatusBar() {
 	}
 }
 
+async function updateCompileSetting(project: ZephyrAppProject) {
+	const zephyrSDK = getZephyrSDK(project.sdkPath);
+	const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+	const board = await getBoardFromId(project.boardId, westWorkspace);
+	
+	let socToolchainName = project.getKConfigValue('SOC_TOOLCHAIN_NAME');
+	if(socToolchainName) {
+		await vscode.workspace.getConfiguration('C_Cpp', project.workspaceFolder).update('default.compilerPath', zephyrSDK.getCompilerPath(board.arch, socToolchainName), vscode.ConfigurationTarget.WorkspaceFolder);
+	}
+}
+
 export async function showConfirmMessage(message: string): Promise<boolean> {
 	const yesItem = 'Yes';
 	const noItem = 'No';
@@ -1123,15 +1100,5 @@ export async function showConfirmMessage(message: string): Promise<boolean> {
 // This method is called when your extension is deactivated
 export function deactivate() {}
 
-async function updateCompileSetting(project: ZephyrAppProject) {
-	const zephyrSDK = getZephyrSDK(project.sdkPath);
-	const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-	const board = await getBoardFromId(project.boardId, westWorkspace);
-	
-	let dotConfig = path.join(project.buildDir, 'zephyr', '.config');
-	let socToolchainName = getConfigValue(dotConfig, 'SOC_TOOLCHAIN_NAME');
-	if(socToolchainName) {
-		await vscode.workspace.getConfiguration('C_Cpp', project.workspaceFolder).update('default.compilerPath', zephyrSDK.getCompilerPath(board.arch, socToolchainName), vscode.ConfigurationTarget.WorkspaceFolder);
-	}
-}
+
 

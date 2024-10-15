@@ -157,7 +157,7 @@ To debug in disassembly, right-click on the code then select "Open Disassembly V
 More information about [Debugging on VSCODE](https://code.visualstudio.com/docs/editor/debugging)
 
 ### Install Debug tools
-Only OpenOCD and STM32CubeProgrammer are currently supported
+OpenOCD and STM32CubeProgrammer installers are provided.
 1. Click on the "Install Debug tools" menu
 2. The list of supported is displayed here
 3. Click on the "Install" icon to install the tools 
@@ -172,4 +172,6 @@ Note: As third-party installer cannot be fully controlled, you might need to man
 ## Known Issues
 Error message in "Output" tab with new application project is created.
 Uninstall tools not supported yet, please manually delete the ${USERDIR}/.zinstaller directory.
+
+For some JTAG probes, you might need to install its driver in order to run the debug session.  
 

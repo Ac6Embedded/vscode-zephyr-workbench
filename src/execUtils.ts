@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { compareVersions, fileExists } from './utils';
-import { ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
+import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { ChildProcess, ExecException, ExecOptions, SpawnOptions, SpawnOptionsWithoutStdio, exec, spawn } from 'child_process';
 
 let _channel: vscode.OutputChannel;
@@ -152,12 +152,12 @@ export async function execShellCommand(cmdName: string, cmd: string, options: vs
  * @returns 
  */
 export async function execShellCommandWithEnv(cmdName: string, cmd: string, options: vscode.ShellExecutionOptions) {
-  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
-  let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY);
+  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+  let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
 
   if(!envScript) {
     throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
-       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY}` });
+       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` });
   } 
 
   if(!cmd || cmd.length === 0) {
@@ -166,7 +166,7 @@ export async function execShellCommandWithEnv(cmdName: string, cmd: string, opti
 
   if(activatePath && !fileExists(activatePath)) {
     throw new Error('Invalid Python Virtual Environment.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Venv: Activate Path',
-       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY}`});
+       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}`});
   }
 
   const shell: string = getShell();
@@ -187,17 +187,17 @@ export async function execShellCommandWithEnv(cmdName: string, cmd: string, opti
 } 
 
 export async function execCommandWithEnv(cmd: string, cwd?: string | undefined, callback?: ((error: ExecException | null, stdout: string, stderr: string) => void)): Promise<ChildProcess> {
-  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
-  let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY);
+  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+  let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
   let options: ExecOptions = {};
   if(!envScript) {
     throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
-       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY}` });
+       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` });
   } 
 
   if(activatePath && !fileExists(activatePath)) {
     throw new Error('Invalid Python Virtual Environment.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Venv: Activate Path',
-       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY}`});
+       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}`});
   } else {
     options = { 
       env: {
@@ -222,16 +222,16 @@ export async function execCommandWithEnv(cmd: string, cwd?: string | undefined, 
 }
 
 export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): ChildProcess {
-  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
-  let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY);
+  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+  let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
   if(!envScript) {
     throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
-       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY}` });
+       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` });
   } 
 
   if(activatePath && !fileExists(activatePath)) {
     throw new Error('Invalid Python Virtual Environment.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Venv: Activate Path',
-       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY}`});
+       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}`});
   } else {
     options.env = {
       ...options.env,
@@ -250,11 +250,8 @@ export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): Ch
 }
 
 export async function getGitTags(gitUrl: string): Promise<string[]> {
-
   const gitCmd = `git ls-remote --tags ${gitUrl}`;
-
   return new Promise((resolve, reject) => {
-    let tags: string[] = [];
     execCommandWithEnv(gitCmd, undefined, (error: any, stdout: string, stderr: any) => {
       if (error) {
         reject(`Error: ${stderr}`);
@@ -269,6 +266,64 @@ export async function getGitTags(gitUrl: string): Promise<string[]> {
         .sort((a, b) => compareVersions(b, a));
 
       resolve(tags);
+    });
+  });
+}
+
+
+export async function getPyOCDTargets(): Promise<string[]> {
+  const pyOCDCmd = 'pyocd list --targets';
+  return new Promise((resolve, reject) => {
+    execCommandWithEnv(pyOCDCmd, undefined, (error: any, stdout: string, stderr: any) => {
+      if (error) {
+        reject(`Error: ${stderr}`);
+      }
+
+      // Process the output and split into an array of supported targets names
+      const targets = stdout
+        .split('\n')
+        .slice(2)       // Skip header lines
+        .filter(line => line.trim().length > 0)
+        .map(line => line.trim().split(/\s+/)[0]);
+
+      resolve(targets);
+    });
+  });
+}
+
+export async function checkPyOCDTarget(targetName: string) {
+  let targets = await getPyOCDTargets();
+  return (targets.includes(targetName.trim()));
+}
+
+export async function updatePyOCDPack(): Promise<string> {
+  const pyOCDUpdateCmd = 'pyocd pack update';
+  return new Promise((resolve, reject) => {
+    execCommandWithEnv(pyOCDUpdateCmd, undefined, (error: any, stdout: string, stderr: any) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      if (stderr) {
+          console.error(`stderr: ${stderr}`);
+      }
+      resolve(stdout);
+    });
+  });
+}
+
+export async function installPyOCDTarget(targetName: string): Promise<string> {
+  const pyOCDInstallCmd = `pyocd pack install ${targetName}`;
+  return new Promise((resolve, reject) => {
+    execCommandWithEnv(pyOCDInstallCmd, undefined, (error: any, stdout: string, stderr: any) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      if (stderr) {
+          console.error(`stderr: ${stderr}`);
+      }
+      resolve(stdout);
     });
   });
 }

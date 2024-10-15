@@ -4,6 +4,17 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.6]
+
+- Support PyOCD target auto install
+- Fix venv reinstall and local venv usage
+
+## [1.0.5]
+
+- Support xtensa toolchain finder
+- Fix puncover download and installation
+- Parse more information on board definition
+
 ## [1.0.4]
 
 - Fix Toolchain (GCC and GDB) finder (xtensa not supported yet)

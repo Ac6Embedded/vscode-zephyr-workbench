@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import * as vscode from 'vscode';
-import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "./constants";
+import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "./constants";
 import { Linkserver } from "./debug/runners/Linkserver";
 import { Openocd } from "./debug/runners/Openocd";
 import { WestRunner } from "./debug/runners/WestRunner";
-import { concatCommands, getShell, getShellSourceCommand } from './execUtils';
+import { checkPyOCDTarget, concatCommands, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from './execUtils';
 import { ZephyrProject } from "./ZephyrProject";
 import { getConfigValue, getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
 import { STM32CubeProgrammer } from './debug/runners/STM32CubeProgrammer';
@@ -52,10 +52,10 @@ export function getRunner(runnerName: string): WestRunner | undefined {
 
 export function createWestWrapper(project: ZephyrProject) {
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
+  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
   if(!envScript) {
     throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
-       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY}` });
+       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` });
   } 
   const shell: string = getShell();
   let westCmd = '';
@@ -150,6 +150,16 @@ export function createOpenocdCfg(project: ZephyrProject) {
   fs.writeFileSync(cfgPath, cfgContent);
 }
 
+export async function setupPyOCDTarget(project: ZephyrProject) {
+  let target = project.getPyOCDTarget();
+  if(target) { 
+    if(!(await checkPyOCDTarget(target))) {
+      await updatePyOCDPack();
+      await installPyOCDTarget(target);
+    }
+  }
+}
+
 export async function createConfiguration(project: ZephyrProject): Promise<any> {
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
   const zephyrSDK = getZephyrSDK(project.sdkPath);
@@ -166,8 +176,7 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
   }
 
   const targetArch = targetBoard.arch;
-	const dotConfig = path.join(project.buildDir, 'zephyr', '.config');
-	const socToolchainName = getConfigValue(dotConfig, 'SOC_TOOLCHAIN_NAME');
+	const socToolchainName = project.getKConfigValue('SOC_TOOLCHAIN_NAME');
 
   const program = path.join('${workspaceFolder}', 'build', '${config:zephyr-workbench.board}', ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
 

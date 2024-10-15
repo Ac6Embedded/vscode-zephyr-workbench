@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import fs from 'fs';
 import path from "path";
 import yaml from 'yaml';
-import { fileExists, findTask, getBoardFromId, getWestWorkspace } from './utils';
-import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY } from './constants';
+import { fileExists, findTask, getBoardFromId, getConfigValue, getWestWorkspace } from './utils';
+import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { getShell } from './execUtils';
 export class ZephyrProject {
@@ -118,12 +118,36 @@ export class ZephyrProject {
     return runners;
   }
 
+  public getPyOCDTarget(): string | undefined {
+    const runnersYAMLFilepath = path.join(this.buildDir, ZEPHYR_DIRNAME, 'runners.yaml');
+    if(fileExists(runnersYAMLFilepath)) {
+      const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
+      const data = yaml.parse(runnersYAMLFile);
+      const pyOCDArgs = data?.args?.pyocd;
+      if (pyOCDArgs) {
+        const targetArg = pyOCDArgs.find((arg: string) => arg.startsWith('--target='));
+        if (targetArg) {
+            return targetArg.split('=')[1];
+        }
+      }
+    }
+    return undefined;
+  }
+
+  public getKConfigValue(configKey: string): string | undefined {  
+    let dotConfig = path.join(this.buildDir, 'zephyr', '.config');
+    if(fileExists(dotConfig)) {
+      return getConfigValue(dotConfig, configKey);
+    }
+	  return undefined;
+  }
+
   private static openTerminal(zephyrProject: ZephyrProject): vscode.Terminal {
     const shell = getShell();
     const westWorkspace = getWestWorkspace(zephyrProject.westWorkspacePath);
-    let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY);
+    let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
     if(!activatePath || activatePath.length === 0) {
-      activatePath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.workspaceFolder.uri).get(ZEPHYR_WORKBENCH_VENV_ACTIVATEPATH_SETTING_KEY);
+      activatePath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.workspaceFolder.uri).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
     }
 
     const opts: vscode.TerminalOptions = {
@@ -152,7 +176,7 @@ export class ZephyrProject {
       }
     }
 
-    let envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
+    let envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
     if(!envScript) {
       throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Ac6 Zephyr');
     } 

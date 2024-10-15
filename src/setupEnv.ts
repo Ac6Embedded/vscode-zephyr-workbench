@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { CancellationToken, Terminal } from "vscode";
 import { getZephyrTerminal, runCommandTerminal } from "./zephyrTerminalUtils";
-import { ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "./constants";
+import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "./constants";
 
 // export let output = vscode.window.createOutputChannel("Zephyr West Buildsystem");
 
@@ -9,7 +9,7 @@ function checkZephyrEnv(context: vscode.ExtensionContext, token: CancellationTok
 }
 
 async function sourceZephyrEnv(context: vscode.ExtensionContext, token: CancellationToken, terminal: Terminal) {
-  let envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
+  let envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
   if(envScript) {
     let cmd = `. ${envScript}`;
     runCommandTerminal(terminal, cmd);

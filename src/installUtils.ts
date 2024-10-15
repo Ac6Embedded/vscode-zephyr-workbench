@@ -7,7 +7,7 @@ import os from 'os';
 import path from "path";
 import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
-import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCHDIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
+import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs } from "./execUtils";
 import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSDK } from "./utils";
 import { getZephyrTerminal } from "./zephyrTerminalUtils";
@@ -68,7 +68,7 @@ export async function autoSetHostToolsSettings(): Promise<void> {
   return new Promise(async (resolve) => {
     // Set default environment script
     let envPath = findDefaultEnvScriptPath();
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, envPath, vscode.ConfigurationTarget.Global);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, envPath, vscode.ConfigurationTarget.Global);
 
     // Set default internal Zephyr SDK
     let sdk = await getInternalZephyrSDK();
@@ -96,10 +96,10 @@ export async function autoSetHostToolsSettings(): Promise<void> {
 export async function setDefaultSettings(): Promise<void> {
   return new Promise(async (resolve) => {
     // Set default environment script
-    let envPathSetting = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, "");
+    let envPathSetting = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, "");
     if(!(envPathSetting && envPathSetting.length > 0)) {
       let envPath = findDefaultEnvScriptPath();
-      await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY, envPath, vscode.ConfigurationTarget.Global);
+      await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, envPath, vscode.ConfigurationTarget.Global);
     }
 
     // Set default internal Zephyr SDK
@@ -134,7 +134,7 @@ export async function setOpenOCDSettings(): Promise<void> {
   }
 
   if(openocdScriptsPath.length > 0) {
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_OPENOCD_SEARCHDIR_SETTING_KEY, openocdScriptsPath, vscode.ConfigurationTarget.Global);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, openocdScriptsPath, vscode.ConfigurationTarget.Global);
   }
 }
 
@@ -517,7 +517,7 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
 
 export async function createLocalVenv(context: vscode.ExtensionContext, workbenchFolder: vscode.WorkspaceFolder): Promise<string | undefined> {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
-  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATHTOENV_SCRIPT_SETTING_KEY);
+  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
   if(installDirUri && envScript) {
     let installScript: string = "";
     let installCmd: string = "";

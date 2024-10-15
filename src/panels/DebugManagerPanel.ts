@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { createConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getServerAddressFromConfig, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../debugUtils";
+import { createConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../debugUtils";
 import { ZephyrAppProject } from "../ZephyrAppProject";
 import { getZephyrProject } from '../utils';
 import { WestRunner } from '../debug/runners/WestRunner';
@@ -278,8 +278,14 @@ export class DebugManagerPanel {
             break;
           }
           case 'debug': {
-            await applyHandler(message);
-            await debugHandler(message);
+            (async () => {
+              try {
+                await applyHandler(message);
+                await debugHandler(message);
+              } catch (error) {
+                console.error('Cannot start debug', error);
+              }
+            })();
             break;
           }
           default:
@@ -414,7 +420,7 @@ export class DebugManagerPanel {
       });
     }
     
-    async function applyHandler(message: any) {
+    async function applyHandler(message: any): Promise<void> {
       const projectPath = message.project;
       const appProject = await getZephyrProject(projectPath);
       const programPath = message.programPath;
@@ -446,12 +452,27 @@ export class DebugManagerPanel {
           }
         }
         createWestWrapper(appProject);
-        createOpenocdCfg(appProject);
+        
+        switch(runner?.name) {
+          case 'openocd': 
+            createOpenocdCfg(appProject);
+            break;
+          case 'pyocd':
+            await vscode.window.withProgress({
+              location: vscode.ProgressLocation.Notification,
+              title: "Please wait... installing target support on pyOCD",
+              cancellable: false,
+            }, async () => {
+              await setupPyOCDTarget(appProject);
+            });
+            break;
+        }
+
         writeLaunchJson(appProject, launchJson);
       }
     }
     
-    async function debugHandler(message: any) {
+    async function debugHandler(message: any): Promise<void> {
       const projectPath = message.project;
       const appProject = await getZephyrProject(projectPath);
       vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug', 
