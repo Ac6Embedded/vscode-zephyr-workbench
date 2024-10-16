@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from "path";
 import { RunnerType, WestRunner } from "./WestRunner";
 import { getInternalDirRealPath } from "../../utils";
+import { execCommandWithEnv } from '../../execUtils';
 
 export class Openocd extends WestRunner {
   name = 'openocd';
@@ -91,6 +92,41 @@ export class Openocd extends WestRunner {
     return '';
   }
 
+  async detectVersion(): Promise<string | undefined> {
+    if(!this.versionRegex) {
+      return undefined;
+    }
+    
+    let execPath = '';
+    if(this.serverPath) {
+      execPath = this.serverPath;
+    } else if(this.getSetting('pathExec')) {
+      execPath = this.getSetting('pathExec') as string;
+    } else if(this.executable) {
+      execPath = this.executable;
+    }
 
+    let versionCmd = `${execPath} --version`;
+    // Redirect stderr to stdout because openocd prints version on stderr
+    versionCmd = `${versionCmd} 2>&1`;
+    return new Promise<string | undefined>((resolve, reject) => {
+      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
+        if (error) {
+          resolve(undefined);
+        } else if (stderr) {
+          resolve(undefined);
+        } else {
+          if(this.versionRegex) {
+            const versionMatch = stdout.match(this.versionRegex);
+            if (versionMatch) {
+                resolve(versionMatch[1]);
+            }
+          } 
+          reject(undefined);
+        }
+
+      });
+    });
+  }
 
 }

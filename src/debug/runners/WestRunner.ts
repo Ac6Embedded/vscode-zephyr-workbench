@@ -154,9 +154,6 @@ export class WestRunner {
     }
 
     let versionCmd = `${execPath} --version`;
-    if(process.platform === 'linux' || process.platform === 'darwin') {
-      versionCmd = `${versionCmd} 2>&1`;
-    }
     return new Promise<string | undefined>((resolve, reject) => {
       execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
         if (error) {
