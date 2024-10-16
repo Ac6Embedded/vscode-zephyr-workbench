@@ -13,6 +13,10 @@ export class JLink extends WestRunner {
     }
   }
 
+  get versionRegex(): any | undefined {
+    return /J-Link GDB Server V([\d.]+[a-z]?)/i;
+  }
+
   loadArgs(args: string | undefined) {
     super.loadArgs(args);
 

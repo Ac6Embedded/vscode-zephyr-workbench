@@ -139,6 +139,48 @@ export class WestRunner {
     });
   }
 
+  async detectVersion(): Promise<string | undefined> {
+    if(!this.versionRegex) {
+      return undefined;
+    }
+    
+    let execPath = '';
+    if(this.serverPath) {
+      execPath = this.serverPath;
+    } else if(this.getSetting('pathExec')) {
+      execPath = this.getSetting('pathExec') as string;
+    } else if(this.executable) {
+      execPath = this.executable;
+    }
+
+    let versionCmd = `${execPath} --version`;
+    if(process.platform === 'linux' || process.platform === 'darwin') {
+      versionCmd = `${versionCmd} 2>&1`;
+    }
+    return new Promise<string | undefined>((resolve, reject) => {
+      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
+        if (error) {
+          resolve(undefined);
+        } else if (stderr) {
+          resolve(undefined);
+        } else {
+          if(this.versionRegex) {
+            const versionMatch = stdout.match(this.versionRegex);
+            if (versionMatch) {
+                resolve(versionMatch[1]);
+            }
+          } 
+          reject(undefined);
+        }
+
+      });
+    });
+  }
+
+  get versionRegex(): any | undefined {
+    return undefined;
+  }
+
   static extractRunner(args: any): string | undefined {
     const runnerRegex = /--runner\s+("[^"]+"|\S+)/;
     const runnerMatch = args.match(runnerRegex);

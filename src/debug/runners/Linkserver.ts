@@ -22,6 +22,10 @@ export class Linkserver extends WestRunner {
     }
   }
 
+  get versionRegex(): any | undefined {
+    return /v([\d.]+)/;
+  }
+
   loadArgs(args: string | undefined) {
     super.loadArgs(args);
 

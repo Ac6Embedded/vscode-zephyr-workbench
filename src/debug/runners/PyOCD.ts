@@ -13,6 +13,10 @@ export class PyOCD extends WestRunner {
     }
   }
 
+  get versionRegex(): any | undefined {
+    return /([\d.]+)/;
+  }
+
   loadArgs(args: string | undefined) {
     super.loadArgs(args);
 

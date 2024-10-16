@@ -21,6 +21,10 @@ export class Openocd extends WestRunner {
     }
   }
 
+  get versionRegex(): any | undefined {
+    return /Open On-Chip Debugger ([\d.]+)/;
+  }
+
   loadArgs(args: string | undefined) {
     super.loadArgs(args);
 

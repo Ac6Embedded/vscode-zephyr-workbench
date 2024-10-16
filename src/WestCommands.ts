@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { ZephyrProject } from './ZephyrProject';
 import { spawnCommandWithEnv, execShellCommandWithEnv, getShell, getShellNullRedirect } from './execUtils';
 import { WestWorkspace } from './WestWorkspace';
-import { fileExists, getWestWorkspace, getZephyrSDK } from './utils';
+import { fileExists, getWestWorkspace, getZephyrSDK, normalizePath } from './utils';
 import { ZephyrSDK } from './ZephyrSDK';
 import path from 'path';
 import { ChildProcess, ExecException, ExecOptions } from 'child_process';
@@ -18,8 +18,10 @@ export async function westInitCommand(srcUrl: string, srcRev: string, workspaceP
   let command = '';
   // If init remote repository
   if(srcUrl && srcUrl !== '') {
+    workspacePath = normalizePath(workspacePath);
     command = `west init -m ${srcUrl} --mr ${srcRev} ${workspacePath}`;
     if(manifestPath !== '') {
+      manifestPath = normalizePath(manifestPath);
       command += ` --mf ${manifestPath}`;
     }
   } else {
@@ -27,7 +29,7 @@ export async function westInitCommand(srcUrl: string, srcRev: string, workspaceP
       let manifestDir = path.join(workspacePath, 'manifest');
       let manifestFile = path.basename(manifestPath);
       const destFilePath = path.join(manifestDir, manifestFile);
-
+      
       // If the manifest is not already in the destination folder 
       if(destFilePath !== manifestPath) {
         // If init from manifest, prepare directory
@@ -40,7 +42,8 @@ export async function westInitCommand(srcUrl: string, srcRev: string, workspaceP
           fs.cpSync(manifestPath, destFilePath);
         }
       }
-      
+      manifestFile = normalizePath(manifestFile);
+      manifestDir = normalizePath(manifestDir);
       command = `west init -l --mf ${manifestFile} ${manifestDir}`;
     }
   }
@@ -86,7 +89,7 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
     throw new Error('The Zephyr SDK is missing, please install host tools first');
   }
   
-  let buildDir = path.join(zephyrProject.folderPath, 'build', zephyrProject.boardId);
+  let buildDir = normalizePath(path.join(zephyrProject.folderPath, 'build', zephyrProject.boardId));
   let command = `west build -p always --board ${zephyrProject.boardId} --build-dir ${buildDir} ${zephyrProject.folderPath}`;
   let options: vscode.ShellExecutionOptions = {
     env: {...activeSdk.buildEnv, ...westWorkspace.buildEnv },
@@ -97,7 +100,7 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
 }
 
 export async function westFlashCommand(zephyrProject: ZephyrProject, westWorkspace: WestWorkspace): Promise<void> {
-  let buildDir = path.join(zephyrProject.folderPath, 'build', zephyrProject.boardId);
+  let buildDir = normalizePath(path.join(zephyrProject.folderPath, 'build', zephyrProject.boardId));
   let command = `west flash --build-dir ${buildDir}`;
 
   let activeSdk: ZephyrSDK = getZephyrSDK(zephyrProject.sdkPath);
@@ -114,7 +117,7 @@ export async function westFlashCommand(zephyrProject: ZephyrProject, westWorkspa
 }
 
 export async function westDebugCommand(zephyrProject: ZephyrProject, westWorkspace: WestWorkspace): Promise<void> {
-  let buildDir = path.join(zephyrProject.folderPath, 'build', zephyrProject.boardId);
+  let buildDir = normalizePath(path.join(zephyrProject.folderPath, 'build', zephyrProject.boardId));
   let command = `west debug --build-dir ${buildDir}`;
 
   let options: vscode.ShellExecutionOptions = {

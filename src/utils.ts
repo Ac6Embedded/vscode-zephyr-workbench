@@ -12,6 +12,14 @@ import { checkHostTools } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { ZephyrProject } from './ZephyrProject';
 
+export function normalizePath(pathToNormalize: string) {
+  let newpath = path.normalize(pathToNormalize);
+  if (newpath.includes(' ')) {
+    return `"${newpath}"`;
+  }
+  return newpath;
+}
+
 export function getInternalDirVSCodePath(): string {
   if(!isPortableMode()) {
     return path.join('${userHome}', '.zinstaller');

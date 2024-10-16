@@ -58,14 +58,15 @@ function setVSCodeMessageListener() {
         break;
       }
       case 'detect-done': {
-        const cell = document.getElementById(`detect-${event.data.tool}`) as HTMLElement;
-        if(event.data.found === 'true') {
-          cell.textContent = 'Installed';
+        const versionCell = document.getElementById(`version-${event.data.tool}`) as HTMLElement;
+        const statusCell = document.getElementById(`detect-${event.data.tool}`) as HTMLElement;
+        versionCell.textContent = event.data.version;
+        if(event.data.version !== '') {
+          statusCell.textContent = 'Installed';
         } else {
-          cell.textContent = 'Not found';
+          statusCell.textContent = 'Not found';
         }
       }
     }
-
   });
 }

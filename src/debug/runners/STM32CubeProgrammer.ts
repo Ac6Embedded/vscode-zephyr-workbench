@@ -13,6 +13,11 @@ export class STM32CubeProgrammer extends WestRunner {
     }
   }
 
+  get versionRegex(): any | undefined {
+    return /STM32CubeProgrammer version: ([\d.]+)/;
+  }
+
+
   loadArgs(args: string | undefined) {
     super.loadArgs(args);
 

@@ -64,10 +64,12 @@ export class DebugToolsPanel {
       let runner = getRunner(tool.tool);
       if(runner) {
         runner.loadArgs(undefined);
-        let found = await runner.detect();
-        if(found) {
+        let version = await runner.detectVersion();
+        if(version) {
+          tool.version = version;
           tool.found = "Installed";
         } else {
+          tool.version = "";
           tool.found = "Not found";
         }
       }
@@ -156,11 +158,11 @@ export class DebugToolsPanel {
             let runner = getRunner(message.tool);
             if(runner) {
               runner.loadArgs(undefined);
-              let found = await runner.detect();
+              let version = await runner.detectVersion();
               webview.postMessage({ 
                 command: 'detect-done', 
                 tool: message.tool,
-                found: found? 'true':'false',
+                version: version? version:'',
               });
             }
           }
