@@ -4,6 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.9]
+
+- Support MacOSX in native
+- Fix debug tools page stability
+
 ## [1.0.8]
 
 - Add detection of debug tools version in the "Install Debug Tools" page

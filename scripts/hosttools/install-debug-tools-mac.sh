@@ -1,6 +1,6 @@
 #!/bin/bash
 BASE_DIR="$HOME/.zinstaller"
-SELECTED_OS="linux"
+SELECTED_OS="darwin"
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 YAML_FILE="$SCRIPT_DIR/debug-tools.yml"
@@ -119,7 +119,7 @@ download_and_check_hash() {
     fi
 
     # Compute the SHA-256 hash of the downloaded file
-    local computed_hash=$(sha256sum "$file_path" | awk '{print $1}')
+    local computed_hash=$(shasum -a 256 "$file_path" | awk '{print $1}')
 
     # Compare the computed hash with the expected hash
     if [ "$computed_hash" == "$expected_hash" ]; then
@@ -234,7 +234,7 @@ install() {
     local file="$2"
     local dest_folder="$3"
     if has_install_script "$tool"; then
-        run_install_script "$tool" "$file" "$dest_folder"
+        run_install_script "$tool" "$file" "$dest_folder" "$SELECTED_OS"
     elif is_archive "$file"; then
         extract_archive "$file" "$dest_folder"
     elif is_package "$file"; then
@@ -270,19 +270,18 @@ mkdir -p "$DL_DIR"
 mkdir -p "$TOOLS_DIR"
 
 YQ="yq"
-YQ_SOURCE=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'source' | awk -F": " '{print $2}')
-YQ_SHA256=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'sha256' | awk -F": " '{print $2}')
-download_and_check_hash "$YQ_SOURCE" "$YQ_SHA256" "$YQ"
-YQ="$DL_DIR/$YQ"
-chmod +x $YQ
+# TODO: Uncomment when portable version is working
+# YQ_SOURCE=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'source' | awk -F": " '{print $2}')
+# YQ_SHA256=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'sha256' | awk -F": " '{print $2}')
+# download_and_check_hash "$YQ_SOURCE" "$YQ_SHA256" "$YQ"
+# YQ="$DL_DIR/$YQ"
+# chmod +x $YQ
 
 # Start generating the manifest file
 pr_title "Parse tools definitions and generate manifest"
 
 # Loop through each tool and generate the entries
 echo "#!/bin/bash" > $MANIFEST_FILE
-echo "declare -A SOURCE_URLS=()" >> $MANIFEST_FILE
-echo "declare -A SHA256_HASHES=()" >> $MANIFEST_FILE
 for tool in ${TOOLS[@]}; do
     generate_manifest_entries $tool $SELECTED_OS $MANIFEST_FILE
 done
@@ -291,9 +290,9 @@ source $MANIFEST_FILE
 
 for tool in ${TOOLS[@]}; do
     pr_title "$tool"
-    INSTALLER_FILENAME=$(get_filename_from_url ${SOURCE_URLS[$tool]})
+    INSTALLER_FILENAME=$(get_filename_from_url "$(eval echo \${SOURCE_URLS_$tool})"
     echo "INSTALLER_FILENAME=$INSTALLER_FILENAME"
-    download_and_check_hash ${SOURCE_URLS[$tool]} ${SHA256_HASHES[$tool]} "$INSTALLER_FILENAME"
+    download_and_check_hash "$(eval echo \${SOURCE_URLS_$tool})" "$(eval echo \${SHA256_HASHES_$tool})" "$INSTALLER_FILENAME"
     install "$tool" "$DL_DIR/$INSTALLER_FILENAME" "$TOOLS_DIR"
 done
 

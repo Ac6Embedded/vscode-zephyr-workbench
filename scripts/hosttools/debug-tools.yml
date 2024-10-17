@@ -51,8 +51,8 @@ debug_tools:
       source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/openocd-0.12.0-ST-linux-x86_64.tar.xz
       sha256: ff79f73f24d5d5ae79510243a7c5da49fd092d03653e2207eb6b359012705223
     darwin:
-      source: xxx
-      sha256: xxx
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/openocd-0.12.0-ST-darwin-aarch64.tar.xz
+      sha256: 6a2d4811d3e1b1d866b3c2a397caceee95734e723af0279202f236e3fd543359
 - tool: stm32cubeprogrammer
   name: STM32CubeProgrammer
   version: 2.17.0 
@@ -67,9 +67,6 @@ debug_tools:
     linux:
       source: https://cloud.ac6.fr/index.php/s/PNj5XNonox4aBf9/download/en.stm32cubeprg-lin-v2-17-0.zip
       sha256: 44956b76aa2fcff0d899c5c43e353a83a9ea36afc6ad2f6e7b89c5141ccbfde4
-    darwin:
-      source: https://cloud.ac6.fr/index.php/s/YgHYBAMqze6BBxP/download/en.stm32cubeprg-mac-v2-17-0.zip
-      sha256: de30b60c64a0b068d1cc89b2e770b3371bff71b2b8b91ed693090d1760c51e2e
 - tool: jlink
   name: J-Link Software
   version: 7.98a

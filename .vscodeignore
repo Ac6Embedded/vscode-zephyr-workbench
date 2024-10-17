@@ -1,6 +1,7 @@
 .vscode/**
 .vscode-test/**
 src/**
+docs/**
 images/**
 .gitignore
 .yarnrc

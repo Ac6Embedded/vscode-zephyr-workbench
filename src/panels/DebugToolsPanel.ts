@@ -82,12 +82,27 @@ export class DebugToolsPanel {
         <td id="buttons-${tool.tool}">`;
 
       if(tool.os) {
-        toolsHTML +=`<vscode-button appearance="icon" class="install-button" data-tool="${tool.tool}">
-            <span class="codicon codicon-desktop-download"></span>
-          </vscode-button>
-          <vscode-button appearance="icon" class="remove-button" data-tool="${tool.tool}">
-            <span class="codicon codicon-trash"></span>
-          </vscode-button>`;
+        let hasSource = false;
+        switch(process.platform) {
+          case 'linux':
+            hasSource = tool.os.linux ? true : false;
+            break;
+          case 'win32':
+            hasSource = tool.os.windows ? true : false;
+            break;
+          case 'darwin':
+            hasSource = tool.os.darwin ? true : false;
+            break;
+        }
+        if(hasSource) {
+          toolsHTML +=`<vscode-button appearance="icon" class="install-button" data-tool="${tool.tool}">
+                         <span class="codicon codicon-desktop-download"></span>
+                       </vscode-button>
+                       <vscode-button appearance="icon" class="remove-button" data-tool="${tool.tool}">
+                         <span class="codicon codicon-trash"></span>
+                       </vscode-button>`;
+        }
+       
       }
 
       toolsHTML +=`<vscode-button appearance="icon" class="website-button" data-tool="${tool.tool}">

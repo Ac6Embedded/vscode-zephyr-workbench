@@ -2,6 +2,10 @@
 
 Ac6 Zephyr Workbench for VS Code extension adds support of Zephyr development to Visual Studio Code, including SDK management, Project wizard, build and debugging features. 
 
+## New
+
+For MacOSX Support, Homebrew is required
+
 ## Features
 * Install native Host Tools (python, cmake, ...)
 * Install and auto-detect default Zephyr SDK
@@ -20,6 +24,10 @@ To build your project on Zephyr Workbench, No external tools is required. Host t
 To flash and to debug the application on your target, external tools are required. Depending on needs, your might have to install some of the following software tools on your workstation:
 * LinkServer Debug Host Tools
 * J-Link Debug Host Tools
+
+Additionally a driver software might be required to connect to your JTAG probe. 
+
+On MacOSX, due to many dependencies, Homebrew is required to install external tools and python.
   
 ## Usage
 Zephyr Workbench provides a dedicated panel, to access it, click on the "Zephyr Workbench" logo on the left 

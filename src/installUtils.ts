@@ -274,7 +274,7 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
         break; 
       }
       case 'darwin': {
-        installScript = 'install.sh';
+        installScript = 'install-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         if(skipSdk) {
           installArgs += ' --skip-sdk';
@@ -299,7 +299,7 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
       shellArgs: getShellArgs(shell),
     };
     
-    if(process.platform === 'linux' || process.platform === 'darwin') {
+    if(process.platform === 'linux') {
       const options = {
         name: 'Zephyr Workbench Installer',
       };
@@ -351,7 +351,7 @@ export async function installVenv(context: vscode.ExtensionContext) {
         break; 
       }
       case 'darwin': {
-        installScript = 'install.sh';
+        installScript = 'install-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` ${destDir}`;
         shell = 'bash';
@@ -405,7 +405,7 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
         break; 
       }
       case 'darwin': {
-        installScript = 'install.sh';
+        installScript = 'install-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += `${destDir}`;
         shell = 'bash';
@@ -468,7 +468,7 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
         break; 
       }
       case 'darwin': {
-        installScript = 'install-debug-tools.sh';
+        installScript = 'install-debug-tools-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
         shell = 'bash';
         // Concat list of tools to install
