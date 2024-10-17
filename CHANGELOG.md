@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.0]
+
+- Auto detection of LinkServer
+
 ## [1.0.9]
 
 - Support MacOSX in native

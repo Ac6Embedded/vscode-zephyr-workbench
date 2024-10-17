@@ -88,10 +88,19 @@ export class Linkserver extends WestRunner {
 
   findSystemLinkServer(): string | undefined {
     let directoryPath = '';
-    if(process.platform === 'win32') {
-      directoryPath = path.win32.join('c:\\', 'NXP');
-    } else {
-      directoryPath = '/usr/local';
+    switch(process.platform) {
+      case 'win32': {
+        directoryPath = path.win32.join('c:\\', 'NXP');
+        break;
+      } 
+      case 'linux': {
+        directoryPath = '/usr/local';
+        break;
+      }
+      case 'darwin': {
+        directoryPath = '/Applications';
+        break;
+      }
     }
 
     const latestFile = this.findLatestVersion(directoryPath);

@@ -310,13 +310,6 @@ if [[ $non_root_packages == true ]]; then
 #!/bin/bash
 
 base_dir="\$(dirname "\$(realpath "\${BASH_SOURCE[0]}")")"
-cmake_path="\$base_dir/tools/$CMAKE_FOLDER_NAME/bin"
-python_path="\$base_dir/tools/$PYTHON_FOLDER_NAME/bin"
-ninja_path="\$base_dir/tools/ninja"
-openssl_path="\$base_dir/tools/$OPENSSL_FOLDER_NAME"
-
-export PATH="\$python_path:\$ninja_path:\$cmake_path:\$openssl_path/usr/local/bin:\$PATH"
-export LD_LIBRARY_PATH="\$openssl_path/usr/local/lib:\$LD_LIBRARY_PATH"
 
 # Default virtual environment activation script path
 default_venv_activate_path="\$base_dir/.venv/bin/activate"
