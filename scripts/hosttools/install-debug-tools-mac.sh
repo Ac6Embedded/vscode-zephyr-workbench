@@ -290,7 +290,7 @@ source $MANIFEST_FILE
 
 for tool in ${TOOLS[@]}; do
     pr_title "$tool"
-    INSTALLER_FILENAME=$(get_filename_from_url "$(eval echo \${SOURCE_URLS_$tool})"
+    INSTALLER_FILENAME=$(get_filename_from_url "$(eval echo \${SOURCE_URLS_$tool})")
     echo "INSTALLER_FILENAME=$INSTALLER_FILENAME"
     download_and_check_hash "$(eval echo \${SOURCE_URLS_$tool})" "$(eval echo \${SHA256_HASHES_$tool})" "$INSTALLER_FILENAME"
     install "$tool" "$DL_DIR/$INSTALLER_FILENAME" "$TOOLS_DIR"

@@ -448,7 +448,7 @@
       },
       {
         "view": "zephyr-workbench-sdk-explorer",
-        "contents": "The Zephyr SDK is automatically detected after installing the Host Tools"
+        "contents": "[Import Zephyr SDK](command:zephyr-workbench-sdk-explorer.open-wizard)"
       }
     ],
     "submenus": [

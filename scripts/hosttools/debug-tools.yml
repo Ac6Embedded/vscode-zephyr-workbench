@@ -51,7 +51,7 @@ debug_tools:
       source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/openocd-0.12.0-ST-linux-x86_64.tar.xz
       sha256: ff79f73f24d5d5ae79510243a7c5da49fd092d03653e2207eb6b359012705223
     darwin:
-      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/openocd-0.12.0-ST-darwin-aarch64.tar.xz
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/darwin/openocd-0.12.0-ST-darwin-aarch64.tar.xz
       sha256: 6a2d4811d3e1b1d866b3c2a397caceee95734e723af0279202f236e3fd543359
 - tool: stm32cubeprogrammer
   name: STM32CubeProgrammer

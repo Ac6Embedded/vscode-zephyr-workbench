@@ -242,7 +242,7 @@ if [[ $non_root_packages == true ]]; then
 
     # TODO to uncomment when portable yq is supported
     # pr_title "YQ"
-    # YQ="yq"
+    YQ="yq"
     # YQ_SOURCE=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'source' | awk -F": " '{print $2}')
     # YQ_SHA256=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'sha256' | awk -F": " '{print $2}')
     # download_and_check_hash "$YQ_SOURCE" "$YQ_SHA256" "$YQ"
@@ -291,10 +291,10 @@ if [[ $non_root_packages == true ]]; then
       exit 0
     fi
 
-    if [ $portable = true ]; then
-      # Install portable packages
-      # Python-portable ?
-    fi
+    # if [ $portable = true ]; then
+    #   # Install portable packages
+    #   # Python-portable ?
+    # fi
 
     pr_title "Python VENV"
     install_python_venv "$INSTALL_DIR" "$TMP_DIR"
@@ -388,18 +388,18 @@ check_package() {
 	else
 		# Extract version number or short relevant info
 		case $package in
-			python) version=$(echo "$version" | grep -oP 'Python \K[^\s]+') ;;
-			cmake) version=$(echo "$version" | grep -oP 'cmake version \K[^\s]+') ;;
+			python) version=$(echo "$version" | sed -n 's/Python //p' | awk '{print $1}') ;;
+			cmake) version=$(echo "$version" | sed -n 's/cmake version //p' | awk '{print $1}') ;;
 			ninja) version=$(echo "$version") ;;
-			openssl) version=$(echo "$version" | grep -oP 'OpenSSL \K[^\s]+') ;;
-			git) version=$(echo "$version" | grep -oP 'git version \K[^\s]+') ;;
-			gperf) version=$(echo "$version" | grep -oP 'GNU gperf \K[^\s]+') ;;
-			ccache) version=$(echo "$version" | grep -oP 'ccache version \K[^\s]+') ;;
-			dfu-util) version=$(echo "$version" | grep -oP 'dfu-util \K[^\s]+') ;;
-			wget) version=$(echo "$version" | grep -oP 'GNU Wget \K[^\s]+') ;;
-			xz-utils) version=$(echo "$version" | grep -oP 'xz \(XZ Utils\) \K[^\s]+') ;;
-			file) version=$(echo "$version" | grep -oP 'file-\K[^\s]+') ;;
-			make) version=$(echo "$version" | grep -oP 'GNU Make \K[^\s]+') ;;
+			openssl) version=$(echo "$version" | sed -n 's/OpenSSL //p' | awk '{print $1}') ;;
+			git) version=$(echo "$version" | sed -n 's/git version //p' | awk '{print $1}') ;;
+			gperf) version=$(echo "$version" | sed -n 's/GNU gperf //p' | awk '{print $1}') ;;
+			ccache) version=$(echo "$version" | sed -n 's/ccache version //p' | awk '{print $1}') ;;
+			dfu-util) version=$(echo "$version" | sed -n 's/dfu-util //p' | awk '{print $1}') ;;
+			wget) version=$(echo "$version" | sed -n 's/GNU Wget //p' | awk '{print $1}') ;;
+			xz-utils) version=$(echo "$version" | sed -n 's/xz \(XZ Utils\) //p' | awk '{print $1}') ;;
+			file) version=$(echo "$version" | sed -n 's/file-//p' | awk '{print $1}') ;;
+			make) version=$(echo "$version" | sed -n 's/GNU Make //p' | awk '{print $1}') ;;
 		esac
 		echo "$package [$version]"
 		return 0
