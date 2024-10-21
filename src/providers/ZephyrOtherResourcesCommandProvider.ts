@@ -45,7 +45,7 @@ const awesomeMenuItem = new MenuItem(
   {
     command: 'zephyr-workbench.open-webpage',
     title: 'Awesome Zephyr',
-    arguments: ['https://github.com/golioth/awesome-zephyr-rtos']
+    arguments: ['https://github.com/zephyrproject-rtos/awesome-zephyr-rtos']
   }
 );
 
