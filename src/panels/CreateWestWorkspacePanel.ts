@@ -164,10 +164,10 @@ export class CreateWestWorkspacePanel {
 
             <div class="grid-group-div" id="branchGroup">
               <div class="grid-header-div">
-                <label for="listBranch">Branch:</label>
+                <label for="listBranch">Tag:</label>
               </div>
               <div id="listBranch" class="combo-dropdown grid-value-div">
-                <input type="text" id="branchInput" class="combo-dropdown-control" placeholder="Choose the working branch..." data-value="">
+                <input type="text" id="branchInput" class="combo-dropdown-control" placeholder="Choose the working tag..." data-value="">
                 <div aria-hidden="true" class="indicator" part="indicator">
                   <slot name="indicator">  
                     <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
@@ -200,9 +200,9 @@ export class CreateWestWorkspacePanel {
     `;
   }
 
-  private updateBranches(webview: vscode.Webview, remotePath: string) {
+  private updateBranches(webview: vscode.Webview, remotePath: string, srcType: string) {
     let zephyrRepoUrl = remotePath;
-    if(!remotePath.endsWith('/zephyr')) {
+    if(srcType === 'template' && !remotePath.endsWith('/zephyr')) {
       zephyrRepoUrl = remotePath.concat('/zephyr');
     }
     getGitTags(zephyrRepoUrl)
@@ -245,7 +245,7 @@ export class CreateWestWorkspacePanel {
             this.openManifestDialog();
             break;
           case 'remotePathChanged':
-            this.updateBranches(webview, message.remotePath);
+            this.updateBranches(webview, message.remotePath, message.srcType);
             break;
           case 'create':
             srcType = message.srcType;

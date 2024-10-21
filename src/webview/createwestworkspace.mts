@@ -25,7 +25,7 @@ function main() {
 
   remotePathText.addEventListener('change', function() {
     console.log(remotePathText.value);
-    remotePathChanged(remotePathText.value);
+    remotePathChanged(remotePathText.value, srcTypeRadioGroup.value);
   });
 
   const browseLocationButton = document.getElementById("browseLocationButton") as Button;
@@ -38,7 +38,7 @@ function main() {
   importButton?.addEventListener("click", createHandler);
 
   // Initialize branch values
-  remotePathChanged(remotePathText.value);
+  remotePathChanged(remotePathText.value, srcTypeRadioGroup.value);
 }
 
 function initBranchDropdown() {
@@ -198,11 +198,12 @@ function setVSCodeMessageListener() {
   });
 }
 
-async function remotePathChanged(remotePath: string) {
+async function remotePathChanged(remotePath: string, srcType: string) {
   webviewApi.postMessage(
     { 
       command: 'remotePathChanged',
-      remotePath: remotePath
+      remotePath: remotePath,
+      srcType: srcType
     }
   );
 }
