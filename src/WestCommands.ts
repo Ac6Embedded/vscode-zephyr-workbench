@@ -160,9 +160,15 @@ export function execWestCommandWithEnv(cmd: string, parent: ZephyrAppProject | W
   return undefined;
 }
 
-export async function getBoardsDirectories(parent: ZephyrAppProject | WestWorkspace): Promise<string[]> {
+export async function getBoardsDirectories(parent: ZephyrAppProject | WestWorkspace, boardRoots?: string[]): Promise<string[]> {
   return new Promise((resolve, reject) => {
-    execWestCommandWithEnv('west boards -f "{dir}"', parent, (error: any, stdout: string, stderr: any) => {
+    let cmd = 'west boards -f "{dir}"';
+    if(boardRoots) {
+      for(let boardRoot of boardRoots) {
+        cmd += ` --board-root ${boardRoot}`;
+      }
+    }
+    execWestCommandWithEnv(cmd, parent, (error: any, stdout: string, stderr: any) => {
       if (error) {
         reject(`Error: ${stderr}`);
       }

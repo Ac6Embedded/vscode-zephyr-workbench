@@ -430,24 +430,37 @@ export async function getSupportedBoards2(westWorkspace: WestWorkspace): Promise
 export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?: ZephyrProject | string): Promise<ZephyrBoard[]> {
   return new Promise(async (resolve, reject) => {
     let listBoards: ZephyrBoard[] = [];
-    let boardDirs = await getBoardsDirectories(westWorkspace);
+    let boardRoots: string[] = [westWorkspace.rootUri.fsPath];
+    if(resource) {
+      if(resource instanceof ZephyrProject) {
+        // TODO search env EXTRA_BOARD_ROOT and BOARD_ROOT
+        boardRoots.push(resource.folderPath);
+      } else {
+        boardRoots.push(resource);
+      }
+    }
+    let boardDirs = await getBoardsDirectories(westWorkspace, boardRoots);
 
     const dirPromises = boardDirs.map(async (dir) => {
-      let dirUri = vscode.Uri.parse(dir);
-      const files = await vscode.workspace.fs.readDirectory(dirUri);
-      const boardPromises = files
-        .filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.yaml'))
-        .map(([name]) => {
-          const boardDescUri = vscode.Uri.joinPath(dirUri, name);
-          const boardFile = fs.readFileSync(boardDescUri.fsPath, 'utf8');
-          const data = yaml.parse(boardFile);
-          if(data.identifier) {
-            return new ZephyrBoard(boardDescUri);
-          }
-          return undefined;
-      });
-      const boards = await Promise.all(boardPromises);
-      listBoards.push(...boards.filter(board => board !== undefined));
+      let dirUri = vscode.Uri.file(dir);
+      try {
+        const files = await vscode.workspace.fs.readDirectory(dirUri);
+        const boardPromises = files
+          .filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.yaml'))
+          .map(([name]) => {
+            const boardDescUri = vscode.Uri.joinPath(dirUri, name);
+            const boardFile = fs.readFileSync(boardDescUri.fsPath, 'utf8');
+            const data = yaml.parse(boardFile);
+            if(data.identifier) {
+              return new ZephyrBoard(boardDescUri);
+            }
+            return undefined;
+        });
+        const boards = await Promise.all(boardPromises);
+        listBoards.push(...boards.filter(board => board !== undefined));
+      } catch (error) {
+        console.error(`Error reading directory: ${dirUri.fsPath}`, error);
+      }
     });
     
     await Promise.all(dirPromises);
