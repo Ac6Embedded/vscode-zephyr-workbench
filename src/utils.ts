@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from "path";
+import yaml from 'yaml';
 import * as vscode from "vscode";
 import { WestWorkspace } from "./WestWorkspace";
 import { ZephyrAppProject } from "./ZephyrAppProject";
@@ -11,6 +12,7 @@ import { getEnvVarFormat, getShell } from "./execUtils";
 import { checkHostTools } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { ZephyrProject } from './ZephyrProject';
+import { getBoardsDirectories } from './WestCommands';
 
 export function normalizePath(pathToNormalize: string) {
   let newpath = path.normalize(pathToNormalize);
@@ -201,8 +203,8 @@ export function removeWorkspaceFolder(workspaceFolder: vscode.WorkspaceFolder) {
 }
 
 
-export async function getBoardFromId(boardId: string, westWorkspace: WestWorkspace): Promise<ZephyrBoard> {
-  for(let board of await getSupportedBoards(westWorkspace)) {
+export async function getBoardFromId(boardId: string, westWorkspace: WestWorkspace, resource?: ZephyrProject | string): Promise<ZephyrBoard> {
+  for(let board of await getSupportedBoards(westWorkspace, resource)) {
     if(boardId === board.identifier) {
       return board;
     }
@@ -409,10 +411,10 @@ export async function findTask(taskLabel: string, workspaceFolder: vscode.Worksp
   return tasks.find(task => {
     const folder = task.scope as vscode.WorkspaceFolder;
     return folder && folder.uri.toString() === workspaceFolder.uri.toString() && task.name === taskLabel;
-});
+  });
 }
 
-export async function getSupportedBoards(westWorkspace: WestWorkspace): Promise<ZephyrBoard[]> {
+export async function getSupportedBoards2(westWorkspace: WestWorkspace): Promise<ZephyrBoard[]> {
   return new Promise(async (resolve, reject) => {
     let listBoards: ZephyrBoard[] = [];
     await parseSupportedBoards(westWorkspace, westWorkspace.boardsDirUri, listBoards, westWorkspace.rootUri.fsPath)
@@ -423,6 +425,59 @@ export async function getSupportedBoards(westWorkspace: WestWorkspace): Promise<
       reject();
      });
   });
+}
+
+export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?: ZephyrProject | string): Promise<ZephyrBoard[]> {
+  return new Promise(async (resolve, reject) => {
+    let listBoards: ZephyrBoard[] = [];
+    let boardDirs = await getBoardsDirectories(westWorkspace);
+
+    const dirPromises = boardDirs.map(async (dir) => {
+      let dirUri = vscode.Uri.parse(dir);
+      const files = await vscode.workspace.fs.readDirectory(dirUri);
+      const boardPromises = files
+        .filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.yaml'))
+        .map(([name]) => {
+          const boardDescUri = vscode.Uri.joinPath(dirUri, name);
+          const boardFile = fs.readFileSync(boardDescUri.fsPath, 'utf8');
+          const data = yaml.parse(boardFile);
+          if(data.identifier) {
+            return new ZephyrBoard(boardDescUri);
+          }
+          return undefined;
+      });
+      const boards = await Promise.all(boardPromises);
+      listBoards.push(...boards.filter(board => board !== undefined));
+    });
+    
+    await Promise.all(dirPromises);
+    resolve(listBoards);
+  });
+}
+
+async function findBoardDirectories(dirUri: vscode.Uri): Promise<vscode.Uri[]> {
+  let boardDirs: vscode.Uri[] = [];
+  const entries = await vscode.workspace.fs.readDirectory(dirUri);
+
+  let containsBoardFile = false;
+
+  for (const [name, type] of entries) {
+    const entryUri = vscode.Uri.joinPath(dirUri, name);
+
+    if (type === vscode.FileType.File && (name === 'board.cmake' || name === 'board.yml')) {
+      containsBoardFile = true;
+    }
+    if (type === vscode.FileType.Directory) {
+      const subBoardDirs = await findBoardDirectories(entryUri);
+      boardDirs = boardDirs.concat(subBoardDirs);
+    }
+  }
+
+  if (containsBoardFile) {
+    boardDirs.push(dirUri);
+  }
+
+  return boardDirs;
 }
 
 export async function parseSupportedBoards(westWorkspace: WestWorkspace, directory: vscode.Uri, listBoards: ZephyrBoard[], rootPath: string, relativePath = ''): Promise<void> {
@@ -501,4 +556,22 @@ export function getConfigValue(configFile: string, option: string): string | und
   } catch (err) {
     return undefined;
   }
+}
+
+export async function readDirectoryRecursive(dirUri: vscode.Uri): Promise<vscode.Uri[]> {
+  let files: vscode.Uri[] = [];
+
+  const entries = await vscode.workspace.fs.readDirectory(dirUri);
+  for (const [name, type] of entries) {
+    const entryUri = vscode.Uri.joinPath(dirUri, name);
+
+    if (type === vscode.FileType.Directory) {
+      const subFiles = await readDirectoryRecursive(entryUri);
+      files = files.concat(subFiles);
+    } else if (type === vscode.FileType.File) {
+      files.push(entryUri);
+    }
+  }
+
+  return files;
 }

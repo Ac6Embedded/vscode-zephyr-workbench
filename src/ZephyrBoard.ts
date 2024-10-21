@@ -21,7 +21,11 @@ export class ZephyrBoard {
   public constructor(yamlFileUri: vscode.Uri) {
     this.yamlFileUri = yamlFileUri;
     this.parseYAML();
-    this.parseBoardTerm();
+    try {
+      this.parseBoardTerm();
+    } catch(e) {
+
+    }
   }
 
   private parseYAML() {
@@ -45,7 +49,7 @@ export class ZephyrBoard {
       const match = this.identifier.match(regex);
       
       if (!match) {
-        throw new Error("Identifier format invalid");
+        throw new Error(`Identifier format invalid for: ${this.identifier}`);
       }
 
       this.boardName = match[1];

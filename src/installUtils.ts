@@ -591,8 +591,8 @@ export async function cleanupDownloadDir(context: vscode.ExtensionContext) {
 }
 
 export async function download(url: string, destDir: string, context: vscode.ExtensionContext, progress: vscode.Progress<{
-  message?: string | undefined;
-  increment?: number | undefined;
+	message?: string | undefined;
+	increment?: number | undefined;
 }>, token: vscode.CancellationToken): Promise<vscode.Uri> {
   const fileDownloader: FileDownloader = await getApi();
   const fileName = path.basename(url);
@@ -776,3 +776,15 @@ export function execCommand(command: string, options?: { cwd?: string }): Promis
 	});
 }
 
+export async function checkHomebrew(): Promise<boolean> {
+  const cmd = 'brew --version';
+  return new Promise<boolean>((resolve, reject) => {
+    exec(cmd, (error: any, stdout, stderr) => {
+      if (error) {
+        reject('Homebrew not installed in system');
+      } else {
+        resolve(true);
+      }
+    });
+  });
+}

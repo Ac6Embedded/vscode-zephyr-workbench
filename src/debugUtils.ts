@@ -163,7 +163,7 @@ export async function setupPyOCDTarget(project: ZephyrProject) {
 export async function createConfiguration(project: ZephyrProject): Promise<any> {
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
   const zephyrSDK = getZephyrSDK(project.sdkPath);
-  const listBoards = await getSupportedBoards(westWorkspace);
+  const listBoards = await getSupportedBoards(westWorkspace, project);
 
   let targetBoard;
   for(let board of listBoards) {

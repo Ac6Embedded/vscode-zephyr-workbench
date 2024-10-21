@@ -87,11 +87,15 @@ export class ZephyrProject {
     const zwFilePath = path.join(projectPath, '.vscode', 'tasks.json');
     if(fileExists(zwFilePath)) {
       const fileContent = fs.readFileSync(zwFilePath, 'utf-8');
-      const jsonData = JSON.parse(fileContent);
-      for(let task of jsonData.tasks) {
-        if(task.label === 'West Build' && task.type === ZephyrTaskProvider.ZephyrType) {
-          return true;
+      try {
+        const jsonData = JSON.parse(fileContent);
+        for(let task of jsonData.tasks) {
+          if(task.label === 'West Build' && task.type === ZephyrTaskProvider.ZephyrType) {
+            return true;
+          }
         }
+      } catch(e) {
+        return false;
       }
     }
     return false;

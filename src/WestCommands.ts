@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { ZephyrProject } from './ZephyrProject';
-import { spawnCommandWithEnv, execShellCommandWithEnv, getShell, getShellNullRedirect } from './execUtils';
+import { spawnCommandWithEnv, execShellCommandWithEnv, getShell, getShellNullRedirect, execCommandWithEnv, execCommandWithEnvCB } from './execUtils';
 import { WestWorkspace } from './WestWorkspace';
 import { fileExists, getWestWorkspace, getZephyrSDK, normalizePath } from './utils';
 import { ZephyrSDK } from './ZephyrSDK';
@@ -139,15 +139,38 @@ export async function execWestCommand(cmdName: string, cmd: string, options: vsc
   await execShellCommandWithEnv(cmdName, cmd, options);
 } 
 
-export function execWestCommandWithEnv(cmd: string, folder: vscode.WorkspaceFolder): ChildProcess {
-  const project = new ZephyrAppProject(folder, folder.uri.fsPath);
-  const activeSdk = getZephyrSDK(project.sdkPath);
-  const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-  let options: ExecOptions = {};
-  options.cwd = folder.uri.fsPath;
-  options.env = { ...activeSdk.buildEnv, 
-    ...westWorkspace.buildEnv, 
-    ...project.buildEnv};
-  
-  return spawnCommandWithEnv(cmd, options);
+export function execWestCommandWithEnv(cmd: string, parent: ZephyrAppProject | WestWorkspace, callback?: ((error: ExecException | null, stdout: string, stderr: string) => void) ): ChildProcess | undefined {
+  if(parent instanceof ZephyrAppProject) {
+    const project = parent;
+    const activeSdk = getZephyrSDK(project.sdkPath);
+    const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+    let options: ExecOptions = {};
+    options.env = { ...activeSdk.buildEnv, 
+      ...westWorkspace.buildEnv, 
+      ...project.buildEnv};
+    
+    return execCommandWithEnvCB(cmd, project.folderPath, options, callback);
+  } else if(parent instanceof WestWorkspace) {
+    const westWorkspace = parent;
+    let options: ExecOptions = {};
+    options.env = { ...westWorkspace.buildEnv};
+    
+    return execCommandWithEnvCB(cmd, westWorkspace.rootUri.fsPath, options, callback);
+  }
+  return undefined;
+}
+
+export async function getBoardsDirectories(parent: ZephyrAppProject | WestWorkspace): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    execWestCommandWithEnv('west boards -f "{dir}"', parent, (error: any, stdout: string, stderr: any) => {
+      if (error) {
+        reject(`Error: ${stderr}`);
+      }
+
+      const boardDirs = stdout
+        .trim()
+        .split('\n');
+      resolve(boardDirs);
+    });
+  }); 
 }

@@ -90,6 +90,15 @@ export async function createProjectQuickStep(context: ExtensionContext) {
     const boardItems: QuickPickItem[] = [];
     if(state.westWorkspace) {
       const boards = await getSupportedBoards(state.westWorkspace);
+      boards.sort((a, b) => {
+        if (a.name < b.name) {
+          return -1;
+        }
+        if (a.name > b.name) {
+          return 1;
+        }
+        return 0;
+      });
       for(let board of boards) {
         boardItems.push({ label: board.identifier });
       }

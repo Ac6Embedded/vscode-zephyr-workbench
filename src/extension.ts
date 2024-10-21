@@ -12,7 +12,7 @@ import { changeBoardQuickStep } from './changeBoardQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
 import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { importProjectQuickStep } from './importProjectQuickStep';
-import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, download, execCommand, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools } from './installUtils';
+import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, download, execCommand, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools } from './installUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
@@ -31,7 +31,6 @@ import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { generateWestManifest } from './manifestUtils';
-import { execCommandWithEnv, getPyOCDTargets } from './execUtils';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -516,6 +515,20 @@ export function activate(context: vscode.ExtensionContext) {
 			//SDKManagerPanel.render(context.extensionUri, force);
 
 			// TODO: When SDKManagerPanel will be used, remove this line 
+			if(process.platform === 'darwin') {
+				try {
+					const isHomebrewInstalled = await checkHomebrew();
+					if (isHomebrewInstalled) {
+						console.log('Homebrew is installed.');
+					} else {
+						vscode.window.showErrorMessage('Homebrew is not installed or not in your PATH. Please install it first.');
+						return;
+					}
+				} catch (error) {
+					vscode.window.showErrorMessage('Homebrew is not installed or not in your PATH. Please install it first.');
+					return;
+				}
+			}
 			vscode.commands.executeCommand('zephyr-workbench.install-host-tools', force, true, "");
 		})
 	);

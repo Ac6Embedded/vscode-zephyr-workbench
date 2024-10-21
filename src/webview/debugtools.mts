@@ -64,7 +64,7 @@ function setVSCodeMessageListener() {
         if(event.data.version !== '') {
           statusCell.textContent = 'Installed';
         } else {
-          statusCell.textContent = 'Not found';
+          statusCell.textContent = 'Not installed';
         }
       }
     }

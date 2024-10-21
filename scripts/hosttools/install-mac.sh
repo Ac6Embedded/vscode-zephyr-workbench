@@ -226,15 +226,16 @@ if [[ $non_root_packages == true ]]; then
     pr_title "Install non portable tools"
     echo "This is MacOSX."
 
-    # Check homebrew is installed
+    # Check if homebrew is installed
     if command -v brew >/dev/null 2>&1; then
         echo "Homebrew is installed."
     else
-        pr_error 2 "Homebrew is not installed. Please install it first"
+        pr_error 4 "Homebrew is not installed. Please install it first then relaunch installation"
+        exit 4
     fi
 
-    echo "Installing the following packages: cmake ninja gperf python3 python-tk ccache dtc libmagic wget git yq"
-    brew install cmake ninja gperf python3 python-tk ccache dtc libmagic wget git yq
+    echo "Installing the following packages: cmake ninja gperf python3 python-tk ccache dtc libmagic wget git yq xz dfu-util"
+    brew install cmake ninja gperf python3 python-tk ccache dtc libmagic wget git yq xz dfu-util
 
     mkdir -p "$TMP_DIR"
     mkdir -p "$DL_DIR"
@@ -390,7 +391,7 @@ check_package() {
 			ccache) version=$(echo "$version" | sed -n 's/ccache version //p' | awk '{print $1}') ;;
 			dfu-util) version=$(echo "$version" | sed -n 's/dfu-util //p' | awk '{print $1}') ;;
 			wget) version=$(echo "$version" | sed -n 's/GNU Wget //p' | awk '{print $1}') ;;
-			xz-utils) version=$(echo "$version" | sed -n 's/xz \(XZ Utils\) //p' | awk '{print $1}') ;;
+			xz-utils) version=$(echo "$version" | sed -n 's/xz (XZ Utils) //p' | awk '{print $1}') ;;
 			file) version=$(echo "$version" | sed -n 's/file-//p' | awk '{print $1}') ;;
 			make) version=$(echo "$version" | sed -n 's/GNU Make //p' | awk '{print $1}') ;;
 		esac

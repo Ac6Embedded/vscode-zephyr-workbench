@@ -221,6 +221,50 @@ export async function execCommandWithEnv(cmd: string, cwd?: string | undefined, 
   return exec(command, options, callback);
 }
 
+export function execCommandWithEnvCB(cmd: string, cwd?: string | undefined, options? : ExecOptions, callback?: ((error: ExecException | null, stdout: string, stderr: string) => void)): ChildProcess {
+  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+  let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+  
+  if(!envScript) {
+    throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
+       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` });
+  } 
+
+  if(activatePath && !fileExists(activatePath)) {
+    throw new Error('Invalid Python Virtual Environment.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Venv: Activate Path',
+       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}`});
+  } else {
+    if(options && options.env) {
+      options = { 
+        env: {
+          ...options.env,
+          'PYTHON_VENV_ACTIVATE_PATH': activatePath,
+        }
+      };
+    } else {
+      options = { 
+        env: {
+          'PYTHON_VENV_ACTIVATE_PATH': activatePath,
+        }
+      };
+    }
+    
+  }
+
+  if(cwd) {
+    options.cwd = cwd;
+  }
+  
+  const shell: string = getShell();
+  const redirect = getShellNullRedirect(shell);
+  const cmdEnv = `${getShellSourceCommand(shell, envScript)} ${redirect}`;
+  const command = concatCommands(shell, cmdEnv, cmd);
+
+  options.shell = shell;
+  
+  return exec(command, options, callback);
+}
+
 export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): ChildProcess {
   let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
   let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);

@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { ZephyrAppProject } from '../ZephyrAppProject';
 import { getWestWorkspace } from '../utils';
-import { WestWorkspace } from '../WestWorkspace';
 
 export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<ZephyrApplicationTreeItem> {
 	private _onDidChangeTreeData: vscode.EventEmitter<ZephyrApplicationTreeItem | undefined | void> = new vscode.EventEmitter<ZephyrApplicationTreeItem | undefined | void>();
@@ -78,6 +77,7 @@ export class ZephyrApplicationTreeItem extends vscode.TreeItem {
         console.error(e, " path: ", project.westWorkspacePath);
       }
       this.iconPath = new vscode.ThemeIcon('folder');
+      this.tooltip = project.sourceDir;
     }
 	}
 }
@@ -91,12 +91,12 @@ export class ZephyrApplicationWestWorkspaceTreeItem extends ZephyrApplicationTre
     if(westWorkspace) {
       this.label = westWorkspace.name;
       this.description = `[${westWorkspace.version}]`;
+      this.tooltip = westWorkspace.rootUri.fsPath;
       this.iconPath = {
         light: path.join(__filename, '..', '..', 'res', 'icons', 'zephyr.svg'),
         dark: path.join(__filename, '..', '..', 'res', 'icons', 'zephyr.svg')
       };
     }
-    
 	}
 
   contextValue = 'zephyr-application-workspace';
@@ -109,6 +109,7 @@ export class ZephyrApplicationBoardTreeItem extends ZephyrApplicationTreeItem {
     super(project, vscode.TreeItemCollapsibleState.None);
     this.label = project.boardId;
     this.description = '';
+    this.tooltip = project.boardId;
     this.iconPath = new vscode.ThemeIcon('circuit-board');
 	}
   

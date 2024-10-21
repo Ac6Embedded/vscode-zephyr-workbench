@@ -7,7 +7,16 @@ export async function changeBoardQuickStep(context: ExtensionContext, project: Z
   const boardItems: QuickPickItem[] = [];
   if(westWorkspace) {
 
-    const boards = await getSupportedBoards(westWorkspace);
+    const boards = await getSupportedBoards(westWorkspace, project);
+    boards.sort((a, b) => {
+      if (a.name < b.name) {
+        return -1;
+      }
+      if (a.name > b.name) {
+        return 1;
+      }
+      return 0;
+    });
     for(let board of boards) {
       boardItems.push({ label: board.name, description: board.identifier });
     }

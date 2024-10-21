@@ -4,6 +4,20 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.1.3]
+
+- Board finder from west
+
+## [1.1.2]
+
+- Revert fix on board selection
+
+## [1.1.1]
+
+- Fix MacOSX host tools installation
+  - Add Error message when Homebrew is not found
+  - Fix tools version detection
+
 ## [1.1.0]
 
 - Auto detection of LinkServer

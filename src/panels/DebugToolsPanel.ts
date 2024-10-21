@@ -70,7 +70,7 @@ export class DebugToolsPanel {
           tool.found = "Installed";
         } else {
           tool.version = "";
-          tool.found = "Not found";
+          tool.found = "Not installed";
         }
       }
 

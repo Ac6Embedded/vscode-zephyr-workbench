@@ -145,7 +145,16 @@ export async function importProjectQuickStep(context: ExtensionContext) {
       // Get preset board FIXME maybe not supported by MultiStepInput yet
       if(state.projectLoc && state.reconfigure === true) {
         let proj: ZephyrAppProject = new ZephyrAppProject(vscode.Uri.file(state.projectLoc), state.projectLoc);
-        const listBoards = await getSupportedBoards(state.westWorkspace);
+        const listBoards = await getSupportedBoards(state.westWorkspace, state.projectLoc);
+        listBoards.sort((a, b) => {
+          if (a.name < b.name) {
+            return -1;
+          }
+          if (a.name > b.name) {
+            return 1;
+          }
+          return 0;
+        });
         for(let board of listBoards) {
           if(board.identifier === proj.boardId) {
             state.board = board;
@@ -154,7 +163,7 @@ export async function importProjectQuickStep(context: ExtensionContext) {
         }
       }
 
-      const boards = await getSupportedBoards(state.westWorkspace);
+      const boards = await getSupportedBoards(state.westWorkspace, state.projectLoc);
       for(let board of boards) {
         boardItems.push({ label: board.identifier });
         if(board.identifier === state.board?.identifier) {
