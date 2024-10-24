@@ -223,7 +223,7 @@ vscode-button {
   z-index: 1000;
   opacity: 0;
   transition: opacity 0.3s ease;
-  white-space: normal;
+  white-space: pre-wrap;
   pointer-events: none;
   visibility: hidden;
 }

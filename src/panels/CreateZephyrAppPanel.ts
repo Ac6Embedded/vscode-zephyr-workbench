@@ -179,10 +179,15 @@ export class CreateZephyrAppPanel {
                 </div>
 
                 <div class="grid-group-div">
-                  <vscode-radio-group id="pristineMode" orientation="vertical">
-                    <label slot="label">Pristine Builds option:</label>
-                    <vscode-radio value="auto" checked>auto (detect if build directory needs to be made pristine before build)</vscode-radio>
-                    <vscode-radio value="always">always (force the build directory pristine before build)</vscode-radio>
+                  <vscode-radio-group id="pristineMode" orientation="horizontal">
+                    <label slot="label">Pristine Builds option:&nbsp;&nbsp;
+                      <span class="tooltip" 
+                            data-tooltip="Indicate if the build folder must be clean before each build:\n
+                                          - (auto): detect if build directory needs to be made pristine before build\n
+                                          - (always): force the build directory pristine before build">?</span>
+                    </label>
+                    <vscode-radio value="auto" checked>auto</vscode-radio>
+                    <vscode-radio value="always">always</vscode-radio>
                     <vscode-radio value="none">none</vscode-radio>
                   </vscode-radio-group>
                 </div>

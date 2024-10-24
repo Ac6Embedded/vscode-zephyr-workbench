@@ -12,7 +12,7 @@ import { getEnvVarFormat, getShell } from "./execUtils";
 import { checkHostTools } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { ZephyrProject } from './ZephyrProject';
-import { getBoardsDirectories } from './WestCommands';
+import { getBoardsDirectories, westTmpBuildSystemCommand } from './WestCommands';
 
 export function normalizePath(pathToNormalize: string) {
   let newpath = path.normalize(pathToNormalize);
@@ -414,6 +414,9 @@ export async function findTask(taskLabel: string, workspaceFolder: vscode.Worksp
   });
 }
 
+/**
+ * @deprecated Use the getSupportedBoards instead.
+ */
 export async function getSupportedBoards2(westWorkspace: WestWorkspace): Promise<ZephyrBoard[]> {
   return new Promise(async (resolve, reject) => {
     let listBoards: ZephyrBoard[] = [];
@@ -430,11 +433,38 @@ export async function getSupportedBoards2(westWorkspace: WestWorkspace): Promise
 export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?: ZephyrProject | string): Promise<ZephyrBoard[]> {
   return new Promise(async (resolve, reject) => {
     let listBoards: ZephyrBoard[] = [];
+    // Add West workspace root directory for search
     let boardRoots: string[] = [westWorkspace.rootUri.fsPath];
+
+    // Add user custom board directory for search
+    if(westWorkspace.envVars['BOARD_ROOT']) {
+      for(let boardDir of westWorkspace.envVars['BOARD_ROOT']) {
+        boardRoots.push(boardDir);
+      }
+    }
+
     if(resource) {
       if(resource instanceof ZephyrProject) {
-        // TODO search env EXTRA_BOARD_ROOT and BOARD_ROOT
-        boardRoots.push(resource.folderPath);
+        // Search the BOARD_ROOT definition from the zephyr_settings.txt 
+        // By looking into an existing buildDir or generating a tmp buildDir from dry run
+        let envVars: Record<string, string> | undefined;
+        if(fileExists(resource.buildDir)) {
+          envVars = readZephyrSettings(resource.buildDir);
+        } else {
+          const tmpBuildDir = await westTmpBuildSystemCommand(resource, westWorkspace);
+          if(tmpBuildDir) {
+            envVars = readZephyrSettings(tmpBuildDir);
+            deleteFolder(tmpBuildDir);
+          }
+        }
+        if(envVars) {
+          let keys = Object.keys(envVars);
+          for(let key of keys) {
+            if(key === 'BOARD_ROOT') {
+              boardRoots.push(envVars[key]);
+            }
+          }
+        }
       } else {
         boardRoots.push(resource);
       }
@@ -587,4 +617,28 @@ export async function readDirectoryRecursive(dirUri: vscode.Uri): Promise<vscode
   }
 
   return files;
+}
+
+export function readZephyrSettings(buildDir: string): Record<string, string>  {
+  const settings: Record<string, string> = {};
+  const filePath = path.join(buildDir, 'zephyr_settings.txt');
+  try {
+    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    const lines = fileContent.split(/\r?\n/);
+
+    lines.forEach(line => {
+      if (line.startsWith('#') || line.trim() === '') {
+        return;
+      }
+      const match = line.match(/^"([^"]+)":"([^"]+)"$/);
+      if (match) {
+        const key = match[1];
+        const value = match[2];
+        settings[key] = value;
+      }
+    });
+  } catch (e) {
+    console.error(`Cannot read ${filePath}`);
+  }
+  return settings;
 }

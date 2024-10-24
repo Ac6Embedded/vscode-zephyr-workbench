@@ -1,7 +1,6 @@
 import vscode, { ExtensionContext, QuickPickItem } from "vscode";
 import { ZephyrProject } from "./ZephyrProject";
-import { WestWorkspace } from "./WestWorkspace";
-import { getWestWorkspace, getWestWorkspaces } from "./utils";
+import { getWestWorkspaces } from "./utils";
 
 export async function changeWestWorkspaceQuickStep(context: ExtensionContext, project: ZephyrProject): Promise<string | undefined> {
 

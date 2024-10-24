@@ -8,7 +8,7 @@
     "type": "git",
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
-  "version": "1.1.1",
+  "version": "1.2.0",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -85,6 +85,54 @@
             "type": "string",
             "default": "",
             "description": "The path to the Zephyr SDK that provide toolchains",
+            "scope": "resource"
+          },
+          "zephyr-workbench.build.west-args": {
+            "type": "string",
+            "default": "",
+            "description": "User additional args to west command",
+            "scope": "resource"
+          },
+          "zephyr-workbench.env.ARCH_ROOT": {
+            "type": "array",
+            "default": "",
+            "description": "User additional custom architectures source",
+            "scope": "resource"
+          },
+          "zephyr-workbench.env.SOC_ROOT": {
+            "type": "array",
+            "default": "",
+            "description": "User additional custom socs source",
+            "scope": "resource"
+          },
+          "zephyr-workbench.env.BOARD_ROOT": {
+            "type": "array",
+            "default": "",
+            "description": "User additional custom boards source",
+            "scope": "resource"
+          },
+          "zephyr-workbench.env.DTS_ROOT": {
+            "type": "array",
+            "default": "",
+            "description": "User additional custom dts source",
+            "scope": "resource"
+          },
+          "zephyr-workbench.env.EXTRA_CONF_FILE": {
+            "type": "array",
+            "default": "",
+            "description": "User extra conf overlay",
+            "scope": "resource"
+          },
+          "zephyr-workbench.env.EXTRA_DTC_OVERLAY_FILE": {
+            "type": "array",
+            "default": "",
+            "description": "User extra dtc overlay",
+            "scope": "resource"
+          },
+          "zephyr-workbench.env.EXTRA_ZEPHYR_MODULES": {
+            "type": "array",
+            "default": "",
+            "description": "User extra modules",
             "scope": "resource"
           },
           "zephyr-workbench.build.pristine": {
@@ -249,6 +297,10 @@
         "title": "Change Board"
       },
       {
+        "command": "zephyr-workbench-app-explorer.search-local-board",
+        "title": "Search Local board"
+      },
+      {
         "command": "zephyr-workbench-app-explorer.change-west-workspace",
         "title": "Change West Workspace"
       },
@@ -337,6 +389,21 @@
         "command": "zephyr-workbench-status-bar.build",
         "title": "Build",
         "icon": "$(gear)"
+      },
+      {
+        "command": "zephyr-workbench.env.add",
+        "title": "Add value",
+        "icon": "$(add)"
+      },
+      {
+        "command": "zephyr-workbench.env.edit",
+        "title": "Edit value",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "zephyr-workbench.env.delete",
+        "title": "Remove value",
+        "icon": "$(remove)"
       },
       {
         "command": "west.version",
@@ -579,6 +646,11 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-board"
         },
         {
+          "command": "zephyr-workbench-app-explorer.search-local-board",
+          "group": "0@view/item/context@8",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-board"
+        },
+        {
           "command": "zephyr-workbench-app-explorer.change-west-workspace",
           "group": "0@view/item/context@9",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-workspace"
@@ -622,6 +694,21 @@
           "command": "zephyr-workbench-west-workspace.open-terminal",
           "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace"
+        },
+        {
+          "command": "zephyr-workbench.env.add",
+          "group": "inline@0",
+          "when": "(view == zephyr-workbench-west-workspace && viewItem == west-workspace-env) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-env)"
+        },
+        {
+          "command": "zephyr-workbench.env.edit",
+          "group": "inline@0",
+          "when": "(view == zephyr-workbench-west-workspace && viewItem == west-workspace-env-value) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-env-value)"
+        },
+        {
+          "command": "zephyr-workbench.env.delete",
+          "group": "inline@1",
+          "when": "(view == zephyr-workbench-west-workspace && viewItem == west-workspace-env-value) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-env-value)"
         },
         {
           "command": "zephyr-workbench-sdk-explorer.open-wizard",
@@ -676,6 +763,11 @@
         },
         {
           "command": "zephyr-workbench-app-explorer.change-board",
+          "group": "configure@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.search-local-board",
           "group": "configure@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },

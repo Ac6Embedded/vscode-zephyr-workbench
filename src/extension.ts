@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import path from 'path';
 import * as vscode from 'vscode';
-import { execWestCommandWithEnv, westBoardsCommand, westDebugCommand, westFlashCommand, westInitCommand, westUpdateCommand } from './WestCommands';
+import { execWestCommandWithEnv, westBoardsCommand, westDebugCommand, westFlashCommand, westInitCommand, westTmpBuildSystemCommand, westUpdateCommand } from './WestCommands';
 import { WestWorkspace } from './WestWorkspace';
 import { ZephyrAppProject } from './ZephyrAppProject';
 import { ZephyrProject } from './ZephyrProject';
@@ -17,20 +17,22 @@ import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
-import { WestWorkspaceDataProvider, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
-import { ZephyrApplicationBoardTreeItem, ZephyrApplicationDataProvider, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem } from './providers/ZephyrApplicationProvider';
+import { WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
+import { ZephyrApplicationBoardTreeItem, ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem } from './providers/ZephyrApplicationProvider';
 import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsCommandProvider';
 import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
-import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findTask, getBoardFromId, getConfigValue, getInstallDirRealPath, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
+import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findTask, getBoardFromId, getConfigValue, getInstallDirRealPath, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, readZephyrSettings as readZephyrSettings, removeWorkspaceFolder } from './utils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
 import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { generateWestManifest } from './manifestUtils';
+import { changeEnvVarQuickStep } from './changeEnvVarQuickStep';
+import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './zephyrEnvUtils';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -169,9 +171,9 @@ export function activate(context: vscode.ExtensionContext) {
 				const westBuildTask = await findTask('Clean Pristine', node.project.workspaceFolder);
 				if (westBuildTask) {
 					try {
-							await vscode.tasks.executeTask(westBuildTask);
+						await vscode.tasks.executeTask(westBuildTask);
 					} catch (error) {
-							vscode.window.showErrorMessage(`Error executing task: ${error}`);
+						vscode.window.showErrorMessage(`Error executing task: ${error}`);
 					}
 				} else {
 						vscode.window.showErrorMessage('Cannot find Clean task.');
@@ -199,9 +201,9 @@ export function activate(context: vscode.ExtensionContext) {
 				const westBuildTask = await findTask('Clean', node.project.workspaceFolder);
 				if (westBuildTask) {
 					try {
-							await vscode.tasks.executeTask(westBuildTask);
+						await vscode.tasks.executeTask(westBuildTask);
 					} catch (error) {
-							vscode.window.showErrorMessage(`Error executing task: ${error}`);
+						vscode.window.showErrorMessage(`Error executing task: ${error}`);
 					}
 				} else {
 						vscode.window.showErrorMessage('Cannot find Clean task.');
@@ -215,9 +217,9 @@ export function activate(context: vscode.ExtensionContext) {
 			const guiConfigTask = await findTask('Gui config', node.project.workspaceFolder);
 			if (guiConfigTask) {
 				try {
-						await vscode.tasks.executeTask(guiConfigTask);
+					await vscode.tasks.executeTask(guiConfigTask);
 				} catch (error) {
-						vscode.window.showErrorMessage(`Error executing task: ${error}`);
+					vscode.window.showErrorMessage(`Error executing task: ${error}`);
 				}
 			} else {
 					vscode.window.showErrorMessage('Cannot find Guiconfig task.');
@@ -231,9 +233,9 @@ export function activate(context: vscode.ExtensionContext) {
 			const menuconfigTask = await findTask('Menuconfig', node.project.workspaceFolder);
 			if (menuconfigTask) {
 				try {
-						await vscode.tasks.executeTask(menuconfigTask);
+					await vscode.tasks.executeTask(menuconfigTask);
 				} catch (error) {
-						vscode.window.showErrorMessage(`Error executing task: ${error}`);
+					vscode.window.showErrorMessage(`Error executing task: ${error}`);
 				}
 			} else {
 					vscode.window.showErrorMessage('Cannot find Menuconfig task.');
@@ -247,9 +249,9 @@ export function activate(context: vscode.ExtensionContext) {
 			const westFlashTask = await findTask('West Flash', node.project.workspaceFolder);
 			if (westFlashTask) {
 				try {
-						await vscode.tasks.executeTask(westFlashTask);
+					await vscode.tasks.executeTask(westFlashTask);
 				} catch (error) {
-						vscode.window.showErrorMessage(`Error executing task: ${error}`);
+					vscode.window.showErrorMessage(`Error executing task: ${error}`);
 				}
 			} else {
 					vscode.window.showErrorMessage('Cannot find flash task.');
@@ -346,6 +348,15 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.change-board', async (node: ZephyrApplicationBoardTreeItem | ZephyrApplicationTreeItem) => {
+		if(node.project) {
+			const boardId = await changeBoardQuickStep(context, node.project);
+			if(boardId) {
+				await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId, vscode.ConfigurationTarget.WorkspaceFolder);
+			}
+		}
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.search-local-board', async (node: ZephyrApplicationBoardTreeItem | ZephyrApplicationTreeItem) => {
 		if(node.project) {
 			const boardId = await changeBoardQuickStep(context, node.project);
 			if(boardId) {
@@ -477,6 +488,90 @@ export function activate(context: vscode.ExtensionContext) {
 						}
 					}
 				);
+			}
+		}
+	});
+
+	vscode.commands.registerCommand("zephyr-workbench.env.add", async (node: WestWorkspaceEnvTreeItem | ZephyrApplicationEnvTreeItem ) => {
+		if(node instanceof WestWorkspaceEnvTreeItem) {
+			if(node.westWorkspace) {
+				const westWorkspace = node.westWorkspace;
+				let value = await changeEnvVarQuickStep(westWorkspace, node.envKey);
+				if(value) {
+					addEnvValue(westWorkspace.envVars, node.envKey, value);
+					let workspaceFolder = getWorkspaceFolder(westWorkspace.rootUri.fsPath);
+					if(workspaceFolder) {
+						await saveEnv(workspaceFolder, node.envKey, westWorkspace.envVars[node.envKey]);
+					}
+				}
+				westWorkspaceProvider.refresh();
+			}
+		} else if(node instanceof ZephyrApplicationEnvTreeItem) {
+			if(node.project) {
+				const project = node.project;
+				let value = await changeEnvVarQuickStep(project, node.envKey);
+				if(value) {
+					addEnvValue(project.envVars, node.envKey, value);
+					let workspaceFolder = getWorkspaceFolder(project.folderPath);
+					if(workspaceFolder) {
+						await saveEnv(workspaceFolder, node.envKey, project.envVars[node.envKey]);
+					}
+				}
+				zephyrAppProvider.refresh();
+			}
+		}
+	});
+
+	vscode.commands.registerCommand("zephyr-workbench.env.edit", async (node: WestWorkspaceEnvValueTreeItem | ZephyrApplicationEnvValueTreeItem ) => {
+		if(node instanceof WestWorkspaceEnvValueTreeItem) {
+			if(node.westWorkspace) {
+				const westWorkspace = node.westWorkspace;
+				let value = await changeEnvVarQuickStep(westWorkspace, node.envKey, node.envValue);
+				if(value) {
+					replaceEnvValue(westWorkspace.envVars, node.envKey,  node.envValue, value);
+					let workspaceFolder = getWorkspaceFolder(westWorkspace.rootUri.fsPath);
+					if(workspaceFolder) {
+						await saveEnv(workspaceFolder, node.envKey, westWorkspace.envVars[node.envKey]);
+					}
+				}
+				westWorkspaceProvider.refresh();
+			}
+		} else if(node instanceof ZephyrApplicationEnvValueTreeItem) {
+			if(node.project) {
+				const project = node.project;
+				let value = await changeEnvVarQuickStep(project, node.envKey, node.envValue);
+				if(value) {
+					replaceEnvValue(project.envVars, node.envKey,  node.envValue, value);
+					let workspaceFolder = getWorkspaceFolder(project.folderPath);
+					if(workspaceFolder) {
+						await saveEnv(workspaceFolder, node.envKey, project.envVars[node.envKey]);
+					}
+				}
+				zephyrAppProvider.refresh();
+			}
+		}
+	});
+
+	vscode.commands.registerCommand("zephyr-workbench.env.delete", async (node: WestWorkspaceEnvValueTreeItem | ZephyrApplicationEnvValueTreeItem ) => {
+		if(node instanceof WestWorkspaceEnvValueTreeItem) {
+			if(node.westWorkspace) {
+				const westWorkspace = node.westWorkspace;
+				removeEnvValue(westWorkspace.envVars, node.envKey,  node.envValue);
+				let workspaceFolder = getWorkspaceFolder(westWorkspace.rootUri.fsPath);
+				if(workspaceFolder) {
+					await saveEnv(workspaceFolder, node.envKey, westWorkspace.envVars[node.envKey]);
+				}
+				westWorkspaceProvider.refresh();
+			}
+		} else if(node instanceof ZephyrApplicationEnvValueTreeItem) {
+			if(node.project) {
+				const project = node.project;
+				removeEnvValue(project.envVars, node.envKey,  node.envValue);
+				let workspaceFolder = getWorkspaceFolder(project.folderPath);
+				if(workspaceFolder) {
+					await saveEnv(workspaceFolder, node.envKey, project.envVars[node.envKey]);
+				}
+				zephyrAppProvider.refresh();
 			}
 		}
 	});

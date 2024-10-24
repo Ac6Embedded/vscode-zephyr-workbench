@@ -4,9 +4,13 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [1.1.3]
+## [1.2.0]
 
-- Board finder from west
+- Support some Zephyr Environment variables (ARCH_ROOT, SOC_ROOT... EXTRA_CONF_FILE, EXTRA_DTC_OVERLAY_FILE, EXTRA_ZEPHYR_MODULES)
+- Improve board finder from west by supporting modules and BOARD_ROOT
+- Fix MacOSX installation 
+- Fix West Workspace tag detection
+- Update other resources URLs
 
 ## [1.1.2]
 

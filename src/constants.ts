@@ -14,3 +14,5 @@ export const ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY = 'build.pristine';
 export const ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY = 'westWorkspace';
 export const ZEPHYR_PROJECT_BOARD_SETTING_KEY = 'board';
 export const ZEPHYR_PROJECT_SDK_SETTING_KEY = 'sdk';
+
+export const ZEPHYR_ENV_SETTING_PREFIX_KEY = 'env';

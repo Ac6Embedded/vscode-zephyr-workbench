@@ -1,14 +1,23 @@
 import * as vscode from 'vscode';
 import fs from "fs";
 import path from 'path';
-import { fileExists } from './utils';
+import { fileExists, getWorkspaceFolder } from './utils';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
+import { getEnvJoinValue, loadEnv } from './zephyrEnvUtils';
 
 export class WestWorkspace {
   versionArray!: { [key: string]: string };
   manifestPath!: string;
   manifestFile!: string;
   zephyrBase!: string;
+  envVars: { [key:string]: string[] } = {
+    ARCH_ROOT:[],
+    SOC_ROOT:[],
+    BOARD_ROOT:[],
+    DTS_ROOT:[]
+  };
+
+  static envVarKeys = ['ARCH_ROOT', 'SOC_ROOT', 'BOARD_ROOT', 'DTS_ROOT'];
 
   constructor(
     public readonly name: string, 
@@ -25,9 +34,11 @@ export class WestWorkspace {
       this.zephyrBase = 'zephyr';
     }
     
-
     // Parsing full version
     this.versionArray = this.parseVersion();
+
+    // Load settings
+    this.loadSettings();
   }
   
   parseConfig(): { [key: string]: { [key: string]: string } } {
@@ -86,6 +97,18 @@ export class WestWorkspace {
     return ver;
   }
 
+  loadSettings() {
+    const workspaceFolder = getWorkspaceFolder(this.rootUri.fsPath);
+    if(workspaceFolder) {
+      for(let key of WestWorkspace.envVarKeys) {
+        let values = loadEnv(workspaceFolder, key);
+        if(values) {
+          this.envVars[key] = values;
+        }
+      }
+    }
+  }
+
   get version(): string {
     if(!this.versionArray['VERSION_MAJOR']) {
       return 'No version found';
@@ -130,17 +153,33 @@ export class WestWorkspace {
   }
 
   get buildEnv(): { [key: string]: string; } {
-    return {
+    let baseEnv: { [key: string]: string } = {
       ZEPHYR_BASE: this.kernelUri.fsPath,
       ZEPHYR_PROJECT_DIRECTORY: this.rootUri.fsPath
     };
+
+    for (const key in this.envVars) {
+      if (this.envVars.hasOwnProperty(key)) {
+        baseEnv[key] = getEnvJoinValue(this.envVars, key);
+      }
+    }
+
+    return baseEnv;
   }
 
   get buildEnvWithVar(): { [key: string]: string; } {
-    return {
+    let baseEnv: { [key: string]: string } = {
       ZEPHYR_BASE: path.join("${config:zephyr-workbench.westWorkspace}", this.zephyrBase),
       ZEPHYR_PROJECT_DIRECTORY: "${config:zephyr-workbench.westWorkspace}"
     };
+
+    for (const key in this.envVars) {
+      if (this.envVars.hasOwnProperty(key)) {
+        baseEnv[key] = getEnvJoinValue(this.envVars, key);
+      }
+    }
+
+    return baseEnv;
   }
 
   static isWestWorkspaceFolder(folder: vscode.WorkspaceFolder): boolean {

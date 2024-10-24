@@ -79,26 +79,26 @@ export async function westBoardsCommand(workspacePath: string): Promise<void> {
   await execWestCommand(`West Update for current workspace`, command, options);
 }
 
-export async function westTmpBuildSystemCommand(zephyrProject: ZephyrProject, westWorkspace: WestWorkspace): Promise<void> {
+export async function westTmpBuildSystemCommand(zephyrProject: ZephyrProject, westWorkspace: WestWorkspace): Promise<string | undefined> {
   const redirect = getShellNullRedirect(getShell());
   const tmpPath = path.join(zephyrProject.folderPath, '.tmp');
   let command = `west build -t boards --board 96b_aerocore2 --build-dir ${tmpPath} ${redirect}`;
 
   if(zephyrProject.boardId === undefined || zephyrProject.folderPath === undefined) {
-    return;
+    return undefined;
   }
 
   let activeSdk: ZephyrSDK = getZephyrSDK(zephyrProject.sdkPath);
   if(!activeSdk) {
     throw new Error('The Zephyr SDK is missing, please install host tools first');
   }
-
   let options: vscode.ShellExecutionOptions = {
-    env: {...activeSdk.buildEnv, ...westWorkspace.buildEnv },
-    cwd: westWorkspace.kernelUri.fsPath
+    env: { ...zephyrProject.buildEnv, ...activeSdk.buildEnv, ...westWorkspace.buildEnv },
+    cwd: zephyrProject.folderPath
   };
 
   await execWestCommand(`West Update for current workspace`, command, options);
+  return tmpPath;
 }
 
 export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspace: WestWorkspace): Promise<void> {

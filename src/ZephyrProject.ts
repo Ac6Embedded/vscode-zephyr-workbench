@@ -6,6 +6,7 @@ import { fileExists, findTask, getBoardFromId, getConfigValue, getWestWorkspace 
 import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { getShell } from './execUtils';
+import { getEnvJoinValue, loadEnv } from './zephyrEnvUtils';
 export class ZephyrProject {
   
   readonly workspaceContext: any;
@@ -13,7 +14,13 @@ export class ZephyrProject {
   boardId!: string;
   westWorkspacePath!: string;
   sdkPath!: string;
+  envVars: {[key:string]: string[]} = {
+    EXTRA_CONF_FILE:[],
+    EXTRA_DTC_OVERLAY_FILE:[],
+    EXTRA_ZEPHYR_MODULES:[]
+  };
 
+  static envVarKeys = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES'];
 
   public constructor(
     workspaceContext: any,
@@ -28,7 +35,13 @@ export class ZephyrProject {
     this.westWorkspacePath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.workspaceContext).get(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, '');
 	  this.boardId = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.workspaceContext).get(ZEPHYR_PROJECT_BOARD_SETTING_KEY, '');
     this.sdkPath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.workspaceContext).get(ZEPHYR_PROJECT_SDK_SETTING_KEY, '');
-
+    
+    for(let key of ZephyrProject.envVarKeys) {
+      let values = loadEnv(this.workspaceContext, key);
+      if(values) {
+        this.envVars[key] = values;
+      }
+    }
   }
 
   /**
@@ -60,15 +73,29 @@ export class ZephyrProject {
   }
 
   get buildEnv(): { [key: string]: string; } {
-    return {
+    let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardId
     };
+
+    for (const key in this.envVars) {
+      if (this.envVars.hasOwnProperty(key)) {
+        baseEnv[key] = getEnvJoinValue(this.envVars, key);
+      }
+    }
+    return baseEnv;
   }
 
   get buildEnvWithVar(): { [key: string]: string; } {
-    return {
+    let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardId
     };
+
+    for (const key in this.envVars) {
+      if (this.envVars.hasOwnProperty(key)) {
+        baseEnv[key] = getEnvJoinValue(this.envVars, key);
+      }
+    }
+    return baseEnv;
   }
 
   setBoard(boardId: string) {
