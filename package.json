@@ -297,10 +297,6 @@
         "title": "Change Board"
       },
       {
-        "command": "zephyr-workbench-app-explorer.search-local-board",
-        "title": "Search Local board"
-      },
-      {
         "command": "zephyr-workbench-app-explorer.change-west-workspace",
         "title": "Change West Workspace"
       },
@@ -646,11 +642,6 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-board"
         },
         {
-          "command": "zephyr-workbench-app-explorer.search-local-board",
-          "group": "0@view/item/context@8",
-          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-board"
-        },
-        {
           "command": "zephyr-workbench-app-explorer.change-west-workspace",
           "group": "0@view/item/context@9",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-workspace"
@@ -763,11 +754,6 @@
         },
         {
           "command": "zephyr-workbench-app-explorer.change-board",
-          "group": "configure@2",
-          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
-        },
-        {
-          "command": "zephyr-workbench-app-explorer.search-local-board",
           "group": "configure@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },

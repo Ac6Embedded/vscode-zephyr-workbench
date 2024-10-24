@@ -26,7 +26,7 @@ export async function changeEnvVarQuickStep(
         let options: vscode.OpenDialogOptions = {
           openLabel: 'Select item:'
         };
-        if(key.endsWith('_FILE') || key.endsWith('_MODULES')) {
+        if(key.endsWith('_FILE')) {
           options.canSelectFiles = true;
           options.canSelectFolders = false;
         } else {

@@ -1,22 +1,31 @@
 import vscode, { ExtensionContext, QuickPickItem } from "vscode";
 import { ZephyrProject } from "./ZephyrProject";
 import { getSupportedBoards, getWestWorkspace } from "./utils";
+import { ZephyrBoard } from "./ZephyrBoard";
 
 export async function changeBoardQuickStep(context: ExtensionContext, project: ZephyrProject): Promise<string | undefined> {
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
   const boardItems: QuickPickItem[] = [];
   if(westWorkspace) {
-
-    const boards = await getSupportedBoards(westWorkspace, project);
-    boards.sort((a, b) => {
-      if (a.name < b.name) {
-        return -1;
+    let boards: ZephyrBoard[] = [];
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: "Updating available boards list",
+      cancellable: false,
+      }, async () => {
+        boards = await getSupportedBoards(westWorkspace, project);
+        boards.sort((a, b) => {
+          if (a.name < b.name) {
+            return -1;
+          }
+          if (a.name > b.name) {
+            return 1;
+          }
+          return 0;
+        });
       }
-      if (a.name > b.name) {
-        return 1;
-      }
-      return 0;
-    });
+    );
+    
     for(let board of boards) {
       boardItems.push({ label: board.name, description: board.identifier });
     }

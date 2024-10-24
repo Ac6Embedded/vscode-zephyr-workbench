@@ -143,32 +143,49 @@ export async function importProjectQuickStep(context: ExtensionContext) {
     if(state.westWorkspace) {
 
       // Get preset board FIXME maybe not supported by MultiStepInput yet
-      if(state.projectLoc && state.reconfigure === true) {
-        let proj: ZephyrAppProject = new ZephyrAppProject(vscode.Uri.file(state.projectLoc), state.projectLoc);
-        const listBoards = await getSupportedBoards(state.westWorkspace, state.projectLoc);
-        listBoards.sort((a, b) => {
-          if (a.name < b.name) {
-            return -1;
-          }
-          if (a.name > b.name) {
-            return 1;
-          }
-          return 0;
-        });
-        for(let board of listBoards) {
-          if(board.identifier === proj.boardId) {
-            state.board = board;
-            break;
-          }
-        }
-      }
+      // if(state.projectLoc && state.reconfigure === true) {
+      //   let proj: ZephyrAppProject = new ZephyrAppProject(vscode.Uri.file(state.projectLoc), state.projectLoc);
+      //   const listBoards = await getSupportedBoards(state.westWorkspace, state.projectLoc);
+      //   listBoards.sort((a, b) => {
+      //     if (a.name < b.name) {
+      //       return -1;
+      //     }
+      //     if (a.name > b.name) {
+      //       return 1;
+      //     }
+      //     return 0;
+      //   });
+      //   for(let board of listBoards) {
+      //     if(board.identifier === proj.boardId) {
+      //       state.board = board;
+      //       break;
+      //     }
+      //   }
+      // }
 
-      const boards = await getSupportedBoards(state.westWorkspace, state.projectLoc);
-      for(let board of boards) {
-        boardItems.push({ label: board.identifier });
-        if(board.identifier === state.board?.identifier) {
-          prevBoardItem = { label: board.identifier };
+      let boards: ZephyrBoard[] = [];
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: "Updating available boards list",
+        cancellable: false,
+        }, async () => {
+          if(state.westWorkspace) {
+            boards = await getSupportedBoards(state.westWorkspace, state.projectLoc);
+            boards.sort((a, b) => {
+              if (a.name < b.name) {
+                return -1
+              }
+              if (a.name > b.name) {
+                return 1;
+              }
+              return 0;
+            });
+          }
         }
+      );
+
+      for(let board of boards) {
+        boardItems.push({ label: board.name, description: board.identifier });
       }
 
       const pick = await input.showQuickPick({
@@ -176,7 +193,6 @@ export async function importProjectQuickStep(context: ExtensionContext) {
         step: 4,
         totalSteps: 4,
         placeholder: 'Select the target board',
-        activeItem: prevBoardItem,
         items: boardItems,
         shouldResume: shouldResume
       });

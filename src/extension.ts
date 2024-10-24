@@ -356,14 +356,6 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	vscode.commands.registerCommand('zephyr-workbench-app-explorer.search-local-board', async (node: ZephyrApplicationBoardTreeItem | ZephyrApplicationTreeItem) => {
-		if(node.project) {
-			const boardId = await changeBoardQuickStep(context, node.project);
-			if(boardId) {
-				await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId, vscode.ConfigurationTarget.WorkspaceFolder);
-			}
-		}
-	});
 
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.change-west-workspace', async (node: ZephyrApplicationWestWorkspaceTreeItem | ZephyrApplicationTreeItem) => {
 		if(node.project) {
