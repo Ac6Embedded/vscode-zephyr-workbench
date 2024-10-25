@@ -259,8 +259,8 @@ function generate_manifest_entries {
 
     # Check if the source and sha256 are not null (meaning the tool supports the OS)
     if [ "$source" != "null" ] && [ "$sha256" != "null" ]; then
-        echo "SOURCE_URLS_${tool}=\"$source\"" >> $manifest
-        echo "SHA256_HASHES_${tool}=\"$sha256\"" >> $manifest
+        echo "SOURCE_URLS[${tool}]=\"$source\"" >> $manifest
+        echo "SHA256_HASHES[${tool}]=\"$sha256\"" >> $manifest
     fi
 }
 
