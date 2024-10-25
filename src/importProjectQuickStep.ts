@@ -1,6 +1,5 @@
 import vscode, { ExtensionContext, QuickPickItem, ThemeIcon } from "vscode";
 import { WestWorkspace } from "./WestWorkspace";
-import { ZephyrAppProject } from "./ZephyrAppProject";
 import { ZephyrBoard } from "./ZephyrBoard";
 import { ZephyrProject } from "./ZephyrProject";
 import { ZephyrSDK } from "./ZephyrSDK";
@@ -56,7 +55,6 @@ export async function importProjectQuickStep(context: ExtensionContext) {
       }
     }
 
-    //return (input: MultiStepInput) => pickWestWorkspace(input, state);
     return (input: MultiStepInput) => pickReconfigure(input, state);
 	}
 
@@ -173,7 +171,7 @@ export async function importProjectQuickStep(context: ExtensionContext) {
             boards = await getSupportedBoards(state.westWorkspace, state.projectLoc);
             boards.sort((a, b) => {
               if (a.name < b.name) {
-                return -1
+                return -1;
               }
               if (a.name > b.name) {
                 return 1;
@@ -199,7 +197,7 @@ export async function importProjectQuickStep(context: ExtensionContext) {
 
       if(pick) {
         for(let board of boards) {
-          if(board.identifier === pick.label) {
+          if(board.identifier === pick.description) {
             state.board = board;
             break;
           }

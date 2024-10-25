@@ -8,7 +8,7 @@
     "type": "git",
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -276,6 +276,11 @@
         "command": "zephyr-workbench-app-explorer.debug-app",
         "title": "Debug",
         "icon": "$(debug-alt)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.remove",
+        "title": "Remove",
+        "icon": "$(remove)"
       },
       {
         "command": "zephyr-workbench-app-explorer.delete",
@@ -609,6 +614,11 @@
         {
           "command": "zephyr-workbench-app-explorer.spdx-app",
           "group": "0@view/item/context@6",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.remove",
+          "group": "0@view/item/context@7",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {

@@ -303,6 +303,12 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	vscode.commands.registerCommand("zephyr-workbench-app-explorer.remove", async (node: ZephyrApplicationTreeItem) => {
+		if(node.project) {
+			removeWorkspaceFolder(node.project.workspaceFolder);
+		}
+	});
+
 	vscode.commands.registerCommand("zephyr-workbench-app-explorer.delete", async (node: ZephyrApplicationTreeItem) => {
 		if(node.project) {
 			if(await showConfirmMessage(`Delete ${node.project.folderName} permanently ?`)) {
@@ -987,12 +993,13 @@ export function activate(context: vscode.ExtensionContext) {
 			await addWorkspaceFolder(projectLoc);
 
 			let workspaceFolder = getWorkspaceFolder(projectLoc);
-			if(workspaceFolder) {
-				await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK);
-				await createTasksJson(workspaceFolder);
-				await createExtensionsJson(workspaceFolder);
+			if (workspaceFolder && westWorkspace && zephyrBoard && zephyrSDK) {
+        await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK);
+        await createTasksJson(workspaceFolder);
+        await createExtensionsJson(workspaceFolder);
 				vscode.window.showInformationMessage(`Creating Application '${workspaceFolder.name}' done`);
 			}
+			zephyrAppProvider.refresh();
 		})
 	);
 
