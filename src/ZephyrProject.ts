@@ -80,7 +80,9 @@ export class ZephyrProject {
 
     for (const key in this.envVars) {
       if (this.envVars.hasOwnProperty(key)) {
-        baseEnv[key] = getEnvJoinValue(this.envVars, key);
+        if(this.envVars[key] && this.envVars[key].length > 0) {
+          baseEnv[key] = getEnvJoinValue(this.envVars, key);
+        }
       }
     }
     return baseEnv;
@@ -93,7 +95,9 @@ export class ZephyrProject {
 
     for (const key in this.envVars) {
       if (this.envVars.hasOwnProperty(key)) {
-        baseEnv[key] = getEnvJoinValue(this.envVars, key);
+        if(this.envVars[key] && this.envVars[key].length > 0) {
+          baseEnv[key] = getEnvJoinValue(this.envVars, key);
+        }
       }
     }
     return baseEnv;
