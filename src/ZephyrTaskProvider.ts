@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as fsPromise from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { WestWorkspace } from './WestWorkspace';
@@ -9,12 +10,160 @@ import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHY
 import { concatCommands, getShell, getShellArgs } from './execUtils';
 import { getWestWorkspace, getZephyrSDK } from './utils';
 
+interface TaskConfig {
+  version: string;
+  tasks: ZephyrTaskDefinition[];
+  [key: string]: any;
+}
 export interface ZephyrTaskDefinition extends vscode.TaskDefinition {
   label: string;
   type: string;
   command: string;
-  args?: string[];
+  [key: string]: any;
+  args: string[];
 }
+
+const westBuildTask: ZephyrTaskDefinition = {
+  label: "West Build",
+  type: "zephyr-workbench",
+  problemMatcher: [ "$gcc" ],
+  group: {
+    kind: "build",
+    isDefault: true
+  },
+  command: "west",
+  args: [
+    "build",
+    "-p ${config:zephyr-workbench.build.pristine}",
+    "--board ${config:zephyr-workbench.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+  ]
+};
+
+const cleanTask: ZephyrTaskDefinition = {
+  label: "Clean",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "ninja",
+  args: [
+    "-C ${workspaceFolder}/build/${config:zephyr-workbench.board}",
+    "clean",
+  ]
+};
+
+const rebuildTask: ZephyrTaskDefinition = {
+  label: "West Rebuild",
+  type: "zephyr-workbench",
+  problemMatcher: [ "$gcc" ],
+  group: {
+    kind: "build",
+    isDefault: false
+  },
+  command: "west",
+  args: [
+    "build",
+    "-p always",
+    "--board ${config:zephyr-workbench.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+  ]
+};
+
+const guiConfigTask: ZephyrTaskDefinition = {
+  label: "Gui config",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "west",
+  args: [
+    "build",
+    "-t guiconfig",
+    "--board ${config:zephyr-workbench.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+  ]
+};
+
+const menuconfigTask: ZephyrTaskDefinition = {
+  label: "Menuconfig",
+  type: "zephyr-workbench",
+  command: "west",
+  args: [
+    "build",
+    "-t menuconfig",
+    "--board ${config:zephyr-workbench.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+  ]
+};
+
+const spdxTask: ZephyrTaskDefinition = {
+  label: "Generate SPDX",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "west",
+  args: [
+    "spdx",
+    "--init",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+  ]
+};
+
+const flashTask: ZephyrTaskDefinition = {
+  label: "West Flash",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "west",
+  args: [
+    "flash",
+    "${input:west.runner}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+  ]
+};
+
+const ramReportTask: ZephyrTaskDefinition = {
+  label: "West RAM Report",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "west",
+  args: [
+    "build",
+    "-t ram_report",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+  ]
+};
+
+const romReportTask: ZephyrTaskDefinition = {
+  label: "West ROM Report",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "west",
+  args: [
+    "build",
+    "-t rom_report",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+  ]
+};
+
+const puncoverTask: ZephyrTaskDefinition = {
+  label: "West Puncover",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "west",
+  args: [
+    "build",
+    "-t puncover"
+  ]
+};
+
+const tasksMap = new Map<string, ZephyrTaskDefinition>([
+  [westBuildTask.label, westBuildTask],
+  [cleanTask.label, cleanTask],
+  [rebuildTask.label, rebuildTask],
+  [guiConfigTask.label, guiConfigTask],
+  [menuconfigTask.label, menuconfigTask],
+  [spdxTask.label, spdxTask],
+  [flashTask.label, flashTask],
+  [ramReportTask.label, ramReportTask],
+  [romReportTask.label, romReportTask],
+  [puncoverTask.label, puncoverTask]
+]);
 
 export class ZephyrTaskProvider implements vscode.TaskProvider {
   static ZephyrType: string = 'zephyr-workbench';
@@ -120,124 +269,19 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
   const activeSdk: ZephyrSDK = getZephyrSDK(project.sdkPath);
   if(westWorkspace && activeSdk) {
-    const tasksJsonContent = {
+    const tasksJsonContent:{
+      version: string;
+      tasks: ZephyrTaskDefinition[];
+      inputs: {
+        id: string;
+        type: string;
+        description: string;
+        options: string[];
+        default: string;
+      }[];
+    } = {
       version: "2.0.0",
-      tasks: [
-        {
-          label: "West Build",
-          type: "zephyr-workbench",
-          problemMatcher: [ "$gcc" ],
-          group: {
-            kind: "build",
-            isDefault: true
-          },
-          command: "west",
-          args: [
-            "build",
-            "-p ${config:zephyr-workbench.build.pristine}",
-            "--board ${config:zephyr-workbench.board}",
-            "--build-dir " + buildDir
-          ]
-        },
-        {
-          label: "Clean",
-          type: "zephyr-workbench",
-          problemMatcher: [],
-          command: "ninja",
-          args: [
-            "-C " + buildDir,
-            "clean",
-          ]
-        },
-        {
-          label: "Clean Pristine",
-          type: "zephyr-workbench",
-          problemMatcher: [],
-          command: "ninja",
-          args: [
-            "-C " + buildDir,
-            "pristine",
-          ]
-        },
-        {
-          label: "Gui config",
-          type: "zephyr-workbench",
-          problemMatcher: [],
-          command: "west",
-          args: [
-            "build",
-            "-t guiconfig",
-            "--board ${config:zephyr-workbench.board}",
-            "--build-dir " + buildDir
-          ]
-        },
-        {
-          label: "Menuconfig",
-          type: "zephyr-workbench",
-          command: "west",
-          args: [
-            "build",
-            "-t menuconfig",
-            "--board ${config:zephyr-workbench.board}",
-            "--build-dir " + buildDir
-          ]
-        },
-        {
-          label: "Generate SPDX",
-          type: "zephyr-workbench",
-          problemMatcher: [],
-          command: "west",
-          args: [
-            "spdx",
-            "--init",
-            "--build-dir " + buildDir
-          ]
-        },
-        {
-          label: "West Flash",
-          type: "zephyr-workbench",
-          problemMatcher: [],
-          command: "west",
-          args: [
-            "flash",
-            "${input:west.runner}",
-            "--build-dir " + buildDir
-          ]
-        },
-        {
-          label: "West RAM Report",
-          type: "zephyr-workbench",
-          problemMatcher: [],
-          command: "west",
-          args: [
-            "build",
-            "-t ram_report",
-            "--build-dir " + buildDir
-          ]
-        },
-        {
-          label: "West ROM Report",
-          type: "zephyr-workbench",
-          problemMatcher: [],
-          command: "west",
-          args: [
-            "build",
-            "-t rom_report",
-            "--build-dir " + buildDir
-          ]
-        }
-        ,
-        {
-          label: "West Puncover",
-          type: "zephyr-workbench",
-          problemMatcher: [],
-          command: "west",
-          args: [
-            "build",
-            "-t puncover"
-          ]
-        }
-      ],
+      tasks: [],
       inputs: [
         {
           id: "west.runner",
@@ -286,8 +330,91 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
       ]
     };
 
+    tasksJsonContent.tasks.push(
+      westBuildTask,
+      rebuildTask,
+      cleanTask,
+      guiConfigTask,
+      menuconfigTask,
+      spdxTask,
+      flashTask,
+      ramReportTask,
+      romReportTask,
+      puncoverTask
+    );
+
     // Write tasks.json file
     fs.writeFileSync(tasksJsonPath, JSON.stringify(tasksJsonContent, null, 2));
+  }
+}
+
+export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder, taskName: string): Promise<boolean> {
+  function msleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+  
+  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
+  const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
+
+  try {
+      const data = await fsPromise.readFile(tasksJsonPath, 'utf8');
+      const config: TaskConfig = JSON.parse(data);
+      const taskExists = config.tasks.some(task => task.label === taskName);
+      if(taskExists) {
+        return true;
+      } else {
+        const task = tasksMap.get(taskName);
+        if(task) {
+          config.tasks.push(task);
+          await fsPromise.writeFile(tasksJsonPath, JSON.stringify(config, null, 2), 'utf8');
+          // Sleep to let VS Code time to reload the tasks.json
+          await msleep(500); 
+          return true;
+        }
+      }
+
+  } catch (err) {
+    return false;
+  }
+  return false;
+}
+
+export async function addWestArgs(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
+  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
+  const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
+  
+  if(fs.existsSync(tasksJsonPath)) {
+    fs.readFile(tasksJsonPath, 'utf8', (err, data) => {
+      if (err) {
+        console.error('Error reading JSON file:', err);
+        return;
+      }
+    
+      try {
+        const config: TaskConfig = JSON.parse(data);
+        const westBuildTask = config.tasks.find(task => task.label === 'West Build');
+        
+        if (westBuildTask) {
+          const westArgsEnv = "${config:zephyr-workbench.build.west-args}";
+          
+          if (!westBuildTask.args.includes(westArgsEnv)) {
+            westBuildTask.args.push(westArgsEnv);
+    
+            fs.writeFile(tasksJsonPath, JSON.stringify(config, null, 2), 'utf8', (writeErr) => {
+              if (writeErr) {
+                console.error('Error writing JSON file:', writeErr);
+              } else {
+                console.log('"West Build" task updated successfully.');
+              }
+            });
+          } 
+        } else {
+          console.error('"West Build" task not found in configuration.');
+        }
+      } catch (parseErr) {
+        console.error('Error parsing JSON:', parseErr);
+      }
+    });
   }
 }
 

@@ -4,6 +4,25 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.2.4]
+
+- Support West args
+- Fix Rebuild pristine command
+- Add dynamic tasks.json task creation for backward compatibility
+
+## [1.2.3]
+
+- Fix wrong replace on debug-tools installation on Linux
+
+## [1.2.2]
+
+- Fix CMAKE variable overlap when not value is set
+
+## [1.2.1]
+
+- Fix application import process (issue on missing board identifier)
+- Add remove application menu entry
+
 ## [1.2.0]
 
 - Support some Zephyr Environment variables (ARCH_ROOT, SOC_ROOT... EXTRA_CONF_FILE, EXTRA_DTC_OVERLAY_FILE, EXTRA_ZEPHYR_MODULES)

@@ -42,6 +42,9 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
         const envItem = new ZephyrApplicationEnvTreeItem(element.project, key);
         items.push(envItem);
       }
+
+      const westArgsItem = new ZephyrApplicationArgTreeItem(element.project, 'west arguments');
+      items.push(westArgsItem);
       return Promise.resolve(items);
     } 
 
@@ -55,6 +58,17 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
           items.push(envValueItem);
         }
       }
+      
+      return Promise.resolve(items);
+    } 
+
+    if(element instanceof ZephyrApplicationArgTreeItem) {
+      // Get West Argument
+      const items: vscode.TreeItem[] = [];
+      if(element.project.westArgs && element.project.westArgs.length > 0) {
+        const westArgsItem = new ZephyrApplicationArgValueTreeItem(element.project, 'west arguments', element.project.westArgs);
+        items.push(westArgsItem);
+      } 
       return Promise.resolve(items);
     } 
 
@@ -157,4 +171,28 @@ export class ZephyrApplicationEnvValueTreeItem extends vscode.TreeItem {
     super(envValue, vscode.TreeItemCollapsibleState.None);
 	}
   contextValue = 'zephyr-application-env-value';
+}
+
+export class ZephyrApplicationArgTreeItem extends vscode.TreeItem {
+  constructor(
+		public readonly project: ZephyrAppProject,
+    public readonly argName: string
+	) {
+    super(argName, vscode.TreeItemCollapsibleState.Collapsed);
+    this.description = project.westArgs.length === 0 ?'[not set]':'';
+    this.tooltip = argName;
+    this.iconPath = new vscode.ThemeIcon('variable');
+	}
+  contextValue = 'zephyr-application-arg';
+}
+
+export class ZephyrApplicationArgValueTreeItem extends vscode.TreeItem {
+  constructor(
+		public readonly project: ZephyrAppProject,
+    public readonly argName: string,
+    public readonly argValue: string
+	) {
+    super(argValue, vscode.TreeItemCollapsibleState.None);
+	}
+  contextValue = 'zephyr-application-arg-value';
 }

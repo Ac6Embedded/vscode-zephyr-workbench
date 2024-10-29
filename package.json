@@ -8,7 +8,7 @@
     "type": "git",
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
-  "version": "1.2.3",
+  "version": "1.2.4",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -87,12 +87,6 @@
             "description": "The path to the Zephyr SDK that provide toolchains",
             "scope": "resource"
           },
-          "zephyr-workbench.build.west-args": {
-            "type": "string",
-            "default": "",
-            "description": "User additional args to west command",
-            "scope": "resource"
-          },
           "zephyr-workbench.env.ARCH_ROOT": {
             "type": "array",
             "default": "",
@@ -140,6 +134,12 @@
             "enum": ["auto", "always", "none"],
             "default": "",
             "description": "The option controls whether the build directory is made pristine before the build.",
+            "scope": "resource"
+          },
+          "zephyr-workbench.build.west-args": {
+            "type": "string",
+            "default": "",
+            "description": "User additional args to west command",
             "scope": "resource"
           },
           "zephyr-workbench.debug.openocd.pathExec": {
@@ -405,6 +405,11 @@
         "command": "zephyr-workbench.env.delete",
         "title": "Remove value",
         "icon": "$(remove)"
+      },
+      {
+        "command": "zephyr-workbench.arg.edit",
+        "title": "Edit value",
+        "icon": "$(edit)"
       },
       {
         "command": "west.version",
@@ -710,6 +715,11 @@
           "command": "zephyr-workbench.env.delete",
           "group": "inline@1",
           "when": "(view == zephyr-workbench-west-workspace && viewItem == west-workspace-env-value) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-env-value)"
+        },
+        {
+          "command": "zephyr-workbench.arg.edit",
+          "group": "inline@0",
+          "when": "(view == zephyr-workbench-app-explorer && viewItem == zephyr-application-arg)"
         },
         {
           "command": "zephyr-workbench-sdk-explorer.open-wizard",

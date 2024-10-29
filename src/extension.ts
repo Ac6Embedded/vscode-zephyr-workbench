@@ -2,21 +2,26 @@
 // Import the module and reference it with the alias vscode in your code below
 import path from 'path';
 import * as vscode from 'vscode';
-import { execWestCommandWithEnv, westBoardsCommand, westDebugCommand, westFlashCommand, westInitCommand, westTmpBuildSystemCommand, westUpdateCommand } from './WestCommands';
+import { westBoardsCommand, westDebugCommand, westFlashCommand, westInitCommand, westUpdateCommand } from './WestCommands';
 import { WestWorkspace } from './WestWorkspace';
 import { ZephyrAppProject } from './ZephyrAppProject';
 import { ZephyrProject } from './ZephyrProject';
 import { ZephyrSDK } from './ZephyrSDK';
-import { ZephyrTaskProvider, createExtensionsJson, createTasksJson, setDefaultProjectSettings } from './ZephyrTaskProvider';
+import { addWestArgs, createExtensionsJson, createTasksJson, setDefaultProjectSettings, ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { changeBoardQuickStep } from './changeBoardQuickStep';
+import { changeEnvVarQuickStep } from './changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
-import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
+import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
+import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
 import { importProjectQuickStep } from './importProjectQuickStep';
-import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, download, execCommand, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools } from './installUtils';
+import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools } from './installUtils';
+import { generateWestManifest } from './manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
+import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
+import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
 import { ZephyrApplicationBoardTreeItem, ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem } from './providers/ZephyrApplicationProvider';
 import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsCommandProvider';
@@ -24,15 +29,10 @@ import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherReso
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
-import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findTask, getBoardFromId, getConfigValue, getInstallDirRealPath, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, readZephyrSettings as readZephyrSettings, removeWorkspaceFolder } from './utils';
-import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { DebugManagerPanel } from './panels/DebugManagerPanel';
-import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
-import { SDKManagerPanel } from './panels/SDKManagerPanel';
-import { generateWestManifest } from './manifestUtils';
-import { changeEnvVarQuickStep } from './changeEnvVarQuickStep';
+import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findOrCreateTask, getBoardFromId, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './zephyrEnvUtils';
+import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -145,7 +145,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}
 
-		const westBuildTask = await findTask('West Build', folder);
+		const westBuildTask = await findOrCreateTask('West Build', folder);
 		if (westBuildTask) {
 			try {
 				await vscode.tasks.executeTask(westBuildTask);
@@ -166,18 +166,16 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.pristine', async (node: ZephyrApplicationTreeItem) => {
-		if(node.project.sourceDir) {
-			if(node.project.sourceDir) {
-				const westBuildTask = await findTask('Clean Pristine', node.project.workspaceFolder);
-				if (westBuildTask) {
-					try {
-						await vscode.tasks.executeTask(westBuildTask);
-					} catch (error) {
-						vscode.window.showErrorMessage(`Error executing task: ${error}`);
-					}
-				} else {
-						vscode.window.showErrorMessage('Cannot find Clean task.');
+		if(node.project) {
+			const westRebuildTask = await findOrCreateTask('West Rebuild', node.project.workspaceFolder);
+			if (westRebuildTask) {
+				try {
+					await vscode.tasks.executeTask(westRebuildTask);
+				} catch (error) {
+					vscode.window.showErrorMessage(`Error executing task: ${error}`);
 				}
+			} else {
+					vscode.window.showErrorMessage('Cannot find Rebuild task.');
 			}
 		}
 	});
@@ -198,7 +196,7 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.simple', async (node: ZephyrApplicationTreeItem) => {
 		if(node.project.sourceDir) {
 			if(node.project.sourceDir) {
-				const westBuildTask = await findTask('Clean', node.project.workspaceFolder);
+				const westBuildTask = await findOrCreateTask('Clean', node.project.workspaceFolder);
 				if (westBuildTask) {
 					try {
 						await vscode.tasks.executeTask(westBuildTask);
@@ -214,7 +212,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.guiconfig-app', async (node: ZephyrApplicationTreeItem) => {
 		if(node.project.sourceDir) {
-			const guiConfigTask = await findTask('Gui config', node.project.workspaceFolder);
+			const guiConfigTask = await findOrCreateTask('Gui config', node.project.workspaceFolder);
 			if (guiConfigTask) {
 				try {
 					await vscode.tasks.executeTask(guiConfigTask);
@@ -230,7 +228,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.menuconfig-app', async (node: ZephyrApplicationTreeItem) => {
 		if(node.project.sourceDir) {
-			const menuconfigTask = await findTask('Menuconfig', node.project.workspaceFolder);
+			const menuconfigTask = await findOrCreateTask('Menuconfig', node.project.workspaceFolder);
 			if (menuconfigTask) {
 				try {
 					await vscode.tasks.executeTask(menuconfigTask);
@@ -246,7 +244,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.run-app', async (node: ZephyrApplicationTreeItem) => {
 		if(node.project.sourceDir) {
-			const westFlashTask = await findTask('West Flash', node.project.workspaceFolder);
+			const westFlashTask = await findOrCreateTask('West Flash', node.project.workspaceFolder);
 			if (westFlashTask) {
 				try {
 					await vscode.tasks.executeTask(westFlashTask);
@@ -290,7 +288,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx-app', async (node: ZephyrApplicationTreeItem) => {
 		if(node.project.sourceDir) {
-			const westFlashTask = await findTask('Generate SPDX', node.project.workspaceFolder);
+			const westFlashTask = await findOrCreateTask('Generate SPDX', node.project.workspaceFolder);
 			if (westFlashTask) {
 				try {
 					await vscode.tasks.executeTask(westFlashTask);
@@ -395,7 +393,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}
 
-		const ramReportTask = await findTask('West RAM Report', folder);
+		const ramReportTask = await findOrCreateTask('West RAM Report', folder);
 		if (ramReportTask) {
 			try {
 				await vscode.tasks.executeTask(ramReportTask);
@@ -415,7 +413,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}
 
-		const romReportTask = await findTask('West ROM Report', folder);
+		const romReportTask = await findOrCreateTask('West ROM Report', folder);
 		if (romReportTask) {
 			try {
 				await vscode.tasks.executeTask(romReportTask);
@@ -435,7 +433,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}
 
-		const puncoverTask = await findTask('West Puncover', folder);
+		const puncoverTask = await findOrCreateTask('West Puncover', folder);
 		if (puncoverTask) {
 			try {
 				let taskExec = await vscode.tasks.executeTask(puncoverTask);
@@ -571,6 +569,22 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 				zephyrAppProvider.refresh();
 			}
+		}
+	});
+
+	vscode.commands.registerCommand("zephyr-workbench.arg.edit", async (node: ZephyrApplicationTreeItem ) => {
+		if(node.project) {
+			const project = node.project;
+			let value = await changeEnvVarQuickStep(project, 'west arguments', project.westArgs);
+			if(value !== undefined) {
+				project.westArgs = value;
+				let workspaceFolder = getWorkspaceFolder(project.folderPath);
+				if(workspaceFolder) {
+					await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, project.westArgs);
+					await addWestArgs(workspaceFolder);
+				}
+			}
+			zephyrAppProvider.refresh();
 		}
 	});
 

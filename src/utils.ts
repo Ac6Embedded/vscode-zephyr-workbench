@@ -13,6 +13,7 @@ import { checkHostTools } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { ZephyrProject } from './ZephyrProject';
 import { getBoardsDirectories, westTmpBuildSystemCommand } from './WestCommands';
+import { checkOrCreateTask } from './ZephyrTaskProvider';
 
 export function normalizePath(pathToNormalize: string) {
   let newpath = path.normalize(pathToNormalize);
@@ -407,11 +408,24 @@ async function fetchTasksFromWorkspaceFolder(workspaceFolder: vscode.WorkspaceFo
 }
 
 export async function findTask(taskLabel: string, workspaceFolder: vscode.WorkspaceFolder): Promise<vscode.Task | undefined> {
-  const tasks = await vscode.tasks.fetchTasks({type: 'zephyr-workbench'});
+  const tasks = await vscode.tasks.fetchTasks({ type: 'zephyr-workbench' });
   return tasks.find(task => {
     const folder = task.scope as vscode.WorkspaceFolder;
     return folder && folder.uri.toString() === workspaceFolder.uri.toString() && task.name === taskLabel;
   });
+}
+
+export async function findOrCreateTask(taskLabel: string, workspaceFolder: vscode.WorkspaceFolder): Promise<vscode.Task | undefined> {
+  const taskExists = await checkOrCreateTask(workspaceFolder, taskLabel);
+  console.log(`findOrCreateTask: ${taskExists}`);
+  if(taskExists) {
+    const tasks = await vscode.tasks.fetchTasks({ type: 'zephyr-workbench' });
+    return tasks.find(task => {
+      const folder = task.scope as vscode.WorkspaceFolder;
+      return folder && folder.uri.toString() === workspaceFolder.uri.toString() && task.name === taskLabel;
+    });
+  }
+  return undefined;
 }
 
 /**
