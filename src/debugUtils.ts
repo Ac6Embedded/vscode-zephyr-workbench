@@ -101,6 +101,10 @@ export function createWestWrapper(project: ZephyrProject) {
     }
   }
 
+  if(!fs.existsSync(project.buildDir)) {
+    fs.mkdirSync(project.buildDir);
+  }
+
   let wrapperPath = '';
   let wrapperScript = '';
   switch (shell) {

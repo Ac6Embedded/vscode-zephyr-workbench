@@ -191,6 +191,45 @@ export async function getBoardsDirectories(parent: ZephyrAppProject | WestWorksp
   }); 
 }
 
+export async function getBoardsDirectoriesFromIdentifier(boardIdentifier: string, parent: ZephyrAppProject | WestWorkspace, boardRoots?: string[]): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    let boardName = boardIdentifier;
+    if(boardIdentifier) {
+      const regex = /^([^@\/]+)(?:@([^\/]+))?(?:\/([^\/]+)(?:\/([^\/]+)(?:\/([^\/]+))?)?)?$/;
+      const match = boardIdentifier.match(regex);
+      
+      if (!match) {
+        reject(`Error: Identifier format invalid for: ${boardIdentifier}`);
+      } else {
+        boardName = match[1];
+      }
+    }
+    
+    let cmd = `west boards --board ${boardName} -f "{dir}"`;
+    if(boardRoots) {
+      for(let boardRoot of boardRoots) {
+        cmd += ` --board-root ${boardRoot}`;
+      }
+    }
+    execWestCommandWithEnv(cmd, parent, (error: any, stdout: string, stderr: any) => {
+      if (error) {
+        reject(`Error: ${stderr}`);
+      }
+
+      // Note, the newline separator is different on Windows
+      let separator = '\n';
+      if(process.platform === 'win32') {
+        separator = '\r\n';
+      }
+
+      const boardDirs = stdout
+        .trim()
+        .split(separator);
+      resolve(boardDirs);
+    });
+  }); 
+}
+
 export function execWestCommandWithEnv(cmd: string, parent: ZephyrAppProject | WestWorkspace, callback?: ((error: ExecException | null, stdout: string, stderr: string) => void)): ChildProcess {
   let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
   let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);

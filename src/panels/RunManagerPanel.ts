@@ -239,8 +239,9 @@ export class RunManagerPanel {
       const programPath = config.program;
 
       let newRunnersHTML = '';
-      for(let runner of getRunRunners()) {
-        if((await project.getCompatibleRunners()).includes(runner.name)) {
+      let compatibleRunners = await project.getCompatibleRunners();
+      for(let runner of getDebugRunners()) {
+        if(compatibleRunners.includes(runner.name)) {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
         } else {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
@@ -300,8 +301,9 @@ export class RunManagerPanel {
       const programPath = config.program;
 
       let newRunnersHTML = '';
-      for(let runner of getRunRunners()) {
-        if((await project.getCompatibleRunners()).includes(runner.name)) {
+      let compatibleRunners = await project.getCompatibleRunners();
+      for(let runner of getDebugRunners()) {
+        if(compatibleRunners.includes(runner.name)) {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
         } else {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);

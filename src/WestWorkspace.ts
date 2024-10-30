@@ -4,6 +4,7 @@ import path from 'path';
 import { fileExists, getWorkspaceFolder } from './utils';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { getEnvJoinValue, loadEnv } from './zephyrEnvUtils';
+import { getShell, getShellClearCommand } from './execUtils';
 
 export class WestWorkspace {
   versionArray!: { [key: string]: string };
@@ -198,33 +199,30 @@ export class WestWorkspace {
 
 
   private static openTerminal(westWorkspace: WestWorkspace): vscode.Terminal {
-    let shell: string = "";
-    switch(process.platform) {
-      case 'linux': {
-        shell = 'bash';
-        break; 
-      }
-      case 'win32': {
-        shell = 'cmd.exe';
-        break; 
-      }
-      case 'darwin': {
-        shell = 'bash';
-        break; 
-      }
-      default: {
-        shell = 'bash';
-        break; 
-      }
-    }
-    
+    const shell = getShell();
     let opts: vscode.TerminalOptions = {
       name: westWorkspace.name + ' Terminal',
       shellPath: `${shell}`,
       env: westWorkspace.buildEnv,
       cwd: westWorkspace.rootUri
     };
+
+    const envVars = opts.env || {};
+    const printEnvCommand = Object.entries(envVars).map(([key, value]) => {
+      if (shell.includes("bash")) {
+        return `echo ${key}=${value}`;
+      } else if (shell.includes("powershell")) {
+        return `Write-Output "${key}=${value}"`;
+      } else {
+        return `echo ${key}=${value}`;
+      }
+    }).join(" && ");
+
+    let clearCommand = getShellClearCommand(shell);
+    const printHeaderCommand = `${clearCommand} && echo "======= Zephyr Workbench Environment =======" && ${printEnvCommand} && echo "============================================"`;
     const terminal = vscode.window.createTerminal(opts);
+    terminal.sendText(printHeaderCommand);
+
     return terminal;
   }
   

@@ -2,10 +2,10 @@ import * as vscode from 'vscode';
 import fs from 'fs';
 import path from "path";
 import yaml from 'yaml';
-import { fileExists, findTask, getBoardFromId, getConfigValue, getWestWorkspace } from './utils';
+import { fileExists, findTask, getBoardFromIdentifier, getConfigValue, getWestWorkspace, getZephyrSDK } from './utils';
 import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { ZephyrTaskProvider } from './ZephyrTaskProvider';
-import { getShell } from './execUtils';
+import { getShell, getShellClearCommand } from './execUtils';
 import { getEnvJoinValue, loadEnv } from './zephyrEnvUtils';
 export class ZephyrProject {
   
@@ -75,7 +75,8 @@ export class ZephyrProject {
 
   get buildEnv(): { [key: string]: string; } {
     let baseEnv: { [key: string]: string; } = {
-      BOARD: this.boardId
+      BOARD: this.boardId,
+      BUILD_DIR: this.buildDir
     };
 
     for (const key in this.envVars) {
@@ -90,7 +91,8 @@ export class ZephyrProject {
 
   get buildEnvWithVar(): { [key: string]: string; } {
     let baseEnv: { [key: string]: string; } = {
-      BOARD: this.boardId
+      BOARD: this.boardId,
+      BUILD_DIR: this.buildDir
     };
 
     for (const key in this.envVars) {
@@ -147,7 +149,7 @@ export class ZephyrProject {
     // Search in board.cmake if runners.yaml does not exists
     if(runners.length === 0) {
       const westWorkspace = getWestWorkspace(this.westWorkspacePath);
-      const board = await getBoardFromId(this.boardId, westWorkspace);
+      const board = await getBoardFromIdentifier(this.boardId, westWorkspace);
       runners = board.getCompatibleRunners();
     }
 
@@ -180,6 +182,7 @@ export class ZephyrProject {
 
   private static openTerminal(zephyrProject: ZephyrProject): vscode.Terminal {
     const shell = getShell();
+    const zephyrSdk = getZephyrSDK(zephyrProject.sdkPath);
     const westWorkspace = getWestWorkspace(zephyrProject.westWorkspacePath);
     let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
     if(!activatePath || activatePath.length === 0) {
@@ -189,9 +192,20 @@ export class ZephyrProject {
     const opts: vscode.TerminalOptions = {
       name: zephyrProject.folderName + ' Terminal',
       shellPath: `${shell}`,
-      env: {...zephyrProject.buildEnvWithVar, ...westWorkspace.buildEnv},
-      cwd: zephyrProject.folderPath
+      env: {...zephyrProject.buildEnv, ...westWorkspace.buildEnv, ...zephyrSdk.buildEnv},
+      cwd: fs.existsSync(zephyrProject.buildDir) ? zephyrProject.buildDir:zephyrProject.folderPath
     };
+
+    const envVars = opts.env || {};
+    const printEnvCommand = Object.entries(envVars).map(([key, value]) => {
+      if (shell.includes("bash") || shell.includes("sh")) {
+        return `echo ${key}=${value}`;
+      } else if (shell.includes("powershell")) {
+        return `Write-Output "${key}=${value}"`;
+      } else {
+        return `echo ${key}=${value}`;
+      }
+    }).join(" && ");
 
     if(activatePath) {
       opts.env =  {
@@ -199,7 +213,10 @@ export class ZephyrProject {
         ...opts.env
       };
     }
+    let clearCommand = getShellClearCommand(shell);
+    const printHeaderCommand = `${clearCommand} && echo "======= Zephyr Workbench Environment =======" && ${printEnvCommand} && echo "============================================"`;
     const terminal = vscode.window.createTerminal(opts);
+    terminal.sendText(printHeaderCommand);
     return terminal;
   }
 

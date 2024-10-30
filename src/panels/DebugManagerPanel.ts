@@ -315,8 +315,9 @@ export class DebugManagerPanel {
       }
 
       let newRunnersHTML = '';
+      let compatibleRunners = await project.getCompatibleRunners();
       for(let runner of getDebugRunners()) {
-        if((await project.getCompatibleRunners()).includes(runner.name)) {
+        if(compatibleRunners.includes(runner.name)) {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
         } else {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
@@ -400,8 +401,9 @@ export class DebugManagerPanel {
       }
     
       let newRunnersHTML = '';
+      let compatibleRunners = await project.getCompatibleRunners();
       for(let runner of getDebugRunners()) {
-        if((await project.getCompatibleRunners()).includes(runner.name)) {
+        if(compatibleRunners.includes(runner.name)) {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
         } else {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);

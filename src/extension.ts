@@ -30,7 +30,7 @@ import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkD
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findOrCreateTask, getBoardFromId, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
+import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 
@@ -1203,7 +1203,7 @@ async function updateStatusBar() {
 async function updateCompileSetting(project: ZephyrAppProject) {
 	const zephyrSDK = getZephyrSDK(project.sdkPath);
 	const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-	const board = await getBoardFromId(project.boardId, westWorkspace);
+	const board = await getBoardFromIdentifier(project.boardId, westWorkspace);
 	
 	let socToolchainName = project.getKConfigValue('SOC_TOOLCHAIN_NAME');
 	if(socToolchainName) {

@@ -12,7 +12,7 @@ import { getEnvVarFormat, getShell } from "./execUtils";
 import { checkHostTools } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { ZephyrProject } from './ZephyrProject';
-import { getBoardsDirectories, westTmpBuildSystemCommand } from './WestCommands';
+import { getBoardsDirectories, getBoardsDirectoriesFromIdentifier, westTmpBuildSystemCommand } from './WestCommands';
 import { checkOrCreateTask } from './ZephyrTaskProvider';
 
 export function normalizePath(pathToNormalize: string) {
@@ -204,13 +204,13 @@ export function removeWorkspaceFolder(workspaceFolder: vscode.WorkspaceFolder) {
 }
 
 
-export async function getBoardFromId(boardId: string, westWorkspace: WestWorkspace, resource?: ZephyrProject | string): Promise<ZephyrBoard> {
-  for(let board of await getSupportedBoards(westWorkspace, resource)) {
-    if(boardId === board.identifier) {
+export async function getBoardFromIdentifier(boardIdentifier: string, westWorkspace: WestWorkspace, resource?: ZephyrProject | string): Promise<ZephyrBoard> {
+  for(let board of await getSupportedBoardsFromIdentifier(boardIdentifier, westWorkspace, resource)) {
+    if(boardIdentifier === board.identifier) {
       return board;
     }
   }
-  throw new Error(`No board named ${boardId} found`);
+  throw new Error(`No board named ${boardIdentifier} found`);
 }
 
 export function getBoard(boardYamlPath: string): ZephyrBoard {
@@ -484,6 +484,74 @@ export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?
       }
     }
     let boardDirs = await getBoardsDirectories(westWorkspace, boardRoots);
+
+    const dirPromises = boardDirs.map(async (dir) => {
+      let dirUri = vscode.Uri.file(dir);
+      try {
+        const files = await vscode.workspace.fs.readDirectory(dirUri);
+        const boardPromises = files
+          .filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.yaml'))
+          .map(([name]) => {
+            const boardDescUri = vscode.Uri.joinPath(dirUri, name);
+            const boardFile = fs.readFileSync(boardDescUri.fsPath, 'utf8');
+            const data = yaml.parse(boardFile);
+            if(data.identifier) {
+              return new ZephyrBoard(boardDescUri);
+            }
+            return undefined;
+        });
+        const boards = await Promise.all(boardPromises);
+        listBoards.push(...boards.filter(board => board !== undefined));
+      } catch (error) {
+        console.error(`Error reading directory: ${dirUri.fsPath}`, error);
+      }
+    });
+    
+    await Promise.all(dirPromises);
+    resolve(listBoards);
+  });
+}
+
+function getSupportedBoardsFromIdentifier(boardIdentifier: string, westWorkspace: WestWorkspace, resource?: ZephyrProject | string): Promise<ZephyrBoard[]> {
+  return new Promise(async (resolve, reject) => {
+    let listBoards: ZephyrBoard[] = [];
+    // Add West workspace root directory for search
+    let boardRoots: string[] = [westWorkspace.rootUri.fsPath];
+
+    // Add user custom board directory for search
+    if(westWorkspace.envVars['BOARD_ROOT']) {
+      for(let boardDir of westWorkspace.envVars['BOARD_ROOT']) {
+        boardRoots.push(boardDir);
+      }
+    }
+
+    if(resource) {
+      if(resource instanceof ZephyrProject) {
+        // Search the BOARD_ROOT definition from the zephyr_settings.txt 
+        // By looking into an existing buildDir or generating a tmp buildDir from dry run
+        let envVars: Record<string, string> | undefined;
+        if(fileExists(resource.buildDir)) {
+          envVars = readZephyrSettings(resource.buildDir);
+        } else {
+          const tmpBuildDir = await westTmpBuildSystemCommand(resource, westWorkspace);
+          if(tmpBuildDir) {
+            envVars = readZephyrSettings(tmpBuildDir);
+            deleteFolder(tmpBuildDir);
+          }
+        }
+        if(envVars) {
+          let keys = Object.keys(envVars);
+          for(let key of keys) {
+            if(key === 'BOARD_ROOT') {
+              boardRoots.push(envVars[key]);
+            }
+          }
+        }
+      } else {
+        boardRoots.push(resource);
+      }
+    }
+    let boardDirs = await getBoardsDirectoriesFromIdentifier(boardIdentifier, westWorkspace, boardRoots);
 
     const dirPromises = boardDirs.map(async (dir) => {
       let dirUri = vscode.Uri.file(dir);

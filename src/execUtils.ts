@@ -83,6 +83,19 @@ export function getShellSourceCommand(shell: string, script: string): string {
   }
 }
 
+export function getShellClearCommand(shell: string): string {
+  switch(shell) {
+    case 'bash': 
+      return 'clear';
+    case 'cmd.exe':
+      return 'cls';
+    case 'powershell.exe':
+      return `cls`;
+    default:
+      return '';
+  }
+}
+
 export function getOutputChannel(): vscode.OutputChannel {
 	if (!_channel) {
 		_channel = vscode.window.createOutputChannel('Ac6 Zephyr Workbench');
