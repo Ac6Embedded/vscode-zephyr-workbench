@@ -35,7 +35,6 @@ const westBuildTask: ZephyrTaskDefinition = {
   args: [
     "build",
     "-p ${config:zephyr-workbench.build.pristine}",
-    "--board ${config:zephyr-workbench.board}",
     "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
   ]
 };
@@ -63,7 +62,6 @@ const rebuildTask: ZephyrTaskDefinition = {
   args: [
     "build",
     "-p always",
-    "--board ${config:zephyr-workbench.board}",
     "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
   ]
 };
@@ -76,7 +74,6 @@ const guiConfigTask: ZephyrTaskDefinition = {
   args: [
     "build",
     "-t guiconfig",
-    "--board ${config:zephyr-workbench.board}",
     "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
   ]
 };
@@ -88,7 +85,6 @@ const menuconfigTask: ZephyrTaskDefinition = {
   args: [
     "build",
     "-t menuconfig",
-    "--board ${config:zephyr-workbench.board}",
     "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
   ]
 };
