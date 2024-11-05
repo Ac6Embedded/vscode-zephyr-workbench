@@ -38,6 +38,7 @@ export async function importProjectQuickStep(context: ExtensionContext) {
 			value: typeof state.projectLoc === 'string' ? state.projectLoc : '',
 			prompt: 'Enter or select the project to import',
       buttons: [browseFolderButton],
+      ignoreFocusOut: true,
       validate: validateProjectLocation,
 			shouldResume: shouldResume
 		});
@@ -67,6 +68,7 @@ export async function importProjectQuickStep(context: ExtensionContext) {
         totalSteps: 4,
         placeholder: 'A Zephyr Workbench project is detected, do you want to reconfigure the project?',
         items: choiceItems,
+        ignoreFocusOut: true,
         shouldResume: shouldResume
       });
 
@@ -95,6 +97,7 @@ export async function importProjectQuickStep(context: ExtensionContext) {
 			totalSteps: 4,
 			placeholder: 'Select the west workspace',
 			items: westWorkspaceItems,
+      ignoreFocusOut: true,
 			shouldResume: shouldResume
 		});
 
@@ -123,6 +126,7 @@ export async function importProjectQuickStep(context: ExtensionContext) {
 			totalSteps: 4,
 			placeholder: 'Select the Zephyr SDK',
 			items: zephyrSDKItems,
+      ignoreFocusOut: true,
 			shouldResume: shouldResume
 		});
 
@@ -192,6 +196,7 @@ export async function importProjectQuickStep(context: ExtensionContext) {
         totalSteps: 4,
         placeholder: 'Select the target board',
         items: boardItems,
+        ignoreFocusOut: true,
         shouldResume: shouldResume
       });
 
@@ -219,10 +224,5 @@ export async function importProjectQuickStep(context: ExtensionContext) {
 
   const state = await collectInputs();
   vscode.commands.executeCommand("zephyr-workbench-app-explorer.import-app", state.projectLoc,  state.westWorkspace, state.board, state.sdk);
-}
-
-
-function isZephyrProjectPath(projectLoc: string | undefined) {
-  throw new Error("Function not implemented.");
 }
 
