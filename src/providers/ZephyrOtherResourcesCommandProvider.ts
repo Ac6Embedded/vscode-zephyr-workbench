@@ -56,7 +56,7 @@ const tutorialMenuItem = new MenuItem(
   {
     command: 'zephyr-workbench.open-webpage',
     title: 'Tutorials',
-    arguments: ['Coming soon']
+    arguments: ['https://zephyr-workbench.com/']
   }
 );
 
