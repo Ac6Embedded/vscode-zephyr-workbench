@@ -33,10 +33,12 @@ import { showPristineQuickPick } from './setupBuildPristineQuickStep';
 import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
+import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProvider';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
 let zephyrTaskProvider: vscode.Disposable | undefined;
+let zephyrDebugConfigurationProvide: vscode.Disposable | undefined;
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -53,6 +55,7 @@ export function activate(context: vscode.ExtensionContext) {
   ];
 
 	zephyrTaskProvider = vscode.tasks.registerTaskProvider(ZephyrTaskProvider.ZephyrType, new ZephyrTaskProvider());
+	zephyrDebugConfigurationProvide = vscode.debug.registerDebugConfigurationProvider('cppdbg', new ZephyrDebugConfigurationProvider());
 
 	const workspacePath = (vscode.workspace.workspaceFolders && (vscode.workspace.workspaceFolders.length > 0))
 	? vscode.workspace.workspaceFolders[0].uri.fsPath : undefined;
@@ -993,8 +996,6 @@ export function activate(context: vscode.ExtensionContext) {
 						await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
 						CreateZephyrAppPanel.currentPanel?.dispose();
 						
-						// Note: Force refresh as the first refresh is sometime done before the tasks.json is generated 
-						zephyrAppProvider.refresh();
 						vscode.window.showInformationMessage(`New Application '${workspaceFolder.name}' created !`);
 					}
 				}
@@ -1013,7 +1014,6 @@ export function activate(context: vscode.ExtensionContext) {
         await createExtensionsJson(workspaceFolder);
 				vscode.window.showInformationMessage(`Creating Application '${workspaceFolder.name}' done`);
 			}
-			zephyrAppProvider.refresh();
 		})
 	);
 
@@ -1157,6 +1157,10 @@ export function activate(context: vscode.ExtensionContext) {
 	/* Listeners on setttings changes */
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration(async (event) => {
+			if (event.affectsConfiguration('tasks')) {
+				zephyrAppProvider.refresh();
+			}
+
 			if(event.affectsConfiguration(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY)) {
 				zephyrSdkProvider.refresh();
 			}
@@ -1219,7 +1223,10 @@ export async function showConfirmMessage(message: string): Promise<boolean> {
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() {
+	zephyrTaskProvider?.dispose();
+	zephyrDebugConfigurationProvide?.dispose();
+}
 
 
 

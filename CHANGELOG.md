@@ -4,6 +4,14 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.2.5]
+
+- Fix import application quick picks dialog
+- Fix "Applications" auto-refresh
+- Fix debug step and generated files into `build/.debug/<board_identifier>`
+- Add Tutorials website hyperlink
+- Change build pristine 'none' to 'never'
+
 ## [1.2.4]
 
 - Support West args

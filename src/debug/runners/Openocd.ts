@@ -74,7 +74,7 @@ export class Openocd extends WestRunner {
     }
     
     cmdArgs += ' --config openocd.cfg';
-    cmdArgs += ' --config ${workspaceFolder}/build/${config:zephyr-workbench.board}/gdb.cfg';
+    cmdArgs += ' --config ${workspaceFolder}/build/.debug/${config:zephyr-workbench.board}/gdb.cfg';
 
     return cmdArgs;
   }

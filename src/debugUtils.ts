@@ -7,7 +7,7 @@ import { Openocd } from "./debug/runners/Openocd";
 import { WestRunner } from "./debug/runners/WestRunner";
 import { checkPyOCDTarget, concatCommands, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from './execUtils';
 import { ZephyrProject } from "./ZephyrProject";
-import { getConfigValue, getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
+import { getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
 import { STM32CubeProgrammer } from './debug/runners/STM32CubeProgrammer';
 import { JLink } from './debug/runners/JLink';
 import { PyOCD } from './debug/runners/PyOCD';
@@ -52,6 +52,7 @@ export function getRunner(runnerName: string): WestRunner | undefined {
 
 export function createWestWrapper(project: ZephyrProject) {
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+  const buildDir = project.internalDebugDir;
   let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
   if(!envScript) {
     throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
@@ -101,8 +102,8 @@ export function createWestWrapper(project: ZephyrProject) {
     }
   }
 
-  if(!fs.existsSync(project.buildDir)) {
-    fs.mkdirSync(project.buildDir);
+  if(!fs.existsSync(buildDir)) {
+    fs.mkdirSync(buildDir, { recursive: true });
   }
 
   let wrapperPath = '';
@@ -116,7 +117,7 @@ ${envVarsCommands}
 # Source environment and execute West
 ${debugServerCommand}
 `;
-      wrapperPath = path.join(project.buildDir, 'west_wrapper.sh');
+      wrapperPath = path.join(buildDir, 'west_wrapper.sh');
       fs.writeFileSync(wrapperPath, wrapperScript, { mode: 0o755 });
       break;
     case 'cmd.exe':
@@ -127,7 +128,7 @@ ${envVarsCommands}
 REM Source environment and execute West
 ${debugServerCommand}
 `;
-      wrapperPath = path.join(project.buildDir, 'west_wrapper.bat');
+      wrapperPath = path.join(buildDir, 'west_wrapper.bat');
       fs.writeFileSync(wrapperPath, wrapperScript);
       break;
     case 'powershell.exe':
@@ -136,7 +137,7 @@ ${debugServerCommand}
 # Source environment and execute West
 ${debugServerCommand}
 `;
-      wrapperPath = path.join(project.buildDir, 'west_wrapper.ps1');
+      wrapperPath = path.join(buildDir, 'west_wrapper.ps1');
       fs.writeFileSync(wrapperPath, wrapperScript);
       break;
     default:
@@ -145,10 +146,11 @@ ${debugServerCommand}
 }
 
 export function createOpenocdCfg(project: ZephyrProject) {
-  let cfgPath = path.join(project.buildDir, 'gdb.cfg');
-  const cfgContent = `# Workaround to force OpenOCD to shutdown when gdb is detached
+  const buildDir = project.internalDebugDir;
+  const cfgPath = path.join(buildDir, 'gdb.cfg');
+  const cfgContent = `# Workaround to force OpenOCD to shutdown when gdb is detached (auto-generated)
 
-  $_TARGETNAME configure -event gdb-detach {
+$_TARGETNAME configure -event gdb-detach {
   shutdown
 }`;
   fs.writeFileSync(cfgPath, cfgContent);
@@ -219,7 +221,7 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
     serverStarted: "",
     MIMode: "gdb",
     miDebuggerPath: `${zephyrSDK.getDebuggerPath(targetArch, socToolchainName)}`,
-    debugServerPath: `\${workspaceFolder}/build/\${config:zephyr-workbench.board}/${wrapper}`,
+    debugServerPath: `\${workspaceFolder}/build/.debug/\${config:zephyr-workbench.board}/${wrapper}`,
     debugServerArgs: "",
     setupCommands: [
       { 

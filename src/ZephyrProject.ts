@@ -69,8 +69,19 @@ export class ZephyrProject {
     return path.basename(this.folderPath);
   }
   
+  /**
+   * Build directory
+   */
   get buildDir(): string {
     return path.join(this.folderPath, 'build', this.boardId);
+  }
+
+  /**
+   * Under build directory, the internal debug directory is used to generate wrappers, files, etc...
+   * and is not removed after pristine rebuilt. 
+   */
+  get internalDebugDir(): string {
+    return path.join(this.folderPath, 'build', '.debug', this.boardId);
   }
 
   get buildEnv(): { [key: string]: string; } {
