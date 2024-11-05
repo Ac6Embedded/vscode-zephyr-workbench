@@ -188,7 +188,7 @@ export class CreateZephyrAppPanel {
                     </label>
                     <vscode-radio value="auto" checked>auto</vscode-radio>
                     <vscode-radio value="always">always</vscode-radio>
-                    <vscode-radio value="none">none</vscode-radio>
+                    <vscode-radio value="never">never</vscode-radio>
                   </vscode-radio-group>
                 </div>
 

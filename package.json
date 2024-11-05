@@ -131,7 +131,7 @@
           },
           "zephyr-workbench.build.pristine": {
             "type": "string",
-            "enum": ["auto", "always", "none"],
+            "enum": ["auto", "always", "never"],
             "default": "",
             "description": "The option controls whether the build directory is made pristine before the build.",
             "scope": "resource"
