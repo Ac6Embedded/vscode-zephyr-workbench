@@ -175,7 +175,7 @@ export class DebugManagerPanel {
                   <label for="listRunners">Select the runner:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Select the compatible debug server program">?</span></label>
                 </div>
                 <div id="listRunners" class="combo-dropdown grid-value-div">
-                  <input type="text" id="runnerInput" class="combo-dropdown-control" placeholder="Choose debug runner..." data-value="">
+                  <input type="text" id="runnerInput" class="combo-dropdown-control" placeholder="Choose debug runner..." data-value="" readonly>
                   <div aria-hidden="true" class="indicator" part="indicator">
                     <slot name="indicator">  
                       <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
@@ -476,10 +476,16 @@ export class DebugManagerPanel {
     
     async function debugHandler(message: any): Promise<void> {
       const projectPath = message.project;
-      const appProject = await getZephyrProject(projectPath);
-      vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug', 
-        appProject.workspaceFolder,
-        ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME);
+      const runnerName = message.runner;
+      const runner = getRunner(runnerName);
+      if(runner) {
+        const appProject = await getZephyrProject(projectPath);
+        vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug', 
+          appProject.workspaceFolder,
+          ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME);
+      } else {
+        vscode.window.showErrorMessage('Debug manager: No debug runner selected!');
+      }      
     }
   }  
 }
