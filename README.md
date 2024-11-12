@@ -2,10 +2,6 @@
 
 Ac6 Zephyr Workbench for VS Code extension adds support of Zephyr development to Visual Studio Code, including SDK management, Project wizard, build and debugging features. 
 
-## New
-
-For MacOSX Support, Homebrew is required
-
 ## Features
 * Install native Host Tools (python, cmake, ...)
 * Install and auto-detect default Zephyr SDK
@@ -13,11 +9,17 @@ For MacOSX Support, Homebrew is required
 * Parse west workspace data from config file
 * Create application projects for specific board from sample
 * Build/Flash application
-* Debug application
+* Debug application (using OpenOCD, LinkServer, J-Link or pyOCD)
+* Memory analysis
+* Supported on every platforms
 
 <p align="center">
   <img alt="Zephyr Workbench Overview" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_overview.png" width="80%">
 </p>
+
+## Documentation
+
+Find the complete documentation on: [https://zephyr-workbench.com/](https://zephyr-workbench.com/)
 
 ## Requirements
 To build your project on Zephyr Workbench, No external tools is required. Host tools are installed by the extension itself.
@@ -47,7 +49,7 @@ Note: Some tools needs administration right to be installed on your system.
 2. Open the newly opened page, enter information about your west workspace instance.
    1. For example:
         Source location: Minimal from template
-        Path: https://github.com/zephyrproject-
+        Path: https://github.com/zephyrproject-rtos/zephyr
         Template: STM32
         Branch: v3.7.0
         Location: enter the directory where the west workspace will be imported (the directory name will serve as workspace name)
