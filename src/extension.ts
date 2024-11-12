@@ -30,7 +30,7 @@ import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkD
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { addWorkspaceFolder, copyFolder, deleteFolder, fileExists, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
+import { addWorkspaceFolder, copyFolder, copySampleSync, deleteFolder, fileExists, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProvider';
@@ -984,7 +984,7 @@ export function activate(context: vscode.ExtensionContext) {
 							vscode.window.showErrorMessage(`The folder [${projectPath}] already exists. Please change the project name or its location.`);
 							return;
 						}
-						projLoc = copyFolder(zephyrSample.rootDir.fsPath, projectPath);
+						projLoc = copySampleSync(zephyrSample.rootDir.fsPath, projectPath);
 					}
 					await addWorkspaceFolder(projLoc);
 

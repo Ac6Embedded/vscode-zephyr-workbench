@@ -105,6 +105,33 @@ export function copyFolder(srcPath: string, destPath: string): string {
   return destPath;
 }
 
+export function copyFolderSync(srcDir: string, destDir: string, excludeDirs: string[] = []) {
+  if (!fs.existsSync(srcDir)) {
+    throw new Error(`Source directory "${srcDir}" does not exist.`);
+  }
+
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+  }
+
+  const items = fs.readdirSync(srcDir);
+  for (const item of items) {
+    const srcPath = path.join(srcDir, item);
+    const destPath = path.join(destDir, item);
+    const isDirectory = fs.lstatSync(srcPath).isDirectory();
+
+    if (excludeDirs.includes(item)) {
+      continue;
+    }
+
+    if (isDirectory) {
+      copyFolderSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
 export function fileExists(path: string): boolean {
   return fs.existsSync(path);
 }
@@ -215,6 +242,11 @@ export async function getBoardFromIdentifier(boardIdentifier: string, westWorksp
 
 export function getBoard(boardYamlPath: string): ZephyrBoard {
   return new ZephyrBoard(vscode.Uri.file(boardYamlPath));
+}
+
+export function copySampleSync(sampleDir: string, destDir: string): string {
+  copyFolderSync(sampleDir, destDir, ['.vscode', 'build', 'sample.yaml']);
+  return destDir;
 }
 
 export async function getSample(filePath: string): Promise<ZephyrSample> {
