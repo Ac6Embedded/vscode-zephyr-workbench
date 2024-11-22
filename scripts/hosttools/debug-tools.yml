@@ -53,6 +53,17 @@ debug_tools:
     darwin:
       source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/darwin/openocd-0.12.0-ST-darwin-aarch64.tar.xz
       sha256: 6a2d4811d3e1b1d866b3c2a397caceee95734e723af0279202f236e3fd543359
+- tool: udev-rules
+  name: Udev Rules
+  version: 1.0.0 
+  website:
+  vendor: No
+  group: driver
+  root: true
+  os:
+    linux:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/zw-udev-rules-1.0.0.tar.xz
+      sha256: 0cd477139825438cef3e1f15ec01be801c9b9dfcf3085c43d7af284122f862b9
 - tool: stm32cubeprogrammer
   name: STM32CubeProgrammer
   version: 2.17.0 

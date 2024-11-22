@@ -433,7 +433,7 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
   }
 }
 
-export async function installHostDebugTools(context: vscode.ExtensionContext, listTools: string[]) {
+export async function installHostDebugTools(context: vscode.ExtensionContext, listTools: any[]) {
   let scriptsDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   if(scriptsDirUri) {
     let installScript: string = "";
@@ -449,10 +449,6 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
       case 'linux': {
         installScript = 'install-debug-tools.sh';
         installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
-        // Concat list of tools to install
-        for(let tool of listTools) {
-          installArgs += ` ${tool}`;
-        }
         shell = 'bash';
         break; 
       }
@@ -460,21 +456,13 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
         installScript = 'install-debug-tools.ps1';
         installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
         shell = 'powershell.exe';
-        // Concat list of tools to install
         installArgs += ' -Tools ';
-        for(let tool of listTools) {
-          installArgs += ` ${tool}`;
-        }
         break; 
       }
       case 'darwin': {
         installScript = 'install-debug-tools-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
         shell = 'bash';
-        // Concat list of tools to install
-        for(let tool of listTools) {
-          installArgs += ` ${tool}`;
-        }
         break; 
       }
       default: {
@@ -488,27 +476,30 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
       executable: shell,
       shellArgs: getShellArgs(shell),
     };
-    
-    if(process.platform === 'linux' || process.platform === 'darwin') {
-      // const options = {
-      //   name: 'Zephyr Workbench Installer',
-      // };
-      // output.show();
-      // sudo.exec(`${installCmd} --only-root`, options, async (error, stdout, stderr) => {
-      //   if (error) {
-      //     output.append(`Error executing installer: ${error.message}`);
-      //     vscode.window.showErrorMessage(`Error executing installer: ${error.message}`);
-      //   } else {
-      //     output.append(`${stdout}`);
-      //     if (stderr) {
-      //       output.append(`${stderr}`);
-      //     }
-      //   }
-      // });
 
-      await execShellCommand('Installing Host debug tools', installCmd + " " + installArgs, shellOpts);
-    } else {
-      await execShellCommand('Installing Host debug tools', installCmd + " " + installArgs, shellOpts);
+    // Run install commands for every tools
+    for(let tool of listTools) {
+      installArgs = `${tool.tool}`;
+      if((process.platform === 'linux' || process.platform === 'darwin') && tool.root === true) {
+        // const options = {
+        //   name: 'Zephyr Workbench Installer',
+        // };
+        // output.show();
+        // sudo.exec(`${installCmd} ${installArgs}`, options, async (error, stdout, stderr) => {
+        //   if (error) {
+        //     output.append(`Error executing installer: ${error.message}`);
+        //     vscode.window.showErrorMessage(`Error executing installer: ${error.message}`);
+        //   } else {
+        //     output.append(`${stdout}`);
+        //     if (stderr) {
+        //       output.append(`${stderr}`);
+        //     }
+        //   }
+        // });
+        await execShellCommand('Installing Host debug tools', installCmd + " " + installArgs, shellOpts);
+      } else {
+        await execShellCommand('Installing Host debug tools', installCmd + " " + installArgs, shellOpts);
+      }
     }
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");
