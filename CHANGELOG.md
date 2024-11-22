@@ -4,6 +4,20 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.2.7]
+
+- Add "Harden Config" task
+- Ask confirmation to reinstall host tools
+- Add error message when project destination location does not exist
+- Increase default gdb connection timeout
+- Add Udev Rules as Debug tools
+- Add "Build" and "Debug" into command palette
+
+## [1.2.6]
+
+- Add error messages on Debug Manager
+- Fix project creation from sample (avoid copying .vscode and build folders)
+
 ## [1.2.5]
 
 - Fix import application quick picks dialog

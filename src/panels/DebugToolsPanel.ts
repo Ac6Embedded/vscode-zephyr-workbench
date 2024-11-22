@@ -11,6 +11,7 @@ export class DebugToolsPanel {
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _disposables: vscode.Disposable[] = [];
+  private data: any;
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -59,8 +60,8 @@ export class DebugToolsPanel {
   private async getToolsHTML(): Promise<string> {
     let toolsHTML = '';
     const yamlFile = fs.readFileSync(vscode.Uri.joinPath(this._extensionUri, 'scripts', 'hosttools', 'debug-tools.yml').fsPath, 'utf8');
-    const data = yaml.parse(yamlFile);
-    for(let tool of data.debug_tools) {
+    this.data = yaml.parse(yamlFile);
+    for(let tool of this.data.debug_tools) {
       let runner = getRunner(tool.tool);
       if(runner) {
         runner.loadArgs(undefined);
@@ -72,6 +73,8 @@ export class DebugToolsPanel {
           tool.version = "";
           tool.found = "Not installed";
         }
+      } else {
+        tool.found = "";
       }
 
       toolsHTML += `<tr id="row-${tool.tool}">
@@ -98,19 +101,22 @@ export class DebugToolsPanel {
           toolsHTML +=`<vscode-button appearance="icon" class="install-button" data-tool="${tool.tool}">
                          <span class="codicon codicon-desktop-download"></span>
                        </vscode-button>
-                       <vscode-button appearance="icon" class="remove-button" data-tool="${tool.tool}">
+                       <!--vscode-button appearance="icon" class="remove-button" data-tool="${tool.tool}">
                          <span class="codicon codicon-trash"></span>
-                       </vscode-button>`;
+                       </vscode-button-->`;
         }
        
       }
 
-      toolsHTML +=`<vscode-button appearance="icon" class="website-button" data-tool="${tool.tool}">
-            <a href="${tool.website}">
-              <span class="codicon codicon-link"></span>
-            </a>
-          </vscode-button>
-        </td>
+      if(tool.website) {
+        toolsHTML +=`<vscode-button appearance="icon" class="website-button" data-tool="${tool.tool}">
+                      <a href="${tool.website}">
+                        <span class="codicon codicon-link"></span>
+                      </a>
+                    </vscode-button>`;
+      }
+      
+      toolsHTML +=`  </td>
         <td><div class="progress-wheel" id="progress-${tool.tool}"><vscode-progress-ring></vscode-progress-ring></div></td>
       </tr>`;
     }
@@ -185,7 +191,8 @@ export class DebugToolsPanel {
             vscode.window.showInformationMessage(message.text);
             return;
           case 'install':
-            vscode.commands.executeCommand("zephyr-workbench.run-install-debug-tools", this._panel, [ message.tool ]);
+            let selectedTool = this.data.debug_tools.find((tool: { tool: string; }) => tool.tool === message.tool);
+            vscode.commands.executeCommand("zephyr-workbench.run-install-debug-tools", this._panel, [ selectedTool ]);
             break;
           case 'remove':
             vscode.window.showErrorMessage(`Remove ${message.tool} is not implemented yet`);

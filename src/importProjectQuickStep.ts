@@ -168,7 +168,7 @@ export async function importProjectQuickStep(context: ExtensionContext) {
       let boards: ZephyrBoard[] = [];
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: "Updating available boards list",
+        title: "Updating available boards list. It might take a while...",
         cancellable: false,
         }, async () => {
           if(state.westWorkspace) {

@@ -89,6 +89,17 @@ const menuconfigTask: ZephyrTaskDefinition = {
   ]
 };
 
+const hardenConfigTask: ZephyrTaskDefinition = {
+  label: "Harden Config",
+  type: "zephyr-workbench",
+  command: "west",
+  args: [
+    "build",
+    "-t hardenconfig",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+  ]
+};
+
 const spdxTask: ZephyrTaskDefinition = {
   label: "Generate SPDX",
   type: "zephyr-workbench",
@@ -154,6 +165,7 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [rebuildTask.label, rebuildTask],
   [guiConfigTask.label, guiConfigTask],
   [menuconfigTask.label, menuconfigTask],
+  [hardenConfigTask.label, hardenConfigTask],
   [spdxTask.label, spdxTask],
   [flashTask.label, flashTask],
   [ramReportTask.label, ramReportTask],
@@ -332,6 +344,7 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
       cleanTask,
       guiConfigTask,
       menuconfigTask,
+      hardenConfigTask,
       spdxTask,
       flashTask,
       ramReportTask,

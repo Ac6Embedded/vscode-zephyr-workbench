@@ -30,10 +30,11 @@ import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkD
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { addWorkspaceFolder, copyFolder, copySampleSync, deleteFolder, fileExists, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
+import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProvider';
+import { pickApplicationQuickStep } from './pickApplicationQuickStep';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -63,11 +64,11 @@ export function activate(context: vscode.ExtensionContext) {
 	statusBarBuildItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 101);
 	statusBarBuildItem.text = "$(gear) Build";
 	statusBarBuildItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-  statusBarBuildItem.command = "zephyr-workbench-status-bar.build";
+  statusBarBuildItem.command = "zephyr-workbench.build-app";
 	statusBarDebugItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
 	statusBarDebugItem.text = "$(debug-alt) Debug";
 	statusBarDebugItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-  statusBarDebugItem.command = "zephyr-workbench-status-bar.debug";
+  statusBarDebugItem.command = "zephyr-workbench.debug-app";
 
   context.subscriptions.push(statusBarBuildItem);
 	context.subscriptions.push(statusBarDebugItem);
@@ -92,13 +93,27 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const zephyrResourcesCommandProvider = new ZephyrOtherResourcesCommandProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-other-resources', zephyrResourcesCommandProvider);
+	
+	vscode.commands.registerCommand('zephyr-workbench.build-app', async () => {
+		let currentProject = getCurrentWorkspaceFolder();
+		if(currentProject === undefined ) {
+			currentProject = await pickApplicationQuickStep(context);
+		}
 
-	vscode.commands.registerCommand('zephyr-workbench-status-bar.build', async () => {
-		vscode.commands.executeCommand("zephyr-workbench-app-explorer.build-app", getCurrentWorkspaceFolder());
+		if(currentProject) {
+			vscode.commands.executeCommand("zephyr-workbench-app-explorer.build-app", currentProject);
+		}
 	});
 
-	vscode.commands.registerCommand('zephyr-workbench-status-bar.debug', async () => {
-		vscode.commands.executeCommand("zephyr-workbench-app-explorer.debug-app", getCurrentWorkspaceFolder());
+	vscode.commands.registerCommand('zephyr-workbench.debug-app', async () => {
+		let currentProject = getCurrentWorkspaceFolder();
+		if(currentProject === undefined ) {
+			currentProject = await pickApplicationQuickStep(context);
+		}
+
+		if(currentProject) {
+			vscode.commands.executeCommand("zephyr-workbench-app-explorer.debug-app", currentProject);
+		}
 	});
 
 	vscode.commands.registerCommand('zephyr-workbench.open-webpage', async (site_url: string) => {
@@ -235,6 +250,22 @@ export function activate(context: vscode.ExtensionContext) {
 			if (menuconfigTask) {
 				try {
 					await vscode.tasks.executeTask(menuconfigTask);
+				} catch (error) {
+					vscode.window.showErrorMessage(`Error executing task: ${error}`);
+				}
+			} else {
+					vscode.window.showErrorMessage('Cannot find Menuconfig task.');
+			}
+			
+		}
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.hardenconfig-app', async (node: ZephyrApplicationTreeItem) => {
+		if(node.project.sourceDir) {
+			const hardenConfigTask = await findOrCreateTask('Harden Config', node.project.workspaceFolder);
+			if (hardenConfigTask) {
+				try {
+					await vscode.tasks.executeTask(hardenConfigTask);
 				} catch (error) {
 					vscode.window.showErrorMessage(`Error executing task: ${error}`);
 				}
@@ -639,7 +670,18 @@ export function activate(context: vscode.ExtensionContext) {
 					return;
 				}
 			}
-			vscode.commands.executeCommand('zephyr-workbench.install-host-tools', force, true, "");
+
+			if(force) {
+				const choice = await showConfirmMessage("Are you certain you want to reinstall the host tools ?");
+				if(choice) {
+					vscode.commands.executeCommand('zephyr-workbench.install-host-tools', force, true, "");
+				} else {
+					return;
+				}
+			} else {
+				vscode.commands.executeCommand('zephyr-workbench.install-host-tools', false, true, "");
+			}
+			
 		})
 	);
 
@@ -713,6 +755,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}, async () => {
 				await installHostDebugTools(context, listTools);
 				
+				// Auto detect tools after installation
 				for(let tool of listTools) {
 					let runner = getRunner(tool);
 					if(runner && runner.executable) {
@@ -722,7 +765,7 @@ export function activate(context: vscode.ExtensionContext) {
 							runner.updateSettings();
 						}
 					}
-					panel.webview.postMessage({ command: 'exec-done', tool: `${tool}` });
+					panel.webview.postMessage({ command: 'exec-done', tool: `${tool.tool}` });
 				}
 			});
 		})
@@ -969,6 +1012,11 @@ export function activate(context: vscode.ExtensionContext) {
 				vscode.window.showErrorMessage('Missing selected sample, it serves as base for your project');
 				return;
 			}
+
+			if(!fileExists(projectLoc)) {
+				vscode.window.showErrorMessage(`Project destination location "${projectLoc}" does not exists`);
+				return;
+			}
 			
 			vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
@@ -1110,32 +1158,6 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	context.subscriptions.push(
-		vscode.commands.registerCommand("west.flash", async (project) => {
-			if(workspacePath) {
-				let westWorkspace = getWestWorkspace(project.westWorkspacePath);
-				if(westWorkspace !== null) {
-					await westFlashCommand(project, westWorkspace);
-				} else {
-					vscode.window.showErrorMessage('Cannot find west workspace');
-				}
-			}
-		})
-	);
-
-	context.subscriptions.push(
-		vscode.commands.registerCommand("west.debug", async (project) => {
-			if(workspacePath) {
-				let westWorkspace = getWestWorkspace(project.westWorkspacePath);
-				if(westWorkspace !== null) {
-					await westDebugCommand(project, westWorkspace);
-				} else {
-					vscode.window.showErrorMessage('Cannot find west workspace');
-				}
-			}
-		})
-	);
-
 	/* Listeners on active editor */
 	context.subscriptions.push(
 		vscode.window.onDidChangeActiveTextEditor(updateStatusBar)
@@ -1227,6 +1249,3 @@ export function deactivate() {
 	zephyrTaskProvider?.dispose();
 	zephyrDebugConfigurationProvide?.dispose();
 }
-
-
-

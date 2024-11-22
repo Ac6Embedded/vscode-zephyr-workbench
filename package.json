@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://zephyr-workbench.com",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -208,6 +208,16 @@
         "icon": "$(desktop-download)"
       },
       {
+        "command": "zephyr-workbench.build-app",
+        "title": "Zephyr Workbench: Build Application",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "zephyr-workbench.debug-app",
+        "title": "Zephyr Workbench: Debug Application",
+        "icon": "$(debug-alt)"
+      },
+      {
         "command": "zephyr-workbench-module-explorer.create-module",
         "title": "Create new Zephyr Extra Module"
       },
@@ -262,6 +272,11 @@
       {
         "command": "zephyr-workbench-app-explorer.menuconfig-app",
         "title": "Menuconfig",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.hardenconfig-app",
+        "title": "Harden config",
         "icon": "$(wrench)"
       },
       {
@@ -388,11 +403,6 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "zephyr-workbench-status-bar.build",
-        "title": "Build",
-        "icon": "$(gear)"
-      },
-      {
         "command": "zephyr-workbench.env.add",
         "title": "Add value",
         "icon": "$(add)"
@@ -415,31 +425,6 @@
       {
         "command": "west.version",
         "title": "Get a west version",
-        "category": "West"
-      },
-      {
-        "command": "west.init",
-        "title": "Create a west workspace [init]",
-        "category": "West"
-      },
-      {
-        "command": "west.update",
-        "title": "Update projects described in west manifest [update]",
-        "category": "West"
-      },
-      {
-        "command": "west.build",
-        "title": "Compile a Zephyr application [build]",
-        "category": "West"
-      },
-      {
-        "command": "west.flash",
-        "title": "Flash and run a binary on a board [flash]",
-        "category": "West"
-      },
-      {
-        "command": "west.debug",
-        "title": "Flash and interactively debug a Zephyr application [debug]",
         "category": "West"
       }
     ],
@@ -756,7 +741,7 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.clean.simple",
+          "command": "zephyr-workbench-app-explorer.change-pristine",
           "group": "clean@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
@@ -774,17 +759,17 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.change-board",
+          "command": "zephyr-workbench-app-explorer.hardenconfig-app",
           "group": "configure@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.change-west-workspace",
+          "command": "zephyr-workbench-app-explorer.change-board",
           "group": "configure@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.change-pristine",
+          "command": "zephyr-workbench-app-explorer.change-west-workspace",
           "group": "configure@4",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }

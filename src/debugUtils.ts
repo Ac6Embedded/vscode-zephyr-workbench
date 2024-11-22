@@ -215,7 +215,7 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
     svdPath: "",
     environment: [],
     externalConsole: false,
-    serverLaunchTimeout: 10000,
+    serverLaunchTimeout: 30000,
     filterStderr: true,
     filterStdout: true,
     serverStarted: "",
