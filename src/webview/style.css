@@ -40,6 +40,22 @@ th, td {
   text-align: left;
 }
 
+.debug-tools-table {
+  table-layout: fixed;
+  width: 100%;
+  border: 1px yellow;
+}
+.debug-tools-table th, td {
+  width: 13%;
+  border: 1px red;
+}
+.debug-tools-table th:nth-child(1), .debug-tools-table td:nth-child(1) {
+  width: 20px;
+}
+.debug-tools-table th:nth-child(2), .debug-tools-table td:nth-child(2) {
+  width: 40%;
+}
+
 fieldset {
   margin-bottom: 10px;
   width: calc(var(--design-unit)* 160px);

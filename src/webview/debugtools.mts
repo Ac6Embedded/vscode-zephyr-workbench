@@ -25,6 +25,26 @@ function main() {
     });
   });
 
+  const installPackButtons = document.querySelectorAll('.install-pack-button');
+  installPackButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const pack = button.getAttribute('data-pack');
+      const tools = button.getAttribute('data-tools');
+      if(tools) {
+        for(let tool of tools.split(';')) {
+          const progress = document.getElementById(`progress-${tool}`) as HTMLElement;
+          if(progress) {
+            progress.style.display = 'block';
+          }
+        }
+      }
+      webviewApi.postMessage({
+        command: 'install-pack',
+        pack: pack
+      });
+    });
+  });
+
   const removeButtons = document.querySelectorAll('.remove-button');
   removeButtons.forEach(button => {
     button.addEventListener('click', () => {

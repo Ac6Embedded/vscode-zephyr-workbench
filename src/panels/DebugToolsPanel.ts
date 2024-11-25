@@ -17,6 +17,8 @@ export class DebugToolsPanel {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    const yamlFile = fs.readFileSync(vscode.Uri.joinPath(this._extensionUri, 'scripts', 'hosttools', 'debug-tools.yml').fsPath, 'utf8');
+    this.data = yaml.parse(yamlFile);
   }
 
   public async createContent() {
@@ -57,10 +59,33 @@ export class DebugToolsPanel {
     }
   }
 
+  private async getPacksHTML(): Promise<string> {
+    let packsHTML = '';
+    for(let pack of this.data.packs) {
+      
+      packsHTML += `<tr id="row-${pack.pack}">
+        <td></td>
+        <td id="name-${pack.pack}">${pack.name}</td>
+        <td></td>
+        <td></td>
+        <td id="buttons-${pack.pack}">`;
+
+      packsHTML +=` <vscode-button appearance="icon" class="install-pack-button" data-pack="${pack.pack}" data-tools="${pack.tools.join(';')}">
+                      <span class="codicon codicon-desktop-download"></span>
+                    </vscode-button>
+                    <!--vscode-button appearance="icon" class="remove-button" data-pack="${pack.pack}">
+                      <span class="codicon codicon-trash"></span>
+                    </vscode-button-->`;
+
+      packsHTML +=`</td>
+        <td><div class="progress-wheel" id="progress-${pack.pack}"><vscode-progress-ring></vscode-progress-ring></div></td>
+      </tr>`;
+    }
+    return packsHTML;
+  }
+
   private async getToolsHTML(): Promise<string> {
     let toolsHTML = '';
-    const yamlFile = fs.readFileSync(vscode.Uri.joinPath(this._extensionUri, 'scripts', 'hosttools', 'debug-tools.yml').fsPath, 'utf8');
-    this.data = yaml.parse(yamlFile);
     for(let tool of this.data.debug_tools) {
       let runner = getRunner(tool.tool);
       if(runner) {
@@ -117,7 +142,11 @@ export class DebugToolsPanel {
       }
       
       toolsHTML +=`  </td>
-        <td><div class="progress-wheel" id="progress-${tool.tool}"><vscode-progress-ring></vscode-progress-ring></div></td>
+        <td>`;
+        if(this.isToolCompatible(tool)) {
+          toolsHTML +=`<div class="progress-wheel" id="progress-${tool.tool}"><vscode-progress-ring></vscode-progress-ring></div>`;
+        }
+        `</td>
       </tr>`;
     }
     return toolsHTML;
@@ -129,6 +158,7 @@ export class DebugToolsPanel {
     const codiconUri = getUri(webview, extensionUri, ["out", "codicon.css"]);
     
     const nonce = getNonce();
+    const packsHTML = await this.getPacksHTML();
     const toolsHTML = await this.getToolsHTML();
       
     return /*html*/ `
@@ -146,7 +176,22 @@ export class DebugToolsPanel {
         <body>
           <h1>Install Debug Tools</h1>
           <form>
-            <table>
+            <h2>Packs</h2>
+            <table class="debug-tools-table">
+              <tr>
+                <th></th>
+                <th>Pack</th>
+                <th></th>
+                <th></th>
+                <th>Actions</th>
+                <th></th>
+              </tr>
+              ${packsHTML}
+            </table>
+          </form>
+          <form>
+            <h2>Debug tools</h2>
+            <table class="debug-tools-table">
               <tr>
                 <th></th>
                 <th>Application Name</th>
@@ -157,11 +202,6 @@ export class DebugToolsPanel {
               </tr>
               ${toolsHTML}
             </table>
-
-            <!--div class="grid-group-div">
-              <vscode-button id="installButton">Install selected</vscode-button>
-              <vscode-button id="removeButton">Remove selected</vscode-button>
-            </div-->
           </form>
           <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
         </body>
@@ -190,6 +230,17 @@ export class DebugToolsPanel {
           case 'debug':
             vscode.window.showInformationMessage(message.text);
             return;
+          case 'install-pack':
+            let selectedPack = this.data.packs.find((pack: { pack: string; }) => pack.pack === message.pack);
+            let tools: any[] = [];
+            selectedPack.tools.forEach((packTool: string) => {
+              let tool = this.data.debug_tools.find((tool: { tool: string; }) => tool.tool === packTool);
+              if(this.isToolCompatible(tool)) {
+                tools.push(tool);
+              }
+            });
+            vscode.commands.executeCommand("zephyr-workbench.run-install-debug-tools", this._panel, tools);
+            break;
           case 'install':
             let selectedTool = this.data.debug_tools.find((tool: { tool: string; }) => tool.tool === message.tool);
             vscode.commands.executeCommand("zephyr-workbench.run-install-debug-tools", this._panel, [ selectedTool ]);
@@ -203,7 +254,19 @@ export class DebugToolsPanel {
       this._disposables
     );
   }
-}
 
-  
+  private isToolCompatible(tool: any): boolean {
+    if(tool.os) {
+      switch(process.platform) {
+        case 'linux':
+          return tool.os.linux ? true : false;
+        case 'win32':
+          return tool.os.windows ? true : false;
+        case 'darwin':
+          return tool.os.darwin ? true : false;
+      }
+    }
+    return false;
+  }
+}
   
