@@ -3,7 +3,7 @@ import fs from "fs";
 import path from 'path';
 import { fileExists, getWorkspaceFolder } from './utils';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
-import { getEnvJoinValue, loadEnv } from './zephyrEnvUtils';
+import { getBuildEnv, loadEnv } from './zephyrEnvUtils';
 import { getShell, getShellClearCommand } from './execUtils';
 
 export class WestWorkspace {
@@ -11,7 +11,7 @@ export class WestWorkspace {
   manifestPath!: string;
   manifestFile!: string;
   zephyrBase!: string;
-  envVars: { [key:string]: string[] } = {
+  envVars: { [key:string]: any } = {
     ARCH_ROOT:[],
     SOC_ROOT:[],
     BOARD_ROOT:[],
@@ -101,7 +101,7 @@ export class WestWorkspace {
   loadSettings() {
     const workspaceFolder = getWorkspaceFolder(this.rootUri.fsPath);
     if(workspaceFolder) {
-      for(let key of WestWorkspace.envVarKeys) {
+      for(let key of Object.keys(this.envVars)) {
         let values = loadEnv(workspaceFolder, key);
         if(values) {
           this.envVars[key] = values;
@@ -159,14 +159,8 @@ export class WestWorkspace {
       ZEPHYR_PROJECT_DIRECTORY: this.rootUri.fsPath
     };
 
-    for (const key in this.envVars) {
-      if (this.envVars.hasOwnProperty(key)) {
-        if(this.envVars[key] && this.envVars[key].length > 0) {
-          baseEnv[key] = getEnvJoinValue(this.envVars, key);
-        }
-      }
-    }
-
+    let additionalEnv = getBuildEnv(this.envVars);
+    baseEnv = { ...baseEnv, ...additionalEnv };
     return baseEnv;
   }
 
@@ -176,14 +170,8 @@ export class WestWorkspace {
       ZEPHYR_PROJECT_DIRECTORY: "${config:zephyr-workbench.westWorkspace}"
     };
 
-    for (const key in this.envVars) {
-      if (this.envVars.hasOwnProperty(key)) {
-        if(this.envVars[key] && this.envVars[key].length > 0) {
-          baseEnv[key] = getEnvJoinValue(this.envVars, key);
-        }
-      }
-    }
-
+    let additionalEnv = getBuildEnv(this.envVars);
+    baseEnv = { ...baseEnv, ...additionalEnv };
     return baseEnv;
   }
 
