@@ -1,9 +1,10 @@
 import vscode, { ExtensionContext, ThemeIcon } from "vscode";
 import { ZephyrProject } from "./ZephyrProject";
 import { WestWorkspace } from "./WestWorkspace";
+import { ZephyrProjectBuildConfiguration } from "./ZephyrProjectBuildConfiguration";
 
 export async function changeEnvVarQuickStep(
-  parent: WestWorkspace | ZephyrProject,
+  context: WestWorkspace | ZephyrProject | ZephyrProjectBuildConfiguration,
   key: string,
   value?: string
 ): Promise<string | undefined> {

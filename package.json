@@ -172,6 +172,56 @@
             "default": "",
             "description": "Path to STM32_Programmer_CLI executable",
             "scope": "machine-overridable"
+          },
+          "zephyr-workbench.build.configurations": {
+            "type": "array",
+            "description": "Build Configurations",
+            "scope": "resource",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "The name of build configuration"
+                },
+                "board": {
+                  "type": "string",
+                  "default": "",
+                  "description": "The identifier of target board"
+                },
+                "west-args": {
+                  "type": "string",
+                  "default": "",
+                  "description": "User additional args to west command"
+                },
+                "env.CONF_FILE": {
+                  "type": "string",
+                  "default": "",
+                  "description": "Kconfig configuration fragment files"
+                },
+                "env.EXTRA_CONF_FILE": {
+                  "type": "array",
+                  "default": "",
+                  "description": "Additional Kconfig configuration fragment files"
+                },
+                "env.EXTRA_DTC_OVERLAY_FILE": {
+                  "type": "array",
+                  "default": "",
+                  "description": "Additional devicetree overlay files"
+                },
+                "env.EXTRA_ZEPHYR_MODULES": {
+                  "type": "array",
+                  "default": "",
+                  "description": "Additional modules to use"
+                },
+                "env.FILE_SUFFIX": {
+                  "type": "string",
+                  "default": "",
+                  "description": "Optional suffix for filenames that will be added to Kconfig fragments and devicetree overlays"
+                }
+              },
+              "required": ["name"]
+            }
           }
         }
       }

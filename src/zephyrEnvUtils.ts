@@ -51,6 +51,47 @@ export function loadEnv(workspaceFolder: vscode.WorkspaceFolder, key: string): s
   return vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).get(`${ZEPHYR_ENV_SETTING_PREFIX_KEY}.${key}`);
 }
 
+export async function saveConfigSetting(workspaceFolder: vscode.WorkspaceFolder, buildConfigName: string, key: string, value: string | string[]) {
+  const config: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder);
+  const buildConfigs = config.get<any[]>('build.configurations');
+  if(buildConfigs) {
+    let buildConfig = buildConfigs.find(buildConfig => buildConfig.name === buildConfigName);
+    if(buildConfig) {
+      // Remove attribute if value is empty
+      if(value === "") {
+        delete buildConfig[key];
+      } else {
+        buildConfig[key] = value;
+      }
+      await config.update('build.configurations', buildConfigs, vscode.ConfigurationTarget.WorkspaceFolder);
+    }
+  }
+}
+
+export async function saveConfigEnv(workspaceFolder: vscode.WorkspaceFolder, buildConfigName: string, key: string, value: string | string[]) {
+  const config = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder);
+  const buildConfigs = config.get<any[]>('build.configurations');
+  if(buildConfigs) {
+    let buildConfig = buildConfigs.find(buildConfig => buildConfig.name === buildConfigName);
+    if(buildConfig) {
+      buildConfig[`${ZEPHYR_ENV_SETTING_PREFIX_KEY}.${key}`] = value;
+      await config.update('build.configurations', buildConfigs, vscode.ConfigurationTarget.WorkspaceFolder);
+    }
+  }
+}
+
+export function loadConfigEnv(workspaceFolder: vscode.WorkspaceFolder, buildConfigName: string, key: string): string | string[] | undefined {
+  const config = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder);
+  const buildConfigs: vscode.WorkspaceConfiguration[] | undefined = config.get<any[]>('build.configurations');
+  if(buildConfigs) {
+    let buildConfig = buildConfigs.find(buildConfig => buildConfig.name === buildConfigName);
+    if(buildConfig) {
+      return buildConfig[`${ZEPHYR_ENV_SETTING_PREFIX_KEY}.${key}`];
+    }
+  }
+  return undefined;
+}
+
 export function getEnvValue(envVars: { [key: string]: any }, key: string): string {
   if (envVars[key]) {
     if(Array.isArray(envVars[key])) {

@@ -6,7 +6,8 @@ import { fileExists, findTask, getBoardFromIdentifier, getConfigValue, getWestWo
 import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { getShell, getShellClearCommand } from './execUtils';
-import { getBuildEnv, loadEnv } from './zephyrEnvUtils';
+import { getBuildEnv, loadConfigEnv, loadEnv } from './zephyrEnvUtils';
+import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 export class ZephyrProject {
   
   readonly workspaceContext: any;
@@ -20,6 +21,16 @@ export class ZephyrProject {
     EXTRA_ZEPHYR_MODULES:[]
   };
   westArgs: string = '';
+  configs: ZephyrProjectBuildConfiguration[] = [];
+
+  private addBuildConfiguration(name: string) {
+    let config = new ZephyrProjectBuildConfiguration(name);
+    this.configs.push(config);
+  }
+
+  private getBuildConfiguration(name: string): ZephyrProjectBuildConfiguration | undefined {
+    return this.configs.find(config => config.name === name);
+  }
 
   static envVarKeys = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES'];
 
@@ -43,6 +54,14 @@ export class ZephyrProject {
         this.envVars[key] = values;
       }
     }
+
+    // Parse build configurations
+    const buildConfigs: any[] = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.workspaceContext).get('build.configurations', []);
+    buildConfigs.forEach(buildConfig => {
+      let config = new ZephyrProjectBuildConfiguration(buildConfig.name);
+      config.parseSettings(buildConfig, this.workspaceContext);
+      this.configs.push(config);
+    });
   }
 
   /**
