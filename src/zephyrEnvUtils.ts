@@ -1,5 +1,6 @@
 import vscode from "vscode"; 
 import { ZEPHYR_ENV_SETTING_PREFIX_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "./constants";
+import { ZephyrProjectBuildConfiguration } from "./ZephyrProjectBuildConfiguration";
 
 export function addEnvValue(envVars: { [key: string]: any }, key: string, value: string): void {
   if (envVars[key]) {
@@ -49,6 +50,34 @@ export async function saveEnv(workspaceFolder: vscode.WorkspaceFolder, key: stri
 
 export function loadEnv(workspaceFolder: vscode.WorkspaceFolder, key: string): string | string[] | undefined  {
   return vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).get(`${ZEPHYR_ENV_SETTING_PREFIX_KEY}.${key}`);
+}
+
+export async function addConfig(workspaceFolder: vscode.WorkspaceFolder, configToAdd: ZephyrProjectBuildConfiguration) {
+  const config: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder);
+  const buildConfigs = config.get<any[]>('build.configurations') ? config.get<any[]>('build.configurations') : [];
+
+  if(buildConfigs) {
+    let newBuildConfig = {
+      name: configToAdd.name,
+      board: configToAdd.boardIdentifier,
+      active: "true"
+    };
+  
+    buildConfigs.push(newBuildConfig);
+  }
+  await config.update('build.configurations', buildConfigs, vscode.ConfigurationTarget.WorkspaceFolder);
+}
+
+export async function deleteConfig(workspaceFolder: vscode.WorkspaceFolder, configToDelete: ZephyrProjectBuildConfiguration) {
+  const config: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder);
+  const buildConfigs = config.get<any[]>('build.configurations');
+  if(buildConfigs) {
+    let buildConfigIndex = buildConfigs.findIndex(buildConfig => buildConfig.name === configToDelete.name);
+    if (buildConfigIndex !== -1) {
+      buildConfigs.splice(buildConfigIndex, 1);
+    }
+  }
+  await config.update('build.configurations', buildConfigs, vscode.ConfigurationTarget.WorkspaceFolder);
 }
 
 export async function saveConfigSetting(workspaceFolder: vscode.WorkspaceFolder, buildConfigName: string, key: string, value: string | string[]) {

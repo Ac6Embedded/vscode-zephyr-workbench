@@ -13,7 +13,7 @@ import { checkHostTools } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { ZephyrProject } from './ZephyrProject';
 import { getBoardsDirectories, getBoardsDirectoriesFromIdentifier, westTmpBuildSystemCommand } from './WestCommands';
-import { checkOrCreateTask } from './ZephyrTaskProvider';
+import { checkOrCreateTask, ZephyrTaskProvider } from './ZephyrTaskProvider';
 
 export function normalizePath(pathToNormalize: string) {
   let newpath = path.normalize(pathToNormalize);
@@ -449,7 +449,6 @@ export async function findTask(taskLabel: string, workspaceFolder: vscode.Worksp
 
 export async function findOrCreateTask(taskLabel: string, workspaceFolder: vscode.WorkspaceFolder): Promise<vscode.Task | undefined> {
   const taskExists = await checkOrCreateTask(workspaceFolder, taskLabel);
-  console.log(`findOrCreateTask: ${taskExists}`);
   if(taskExists) {
     const tasks = await vscode.tasks.fetchTasks({ type: 'zephyr-workbench' });
     return tasks.find(task => {
@@ -459,6 +458,50 @@ export async function findOrCreateTask(taskLabel: string, workspaceFolder: vscod
   }
   return undefined;
 }
+
+/**
+ * Find zephyr-workbench task for the project and adapt it for configuration.
+ * 
+ * @param taskLabel 
+ * @param project 
+ * @param configName 
+ * @returns 
+ */
+export async function findConfigTask(taskLabel: string, project: ZephyrProject, configName: string): Promise<vscode.Task | undefined> {
+  const taskExists = await checkOrCreateTask(project.workspaceFolder, taskLabel);
+  if(taskExists) {
+    const tasks = await vscode.tasks.fetchTasks({ type: 'zephyr-workbench' });
+    const task = tasks.find(task => {
+      const folder = task.scope as vscode.WorkspaceFolder;
+      return folder && folder.uri.toString() === project.workspaceFolder.uri.toString() && task.name === taskLabel;
+    });
+    if(task) {
+      for(let config of project.configs) {
+        if(configName === config.name) {
+          // Create temporary task with the configuration
+          const taskDefinition = { 
+            ...task.definition, 
+            config: configName 
+          };
+    
+          const tmpTask = new vscode.Task(
+            taskDefinition,
+            task.scope as vscode.WorkspaceFolder, 
+            task.name,
+            task.source,
+            task.execution
+          );
+          
+          // Resolve the zephyr-workbench task
+          const newTask = ZephyrTaskProvider.resolve(tmpTask);
+          return newTask;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
 
 /**
  * @deprecated Use the getSupportedBoards instead.

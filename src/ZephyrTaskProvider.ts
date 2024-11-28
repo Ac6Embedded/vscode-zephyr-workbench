@@ -21,6 +21,7 @@ export interface ZephyrTaskDefinition extends vscode.TaskDefinition {
   command: string;
   [key: string]: any;
   args: string[];
+  config?: string;
 }
 
 const westBuildTask: ZephyrTaskDefinition = {
@@ -35,18 +36,7 @@ const westBuildTask: ZephyrTaskDefinition = {
   args: [
     "build",
     "-p ${config:zephyr-workbench.build.pristine}",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
-  ]
-};
-
-const cleanTask: ZephyrTaskDefinition = {
-  label: "Clean",
-  type: "zephyr-workbench",
-  problemMatcher: [],
-  command: "ninja",
-  args: [
-    "-C ${workspaceFolder}/build/${config:zephyr-workbench.board}",
-    "clean",
+    "--build-dir ${BUILD_DIR}"
   ]
 };
 
@@ -62,7 +52,7 @@ const rebuildTask: ZephyrTaskDefinition = {
   args: [
     "build",
     "-p always",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+    "--build-dir ${BUILD_DIR}"
   ]
 };
 
@@ -74,7 +64,7 @@ const guiConfigTask: ZephyrTaskDefinition = {
   args: [
     "build",
     "-t guiconfig",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+    "--build-dir ${BUILD_DIR}"
   ]
 };
 
@@ -85,7 +75,7 @@ const menuconfigTask: ZephyrTaskDefinition = {
   args: [
     "build",
     "-t menuconfig",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+    "--build-dir ${BUILD_DIR}"
   ]
 };
 
@@ -96,7 +86,7 @@ const hardenConfigTask: ZephyrTaskDefinition = {
   args: [
     "build",
     "-t hardenconfig",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+    "--build-dir ${BUILD_DIR}"
   ]
 };
 
@@ -108,7 +98,7 @@ const spdxTask: ZephyrTaskDefinition = {
   args: [
     "spdx",
     "--init",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+    "--build-dir ${BUILD_DIR}"
   ]
 };
 
@@ -120,7 +110,7 @@ const flashTask: ZephyrTaskDefinition = {
   args: [
     "flash",
     "${input:west.runner}",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+    "--build-dir ${BUILD_DIR}"
   ]
 };
 
@@ -132,7 +122,7 @@ const ramReportTask: ZephyrTaskDefinition = {
   args: [
     "build",
     "-t ram_report",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+    "--build-dir ${BUILD_DIR}"
   ]
 };
 
@@ -144,7 +134,7 @@ const romReportTask: ZephyrTaskDefinition = {
   args: [
     "build",
     "-t rom_report",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"
+    "--build-dir ${BUILD_DIR}"
   ]
 };
 
@@ -161,7 +151,6 @@ const puncoverTask: ZephyrTaskDefinition = {
 
 const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [westBuildTask.label, westBuildTask],
-  [cleanTask.label, cleanTask],
   [rebuildTask.label, rebuildTask],
   [guiConfigTask.label, guiConfigTask],
   [menuconfigTask.label, menuconfigTask],
@@ -180,11 +169,24 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     return [];
   }
 
-  public async resolveTask(_task: vscode.Task, token: vscode.CancellationToken): Promise<vscode.Task> {
+  public resolveTask(_task: vscode.Task, token: vscode.CancellationToken): vscode.Task {
+    return ZephyrTaskProvider.resolve(_task);
+  }
+
+  static resolve(_task: vscode.Task): vscode.Task {
     const folder = _task.scope as vscode.WorkspaceFolder;
     const project = new ZephyrAppProject(folder, folder.uri.fsPath);
     const activeSdk = getZephyrSDK(project.sdkPath);
     const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+    let config = undefined;
+
+    // Search for configuration
+    if(_task.definition.config) {
+      console.log(_task.definition.config);
+      config = project.configs.find(config => {
+        return (config.name === _task.definition.config) ? config : undefined;
+      });      
+    }
 
     let cmd = _task.definition.command;
     let args = _task.definition.args.join(' ');
@@ -223,6 +225,10 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
              ...project.buildEnvWithVar},
     };
 
+    if(config) {
+      options.env = { ...options.env, ...config.getBuildEnvWithVar(project) };
+    }
+
     if(activatePath) {
       options.env =  {
         PYTHON_VENV_ACTIVATE_PATH: activatePath,
@@ -236,7 +242,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       }
   
       if(_task.definition.options.env) {
-        options.env = { ...options.env, ..._task.definition.options.cwd };
+        options.env = { ...options.env, ..._task.definition.options.env };
       }
     }
 
@@ -341,7 +347,6 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
     tasksJsonContent.tasks.push(
       westBuildTask,
       rebuildTask,
-      cleanTask,
       guiConfigTask,
       menuconfigTask,
       hardenConfigTask,

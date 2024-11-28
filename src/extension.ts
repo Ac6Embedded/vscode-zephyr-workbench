@@ -23,18 +23,20 @@ import { DebugToolsPanel } from './panels/DebugToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
-import { ZephyrApplicationBoardTreeItem, ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigArgTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem } from './providers/ZephyrApplicationProvider';
+import { ZephyrApplicationBoardTreeItem, ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigArgTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem } from './providers/ZephyrApplicationProvider';
 import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsCommandProvider';
 import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
-import { addEnvValue, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
+import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfigTask, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
+import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProvider';
 import { pickApplicationQuickStep } from './pickApplicationQuickStep';
+import { setConfigQuickStep } from './setConfigQuickStep';
+import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -50,7 +52,6 @@ export function activate(context: vscode.ExtensionContext) {
 		'ms-vscode.vscode-serial-monitor',  // https://marketplace.visualstudio.com/items?itemName=ms-vscode.vscode-serial-monitor
 		'ms-vscode.vscode-embedded-tools',  // https://marketplace.visualstudio.com/items?itemName=ms-vscode.vscode-embedded-tools
 		'redhat.vscode-yaml',								// https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml
-		'marus25.cortex-debug',							// https://marketplace.visualstudio.com/items?itemName=marus25.cortex-debug
 		'trond-snekvik.kconfig-lang',				// https://marketplace.visualstudio.com/items?itemName=trond-snekvik.kconfig-lang
 		'trond-snekvik.devicetree',					// https://marketplace.visualstudio.com/items?itemName=trond-snekvik.devicetree
   ];
@@ -155,26 +156,69 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	vscode.commands.registerCommand('zephyr-workbench-app-explorer.build-app', async (node: ZephyrApplicationTreeItem | vscode.WorkspaceFolder) => {
-		let folder: any = node ;
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.build-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder, configName: string | undefined = undefined) => {
+		let context: ZephyrProject | undefined = undefined;
+		let folder: vscode.WorkspaceFolder | undefined = undefined;
 		if(node instanceof ZephyrApplicationTreeItem) {
 			if(node.project) {
+				context = node.project;
 				folder = node.project.workspaceFolder;
 			}
+		} else if(node instanceof ZephyrConfigTreeItem) {
+			if(node.project) {
+				context = node.project;
+				folder = node.project.workspaceFolder;
+				configName = node.buildConfig.name;
+			}
+		} else {
+			context = await getZephyrProject(node.uri.fsPath);
+			folder = node;
 		}
-
-		const westBuildTask = await findOrCreateTask('West Build', folder);
-		if (westBuildTask) {
-			try {
-				await vscode.tasks.executeTask(westBuildTask);
-
-				// After first build, parse toolchain name from .config
-				let gccPath: string | undefined = vscode.workspace.getConfiguration('C_Cpp', folder).get('default.compilerPath');
-				if(gccPath && gccPath.includes('undefined')) {
-					const project = new ZephyrAppProject(folder, folder.uri.fsPath);
-					await updateCompileSetting(project);
+		
+		// Get list of task to execute
+		let westBuildTasks: vscode.Task[] = [];
+		if(context && folder) {
+			// IF: In configuration name is provided execute it
+			// ELSE IF : run active build configuration 
+			// ELSE [Legacy] run old build task 
+			if(configName) {
+				let westBuildTask = await findConfigTask('West Build', context, configName);
+				if(westBuildTask) {
+					westBuildTasks.push(westBuildTask);
 				}
-
+			} else if(context.configs && context.configs.length > 0) {
+				for(let config of context.configs) {
+					if(config.active) {
+						let westBuildTask = await findConfigTask('West Build', context, config.name);
+						if(westBuildTask) {
+							westBuildTasks.push(westBuildTask);
+						}
+					}
+				}
+			} else {
+				// For legacy compatibility:
+				// If the project settings.json doesn't have any build configuration
+				let westBuildTask = await findOrCreateTask('West Build', folder);
+				if(westBuildTask) {
+					westBuildTasks.push(westBuildTask);
+				}
+			}
+		}
+		
+		// Execute task
+		if (westBuildTasks.length > 0) {
+			try {
+				for(let westBuildTask of westBuildTasks) {
+					await vscode.tasks.executeTask(westBuildTask);
+				}
+				// After first build, parse toolchain name from .config
+				if(folder) {
+					let gccPath: string | undefined = vscode.workspace.getConfiguration('C_Cpp', folder).get('default.compilerPath');
+					if(gccPath && gccPath.includes('undefined')) {
+						const project = new ZephyrAppProject(folder, folder.uri.fsPath);
+						await updateCompileSetting(project);
+					}
+				}
 			} catch (error) {
 				vscode.window.showErrorMessage(`Error executing task: ${error}`);
 			}
@@ -385,11 +429,18 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	vscode.commands.registerCommand('zephyr-workbench-app-explorer.change-board', async (node: ZephyrApplicationBoardTreeItem | ZephyrApplicationTreeItem) => {
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.change-board', async (node: ZephyrApplicationBoardTreeItem | ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
 		if(node.project) {
 			const boardId = await changeBoardQuickStep(context, node.project);
 			if(boardId) {
-				await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId, vscode.ConfigurationTarget.WorkspaceFolder);
+				if(node instanceof ZephyrConfigTreeItem) {
+					await saveConfigSetting(node.project.workspaceFolder, node.buildConfig.name, ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId);
+				} else if(node instanceof ZephyrApplicationBoardTreeItem || node instanceof ZephyrApplicationTreeItem) {
+					// For legacy compatibility
+					// Keep supporting edit board from project
+					await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId, vscode.ConfigurationTarget.WorkspaceFolder);
+				}
+				
 			}
 		}
 	});
@@ -486,6 +537,56 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		} else {
 				vscode.window.showErrorMessage('Cannot find "West Puncover" task.');
+		}
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.add-config', async (node: ZephyrApplicationTreeItem) => {
+		if(node.project) {
+			let newConfig = new ZephyrProjectBuildConfiguration('');
+			let configName = await setConfigQuickStep(newConfig, node.project);
+			if(configName) {
+				newConfig.name = configName;
+				let boardId = await changeBoardQuickStep(context, node.project);
+				if(boardId) {
+					newConfig.boardIdentifier = boardId;
+				}
+				node.project.configs.push(newConfig);
+				await addConfig(node.project.workspaceFolder, newConfig);
+			}
+		}
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.delete-config', async (node: ZephyrConfigTreeItem) => {
+		if(node.buildConfig) {
+			let confirm = await showConfirmMessage("Are you sure you want to delete this configuration ?");
+			if(confirm) {
+				await deleteConfig(node.project.workspaceFolder, node.buildConfig);
+			}
+		}
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.rename-config', async (node: ZephyrConfigTreeItem) => {
+		if(node.buildConfig) {
+			const oldConfigName = node.buildConfig.name;
+			let newConfigName = await setConfigQuickStep(node.buildConfig, node.project);
+			if(newConfigName) {
+				node.buildConfig.name = newConfigName;
+				await saveConfigSetting(node.project.workspaceFolder, oldConfigName, 'name', newConfigName);
+			}
+		}
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.activate-config', async (node: ZephyrConfigTreeItem) => {
+		if(node.buildConfig) {
+			node.buildConfig.active = true;
+			await saveConfigSetting(node.project.workspaceFolder, node.buildConfig.name, 'active', "true");
+		}
+	});
+
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.deactivate-config', async (node: ZephyrConfigTreeItem) => {
+		if(node.buildConfig) {
+			node.buildConfig.active = true;
+			await saveConfigSetting(node.project.workspaceFolder, node.buildConfig.name, 'active', "");
 		}
 	});
 
@@ -669,11 +770,6 @@ export function activate(context: vscode.ExtensionContext) {
 			zephyrAppProvider.refresh();
 		}
 	});
-
-
-	// const zephyrModuleProvider = new ZephyrModuleDataProvider(workspacePath);
-	// vscode.window.registerTreeDataProvider('zephyr-workbench-module-explorer', zephyrModuleProvider);
-	// vscode.commands.registerCommand('zephyr-workbench-module-explorer.refresh', () => zephyrModuleProvider.refresh());
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench.install-host-tools", async (force = false, skipSdk = false, listToolchains = "") => {

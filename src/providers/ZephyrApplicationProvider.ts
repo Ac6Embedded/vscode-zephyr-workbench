@@ -38,22 +38,27 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       // items.push(boardItem);
       items.push(workspaceItem);
 
-      // for(let key of ZephyrAppProject.envVarKeys) {
-      //   const envItem = new ZephyrApplicationEnvTreeItem(element.project, key);
-      //   items.push(envItem);
-      // }
-
-      // const westArgsItem = new ZephyrApplicationArgTreeItem(element.project, 'west arguments');
-      // items.push(westArgsItem);
-
-      for(let config of element.project.configs) {
-        const buildConfigItem = new ZephyrProjectBuildConfigTreeItem(element.project, config, vscode.TreeItemCollapsibleState.Collapsed);
-        items.push(buildConfigItem);
+      if(element.project.configs.length > 0) {
+        for(let config of element.project.configs) {
+          const buildConfigItem = new ZephyrConfigTreeItem(element.project, config, vscode.TreeItemCollapsibleState.Collapsed);
+          items.push(buildConfigItem);
+        }
+      } else {
+        // For legacy compatibility,
+        // Display arguments and variable for project that has no build configuration
+        items.push(boardItem);
+        for(let key of ZephyrAppProject.envVarKeys) {
+          const envItem = new ZephyrApplicationEnvTreeItem(element.project, key);
+          items.push(envItem);
+        }
+  
+        const westArgsItem = new ZephyrApplicationArgTreeItem(element.project, 'west arguments');
+        items.push(westArgsItem);
       }
       return Promise.resolve(items);
     } 
 
-    if(element instanceof ZephyrProjectBuildConfigTreeItem) {
+    if(element instanceof ZephyrConfigTreeItem) {
       const boardItem = new ZephyrConfigBoardTreeItem(element.project, element.buildConfig);
       const westArgsItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, 'west arguments');
 
@@ -156,7 +161,7 @@ export class ZephyrApplicationTreeItem extends vscode.TreeItem {
 	}
 }
 
-export class ZephyrProjectBuildConfigTreeItem extends vscode.TreeItem {
+export class ZephyrConfigTreeItem extends vscode.TreeItem {
   constructor(
 		public readonly project: ZephyrAppProject,
     public readonly buildConfig: ZephyrProjectBuildConfiguration,
@@ -170,6 +175,7 @@ export class ZephyrProjectBuildConfigTreeItem extends vscode.TreeItem {
 
       if(buildConfig.active) {
         this.description = '[active]';
+        this.contextValue = 'zephyr-build-config-active';
       }
     }
 	}
