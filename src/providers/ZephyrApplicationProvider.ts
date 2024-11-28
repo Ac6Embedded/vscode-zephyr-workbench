@@ -146,7 +146,7 @@ export class ZephyrApplicationTreeItem extends vscode.TreeItem {
       try {
         let westWorkspace = getWestWorkspace(project.westWorkspacePath);
         if(westWorkspace !== null) {
-          this.description = `[${project.boardId} - ${westWorkspace.name}]`;
+          this.description = project.boardId ? `[legacy]` : `[with ${westWorkspace.name}]`;
           this.contextValue = 'zephyr-application';
         } else {
           this.description = `[not configured]`;
@@ -174,8 +174,10 @@ export class ZephyrConfigTreeItem extends vscode.TreeItem {
       this.tooltip = project.sourceDir;
 
       if(buildConfig.active) {
-        this.description = '[active]';
+        this.description = `[${buildConfig.boardIdentifier}] [active]`;
         this.contextValue = 'zephyr-build-config-active';
+      } else {
+        this.description = `[${buildConfig.boardIdentifier}] [not active]`;
       }
     }
 	}

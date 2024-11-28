@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import fs from "fs";
 import path from 'path';
+import yaml from 'yaml';
 import { ZephyrProject } from "./ZephyrProject";
 import { getBuildEnv, loadConfigEnv } from "./zephyrEnvUtils";
 import { getShell, getShellClearCommand } from './execUtils';
-import { getWestWorkspace, getZephyrSDK } from './utils';
-import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
+import { fileExists, getBoardFromIdentifier, getConfigValue, getWestWorkspace, getZephyrSDK } from './utils';
+import { ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 
 export class ZephyrProjectBuildConfiguration {
   name: string;
@@ -22,13 +23,13 @@ export class ZephyrProjectBuildConfiguration {
   };
   westArgs: string = '';
   
-  public constructor(
+  constructor(
     name: string,
   ) {
     this.name = name;
   }
 
-  public parseSettings(buildConfig: any, workspaceContext: vscode.WorkspaceFolder) {
+  parseSettings(buildConfig: any, workspaceContext: vscode.WorkspaceFolder) {
     this.active = buildConfig['active'] === "true" ? true : false;
     this.boardIdentifier = buildConfig['board'];
     this.westArgs = buildConfig['west-args'];
@@ -40,14 +41,14 @@ export class ZephyrProjectBuildConfiguration {
     }
   }
 
-  public setBoard(boardIdentifier: string) {
+  setBoard(boardIdentifier: string) {
     this.boardIdentifier = boardIdentifier;
   }
 
   /**
    * Build directory
    */
-  public getBuildDir(parentProject: ZephyrProject): string {
+  getBuildDir(parentProject: ZephyrProject): string {
     return path.join(parentProject.folderPath, this.name, this.boardIdentifier);
   }
 
@@ -55,11 +56,11 @@ export class ZephyrProjectBuildConfiguration {
    * Under build directory, the internal debug directory is used to generate wrappers, files, etc...
    * and is not removed after pristine rebuilt. 
    */
-  public getInternalDebugDir(parentProject: ZephyrProject): string {
+  getInternalDebugDir(parentProject: ZephyrProject): string {
     return path.join(parentProject.folderPath, this.name, '.debug', this.boardIdentifier);
   }
 
-  public getBuildEnv(parentProject: ZephyrProject): { [key: string]: string; } {
+  getBuildEnv(parentProject: ZephyrProject): { [key: string]: string; } {
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
       BUILD_DIR: this.getBuildDir(parentProject)
@@ -70,7 +71,7 @@ export class ZephyrProjectBuildConfiguration {
     return baseEnv;
   }
 
-  public getBuildEnvWithVar(parentProject: ZephyrProject): { [key: string]: string; } {
+  getBuildEnvWithVar(parentProject: ZephyrProject): { [key: string]: string; } {
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
       BUILD_DIR: this.getBuildDir(parentProject)
@@ -79,6 +80,51 @@ export class ZephyrProjectBuildConfiguration {
     let additionalEnv = getBuildEnv(this.envVars);
     baseEnv = { ...baseEnv, ...additionalEnv };
     return baseEnv;
+  }
+
+  async getCompatibleRunners(parentProject: ZephyrProject): Promise<string[]> {
+    let runners: string[] = [];
+
+    // Search in project build directory runners.yaml
+    const runnersYAMLFilepath = path.join(this.getBuildDir(parentProject), ZEPHYR_DIRNAME, 'runners.yaml');
+    if(fileExists(runnersYAMLFilepath)) {
+      const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
+      const data = yaml.parse(runnersYAMLFile);
+      runners = data.runners;
+    }
+
+    // Search in board.cmake if runners.yaml does not exists
+    if(runners.length === 0) {
+      const westWorkspace = getWestWorkspace(parentProject.westWorkspacePath);
+      const board = await getBoardFromIdentifier(this.boardIdentifier, westWorkspace);
+      runners = board.getCompatibleRunners();
+    }
+
+    return runners;
+  }
+
+  getPyOCDTarget(parentProject: ZephyrProject): string | undefined {
+    const runnersYAMLFilepath = path.join(this.getBuildDir(parentProject), ZEPHYR_DIRNAME, 'runners.yaml');
+    if(fileExists(runnersYAMLFilepath)) {
+      const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
+      const data = yaml.parse(runnersYAMLFile);
+      const pyOCDArgs = data?.args?.pyocd;
+      if (pyOCDArgs) {
+        const targetArg = pyOCDArgs.find((arg: string) => arg.startsWith('--target='));
+        if (targetArg) {
+            return targetArg.split('=')[1];
+        }
+      }
+    }
+    return undefined;
+  }
+
+  getKConfigValue(parentProject: ZephyrProject, configKey: string): string | undefined {  
+    let dotConfig = path.join(this.getBuildDir(parentProject), 'zephyr', '.config');
+    if(fileExists(dotConfig)) {
+      return getConfigValue(dotConfig, configKey);
+    }
+	  return undefined;
   }
 
   private static openTerminal(zephyrProject: ZephyrProject, buildConfig: ZephyrProjectBuildConfiguration): vscode.Terminal {

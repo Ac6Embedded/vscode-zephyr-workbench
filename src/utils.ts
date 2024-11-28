@@ -487,7 +487,7 @@ export async function findConfigTask(taskLabel: string, project: ZephyrProject, 
           const tmpTask = new vscode.Task(
             taskDefinition,
             task.scope as vscode.WorkspaceFolder, 
-            task.name,
+            `${task.name} [${config.name}]`,
             task.source,
             task.execution
           );

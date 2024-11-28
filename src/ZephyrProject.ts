@@ -6,31 +6,24 @@ import { fileExists, findTask, getBoardFromIdentifier, getConfigValue, getWestWo
 import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { getShell, getShellClearCommand } from './execUtils';
-import { getBuildEnv, loadConfigEnv, loadEnv } from './zephyrEnvUtils';
+import { getBuildEnv, loadEnv } from './zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 export class ZephyrProject {
   
   readonly workspaceContext: any;
   readonly sourceDir : string;
-  boardId!: string;
   westWorkspacePath!: string;
   sdkPath!: string;
+  configs: ZephyrProjectBuildConfiguration[] = [];
+
+  // Legacy attributes
+  boardId!: string;
   envVars: {[key:string]: any} = {
     EXTRA_CONF_FILE:[],
     EXTRA_DTC_OVERLAY_FILE:[],
     EXTRA_ZEPHYR_MODULES:[]
   };
   westArgs: string = '';
-  configs: ZephyrProjectBuildConfiguration[] = [];
-
-  private addBuildConfiguration(name: string) {
-    let config = new ZephyrProjectBuildConfiguration(name);
-    this.configs.push(config);
-  }
-
-  private getBuildConfiguration(name: string): ZephyrProjectBuildConfiguration | undefined {
-    return this.configs.find(config => config.name === name);
-  }
 
   static envVarKeys = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES'];
 
@@ -129,6 +122,59 @@ export class ZephyrProject {
     this.boardId = boardId;
   }
 
+  addBuildConfiguration(config: ZephyrProjectBuildConfiguration) {
+    this.configs.push(config);
+  }
+
+  getBuildConfiguration(name: string): ZephyrProjectBuildConfiguration | undefined {
+    return this.configs.find(config => config.name === name);
+  }
+
+  async getCompatibleRunners(): Promise<string[]> {
+    let runners: string[] = [];
+
+    // Search in project build directory runners.yaml
+    const runnersYAMLFilepath = path.join(this.buildDir, ZEPHYR_DIRNAME, 'runners.yaml');
+    if(fileExists(runnersYAMLFilepath)) {
+      const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
+      const data = yaml.parse(runnersYAMLFile);
+      runners = data.runners;
+    }
+
+    // Search in board.cmake if runners.yaml does not exists
+    if(runners.length === 0) {
+      const westWorkspace = getWestWorkspace(this.westWorkspacePath);
+      const board = await getBoardFromIdentifier(this.boardId, westWorkspace);
+      runners = board.getCompatibleRunners();
+    }
+
+    return runners;
+  }
+
+  getPyOCDTarget(): string | undefined {
+    const runnersYAMLFilepath = path.join(this.buildDir, ZEPHYR_DIRNAME, 'runners.yaml');
+    if(fileExists(runnersYAMLFilepath)) {
+      const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
+      const data = yaml.parse(runnersYAMLFile);
+      const pyOCDArgs = data?.args?.pyocd;
+      if (pyOCDArgs) {
+        const targetArg = pyOCDArgs.find((arg: string) => arg.startsWith('--target='));
+        if (targetArg) {
+            return targetArg.split('=')[1];
+        }
+      }
+    }
+    return undefined;
+  }
+
+  getKConfigValue(configKey: string): string | undefined {  
+    let dotConfig = path.join(this.buildDir, 'zephyr', '.config');
+    if(fileExists(dotConfig)) {
+      return getConfigValue(dotConfig, configKey);
+    }
+	  return undefined;
+  }
+
   static async isZephyrProjectWorkspaceFolder(folder: vscode.WorkspaceFolder) {
     const westBuildTask = await findTask('West Build', folder);
     if(westBuildTask && westBuildTask.definition.type === ZephyrTaskProvider.ZephyrType) {
@@ -153,51 +199,6 @@ export class ZephyrProject {
       }
     }
     return false;
-  }
-
-  public async getCompatibleRunners(): Promise<string[]> {
-    let runners: string[] = [];
-
-    // Search in project build directory runners.yaml
-    const runnersYAMLFilepath = path.join(this.buildDir, ZEPHYR_DIRNAME, 'runners.yaml');
-    if(fileExists(runnersYAMLFilepath)) {
-      const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
-      const data = yaml.parse(runnersYAMLFile);
-      runners = data.runners;
-    }
-
-    // Search in board.cmake if runners.yaml does not exists
-    if(runners.length === 0) {
-      const westWorkspace = getWestWorkspace(this.westWorkspacePath);
-      const board = await getBoardFromIdentifier(this.boardId, westWorkspace);
-      runners = board.getCompatibleRunners();
-    }
-
-    return runners;
-  }
-
-  public getPyOCDTarget(): string | undefined {
-    const runnersYAMLFilepath = path.join(this.buildDir, ZEPHYR_DIRNAME, 'runners.yaml');
-    if(fileExists(runnersYAMLFilepath)) {
-      const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
-      const data = yaml.parse(runnersYAMLFile);
-      const pyOCDArgs = data?.args?.pyocd;
-      if (pyOCDArgs) {
-        const targetArg = pyOCDArgs.find((arg: string) => arg.startsWith('--target='));
-        if (targetArg) {
-            return targetArg.split('=')[1];
-        }
-      }
-    }
-    return undefined;
-  }
-
-  public getKConfigValue(configKey: string): string | undefined {  
-    let dotConfig = path.join(this.buildDir, 'zephyr', '.config');
-    if(fileExists(dotConfig)) {
-      return getConfigValue(dotConfig, configKey);
-    }
-	  return undefined;
   }
 
   private static openTerminal(zephyrProject: ZephyrProject): vscode.Terminal {
@@ -263,4 +264,5 @@ export class ZephyrProject {
 
     return terminal;
   }
+  
 }

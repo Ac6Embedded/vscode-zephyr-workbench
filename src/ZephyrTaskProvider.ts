@@ -9,6 +9,8 @@ import { ZephyrSDK } from './ZephyrSDK';
 import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { concatCommands, getShell, getShellArgs } from './execUtils';
 import { getWestWorkspace, getZephyrSDK } from './utils';
+import { addConfig } from './zephyrEnvUtils';
+import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 
 interface TaskConfig {
   version: string;
@@ -182,10 +184,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
     // Search for configuration
     if(_task.definition.config) {
-      console.log(_task.definition.config);
-      config = project.configs.find(config => {
-        return (config.name === _task.definition.config) ? config : undefined;
-      });      
+      config = project.getBuildConfiguration(_task.definition.config.name); 
     }
 
     let cmd = _task.definition.command;
@@ -452,7 +451,6 @@ export async function createExtensionsJson(workspaceFolder: vscode.WorkspaceFold
       "ms-vscode.cpptools-extension-pack",
       "ms-vscode.vscode-embedded-tools",
       "ms-vscode.vscode-serial-monitor",
-      "marus25.cortex-debug"
     ]
   };
 
@@ -462,20 +460,24 @@ export async function createExtensionsJson(workspaceFolder: vscode.WorkspaceFold
 }
 
 export async function setDefaultProjectSettings(workspaceFolder: vscode.WorkspaceFolder, westWorkspace: WestWorkspace, zephyrBoard: ZephyrBoard, zephyrSDK: ZephyrSDK): Promise<void> {
+  // Zephyr Workbench settings
   const boardIdentifier = zephyrBoard.identifier ? zephyrBoard.identifier : '';
   await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, westWorkspace.rootUri.fsPath, vscode.ConfigurationTarget.WorkspaceFolder);
-	await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardIdentifier, vscode.ConfigurationTarget.WorkspaceFolder);
+	// await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardIdentifier, vscode.ConfigurationTarget.WorkspaceFolder);
   await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_SDK_SETTING_KEY, zephyrSDK.rootUri.fsPath, vscode.ConfigurationTarget.WorkspaceFolder);
+  let newConfig = new ZephyrProjectBuildConfiguration('build');
+  newConfig.boardIdentifier = boardIdentifier;
+  await addConfig(workspaceFolder, newConfig);
 
   try {
-    // Hush CMake
+    // Hush CMake settings
     await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('configureOnOpen', false, vscode.ConfigurationTarget.WorkspaceFolder);
   } catch(e) {
     vscode.window.showWarningMessage('Cannot setup cmake setting on project');
   }
   
   try {
-    // IntelliSense
+    // IntelliSense settings
     let buildDir = path.join('${workspaceFolder}', 'build', boardIdentifier);
     let targetArch = zephyrBoard.arch;
     await vscode.workspace.getConfiguration('C_Cpp', workspaceFolder).update('default.compilerPath', zephyrSDK.getCompilerPath(targetArch), vscode.ConfigurationTarget.WorkspaceFolder);

@@ -4,12 +4,11 @@ import { fileExists } from './utils';
 
 export class ZephyrAppProject extends ZephyrProject {
 
-  public constructor(
+  constructor(
     workspaceContext: any,
     sourceDir: string,
   ) {
     super(workspaceContext, sourceDir);
-    //this.parseZWManifest();
   }
 
   get prjConfUri(): vscode.Uri {
