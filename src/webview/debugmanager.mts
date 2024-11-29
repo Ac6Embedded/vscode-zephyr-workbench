@@ -14,6 +14,7 @@ function main() {
   setVSCodeMessageListener();
 
   initApplicationsDropdown();
+  initBuildConfigsDropdown();
   initRunnersDropdown();
   
   const runnerPathText = document.getElementById('runnerPath') as TextField;
@@ -89,18 +90,13 @@ function setVSCodeMessageListener() {
   window.addEventListener("message", (event) => {
     const command = event.data.command;
     switch(command) {
+      case 'updateBuildConfigs': {
+        const buildConfigsHTML = event.data.buildConfigsHTML;
+        updateBuildConfigs(buildConfigsHTML);
+        break;
+      }
       case 'updateConfig': {
-        const programPath = event.data.programPath;
-        const svdPath = event.data.svdPath;
-        const gdbPath = event.data.gdbPath;
-        const gdbAddress = event.data.gdbAddress;
-        const gdbPort = event.data.gdbPort;
-        const runnersHTML = event.data.runnersHTML;
-        const runner = event.data.runnerName;
-        const runnerPath = event.data.runnerPath;
-        const runnerArgs = event.data.runnerArgs;
-        
-        updateConfig(programPath, svdPath, gdbPath, gdbAddress, gdbPort, runnersHTML, runner, runnerPath, runnerArgs);
+        updateConfig(event.data);
         break;
       }
       case 'updateRunnerConfig': {
@@ -165,17 +161,20 @@ function installHandler(this: HTMLElement, ev: MouseEvent) {
 
 function resetHandler(this: HTMLElement, ev: MouseEvent) {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
+  const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
 
   webviewApi.postMessage(
     {
       command: 'reset',
       project: applicationInput.getAttribute('data-value'),
+      buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : ''
     }
   );
 }
 
 function applyHandler(this: HTMLElement, ev: MouseEvent) {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
+  const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
   const programPath = document.getElementById('programPath') as TextField;
   const svdPath = document.getElementById('svdPath') as TextField;
   const gdbPath = document.getElementById('gdbPath') as TextField;
@@ -189,6 +188,7 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
     {
       command: 'apply',
       project: applicationInput.getAttribute('data-value'),
+      buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
       programPath: programPath.value,
       svdPath: svdPath.value,
       gdbPath: gdbPath.value,
@@ -203,6 +203,7 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
 
 function debugHandler(this: HTMLElement, ev: MouseEvent) {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
+  const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
   const programPath = document.getElementById('programPath') as TextField;
   const svdPath = document.getElementById('svdPath') as TextField;
   const gdbPath = document.getElementById('gdbPath') as TextField;
@@ -216,6 +217,7 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
     {
       command: 'debug',
       project: applicationInput.getAttribute('data-value'),
+      buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
       programPath: programPath.value,
       svdPath: svdPath.value,
       gdbPath: gdbPath.value,
@@ -277,6 +279,57 @@ function initApplicationsDropdown() {
   addDropdownItemEventListeners(applicationsDropdown, applicationInput);
 }
 
+function initBuildConfigsDropdown() {
+  const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
+  const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
+  const buildConfigDropdown = document.getElementById('buildConfigDropdown') as HTMLElement;
+  const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement;
+  
+  buildConfigInput.addEventListener('focusin', function() {
+    if(buildConfigDropdown) {
+      buildConfigDropdown.style.display = 'block';
+    }
+  });
+
+  buildConfigInput.addEventListener('focusout', function() {
+    if(buildConfigDropdown) {
+      buildConfigDropdown.style.display = 'none';
+    }
+  });
+
+  buildConfigInput.addEventListener('click', function(event) {
+    if(buildConfigDropdown) {
+      buildConfigDropdown.style.display = 'block';
+    }
+  });
+
+  buildConfigInput.addEventListener('input', () => {
+    webviewApi.postMessage(
+      { 
+        command: 'buildConfigChanged',
+        project: applicationInput.getAttribute('data-value'),
+        buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : ''
+      }
+    );
+    applicationDropdownSpinner.style.display = 'block';
+  });
+
+  buildConfigInput.addEventListener('keyup', () => {
+    filterFunction(buildConfigInput, buildConfigDropdown);
+  });
+
+  buildConfigDropdown.addEventListener('mousedown', function(event) {
+    event.preventDefault();
+  });
+
+  buildConfigDropdown.addEventListener('mouseup', function(event) {
+    event.preventDefault();
+  });
+
+  //buildConfigDropdownSpinner.style.display = 'none';
+  addDropdownItemEventListeners(buildConfigDropdown, buildConfigInput);
+}
+
 function initRunnersDropdown() {
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
   const runnersDropdown = document.getElementById('runnersDropdown') as HTMLElement;
@@ -325,10 +378,38 @@ function initRunnersDropdown() {
   addDropdownItemEventListeners(runnersDropdown, runnerInput);
 }
 
+function updateBuildConfigs(buildConfigsHTML: string) {
+  const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement; 
+  const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
+  const buildConfigDropdown = document.getElementById('buildConfigDropdown') as HTMLElement;
+
+  if(buildConfigsHTML.length > 0) {
+    buildConfigInput.disabled = false;
+    buildConfigDropdown.innerHTML = buildConfigsHTML;
+    addDropdownItemEventListeners(buildConfigDropdown, buildConfigInput);
+    
+    // Hide loading spinner
+    applicationDropdownSpinner.style.display = 'none';
+  } else {
+    buildConfigInput.disabled = true;
+  }
+
+  
+}
+
+
 // Ugly method to refactor/split
-function updateConfig(programPath: string, svdPath: string, gdbPath: string, 
-  gdbAddress: string = 'localhost', gdbPort: string = '3333', runnersHTML: string,
-  server: string, runnerPath: string, runnerArgs: string) {
+function updateConfig(data: any) {
+  const programPath = data.programPath;
+  const svdPath = data.svdPath;
+  const gdbPath = data.gdbPath;
+  const gdbAddress = data.gdbAddress ? data.gdbAddress : 'localhost';
+  const gdbPort = data.gdbPort ? data.gdbPort : '3333';
+  const runnersHTML = data.runnersHTML;
+  const runner = data.runnerName;
+  const runnerPath = data.runnerPath;
+  const runnerArgs = data.runnerArgs;
+
   const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement; 
   const programPathText = document.getElementById('programPath') as TextField;
   const svdPathText = document.getElementById('svdPath') as TextField;
@@ -340,18 +421,18 @@ function updateConfig(programPath: string, svdPath: string, gdbPath: string,
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const runnerArgsText = document.getElementById('runnerArgs') as TextField;
 
-  programPathText.value = programPath?programPath:'';
-  svdPathText.value = svdPath?svdPath:'';
-  gdbPathText.value = gdbPath?gdbPath:'';
-  gdbAddressText.value = gdbAddress?gdbAddress:'';
-  gdbPortText.value = gdbPort?gdbPort:'';
+  programPathText.value = programPath ? programPath : '';
+  svdPathText.value = svdPath ? svdPath : '';
+  gdbPathText.value = gdbPath ? gdbPath : '';
+  gdbAddressText.value = gdbAddress? gdbAddress : '';
+  gdbPortText.value = gdbPort ? gdbPort : '';
 
   if(runnersHTML.length > 0) {
     runnersDropdown.innerHTML = runnersHTML;
     addDropdownItemEventListeners(runnersDropdown, runnerInput);
   }
 
-  const selectedRunner = runnersDropdown.querySelector(`.dropdown-item[data-label="${server}"]`) as HTMLDivElement;
+  const selectedRunner = runnersDropdown.querySelector(`.dropdown-item[data-label="${runner}"]`) as HTMLDivElement;
   if (selectedRunner) {
     selectedRunner.click();
   }

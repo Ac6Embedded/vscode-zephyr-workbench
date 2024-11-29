@@ -6,6 +6,7 @@ import { ZephyrAppProject } from "../ZephyrAppProject";
 import { getZephyrProject } from '../utils';
 import { WestRunner } from '../debug/runners/WestRunner';
 import { ZephyrProject } from '../ZephyrProject';
+import { ZephyrProjectBuildConfiguration } from '../ZephyrProjectBuildConfiguration';
 
 export class DebugManagerPanel {
   public static currentPanel: DebugManagerPanel | undefined;
@@ -129,6 +130,25 @@ export class DebugManagerPanel {
               </div>
             </div>
 
+            <!-- Select Build Configuration -->
+            <div class="grid-group-div">
+              <div class="grid-header-div">
+                <label for="listBuildConfigs">Select the build configuration:</label>
+              </div>
+              <div id="listBuildConfigs" class="combo-dropdown grid-value-div">
+                <input type="text" id="buildConfigInput" class="combo-dropdown-control" placeholder="Choose configuration..." data-value="">
+                <div aria-hidden="true" class="indicator" part="indicator">
+                  <slot name="indicator">  
+                    <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                      <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                    </svg>
+                  </slot>
+                </div>
+                <div id="buildConfigDropdown" class="dropdown-content" style="display: none;">
+                </div>
+              </div>
+            </div>
+
             <!-- Program -->
             <fieldset>
               <legend>Program</legend> 
@@ -223,8 +243,26 @@ export class DebugManagerPanel {
           case 'projectChanged': {
             const projectPath = message.project;
             const appProject = await getZephyrProject(projectPath);
+
             if(appProject) {
-              await updateConfiguration(appProject);
+              if(appProject.configs.length > 0) {
+                updateBuildConfigs(appProject);
+              } else {
+                // For legacy project, update configuration
+                updateBuildConfigs(appProject);
+                await updateConfiguration(appProject);
+              }
+            }
+            break;
+          }
+          case 'buildConfigChanged': {
+            const projectPath = message.project;
+            const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
+            const appProject = await getZephyrProject(projectPath);
+            const buildConfig = appProject.getBuildConfiguration(buildConfigName);
+
+            if(appProject && buildConfig) {
+              await updateConfiguration(appProject, buildConfig);
             }
             break;
           }
@@ -296,9 +334,30 @@ export class DebugManagerPanel {
       this._disposables
     );
 
-    async function updateConfiguration(project: ZephyrProject) {
+    function updateBuildConfigs(project: ZephyrProject) {
+      let newBuildConfigsHTML = '';
+      for(let config of project.configs) {
+        newBuildConfigsHTML = newBuildConfigsHTML.concat(`<div class="dropdown-item" data-value="${config.name}" data-label="${config.name}">${config.name}</div>`);
+      }
+      webview.postMessage({ 
+        command: 'updateBuildConfigs', 
+        buildConfigsHTML: `${newBuildConfigsHTML}`,
+      });
+    }
+
+    async function updateConfiguration(project: ZephyrProject, buildConfig?: ZephyrProjectBuildConfiguration) {
       // Extract information from configuration
-      let [launchJson, config] = await getLaunchConfiguration(project);
+      let launchJson, config;
+      let compatibleRunners;
+      if(buildConfig) {
+        [launchJson, config] = await getLaunchConfiguration(project, buildConfig.name);
+        compatibleRunners = await buildConfig.getCompatibleRunners(project);
+      } else {
+        // For legacy compatibility
+        [launchJson, config] = await getLaunchConfiguration(project);
+        compatibleRunners = await project.getCompatibleRunners();
+      }
+
       const programPath = config.program;
       const svdPath = config.svdPath;
       const gdbPath = config.miDebuggerPath;
@@ -315,7 +374,6 @@ export class DebugManagerPanel {
       }
 
       let newRunnersHTML = '';
-      let compatibleRunners = await project.getCompatibleRunners();
       for(let runner of getDebugRunners()) {
         if(compatibleRunners.includes(runner.name)) {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
@@ -343,7 +401,6 @@ export class DebugManagerPanel {
             runnerArgs = runner.userArgs;
           }
         }
-        
       }
 
       webview.postMessage({ 
@@ -378,14 +435,24 @@ export class DebugManagerPanel {
 
     async function resetHandler(message: any) {
       const projectPath = message.project;
+      const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
+
       const appProject = await getZephyrProject(projectPath);
+      const buildConfig = appProject.getBuildConfiguration(buildConfigName);
       if(appProject) {
-        await resetConfiguration(appProject);
+        await resetConfiguration(appProject, buildConfig);
       }
     }
     
-    async function resetConfiguration(project: ZephyrProject) {
-      let config = await createDefaultConfiguration(project);
+    async function resetConfiguration(project: ZephyrProject, buildConfig?: ZephyrProjectBuildConfiguration) {
+      let config;
+      if(buildConfig) {
+        config  = await createDefaultConfiguration(project, buildConfig.name);
+      } else {
+        // For legacy compatibility
+        config  = await createDefaultConfiguration(project);
+      }
+     
       const programPath = config.program;
       const gdbPath = config.miDebuggerPath;
       const serverAddress = getServerAddressFromConfig(config);
@@ -424,6 +491,7 @@ export class DebugManagerPanel {
     
     async function applyHandler(message: any): Promise<void> {
       const projectPath = message.project;
+      const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
       const appProject = await getZephyrProject(projectPath);
       const programPath = message.programPath;
       const svdPath = message.svdPath;
@@ -436,7 +504,7 @@ export class DebugManagerPanel {
       const runnerArgs = message.runnerArgs;
     
       if(appProject) {
-        let [launchJson, config] = await getLaunchConfiguration(appProject);
+        let [launchJson, config] = await getLaunchConfiguration(appProject, buildConfigName);
         config.program = programPath;
         config.svdPath = svdPath? svdPath:'';
         config.miDebuggerPath = gdbPath;
@@ -453,11 +521,11 @@ export class DebugManagerPanel {
             config.setupCommands.push(arg);
           }
         }
-        createWestWrapper(appProject);
+        createWestWrapper(appProject, buildConfigName);
         
         switch(runner?.name) {
           case 'openocd': 
-            createOpenocdCfg(appProject);
+            createOpenocdCfg(appProject, buildConfigName);
             break;
           case 'pyocd':
             await vscode.window.withProgress({
@@ -465,24 +533,32 @@ export class DebugManagerPanel {
               title: "Please wait... installing target support on pyOCD",
               cancellable: false,
             }, async () => {
-              await setupPyOCDTarget(appProject);
+              await setupPyOCDTarget(appProject, buildConfigName);
             });
             break;
         }
 
-        writeLaunchJson(appProject, launchJson);
+        writeLaunchJson(launchJson, appProject);
       }
     }
     
     async function debugHandler(message: any): Promise<void> {
       const projectPath = message.project;
+      const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
       const runnerName = message.runner;
       const runner = getRunner(runnerName);
       if(runner) {
         const appProject = await getZephyrProject(projectPath);
-        vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug', 
-          appProject.workspaceFolder,
-          ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME);
+        if(buildConfigName) {
+          vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug', 
+            appProject.workspaceFolder,
+            `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`);
+        } else {
+          // For legacy compatibility
+          vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug', 
+            appProject.workspaceFolder,
+            ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME);
+        }
       } else {
         vscode.window.showErrorMessage('Debug manager: No debug runner selected!');
       }      

@@ -342,7 +342,7 @@ export class RunManagerPanel {
             config.setupCommands.push(arg);
           }
         }
-        writeLaunchJson(appProject, launchJson);
+        writeLaunchJson(launchJson, appProject);
       }
     }
     

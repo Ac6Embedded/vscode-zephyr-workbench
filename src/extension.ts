@@ -37,6 +37,7 @@ import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProv
 import { pickApplicationQuickStep } from './pickApplicationQuickStep';
 import { setConfigQuickStep } from './setConfigQuickStep';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
+import { pickBuildConfigQuickStep } from './pickBuildConfigQuickStep';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -107,13 +108,13 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	vscode.commands.registerCommand('zephyr-workbench.debug-app', async () => {
-		let currentProject = getCurrentWorkspaceFolder();
-		if(currentProject === undefined ) {
-			currentProject = await pickApplicationQuickStep(context);
+		let currentProjectFolder = getCurrentWorkspaceFolder();
+		if(currentProjectFolder === undefined ) {
+			currentProjectFolder = await pickApplicationQuickStep(context);
 		}
 
-		if(currentProject) {
-			vscode.commands.executeCommand("zephyr-workbench-app-explorer.debug-app", currentProject);
+		if(currentProjectFolder) {
+			vscode.commands.executeCommand("zephyr-workbench-app-explorer.debug-app", currentProjectFolder);
 		}
 	});
 
@@ -317,9 +318,29 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.debug-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder) => {
 			let workspaceFolder: any = node ;
+			let project: ZephyrProject | undefined = undefined;
+			let buildConfigName: string | undefined = undefined;
 			if(node instanceof ZephyrApplicationTreeItem) {
 				if(node.project) {
+					project = node.project;
 					workspaceFolder = node.project.workspaceFolder;
+				}
+			} else if(node instanceof ZephyrConfigTreeItem) {
+				if(node.project && node.buildConfig) {
+					project = node.project;
+					workspaceFolder = node.project.workspaceFolder;
+					buildConfigName = node.buildConfig.name;
+				}
+			} else {
+				project = await getZephyrProject(node.uri.fsPath);
+			}
+
+			if(!buildConfigName && project) {
+				if(project.configs.length > 0) {
+					buildConfigName = await pickBuildConfigQuickStep(project);
+				} else {
+					// For legacy compatibility
+					buildConfigName = undefined;
 				}
 			}
 			
@@ -328,8 +349,12 @@ export function activate(context: vscode.ExtensionContext) {
 				if(launchConfig) {
 					const configurations: vscode.DebugConfiguration[] = launchConfig.get('configurations', []);
 					if(configurations) {
-						if(configurations.some((config: { name: string }) => config.name === ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME)) {
-							await vscode.debug.startDebugging(workspaceFolder, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME);
+						let configName = ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME;
+						if(buildConfigName) {
+							configName = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`;
+						}
+						if(configurations.some((config: { name: string }) => config.name === configName)) {
+							await vscode.debug.startDebugging(workspaceFolder, configName);
 							return;
 						}
 					}
@@ -918,9 +943,6 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench.debug-manager.debug", async (folder: vscode.WorkspaceFolder, configName: string) => {
 			DebugManagerPanel.currentPanel?.dispose();
-
-			// TODO: If PyOCD runner, we should check if target is installed
-
 			await vscode.debug.startDebugging(folder, configName);
 		})
 	);

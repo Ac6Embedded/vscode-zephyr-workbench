@@ -169,15 +169,16 @@ export class ZephyrConfigTreeItem extends vscode.TreeItem {
 	) {
     if(buildConfig) {
       super(buildConfig.name, collapsibleState);
-      this.contextValue = 'zephyr-build-config';
-      this.iconPath = new vscode.ThemeIcon('folder');
       this.tooltip = project.sourceDir;
 
       if(buildConfig.active) {
+        this.iconPath = new vscode.ThemeIcon('folder-active');
         this.description = `[${buildConfig.boardIdentifier}] [active]`;
         this.contextValue = 'zephyr-build-config-active';
       } else {
+        this.iconPath = new vscode.ThemeIcon('folder');
         this.description = `[${buildConfig.boardIdentifier}] [not active]`;
+        this.contextValue = 'zephyr-build-config';
       }
     }
 	}

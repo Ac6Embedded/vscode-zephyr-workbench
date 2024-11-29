@@ -1,5 +1,5 @@
 import fs from 'fs';
-import path from 'path';
+import path, { resolve } from 'path';
 import * as vscode from 'vscode';
 import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "./constants";
 import { Linkserver } from "./debug/runners/Linkserver";
@@ -11,6 +11,8 @@ import { getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
 import { STM32CubeProgrammer } from './debug/runners/STM32CubeProgrammer';
 import { JLink } from './debug/runners/JLink';
 import { PyOCD } from './debug/runners/PyOCD';
+import { ZephyrBoard } from './ZephyrBoard';
+import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 
@@ -50,9 +52,23 @@ export function getRunner(runnerName: string): WestRunner | undefined {
   }
 }
 
-export function createWestWrapper(project: ZephyrProject) {
+export function createWestWrapper(project: ZephyrProject, buildConfigName?: string) {
+  let buildDir; 
+  let buildConfig;
+  if(buildConfigName) {
+    buildConfig = project.getBuildConfiguration(buildConfigName);
+    if(buildConfig) {
+      buildDir = buildConfig.getInternalDebugDir(project);
+    }
+  } else {
+    // For legacy compatibility
+    buildDir = project.internalDebugDir;
+  }
+  if(!buildDir) {
+    return;
+  }
+  
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-  const buildDir = project.internalDebugDir;
   let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
   if(!envScript) {
     throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
@@ -83,6 +99,10 @@ export function createWestWrapper(project: ZephyrProject) {
     ...project.buildEnv
   };
 
+  if(buildConfig) {
+    envVars = { ...envVars, ...buildConfig.envVars };
+  }
+
   let envVarsCommands = '';
 
   for (const [key, value] of Object.entries(envVars)) {
@@ -111,6 +131,9 @@ export function createWestWrapper(project: ZephyrProject) {
   switch (shell) {
     case 'bash': 
       wrapperScript = `#!/bin/bash
+# Wrapper script to run west commands out of Zephyr workbench environment
+# This script is auto-generated -- do not edit
+
 # Set environment variables
 ${envVarsCommands}
 
@@ -122,6 +145,9 @@ ${debugServerCommand}
       break;
     case 'cmd.exe':
       wrapperScript = `@echo off
+REM Wrapper script to run west commands out of Zephyr workbench environment
+REM This script is auto-generated -- do not edit
+
 REM Set environment variables
 ${envVarsCommands}
 
@@ -145,19 +171,42 @@ ${debugServerCommand}
   }
 }
 
-export function createOpenocdCfg(project: ZephyrProject) {
-  const buildDir = project.internalDebugDir;
-  const cfgPath = path.join(buildDir, 'gdb.cfg');
-  const cfgContent = `# Workaround to force OpenOCD to shutdown when gdb is detached (auto-generated)
+export function createOpenocdCfg(project: ZephyrProject, buildConfigName?: string) {
+  let buildDir; 
+  if(buildConfigName) {
+    let buildConfig = project.getBuildConfiguration(buildConfigName);
+    if(buildConfig) {
+      buildDir = buildConfig.getInternalDebugDir(project);
+    }
+  } else {
+    // For legacy compatibility
+    buildDir = project.internalDebugDir;
+  }
+
+  if(buildDir) {
+    const cfgPath = path.join(buildDir, 'gdb.cfg');
+    const cfgContent = `# Workaround to force OpenOCD to shutdown when gdb is detached (auto-generated)
 
 $_TARGETNAME configure -event gdb-detach {
   shutdown
 }`;
-  fs.writeFileSync(cfgPath, cfgContent);
+    fs.writeFileSync(cfgPath, cfgContent);
+  }
+
 }
 
-export async function setupPyOCDTarget(project: ZephyrProject) {
-  let target = project.getPyOCDTarget();
+export async function setupPyOCDTarget(project: ZephyrProject, buildConfigName?: string) {
+  let target;
+  if(buildConfigName) {
+    let buildConfig = project.getBuildConfiguration(buildConfigName);
+    if(buildConfig) {
+      target = buildConfig.getPyOCDTarget(project);
+    }
+  } else {
+    // For legacy compatibility
+    target = project.getPyOCDTarget();
+  }
+  
   if(target) { 
     if(!(await checkPyOCDTarget(target))) {
       await updatePyOCDPack();
@@ -166,14 +215,25 @@ export async function setupPyOCDTarget(project: ZephyrProject) {
   }
 }
 
-export async function createConfiguration(project: ZephyrProject): Promise<any> {
+export async function createConfiguration(project: ZephyrProject, buildConfigName?: string): Promise<any> {
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
   const zephyrSDK = getZephyrSDK(project.sdkPath);
   const listBoards = await getSupportedBoards(westWorkspace, project);
+  let buildConfig: ZephyrProjectBuildConfiguration | undefined = undefined;
+  let targetBoard: ZephyrBoard | undefined;
+  let boardIdentifier = project.boardId;
 
-  let targetBoard;
+  if(buildConfigName) {
+    buildConfig = project.getBuildConfiguration(buildConfigName);
+    if(buildConfig) {
+      boardIdentifier = buildConfig.boardIdentifier;
+    } else {
+      resolve('Cannot find build configuration');
+    }
+  }
+
   for(let board of listBoards) {
-    if(board.identifier === project.boardId) {
+    if(board.identifier === boardIdentifier) {
       targetBoard = board;
     }
   }
@@ -181,30 +241,44 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
     return;
   }
 
-  const targetArch = targetBoard.arch;
-	const socToolchainName = project.getKConfigValue('SOC_TOOLCHAIN_NAME');
-
-  const program = path.join('${workspaceFolder}', 'build', '${config:zephyr-workbench.board}', ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
-
   const shell: string = getShell();
-  let wrapper = '';
+  let wrapperFile = '';
   switch (shell) {
     case 'bash': 
-      wrapper = 'west_wrapper.sh';
+      wrapperFile = 'west_wrapper.sh';
       break;
     case 'cmd.exe':
-      wrapper = 'west_wrapper.bat';
+      wrapperFile = 'west_wrapper.bat';
       break;
     case 'powershell.exe':
-      wrapper = 'west_wrapper.ps1';
+      wrapperFile = 'west_wrapper.ps1';
       break;
     default:
-      wrapper = 'west_wrapper';
+      wrapperFile = 'west_wrapper';
       break;
   }
 
+  const targetArch = targetBoard.arch;
+  let configName;
+  let socToolchainName;
+  let program;
+  let wrapper;
+
+  if(buildConfig) {
+    configName = `Zephyr Workbench Debug [${buildConfig.name}]`;
+    socToolchainName = buildConfig.getKConfigValue(project, 'SOC_TOOLCHAIN_NAME');
+    program = path.join('${workspaceFolder}', `${buildConfig.name}`, `${buildConfig.boardIdentifier}`, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
+    wrapper = path.join('${workspaceFolder}', `${buildConfig.name}`, '.debug',`${buildConfig.boardIdentifier}`, `${wrapperFile}`);
+  } else {
+    // For legacy compatibility
+    configName = `Zephyr Workbench Debug`;
+    socToolchainName = project.getKConfigValue('SOC_TOOLCHAIN_NAME');
+    program = path.join('${workspaceFolder}', 'build', '${config:zephyr-workbench.board}', ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
+    wrapper = path.join('${workspaceFolder}', 'build', '.debug', '${config:zephyr-workbench.board}', `${wrapperFile}`);
+  }
+  
   const launchJson = {
-    name: "Zephyr Workbench Debug",
+    name: `${configName}`,
     type: "cppdbg",
     request: "launch",
     cwd: "${workspaceFolder}",
@@ -221,7 +295,7 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
     serverStarted: "",
     MIMode: "gdb",
     miDebuggerPath: `${zephyrSDK.getDebuggerPath(targetArch, socToolchainName)}`,
-    debugServerPath: `\${workspaceFolder}/build/.debug/\${config:zephyr-workbench.board}/${wrapper}`,
+    debugServerPath: `${wrapper}`,
     debugServerArgs: "",
     setupCommands: [
       { 
@@ -242,14 +316,14 @@ export async function createConfiguration(project: ZephyrProject): Promise<any> 
   return launchJson;
 }
 
-export async function createLaunchJson(project: ZephyrProject): Promise<any> {
+export async function createLaunchJson(project: ZephyrProject, buildConfigName?: string): Promise<any> {
   
   const launchJson : any = {
     version: "0.2.0",
     configurations: []
   };
 
-  let config = await createConfiguration(project);
+  let config = await createConfiguration(project, buildConfigName);
   launchJson.configurations.push(config);
 
   return launchJson;
@@ -260,29 +334,42 @@ export async function readLaunchJson(project: ZephyrProject): Promise<any> {
   return launchJson;
 }
 
-export function writeLaunchJson(project: ZephyrProject, launchJson: any) {
+export function writeLaunchJson(launchJson: any, project: ZephyrProject) {
   fs.writeFileSync(path.join(project.sourceDir, '.vscode', 'launch.json'), JSON.stringify(launchJson, null, 2));
 }
 
-export async function findLaunchConfiguration(project: ZephyrProject, launchJson: any): Promise<any> {
+export async function findLaunchConfiguration(launchJson: any, project: ZephyrProject, buildConfigName?: string): Promise<any> {
+  let debugConfigName: string;
+  if(buildConfigName) {
+    debugConfigName = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`;
+  } else {
+    // For legacy compatibility
+    debugConfigName = ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME;
+  }
+
   for(let configuration of launchJson.configurations) {
-    if(configuration.name === ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME) {
+    if(configuration.name === debugConfigName) {
       return configuration;
     }
   }
   
-  launchJson.configurations.push(await createConfiguration(project));
-  return await findLaunchConfiguration(project, launchJson);
+  launchJson.configurations.push(await createConfiguration(project, buildConfigName));
+  return await findLaunchConfiguration(launchJson, project, buildConfigName);
 }
 
-export async function getLaunchConfiguration(project: ZephyrProject): Promise<[any, any]> {
+export async function getLaunchConfiguration(project: ZephyrProject, buildConfigName?: string): Promise<[any, any]> {
   if(!fs.existsSync(path.join(project.sourceDir, '.vscode', 'launch.json'))) {
-    writeLaunchJson(project, await createLaunchJson(project));
+    writeLaunchJson(await createLaunchJson(project, buildConfigName), project);
   }
 
   let launchJson = await readLaunchJson(project);
   if(launchJson) {
-    let configurationJson = await findLaunchConfiguration(project, launchJson);
+    let configurationJson;
+    if(buildConfigName) {
+      configurationJson = await findLaunchConfiguration(launchJson, project, buildConfigName);
+    } else {
+      configurationJson = await findLaunchConfiguration(launchJson, project);
+    }
     return [launchJson, configurationJson];
   }
   return [undefined, undefined];
