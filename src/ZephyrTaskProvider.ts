@@ -171,7 +171,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     return [];
   }
 
-  public resolveTask(_task: vscode.Task, token: vscode.CancellationToken): vscode.Task {
+  public resolveTask(_task: vscode.Task, token: vscode.CancellationToken): vscode.Task | undefined {
     return ZephyrTaskProvider.resolve(_task);
   }
 
@@ -184,7 +184,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
     // Search for configuration
     if(_task.definition.config) {
-      config = project.getBuildConfiguration(_task.definition.config.name); 
+      config = project.getBuildConfiguration(_task.definition.config); 
     }
 
     let cmd = _task.definition.command;

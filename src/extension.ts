@@ -570,11 +570,11 @@ export function activate(context: vscode.ExtensionContext) {
 			// }
 			let taskExec = await executeConfigTask('West Puncover', node);
 			const taskStartListener = vscode.tasks.onDidStartTask(async (event) => {
-				if (event.execution === taskExec) {
+				if (taskExec && event.execution === taskExec[0]) {
 					const stopItem = 'Terminate';
 					const choice = await vscode.window.showWarningMessage('Puncover server is running...', stopItem);
 					if (choice === stopItem) {
-						taskExec.terminate();
+						taskExec[0].terminate();
 						taskStartListener.dispose();
 					};
 				}
@@ -1446,7 +1446,7 @@ export async function showConfirmMessage(message: string): Promise<boolean> {
 	return (choice === yesItem) ? true : false;
 }
 
-export async function executeConfigTask(taskName: string, node: any, configName?: string): Promise<vscode.TaskExecution | undefined> {
+export async function executeConfigTask(taskName: string, node: any, configName?: string): Promise<vscode.TaskExecution[] | undefined> {
 	let context: ZephyrProject | undefined = undefined;
 	let folder: vscode.WorkspaceFolder | undefined = undefined;
 	if(node instanceof ZephyrApplicationTreeItem) {
@@ -1498,9 +1498,11 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 	// Execute task
 	if (westBuildTasks.length > 0) {
 		try {
+			let tasksExec: vscode.TaskExecution[] = [];
 			for(let westBuildTask of westBuildTasks) {
-				return await vscode.tasks.executeTask(westBuildTask);
+				tasksExec.push(await vscode.tasks.executeTask(westBuildTask));
 			}
+			return tasksExec;
 		} catch (error) {
 			vscode.window.showErrorMessage(`Error executing task: ${error}`);
 			return undefined;

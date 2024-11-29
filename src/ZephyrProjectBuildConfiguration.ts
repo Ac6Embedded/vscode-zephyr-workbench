@@ -139,7 +139,7 @@ export class ZephyrProjectBuildConfiguration {
     const opts: vscode.TerminalOptions = {
       name: `${zephyrProject.folderName} (${buildConfig.name}) Terminal`,
       shellPath: `${shell}`,
-      env: {...buildConfig.getBuildEnv(zephyrProject), ...zephyrProject.buildEnv, ...westWorkspace.buildEnv, ...zephyrSdk.buildEnv},
+      env: {...zephyrSdk.buildEnv, ...westWorkspace.buildEnv, ...zephyrProject.buildEnv, ...buildConfig.getBuildEnv(zephyrProject) },
       cwd: fs.existsSync(buildConfig.getBuildDir(zephyrProject)) ? buildConfig.getBuildDir(zephyrProject):zephyrProject.folderPath
     };
 

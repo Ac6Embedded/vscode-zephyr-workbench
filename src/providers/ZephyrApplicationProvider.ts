@@ -146,7 +146,7 @@ export class ZephyrApplicationTreeItem extends vscode.TreeItem {
       try {
         let westWorkspace = getWestWorkspace(project.westWorkspacePath);
         if(westWorkspace !== null) {
-          this.description = project.boardId ? `[legacy]` : `[with ${westWorkspace.name}]`;
+          this.description = project.configs.length > 0 ? `[with ${westWorkspace.name}]` : `[legacy]`;
           this.contextValue = 'zephyr-application';
         } else {
           this.description = `[not configured]`;
