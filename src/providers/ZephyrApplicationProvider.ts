@@ -65,8 +65,13 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       items.push(boardItem);
       items.push(westArgsItem);
 
-      for(let key of ZephyrAppProject.envVarKeys) {
-        const envItem = new ZephyrConfigEnvTreeItem(element.project, element.buildConfig, key);
+      for(let key of Object.keys(element.buildConfig.envVars)) {
+        let envItem;
+        if(Array.isArray(element.buildConfig.envVars[key])) {
+          envItem = new ZephyrConfigEnvTreeItem(element.project, element.buildConfig, key);
+        } else {
+          envItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, key);
+        }
         items.push(envItem);
       }
 

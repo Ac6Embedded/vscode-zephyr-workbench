@@ -21,11 +21,11 @@ export function concatCommands(shell: string, cmd1: string, cmd2: string): strin
 export function getEnvVarFormat(shell: string, env: string): string {
   switch(shell) {
     case 'bash': 
-      return `$${env}`;
+      return `$\{${env}\}`;
     case 'cmd.exe':
       return `%${env}%`;
     case 'powershell.exe':
-      return `$env:${env}`;
+      return `$\{env:${env}\}`;
     default:
       return `$${env}`;
   }

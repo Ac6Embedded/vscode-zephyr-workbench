@@ -600,10 +600,14 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.delete-config', async (node: ZephyrConfigTreeItem) => {
-			if(node.buildConfig) {
-				let confirm = await showConfirmMessage("Are you sure you want to delete this configuration ?");
-				if(confirm) {
-					await deleteConfig(node.project.workspaceFolder, node.buildConfig);
+			if(node.project.configs.length <= 1) {
+				vscode.window.showErrorMessage("One build configuration is required, firstly create a new one before deleting.");
+			} else {
+				if(node.buildConfig) {
+					let confirm = await showConfirmMessage("Are you sure you want to delete this configuration ?");
+					if(confirm) {
+						await deleteConfig(node.project.workspaceFolder, node.buildConfig);
+					}
 				}
 			}
 		})
@@ -1478,11 +1482,17 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 			}
 		} else if(context.configs && context.configs.length > 0) {
 			for(let config of context.configs) {
+				let hasActive = false;
 				if(config.active) {
+					hasActive = true;
 					let westBuildTask = await findConfigTask(taskName, context, config.name);
 					if(westBuildTask) {
 						westBuildTasks.push(westBuildTask);
 					}
+				}
+
+				if(!hasActive) {
+					vscode.window.showInformationMessage("No active configuration found, please set one as active first.");
 				}
 			}
 		} else {
