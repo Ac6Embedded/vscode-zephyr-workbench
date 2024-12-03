@@ -479,7 +479,7 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
 
     // Run install commands for every tools
     for(let tool of listTools) {
-      installArgs = `${tool.tool}`;
+      installArgs += `${tool.tool}`;
       if((process.platform === 'linux' || process.platform === 'darwin') && tool.root === true) {
         // const options = {
         //   name: 'Zephyr Workbench Installer',
