@@ -751,8 +751,8 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
 				title: "Download and install debug host tools",
-				cancellable: true,
-			}, async () => {
+				cancellable: false,
+			}, async (progress, token) => {
 				await installHostDebugTools(context, listTools);
 				
 				// Auto detect tools after installation
