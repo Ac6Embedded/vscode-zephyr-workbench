@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
-import { getZephyrProject } from './utils';
+import { findConfigTask, getZephyrProject } from './utils';
 import { WestRunner } from './debug/runners/WestRunner';
 import { createOpenocdCfg, createWestWrapper } from './debugUtils';
+import { ZephyrProject } from './ZephyrProject';
+import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 
 export class ZephyrDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
   
@@ -11,9 +13,16 @@ export class ZephyrDebugConfigurationProvider implements vscode.DebugConfigurati
     if (config.name.startsWith('Zephyr Workbench Debug')) {
       if(folder) {
         const appProject = await getZephyrProject(folder.uri.fsPath);
-        const buildConfig = this.extractBuildConfigName(config.name);
+        const buildConfigName = this.extractBuildConfigName(config.name);
         const runnerName = WestRunner.extractRunner(config.debugServerArgs);
-        createWestWrapper(appProject, buildConfig);
+
+        // Run tasks required before debug
+        if(buildConfigName) {
+          await this.runPreLaunch(appProject, buildConfigName);
+        }
+        
+        // Create required files for debug
+        createWestWrapper(appProject, buildConfigName);
         switch(runnerName) {
           case 'openocd': 
             createOpenocdCfg(appProject);
@@ -32,5 +41,12 @@ export class ZephyrDebugConfigurationProvider implements vscode.DebugConfigurati
   extractBuildConfigName(debugConfigName: string): string | undefined {
     const match = debugConfigName.match(/\[(.*?)\]/);
     return match ? match[1] : undefined;
+  }
+
+  async runPreLaunch(appProject: ZephyrProject, buildConfigName: string): Promise<void> {
+    let westBuildTask = await findConfigTask('West Build', appProject, buildConfigName);
+    if(westBuildTask) {
+      await vscode.tasks.executeTask(westBuildTask);
+    }
   }
 }

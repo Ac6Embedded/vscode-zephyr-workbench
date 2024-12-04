@@ -50,11 +50,11 @@ export class ZephyrProjectBuildConfiguration {
   }
 
   get relativeBuildDir(): string {
-    return path.join(this.relativeRootBuildDir, this.boardIdentifier);
+    return path.join(this.relativeRootBuildDir);
   }
 
   get relativeInternalDebugDir(): string {
-    return path.join(this.relativeRootBuildDir, '.debug', this.boardIdentifier);
+    return path.join(this.relativeRootBuildDir, '.debug');
   }
 
   /**
@@ -75,7 +75,8 @@ export class ZephyrProjectBuildConfiguration {
   getBuildEnv(parentProject: ZephyrProject): { [key: string]: string; } {
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
-      BUILD_DIR: this.getBuildDir(parentProject)
+      BUILD_DIR: this.getBuildDir(parentProject),
+      WEST_ARGS: this.westArgs
     };
 
     let additionalEnv = getBuildEnv(this.envVars);
@@ -86,7 +87,8 @@ export class ZephyrProjectBuildConfiguration {
   getBuildEnvWithVar(parentProject: ZephyrProject): { [key: string]: string; } {
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
-      BUILD_DIR: this.getBuildDir(parentProject)
+      BUILD_DIR: this.getBuildDir(parentProject),
+      WEST_ARGS: this.westArgs
     };
 
     let additionalEnv = getBuildEnv(this.envVars);

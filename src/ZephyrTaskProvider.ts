@@ -174,6 +174,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     const shell: string = getShell();
     const shellArgs: string[] = getShellArgs(shell);
     const buildDirVar = getEnvVarFormat(shell, 'BUILD_DIR');
+    const westArgVar = getEnvVarFormat(shell, 'WEST_ARGS');
 
     let config = undefined;
 
@@ -191,6 +192,11 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       return arg;
     }).join(' ');
     args = `${args} --build-dir ${buildDirVar}`;
+    if(config) {
+      if(config.westArgs && config.westArgs.length > 0) {
+        args = `${args} ${westArgVar}`;
+      }
+    }
     const fullCommand = `${cmd} ${args}`;
 
     const envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
@@ -390,45 +396,6 @@ export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder,
     return false;
   }
   return false;
-}
-
-export async function addWestArgs(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
-  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
-  const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
-  
-  if(fs.existsSync(tasksJsonPath)) {
-    fs.readFile(tasksJsonPath, 'utf8', (err, data) => {
-      if (err) {
-        console.error('Error reading JSON file:', err);
-        return;
-      }
-    
-      try {
-        const config: TaskConfig = JSON.parse(data);
-        const westBuildTask = config.tasks.find(task => task.label === 'West Build');
-        
-        if (westBuildTask) {
-          const westArgsEnv = "${config:zephyr-workbench.build.west-args}";
-          
-          if (!westBuildTask.args.includes(westArgsEnv)) {
-            westBuildTask.args.push(westArgsEnv);
-    
-            fs.writeFile(tasksJsonPath, JSON.stringify(config, null, 2), 'utf8', (writeErr) => {
-              if (writeErr) {
-                console.error('Error writing JSON file:', writeErr);
-              } else {
-                console.log('"West Build" task updated successfully.');
-              }
-            });
-          } 
-        } else {
-          console.error('"West Build" task not found in configuration.');
-        }
-      } catch (parseErr) {
-        console.error('Error parsing JSON:', parseErr);
-      }
-    });
-  }
 }
 
 export async function createExtensionsJson(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {

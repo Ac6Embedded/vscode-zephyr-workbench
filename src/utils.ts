@@ -10,10 +10,12 @@ import { ZephyrSDK } from "./ZephyrSDK";
 import { ZephyrSample } from "./ZephyrSample";
 import { getEnvVarFormat, getShell } from "./execUtils";
 import { checkHostTools } from "./installUtils";
-import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
+import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { ZephyrProject } from './ZephyrProject';
 import { getBoardsDirectories, getBoardsDirectoriesFromIdentifier, westTmpBuildSystemCommand } from './WestCommands';
 import { checkOrCreateTask, ZephyrTaskProvider } from './ZephyrTaskProvider';
+import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
+import { addConfig, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 
 export function normalizePath(pathToNormalize: string) {
   let newpath = path.normalize(pathToNormalize);
@@ -798,4 +800,32 @@ export function readZephyrSettings(buildDir: string): Record<string, string>  {
     console.error(`Cannot read ${filePath}`);
   }
   return settings;
+}
+
+export async function convertLegacy(project: ZephyrProject): Promise<void> {
+  let boardIdentifier = project.boardId;
+  let config = new ZephyrProjectBuildConfiguration('setup');
+  config.boardIdentifier = boardIdentifier;
+  project.addBuildConfiguration(config);
+
+  // Update settings.json
+  await addConfig(project.workspaceFolder, config);
+  // Remove board from settings
+  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.workspaceFolder).update(ZEPHYR_PROJECT_BOARD_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+
+  // Copy envs
+  for(let key of Object.keys(project.envVars)) {
+    config.envVars[key] = project.envVars[key];
+    if(config.envVars[key].length > 0) {
+      await saveConfigEnv(project.workspaceFolder, config.name, key, config.envVars[key]);
+    }
+    // Remove env settings
+    await saveEnv(project.workspaceFolder, key, undefined);
+  }
+
+  // Copy args
+  config.westArgs = project.westArgs;
+  await saveConfigSetting(project.workspaceFolder, config.name, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, config.westArgs);
+  // Remove west-args settings
+  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.workspaceFolder).update(ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, undefined);
 }

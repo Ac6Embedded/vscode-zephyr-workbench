@@ -44,7 +44,7 @@ export function removeEnvValue(envVars: { [key: string]: any }, key: string, val
   return false;
 }
 
-export async function saveEnv(workspaceFolder: vscode.WorkspaceFolder, key: string, value: string | string[]) {
+export async function saveEnv(workspaceFolder: vscode.WorkspaceFolder, key: string, value: string | string[] | undefined ) {
   await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(`${ZEPHYR_ENV_SETTING_PREFIX_KEY}.${key}`, value, vscode.ConfigurationTarget.WorkspaceFolder);
 }
 

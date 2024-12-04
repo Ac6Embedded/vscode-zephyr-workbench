@@ -262,7 +262,6 @@ export async function createConfiguration(project: ZephyrProject, buildConfigNam
     type: "cppdbg",
     request: "launch",
     cwd: "${workspaceFolder}",
-    preLaunchTask: "West Build",
     program: `${program}`,
     args: [],
     stopAtEntry: true,

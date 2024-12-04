@@ -7,6 +7,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [1.3.0]
 
 - Support multi-build configuration
+  - Update display
+  - Update debug dependency
+  - Add converter for legacy projects
 
 ## [1.2.8]
 

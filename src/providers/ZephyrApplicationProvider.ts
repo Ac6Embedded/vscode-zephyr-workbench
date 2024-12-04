@@ -117,10 +117,19 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
     if(element instanceof ZephyrConfigArgTreeItem) {
       // Get West Argument
       const items: vscode.TreeItem[] = [];
-      if(element.config.westArgs && element.config.westArgs.length > 0) {
-        const westArgsItem = new ZephyrConfigArgValueTreeItem(element.project, element.config, 'west arguments', element.project.westArgs);
-        items.push(westArgsItem);
-      } 
+      if(element.argName === 'west arguments') {
+        if(element.config.westArgs && element.config.westArgs.length > 0) {
+          const westArgsItem = new ZephyrConfigArgValueTreeItem(element.project, element.config, 'west arguments', element.config.westArgs);
+          items.push(westArgsItem);
+        } 
+      } else {
+        if(element.config.envVars[element.argName] && element.config.envVars[element.argName].length > 0) {
+          const westArgsItem = new ZephyrConfigArgValueTreeItem(element.project, element.config, element.argName, element.config.envVars[element.argName]);
+          items.push(westArgsItem);
+        } 
+      }
+
+      
       return Promise.resolve(items);
     } 
 
@@ -309,7 +318,12 @@ export class ZephyrConfigArgTreeItem extends vscode.TreeItem {
     public readonly argName: string
 	) {
     super(argName, vscode.TreeItemCollapsibleState.Collapsed);
-    this.description = ((config.westArgs === undefined) || (config.westArgs.length === 0)) ?'[not set]':'';
+    if(argName === 'west arguments') {
+      this.description = ((config.westArgs === undefined) || (config.westArgs.length === 0)) ?'[not set]':'';
+    } else {
+      this.description = ((config.envVars[argName] === undefined) || (config.envVars[argName].length === 0)) ?'[not set]':'';
+    }
+
     this.tooltip = argName;
     this.iconPath = new vscode.ThemeIcon('variable');
 	}

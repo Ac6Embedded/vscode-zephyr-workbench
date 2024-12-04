@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://zephyr-workbench.com",
-  "version": "1.3.0",
+  "version": "1.3.0-beta",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -296,7 +296,7 @@
       },
       {
         "command": "zephyr-workbench-app-explorer.add-config",
-        "title": "Add Build Configuration"
+        "title": "Add Multibuild"
       },
       {
         "command": "zephyr-workbench-app-explorer.delete-config",

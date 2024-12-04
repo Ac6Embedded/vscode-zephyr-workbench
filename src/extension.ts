@@ -7,7 +7,7 @@ import { WestWorkspace } from './WestWorkspace';
 import { ZephyrAppProject } from './ZephyrAppProject';
 import { ZephyrProject } from './ZephyrProject';
 import { ZephyrSDK } from './ZephyrSDK';
-import { addWestArgs, createExtensionsJson, createTasksJson, setDefaultProjectSettings, ZephyrTaskProvider } from './ZephyrTaskProvider';
+import { createExtensionsJson, createTasksJson, setDefaultProjectSettings, ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { changeBoardQuickStep } from './changeBoardQuickStep';
 import { changeEnvVarQuickStep } from './changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
@@ -30,7 +30,7 @@ import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkD
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfigTask, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
+import { addWorkspaceFolder, convertLegacy, copySampleSync, deleteFolder, fileExists, findConfigTask, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProvider';
@@ -827,7 +827,6 @@ export function activate(context: vscode.ExtensionContext) {
 						} else {
 							await saveConfigSetting(workspaceFolder, context.name, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, context.westArgs);
 						}
-						await addWestArgs(workspaceFolder);
 					}
 				}
 				zephyrAppProvider.refresh();
@@ -1407,6 +1406,32 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	setDefaultSettings();
+
+	vscode.window.withProgress({
+		location: vscode.ProgressLocation.Notification,
+		title: "Checking projects...",
+		cancellable: false,
+	}, async (progress, token) => {
+		try {
+			await convertLegacyProjects();
+		} catch(e) {
+			
+		}	
+	});
+	
+}
+
+async function convertLegacyProjects(): Promise<void> {
+	if(vscode.workspace.workspaceFolders) {
+		for(let workspaceFolder of vscode.workspace.workspaceFolders) {
+			if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
+				const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
+				if(appProject.configs.length === 0) {
+					convertLegacy(appProject);
+				}
+			}
+		}
+	}
 }
 
 function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
