@@ -4,9 +4,14 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.0]
+
+- Support multi-build configuration
+
 ## [1.2.8]
 
 - Hotfix on Debut tools installation
+- Add debug tools packs
 
 ## [1.2.7]
 

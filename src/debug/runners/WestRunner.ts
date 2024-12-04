@@ -56,12 +56,12 @@ export class WestRunner {
     this.userArgs = args.replace(new RegExp(`^.*${autoArgs}\\s*`), '');
   }
 
-  getWestDebugArgs(): string {
-    return `debugserver --build-dir \${workspaceFolder}/build/\${config:zephyr-workbench.board} ${this.autoArgs} ${this.userArgs}`;
+  getWestDebugArgs(relativeBuildDir: string): string {
+    return `debugserver --build-dir \${workspaceFolder}/${relativeBuildDir} ${this.autoArgs} ${this.userArgs}`;
   }
 
-  getWestFlashArgs(): string {
-    return `flash --build-dir \${workspaceFolder}/build/\${config:zephyr-workbench.board} ${this.autoArgs} ${this.userArgs}`;
+  getWestFlashArgs(relativeBuildDir: string): string {
+    return `flash --build-dir \${workspaceFolder}/build/${relativeBuildDir} ${this.autoArgs} ${this.userArgs}`;
   }
 
   get autoArgs(): string {

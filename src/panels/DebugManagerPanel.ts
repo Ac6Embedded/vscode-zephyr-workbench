@@ -493,6 +493,7 @@ export class DebugManagerPanel {
       const projectPath = message.project;
       const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
       const appProject = await getZephyrProject(projectPath);
+      const buildConfig = appProject.getBuildConfiguration(buildConfigName);
       const programPath = message.programPath;
       const svdPath = message.svdPath;
       const gdbPath = message.gdbPath;
@@ -503,7 +504,7 @@ export class DebugManagerPanel {
       const runnerPath = message.runnerPath;
       const runnerArgs = message.runnerArgs;
     
-      if(appProject) {
+      if(appProject && buildConfig) {
         let [launchJson, config] = await getLaunchConfiguration(appProject, buildConfigName);
         config.program = programPath;
         config.svdPath = svdPath? svdPath:'';
@@ -515,7 +516,7 @@ export class DebugManagerPanel {
           runner.serverAddress = gdbAddress;
           runner.serverPort = gdbPort;
           config.serverStarted = runner.serverStartedPattern;
-          config.debugServerArgs = runner.getWestDebugArgs();
+          config.debugServerArgs = runner.getWestDebugArgs(buildConfig.relativeBuildDir);
           config.setupCommands = [];
           for(const arg of runner.getSetupCommands(programPath)) {
             config.setupCommands.push(arg);
@@ -525,7 +526,7 @@ export class DebugManagerPanel {
         
         switch(runner?.name) {
           case 'openocd': 
-            createOpenocdCfg(appProject, buildConfigName);
+            createOpenocdCfg(appProject);
             break;
           case 'pyocd':
             await vscode.window.withProgress({

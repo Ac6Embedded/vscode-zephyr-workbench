@@ -171,28 +171,8 @@ ${debugServerCommand}
   }
 }
 
-export function createOpenocdCfg(project: ZephyrProject, buildConfigName?: string) {
-  let buildDir; 
-  if(buildConfigName) {
-    let buildConfig = project.getBuildConfiguration(buildConfigName);
-    if(buildConfig) {
-      buildDir = buildConfig.getInternalDebugDir(project);
-    }
-  } else {
-    // For legacy compatibility
-    buildDir = project.internalDebugDir;
-  }
-
-  if(buildDir) {
-    const cfgPath = path.join(buildDir, 'gdb.cfg');
-    const cfgContent = `# Workaround to force OpenOCD to shutdown when gdb is detached (auto-generated)
-
-$_TARGETNAME configure -event gdb-detach {
-  shutdown
-}`;
-    fs.writeFileSync(cfgPath, cfgContent);
-  }
-
+export function createOpenocdCfg(project: ZephyrProject) {
+  Openocd.createWorkaroundCfg(project.folderPath);
 }
 
 export async function setupPyOCDTarget(project: ZephyrProject, buildConfigName?: string) {
@@ -267,8 +247,8 @@ export async function createConfiguration(project: ZephyrProject, buildConfigNam
   if(buildConfig) {
     configName = `Zephyr Workbench Debug [${buildConfig.name}]`;
     socToolchainName = buildConfig.getKConfigValue(project, 'SOC_TOOLCHAIN_NAME');
-    program = path.join('${workspaceFolder}', `${buildConfig.name}`, `${buildConfig.boardIdentifier}`, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
-    wrapper = path.join('${workspaceFolder}', `${buildConfig.name}`, '.debug',`${buildConfig.boardIdentifier}`, `${wrapperFile}`);
+    program = path.join('${workspaceFolder}', `${buildConfig.relativeBuildDir}`, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
+    wrapper = path.join('${workspaceFolder}', `${buildConfig.relativeInternalDebugDir}`, `${wrapperFile}`);
   } else {
     // For legacy compatibility
     configName = `Zephyr Workbench Debug`;

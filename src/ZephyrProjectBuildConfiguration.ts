@@ -45,11 +45,23 @@ export class ZephyrProjectBuildConfiguration {
     this.boardIdentifier = boardIdentifier;
   }
 
+  get relativeRootBuildDir(): string {
+    return path.join('build', this.name);
+  }
+
+  get relativeBuildDir(): string {
+    return path.join(this.relativeRootBuildDir, this.boardIdentifier);
+  }
+
+  get relativeInternalDebugDir(): string {
+    return path.join(this.relativeRootBuildDir, '.debug', this.boardIdentifier);
+  }
+
   /**
    * Build directory
    */
   getBuildDir(parentProject: ZephyrProject): string {
-    return path.join(parentProject.folderPath, this.name, this.boardIdentifier);
+    return path.join(parentProject.folderPath, this.relativeBuildDir);
   }
 
   /**
@@ -57,7 +69,7 @@ export class ZephyrProjectBuildConfiguration {
    * and is not removed after pristine rebuilt. 
    */
   getInternalDebugDir(parentProject: ZephyrProject): string {
-    return path.join(parentProject.folderPath, this.name, '.debug', this.boardIdentifier);
+    return path.join(parentProject.folderPath, this.relativeInternalDebugDir);
   }
 
   getBuildEnv(parentProject: ZephyrProject): { [key: string]: string; } {

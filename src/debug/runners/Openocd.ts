@@ -74,7 +74,7 @@ export class Openocd extends WestRunner {
     }
     
     cmdArgs += ' --config openocd.cfg';
-    cmdArgs += ' --config ${workspaceFolder}/build/.debug/${config:zephyr-workbench.board}/gdb.cfg';
+    cmdArgs += ' --config ${workspaceFolder}/build/.debug/gdb.cfg';
 
     return cmdArgs;
   }
@@ -129,4 +129,18 @@ export class Openocd extends WestRunner {
     });
   }
 
+  static createWorkaroundCfg(parentDir: string) {
+    let buildDir = path.join(parentDir, 'build', '.debug');
+  
+    if(!fs.existsSync(buildDir)) {
+      fs.mkdirSync(buildDir, { recursive: true });
+    }
+    const cfgPath = path.join(buildDir, 'gdb.cfg');
+    const cfgContent = `# Workaround to force OpenOCD to shutdown when gdb is detached (auto-generated)
+
+$_TARGETNAME configure -event gdb-detach {
+  shutdown
+}`;
+    fs.writeFileSync(cfgPath, cfgContent);
+  }
 }

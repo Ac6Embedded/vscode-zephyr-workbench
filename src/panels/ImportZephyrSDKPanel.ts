@@ -143,7 +143,10 @@ export class ImportZephyrSDKPanel {
             </div>
             <div class="grid-group-div">
               <div class="grid-header-div">
-                <label for="listVersion">Version:</label>
+                <label for="listVersion">Version: </label>
+                <a href="https://github.com/zephyrproject-rtos/sdk-ng/wiki/Zephyr-SDK-Version-Compatibility-Matrix">
+                  <span class="tooltip" data-tooltip="Click for more information on Zephyr SDK version compatibility">?</span>
+                </a>
               </div>
               <div id="listVersion" class="combo-dropdown grid-value-div">
                 <input type="text" id="versionInput" class="combo-dropdown-control" placeholder="Choose the SDK version..." data-value="${defaultVersionValue}">
@@ -154,6 +157,7 @@ export class ImportZephyrSDKPanel {
                     </svg>
                   </slot>
                 </div>
+                
                 <div id="versionsDropdown" class="dropdown-content">
                   ${versionHTML}
                 </div>
