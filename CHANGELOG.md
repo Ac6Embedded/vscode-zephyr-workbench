@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.2.8]
+
+- Hotfix on Debut tools installation
+
 ## [1.2.7]
 
 - Add "Harden Config" task
