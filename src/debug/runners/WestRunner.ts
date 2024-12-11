@@ -66,7 +66,7 @@ export class WestRunner {
 
   get autoArgs(): string {
     let args = `--runner ${this.name}`;
-    if(this.serverPort && this.serverPort !== '3333') {
+    if(this.serverPort) {
        args += ` --gdb-port ${this.serverPort}`;
     }
     return args;

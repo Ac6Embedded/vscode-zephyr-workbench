@@ -227,7 +227,7 @@ export function activate(context: vscode.ExtensionContext) {
 			} else if(node instanceof ZephyrConfigTreeItem) {
 				if(node.project) {
 					context = node.project;
-					buildDir = node.buildConfig.name;
+					buildDir = node.buildConfig.relativeBuildDir;
 				}
 			}
 			

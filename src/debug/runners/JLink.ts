@@ -4,7 +4,7 @@ export class JLink extends WestRunner {
   name = 'jlink';
   label = 'J-Link';
   types = [ RunnerType.FLASH, RunnerType.DEBUG ];
-  serverStartedPattern = '';
+  serverStartedPattern = 'GDB Server start settings'; 
 
   get executable(): string | undefined {
     const exec = super.executable;
