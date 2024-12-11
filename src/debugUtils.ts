@@ -195,10 +195,9 @@ export async function setupPyOCDTarget(project: ZephyrProject, buildConfigName?:
   }
 }
 
-export async function createConfiguration(project: ZephyrProject, buildConfigName?: string): Promise<any> {
+export async function createLaunchConfiguration(project: ZephyrProject, buildConfigName?: string): Promise<any> {
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
   const zephyrSDK = getZephyrSDK(project.sdkPath);
-  const listBoards = await getSupportedBoards(westWorkspace, project);
   let buildConfig: ZephyrProjectBuildConfiguration | undefined = undefined;
   let targetBoard: ZephyrBoard | undefined;
   let boardIdentifier = project.boardId;
@@ -212,6 +211,7 @@ export async function createConfiguration(project: ZephyrProject, buildConfigNam
     }
   }
 
+  const listBoards = await getSupportedBoards(westWorkspace, project, buildConfig);
   for(let board of listBoards) {
     if(board.identifier === boardIdentifier) {
       targetBoard = board;
@@ -302,7 +302,7 @@ export async function createLaunchJson(project: ZephyrProject, buildConfigName?:
     configurations: []
   };
 
-  let config = await createConfiguration(project, buildConfigName);
+  let config = await createLaunchConfiguration(project, buildConfigName);
   launchJson.configurations.push(config);
 
   return launchJson;
@@ -332,7 +332,7 @@ export async function findLaunchConfiguration(launchJson: any, project: ZephyrPr
     }
   }
   
-  launchJson.configurations.push(await createConfiguration(project, buildConfigName));
+  launchJson.configurations.push(await createLaunchConfiguration(project, buildConfigName));
   return await findLaunchConfiguration(launchJson, project, buildConfigName);
 }
 

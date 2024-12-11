@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { createConfiguration as createDefaultConfiguration, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getRunRunners, getServerAddressFromConfig, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../debugUtils";
+import { createLaunchConfiguration as createDefaultConfiguration, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getRunRunners, getServerAddressFromConfig, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../debugUtils";
 import { ZephyrAppProject } from "../ZephyrAppProject";
 import { getZephyrProject } from '../utils';
 import { WestRunner } from '../debug/runners/WestRunner';

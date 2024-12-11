@@ -110,7 +110,7 @@ export class ZephyrProjectBuildConfiguration {
     // Search in board.cmake if runners.yaml does not exists
     if(runners.length === 0) {
       const westWorkspace = getWestWorkspace(parentProject.westWorkspacePath);
-      const board = await getBoardFromIdentifier(this.boardIdentifier, westWorkspace);
+      const board = await getBoardFromIdentifier(this.boardIdentifier, westWorkspace, parentProject, this);
       runners = board.getCompatibleRunners();
     }
 
