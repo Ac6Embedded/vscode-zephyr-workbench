@@ -92,7 +92,7 @@ function setVSCodeMessageListener() {
     switch(command) {
       case 'updateBuildConfigs': {
         const buildConfigsHTML = event.data.buildConfigsHTML;
-        updateBuildConfigs(buildConfigsHTML);
+        updateBuildConfigs(buildConfigsHTML, event.data.selectFirst === 'true' ? true : false);
         break;
       }
       case 'updateConfig': {
@@ -378,7 +378,7 @@ function initRunnersDropdown() {
   addDropdownItemEventListeners(runnersDropdown, runnerInput);
 }
 
-function updateBuildConfigs(buildConfigsHTML: string) {
+function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = false) {
   const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement; 
   const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
   const buildConfigDropdown = document.getElementById('buildConfigDropdown') as HTMLElement;
@@ -390,6 +390,15 @@ function updateBuildConfigs(buildConfigsHTML: string) {
     
     // Hide loading spinner
     applicationDropdownSpinner.style.display = 'none';
+
+    if(selectFirst) {
+      const firstOption = buildConfigDropdown.children[0] as HTMLElement;
+      
+      buildConfigInput.value = firstOption.getAttribute('data-label') || '';
+      buildConfigInput.setAttribute('data-value', firstOption.getAttribute('data-value') || '');
+      buildConfigInput.dispatchEvent(new Event('input'));
+      
+    }
   } else {
     buildConfigInput.disabled = true;
   }

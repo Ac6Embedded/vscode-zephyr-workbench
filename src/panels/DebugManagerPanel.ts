@@ -342,6 +342,7 @@ export class DebugManagerPanel {
       webview.postMessage({ 
         command: 'updateBuildConfigs', 
         buildConfigsHTML: `${newBuildConfigsHTML}`,
+        selectFirst: project.configs.length === 1 ? 'true' : 'false',
       });
     }
 

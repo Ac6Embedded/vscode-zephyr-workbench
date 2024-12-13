@@ -5,7 +5,7 @@ import yaml from 'yaml';
 import { fileExists, findTask, getBoardFromIdentifier, getConfigValue, getWestWorkspace, getZephyrSDK } from './utils';
 import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { ZephyrTaskProvider } from './ZephyrTaskProvider';
-import { getShell, getShellClearCommand } from './execUtils';
+import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalShell } from './execUtils';
 import { getBuildEnv, loadEnv } from './zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 export class ZephyrProject {
@@ -202,7 +202,7 @@ export class ZephyrProject {
   }
 
   private static openTerminal(zephyrProject: ZephyrProject): vscode.Terminal {
-    const shell = getShell();
+    const shell = getTerminalShell();
     const zephyrSdk = getZephyrSDK(zephyrProject.sdkPath);
     const westWorkspace = getWestWorkspace(zephyrProject.westWorkspacePath);
     let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
@@ -218,15 +218,13 @@ export class ZephyrProject {
     };
 
     const envVars = opts.env || {};
-    const printEnvCommand = Object.entries(envVars).map(([key, value]) => {
-      if (shell.includes("bash") || shell.includes("sh")) {
-        return `echo ${key}="${value}"`;
-      } else if (shell.includes("powershell")) {
-        return `Write-Output "${key}=${value}"`;
-      } else {
-        return `echo ${key}="${value}"`;
-      }
-    }).join(" && ");
+
+    const echoCommand = getShellEchoCommand(shell);
+    const clearCommand = getShellClearCommand(shell);
+    const printEnvCommands = Object.entries(envVars).map(([key, value]) => {
+      return `${echoCommand} ${key}="${value}"`;
+    });
+    const printEnvCommand = concatCommands(shell, ...printEnvCommands);
 
     if(activatePath) {
       opts.env =  {
@@ -234,9 +232,15 @@ export class ZephyrProject {
         ...opts.env
       };
     }
-    let clearCommand = getShellClearCommand(shell);
-    const printHeaderCommand = `${clearCommand} && echo "======= Zephyr Workbench Environment =======" && ${printEnvCommand} && echo "============================================"`;
-    const terminal = vscode.window.createTerminal(opts);
+    
+    const printHeaderCommand = concatCommands(shell,
+      `${clearCommand}`,  
+      `echo "======= Zephyr Workbench Environment ======="`,
+      `${printEnvCommand}`,
+      `echo "============================================"`
+    );
+
+   const terminal = vscode.window.createTerminal(opts);
     terminal.sendText(printHeaderCommand);
     return terminal;
   }
@@ -250,14 +254,18 @@ export class ZephyrProject {
       }
     }
 
-    let envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+    let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
     if(!envScript) {
       throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Ac6 Zephyr');
     } 
   
     let terminal = ZephyrProject.openTerminal(zephyrProject);
+    const shell = getTerminalShell();
     let srcEnvCmd = `. ${envScript}`;
-    if(process.platform === 'win32') {
+    if(shell === 'powershell.exe') {
+      envScript = envScript.replace(/%([^%]+)%/g, '${env:$1}');
+      srcEnvCmd = `. ${envScript}`;
+    } else if(shell === 'cmd.exe'){
       srcEnvCmd = `call ${envScript}`;
     }
     terminal.sendText(srcEnvCmd);

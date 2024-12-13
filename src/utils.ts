@@ -745,7 +745,7 @@ export function readZephyrSettings(buildDir: string): Record<string, string>  {
  */
 export async function convertLegacy(project: ZephyrProject): Promise<void> {
   let boardIdentifier = project.boardId;
-  let config = new ZephyrProjectBuildConfiguration('setup');
+  let config = new ZephyrProjectBuildConfiguration('primary');
   config.boardIdentifier = boardIdentifier;
   project.addBuildConfiguration(config);
 

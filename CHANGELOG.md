@@ -10,6 +10,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   - Update display
   - Update debug dependency
   - Add converter for legacy projects
+- Fix debug tools detection
 
 ## [1.2.8]
 

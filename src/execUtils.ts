@@ -5,16 +5,16 @@ import { ChildProcess, ExecException, ExecOptions, SpawnOptions, SpawnOptionsWit
 
 let _channel: vscode.OutputChannel;
 
-export function concatCommands(shell: string, cmd1: string, cmd2: string): string {
+export function concatCommands(shell: string, ...cmds: string[]): string {
   switch(shell) {
     case 'bash': 
-      return cmd1 + ' && ' + cmd2;
+      return cmds.join(' && ');
     case 'cmd.exe':
-      return cmd1 + ' && ' + cmd2;
+      return cmds.join(' && ');
     case 'powershell.exe':
-      return cmd1 + '; ' + cmd2;
+      return cmds.join('; ');
     default:
-      return cmd1 + ' && ' + cmd2;
+      return cmds.join(' && ');
   }
 }
 
@@ -36,6 +36,19 @@ export function getShell(): string {
   switch(process.platform) {
     case 'win32':
       shell = 'cmd.exe';
+      break; 
+    default:
+      shell = 'bash';
+      break;
+  }
+  return shell;
+}
+
+export function getTerminalShell(): string {
+  let shell: string;
+  switch(process.platform) {
+    case 'win32':
+      shell = 'powershell.exe';
       break; 
     default:
       shell = 'bash';
@@ -83,6 +96,19 @@ export function getShellSourceCommand(shell: string, script: string): string {
   }
 }
 
+export function getShellEchoCommand(shell: string): string {
+  switch(shell) {
+    case 'bash': 
+      return 'echo';
+    case 'cmd.exe':
+      return 'echo';
+    case 'powershell.exe':
+      return 'Write-Output';
+    default:
+      return 'echo';
+  }
+}
+
 export function getShellClearCommand(shell: string): string {
   switch(shell) {
     case 'bash': 
@@ -90,7 +116,7 @@ export function getShellClearCommand(shell: string): string {
     case 'cmd.exe':
       return 'cls';
     case 'powershell.exe':
-      return `cls`;
+      return 'cls';
     default:
       return '';
   }

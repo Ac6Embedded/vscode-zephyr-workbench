@@ -7,7 +7,7 @@ export async function setConfigQuickStep(
   project?: ZephyrProject
 ): Promise<string | undefined> {
 
-  let defaultName = 'setup';
+  let defaultName = 'primary';
   if(project) {
     if(project.configs.length > 0) {
       defaultName = getNewConfigName(project.configs);
@@ -73,7 +73,7 @@ function getNewConfigName(configs: any[]): string {
     .filter(num => num !== null) as number[];
 
   if (setupNumbers.length === 0) {
-    return 'setup';
+    return 'setup_2';
   }
 
   const latestSetupNumber = Math.max(...setupNumbers);
