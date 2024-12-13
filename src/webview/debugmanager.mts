@@ -212,7 +212,9 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
   const runnerPath = document.getElementById('runnerPath') as TextField;
   const runnerArgs = document.getElementById('runnerArgs') as TextField;
+  const debugButton = document.getElementById("debugButton") as Button;
 
+  debugButton.disabled = true;
   webviewApi.postMessage(
     {
       command: 'debug',
@@ -397,7 +399,6 @@ function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = fal
       buildConfigInput.value = firstOption.getAttribute('data-label') || '';
       buildConfigInput.setAttribute('data-value', firstOption.getAttribute('data-value') || '');
       buildConfigInput.dispatchEvent(new Event('input'));
-      
     }
   } else {
     buildConfigInput.disabled = true;

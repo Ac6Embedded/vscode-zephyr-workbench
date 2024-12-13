@@ -203,6 +203,7 @@ export class ZephyrProjectBuildConfiguration {
     let srcEnvCmd = `. ${envScript}`;
     if(shell === 'powershell.exe') {
       envScript = envScript.replace(/%([^%]+)%/g, '${env:$1}');
+      envScript = envScript.replace('env.bat', 'env.ps1');
       srcEnvCmd = `. ${envScript}`;
     } else if(shell === 'cmd.exe'){
       srcEnvCmd = `call ${envScript}`;
