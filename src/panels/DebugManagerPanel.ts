@@ -337,7 +337,7 @@ export class DebugManagerPanel {
     function updateBuildConfigs(project: ZephyrProject) {
       let newBuildConfigsHTML = '';
       for(let config of project.configs) {
-        newBuildConfigsHTML = newBuildConfigsHTML.concat(`<div class="dropdown-item" data-value="${config.name}" data-label="${config.name}">${config.name}</div>`);
+        newBuildConfigsHTML = newBuildConfigsHTML.concat(`<div class="dropdown-item" data-value="${config.name}" data-label="${config.name}">${config.name}<span class="description">(${config.boardIdentifier})</span></div>`);
       }
       webview.postMessage({ 
         command: 'updateBuildConfigs', 

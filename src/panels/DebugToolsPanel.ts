@@ -62,10 +62,17 @@ export class DebugToolsPanel {
   private async getPacksHTML(): Promise<string> {
     let packsHTML = '';
     for(let pack of this.data.packs) {
+      let listToolsName: string[] = [];
+      pack.tools.forEach((packTool: string) => {
+        let tool = this.data.debug_tools.find((tool: { tool: string; }) => tool.tool === packTool);
+        if(this.isToolCompatible(tool)) {
+          listToolsName.push(tool.name);
+        }
+      });
       
       packsHTML += `<tr id="row-${pack.pack}">
         <td></td>
-        <td id="name-${pack.pack}">${pack.name}</td>
+        <td id="name-${pack.pack}">${pack.name} <span class="description">(${listToolsName.join(', ')})</span></td>
         <td></td>
         <td></td>
         <td id="buttons-${pack.pack}">`;

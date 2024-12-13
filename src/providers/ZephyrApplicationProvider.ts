@@ -38,10 +38,27 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       // items.push(boardItem);
       items.push(workspaceItem);
 
-      if(element.project.configs.length > 0) {
+      if(element.project.configs.length > 1) {
         for(let config of element.project.configs) {
           const buildConfigItem = new ZephyrConfigTreeItem(element.project, config, vscode.TreeItemCollapsibleState.Collapsed);
           items.push(buildConfigItem);
+        }
+      } else if(element.project.configs.length === 1) {
+        const config = element.project.configs[0];
+        const boardItem = new ZephyrConfigBoardTreeItem(element.project, config);
+        const westArgsItem = new ZephyrConfigArgTreeItem(element.project, config, 'west arguments');
+
+        items.push(boardItem);
+        items.push(westArgsItem);
+
+        for(let key of Object.keys(config.envVars)) {
+          let envItem;
+          if(Array.isArray(config.envVars[key])) {
+            envItem = new ZephyrConfigEnvTreeItem(element.project, config, key);
+          } else {
+            envItem = new ZephyrConfigArgTreeItem(element.project, config, key);
+          }
+          items.push(envItem);
         }
       } else {
         // For legacy compatibility,

@@ -78,6 +78,8 @@ function setVSCodeMessageListener() {
         break;
       }
       case 'detect-done': {
+        console.log(event.data.tool);
+        console.log(event.data.version);
         const versionCell = document.getElementById(`version-${event.data.tool}`) as HTMLElement;
         const statusCell = document.getElementById(`detect-${event.data.tool}`) as HTMLElement;
         versionCell.textContent = event.data.version;

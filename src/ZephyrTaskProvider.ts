@@ -185,9 +185,13 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
     let cmd = _task.definition.command;
     let args = _task.definition.args.map((arg: string) => {
-      // Do not add user any --build-dir option
-      if (typeof arg === 'string' && arg.startsWith('--build-dir')) {
-        return "";
+      if (arg.startsWith('--build-dir')) {
+        // Do not add user any --build-dir option, use value from BUILD_DIR variable
+        return '';
+      } else if (arg === '--board ${config:zephyr-workbench.board}') {
+        // To avoid error with legacy project, if --board argument is set, remove it, west will
+        // use BOARD environment variable instead
+        return '';
       }
       return arg;
     }).join(' ');
@@ -391,6 +395,36 @@ export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder,
           return true;
         }
       }
+
+  } catch (err) {
+    return false;
+  }
+  return false;
+}
+
+// For legacy compatibility
+export async function convertLegacyTasks(workspaceFolder: vscode.WorkspaceFolder) {
+  function msleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+  
+  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
+  const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
+
+  try {
+      const data = await fsPromise.readFile(tasksJsonPath, 'utf8');
+      const config: TaskConfig = JSON.parse(data);
+      const newTasks = config.tasks.map(task => {
+        if(task.type === ZephyrTaskProvider.ZephyrType) {
+          task.args = task.args.filter(arg => (arg !== "--board ${config:zephyr-workbench.board}") &&
+                                              (arg !== "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"));
+        }
+        return task;
+      });      
+      config.tasks = newTasks;
+      await fsPromise.writeFile(tasksJsonPath, JSON.stringify(config, null, 2), 'utf8');
+      // Sleep to let VS Code time to reload the tasks.json
+      await msleep(500); 
 
   } catch (err) {
     return false;

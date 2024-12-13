@@ -13,7 +13,7 @@ import { checkHostTools } from "./installUtils";
 import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { ZephyrProject } from './ZephyrProject';
 import { getBoardsDirectories, getBoardsDirectoriesFromIdentifier, westTmpBuildSystemCommand } from './WestCommands';
-import { checkOrCreateTask, ZephyrTaskProvider } from './ZephyrTaskProvider';
+import { checkOrCreateTask, convertLegacyTasks, ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 import { addConfig, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 
@@ -738,6 +738,11 @@ export function readZephyrSettings(buildDir: string): Record<string, string>  {
   return settings;
 }
 
+/**
+ * For legacy compatibility:
+ * Temporary convert fonction to upgrade legacy projects
+ * Code to remove when no legacy project exists anymore
+ */
 export async function convertLegacy(project: ZephyrProject): Promise<void> {
   let boardIdentifier = project.boardId;
   let config = new ZephyrProjectBuildConfiguration('setup');
@@ -764,4 +769,7 @@ export async function convertLegacy(project: ZephyrProject): Promise<void> {
   await saveConfigSetting(project.workspaceFolder, config.name, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, config.westArgs);
   // Remove west-args settings
   await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.workspaceFolder).update(ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, undefined);
+
+  // Update tasks.json
+  await convertLegacyTasks(project.workspaceFolder);
 }

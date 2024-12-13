@@ -23,7 +23,7 @@ import { DebugToolsPanel } from './panels/DebugToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
-import { ZephyrApplicationBoardTreeItem, ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem } from './providers/ZephyrApplicationProvider';
+import { ZephyrApplicationBoardTreeItem, ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem } from './providers/ZephyrApplicationProvider';
 import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsCommandProvider';
 import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
@@ -324,6 +324,10 @@ export function activate(context: vscode.ExtensionContext) {
 				if(node.project) {
 					project = node.project;
 					workspaceFolder = node.project.workspaceFolder;
+
+					if(node.project.configs && node.project.configs.length === 1) {
+						buildConfigName = node.project.configs[0].name;
+					}
 				}
 			} else if(node instanceof ZephyrConfigTreeItem) {
 				if(node.project && node.buildConfig) {
@@ -443,16 +447,22 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.change-board', async (node: ZephyrApplicationBoardTreeItem | ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.change-board', async (node: ZephyrApplicationBoardTreeItem | ZephyrApplicationTreeItem | ZephyrConfigTreeItem | ZephyrConfigBoardTreeItem) => {
 			if(node.project) {
 				const boardId = await changeBoardQuickStep(context, node.project);
 				if(boardId) {
 					if(node instanceof ZephyrConfigTreeItem) {
 						await saveConfigSetting(node.project.workspaceFolder, node.buildConfig.name, ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId);
+					} else if(node instanceof ZephyrConfigBoardTreeItem) {
+						await saveConfigSetting(node.project.workspaceFolder, node.config.name, ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId);
 					} else if(node instanceof ZephyrApplicationBoardTreeItem || node instanceof ZephyrApplicationTreeItem) {
-						// For legacy compatibility
+						if(node.project.configs && node.project.configs.length === 1) {
+							await saveConfigSetting(node.project.workspaceFolder, node.project.configs[0].name, ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId);
+						} else {
+							// For legacy compatibility
 						// Keep supporting edit board from project
 						await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId, vscode.ConfigurationTarget.WorkspaceFolder);
+						}
 					}
 					
 				}
@@ -483,8 +493,13 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.open-terminal', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
 			if(node instanceof ZephyrApplicationTreeItem) {
 				if(node.project) {
-					let terminal: vscode.Terminal = ZephyrProject.getTerminal(node.project);
-					terminal.show();
+					if(node.project.configs && node.project.configs.length === 1) {
+						let terminal: vscode.Terminal = ZephyrProjectBuildConfiguration.getTerminal(node.project, node.project.configs[0]);
+						terminal.show();
+					} else {
+						let terminal: vscode.Terminal = ZephyrProject.getTerminal(node.project);
+						terminal.show();
+					}		
 				}
 			} else if(node instanceof ZephyrConfigTreeItem) {
 				if(node.buildConfig) {
@@ -961,12 +976,13 @@ export function activate(context: vscode.ExtensionContext) {
 				
 				// Auto detect tools after installation
 				for(let tool of listTools) {
-					let runner = getRunner(tool);
+					let runner = getRunner(tool.tool);
+					
 					if(runner && runner.executable) {
 						let runnerPath = path.join(getInternalToolsDirRealPath(), runner.name, runner.binDirPath, runner.executable);
 						if(fileExists(runnerPath)) {
 							runner.serverPath = runnerPath;
-							runner.updateSettings();
+							await runner.updateSettings();
 						}
 					}
 					panel.webview.postMessage({ command: 'exec-done', tool: `${tool.tool}` });
@@ -1407,27 +1423,30 @@ export function activate(context: vscode.ExtensionContext) {
 
 	setDefaultSettings();
 
-	vscode.window.withProgress({
-		location: vscode.ProgressLocation.Notification,
-		title: "Checking projects...",
-		cancellable: false,
-	}, async (progress, token) => {
-		try {
-			await convertLegacyProjects();
-		} catch(e) {
-			
-		}	
-	});
-	
-}
+	// For legacy compatibility
+	// Upgrage project structure and settings
+	{
+		vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: "Checking projects...",
+			cancellable: false,
+		}, async (progress, token) => {
+			try {
+				await convertLegacyProjects();
+			} catch(e) {
+				
+			}	
+		});
 
-async function convertLegacyProjects(): Promise<void> {
-	if(vscode.workspace.workspaceFolders) {
-		for(let workspaceFolder of vscode.workspace.workspaceFolders) {
-			if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
-				const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-				if(appProject.configs.length === 0) {
-					convertLegacy(appProject);
+		async function convertLegacyProjects(): Promise<void> {
+			if(vscode.workspace.workspaceFolders) {
+				for(let workspaceFolder of vscode.workspace.workspaceFolders) {
+					if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
+						const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
+						if(appProject.configs.length === 0) {
+							convertLegacy(appProject);
+						}
+					}
 				}
 			}
 		}
@@ -1498,14 +1517,15 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 	let westBuildTasks: vscode.Task[] = [];
 	if(context && folder) {
 		// IF: In configuration name is provided execute it
-		// ELSE IF : run active build configuration 
+		// ELSE IF : run active if multiple build configurations
+		// ELSE IF : run task if only one build configuration
 		// ELSE [Legacy] run old build task 
 		if(configName) {
 			let westBuildTask = await findConfigTask(taskName, context, configName);
 			if(westBuildTask) {
 				westBuildTasks.push(westBuildTask);
 			}
-		} else if(context.configs && context.configs.length > 0) {
+		} else if(context.configs && context.configs.length > 1) {
 			for(let config of context.configs) {
 				let hasActive = false;
 				if(config.active) {
@@ -1519,6 +1539,11 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 				if(!hasActive) {
 					vscode.window.showInformationMessage("No active configuration found, please set one as active first.");
 				}
+			}
+		} else if(context.configs && context.configs.length === 1) {
+			let westBuildTask = await findConfigTask(taskName, context, context.configs[0].name);
+			if(westBuildTask) {
+				westBuildTasks.push(westBuildTask);
 			}
 		} else {
 			// For legacy compatibility:

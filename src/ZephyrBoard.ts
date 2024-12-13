@@ -6,7 +6,7 @@ import path from "path";
 export class ZephyrBoard {
   identifier!: string;
   name!: string;
-  boardName!: string; /* Real parent board name NOTE: Zephyr board concept is boardname[@revision][/SoC[/CPU cluster][/variant]]*/
+  boardName!: string; /* Real parent board name NOTE: Zephyr board concept is boardname[@revision][/SoC[/CPU cluster][/variant]] */
   rev!: string;
   soc!: string;
   cpuCluster!: string;
@@ -81,7 +81,7 @@ export class ZephyrBoard {
   }
 
   get imagePath(): string {
-    return path.join(this.docDirPath, 'img', `${this.identifier}.jpg`);
+    return path.join(this.docDirPath, 'img', `${this.boardName ? this.boardName : this.identifier}.jpg`);
   }
 
   get readmePath(): string {
