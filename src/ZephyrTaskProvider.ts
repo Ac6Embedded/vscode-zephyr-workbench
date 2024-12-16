@@ -12,7 +12,7 @@ import { getWestWorkspace, getZephyrSDK } from './utils';
 import { addConfig } from './zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 
-interface TaskConfig {
+export interface TaskConfig {
   version: string;
   tasks: ZephyrTaskDefinition[];
   [key: string]: any;
@@ -35,9 +35,12 @@ const westBuildTask: ZephyrTaskDefinition = {
     isDefault: true
   },
   command: "west",
+  config: "primary",
   args: [
     "build",
     "-p ${config:zephyr-workbench.build.pristine}",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
   ]
 };
 
@@ -50,9 +53,12 @@ const rebuildTask: ZephyrTaskDefinition = {
     isDefault: false
   },
   command: "west",
+  config: "primary",
   args: [
     "build",
     "-p always",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
   ]
 };
 
@@ -61,9 +67,12 @@ const guiConfigTask: ZephyrTaskDefinition = {
   type: "zephyr-workbench",
   problemMatcher: [],
   command: "west",
+  config: "primary",
   args: [
     "build",
     "-t guiconfig",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
   ]
 };
 
@@ -71,9 +80,12 @@ const menuconfigTask: ZephyrTaskDefinition = {
   label: "Menuconfig",
   type: "zephyr-workbench",
   command: "west",
+  config: "primary",
   args: [
     "build",
     "-t menuconfig",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
   ]
 };
 
@@ -81,9 +93,12 @@ const hardenConfigTask: ZephyrTaskDefinition = {
   label: "Harden Config",
   type: "zephyr-workbench",
   command: "west",
+  config: "primary",
   args: [
     "build",
     "-t hardenconfig",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
   ]
 };
 
@@ -92,9 +107,12 @@ const spdxTask: ZephyrTaskDefinition = {
   type: "zephyr-workbench",
   problemMatcher: [],
   command: "west",
+  config: "primary",
   args: [
     "spdx",
     "--init",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
   ]
 };
 
@@ -103,9 +121,12 @@ const flashTask: ZephyrTaskDefinition = {
   type: "zephyr-workbench",
   problemMatcher: [],
   command: "west",
+  config: "primary",
   args: [
     "flash",
     "${input:west.runner}",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
   ]
 };
 
@@ -114,9 +135,12 @@ const ramReportTask: ZephyrTaskDefinition = {
   type: "zephyr-workbench",
   problemMatcher: [],
   command: "west",
+  config: "primary",
   args: [
     "build",
     "-t ram_report",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
   ]
 };
 
@@ -125,9 +149,12 @@ const romReportTask: ZephyrTaskDefinition = {
   type: "zephyr-workbench",
   problemMatcher: [],
   command: "west",
+  config: "primary",
   args: [
     "build",
     "-t rom_report",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
   ]
 };
 
@@ -136,9 +163,12 @@ const puncoverTask: ZephyrTaskDefinition = {
   type: "zephyr-workbench",
   problemMatcher: [],
   command: "west",
+  config: "primary",
   args: [
     "build",
-    "-t puncover"
+    "-t puncover",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
   ]
 };
 
@@ -184,18 +214,20 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     }
 
     let cmd = _task.definition.command;
-    let args = _task.definition.args.map((arg: string) => {
-      if (arg.startsWith('--build-dir')) {
-        // Do not add user any --build-dir option, use value from BUILD_DIR variable
-        return '';
-      } else if (arg === '--board ${config:zephyr-workbench.board}') {
-        // To avoid error with legacy project, if --board argument is set, remove it, west will
-        // use BOARD environment variable instead
-        return '';
-      }
-      return arg;
-    }).join(' ');
-    args = `${args} --build-dir ${buildDirVar}`;
+    // FIXME: Changes on multibuild build process
+    // let args = _task.definition.args.map((arg: string) => {
+    //   if (arg.startsWith('--build-dir')) {
+    //     // Do not add user any --build-dir option, use value from BUILD_DIR variable
+    //     return '';
+    //   } else if (arg === '--board ${config:zephyr-workbench.board}') {
+    //     // To avoid error with legacy project, if --board argument is set, remove it, west will
+    //     // use BOARD environment variable instead
+    //     return '';
+    //   }
+    //   return arg;
+    // }).join(' ');
+    // args = `${args} --build-dir ${buildDirVar}`;
+    let args = _task.definition.args.join(' ');
     if(config) {
       if(config.westArgs && config.westArgs.length > 0) {
         args = `${args} ${westArgVar}`;
@@ -402,22 +434,34 @@ export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder,
   return false;
 }
 
-// For legacy compatibility
-export async function convertLegacyTasks(workspaceFolder: vscode.WorkspaceFolder) {
+/**
+ * Update task to adapt to the new active configuration
+ * @param workspaceFolder 
+ * @param activeConfigName 
+ * @param activeIndex 
+ * @returns 
+ */
+export async function updateTasks(workspaceFolder: vscode.WorkspaceFolder, activeConfigName: string, activeIndex: number) {
   function msleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
   
   const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
   const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
-
   try {
       const data = await fsPromise.readFile(tasksJsonPath, 'utf8');
       const config: TaskConfig = JSON.parse(data);
+      const regex = /\${config:zephyr-workbench\.build\.configurations\.(\d+)\./;
       const newTasks = config.tasks.map(task => {
-        if(task.type === ZephyrTaskProvider.ZephyrType) {
-          task.args = task.args.filter(arg => (arg !== "--board ${config:zephyr-workbench.board}") &&
-                                              (arg !== "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"));
+        if(task.type === "zephyr-workbench") {
+          // Change active configuration
+          task.config = activeConfigName;
+          // Update arguments value
+          task.args = task.args.map((arg: string) => {
+            return arg.replace(regex, (match, p1) => {
+              return match.replace(p1, activeIndex.toString());
+            });
+          });
         }
         return task;
       });      
@@ -460,6 +504,13 @@ export async function createExtensionsJson(workspaceFolder: vscode.WorkspaceFold
 
 }
 
+/**
+ * Set default settings.json for newly created project
+ * @param workspaceFolder 
+ * @param westWorkspace 
+ * @param zephyrBoard 
+ * @param zephyrSDK 
+ */
 export async function setDefaultProjectSettings(workspaceFolder: vscode.WorkspaceFolder, westWorkspace: WestWorkspace, zephyrBoard: ZephyrBoard, zephyrSDK: ZephyrSDK): Promise<void> {
   // Zephyr Workbench settings
   const boardIdentifier = zephyrBoard.identifier ? zephyrBoard.identifier : '';
@@ -479,7 +530,7 @@ export async function setDefaultProjectSettings(workspaceFolder: vscode.Workspac
   
   try {
     // IntelliSense settings
-    let buildDir = path.join('${workspaceFolder}', 'build', boardIdentifier);
+    let buildDir = path.join('${workspaceFolder}', 'build', 'primary');
     let targetArch = zephyrBoard.arch;
     await vscode.workspace.getConfiguration('C_Cpp', workspaceFolder).update('default.compilerPath', zephyrSDK.getCompilerPath(targetArch), vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration('C_Cpp', workspaceFolder).update('default.compileCommands', path.join(buildDir, 'compile_commands.json'), vscode.ConfigurationTarget.WorkspaceFolder);

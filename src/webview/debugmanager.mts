@@ -90,6 +90,14 @@ function setVSCodeMessageListener() {
   window.addEventListener("message", (event) => {
     const command = event.data.command;
     switch(command) {
+      case 'updateLaunchConfig': {
+        const projectPath = event.data.projectPath;
+        if(projectPath && projectPath.length > 0) {
+          const configName = event.data.configName;
+          updateSelectedApplication(projectPath, configName);
+        }
+        break;
+      }
       case 'updateBuildConfigs': {
         const buildConfigsHTML = event.data.buildConfigsHTML;
         updateBuildConfigs(buildConfigsHTML, event.data.selectFirst === 'true' ? true : false);
@@ -380,6 +388,31 @@ function initRunnersDropdown() {
   addDropdownItemEventListeners(runnersDropdown, runnerInput);
 }
 
+async function updateSelectedApplication(projectPath: string, configName: string) {
+  const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
+  const applicationsDropdown = document.getElementById('applicationsDropdown') as HTMLElement;
+  const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
+
+  if(projectPath) {
+    for(let i=0; i<applicationsDropdown.children.length; i++) {
+      const option = applicationsDropdown.children[i] as HTMLElement;
+      if(option.getAttribute('data-value') === projectPath) {
+        applicationInput.value = option.getAttribute('data-label') || '';
+        applicationInput.setAttribute('data-value', option.getAttribute('data-value') || '');
+        applicationInput.dispatchEvent(new Event('input'));
+        break;
+      }
+    }
+    
+    if(configName.length > 0) {
+      buildConfigInput.value = configName || '';
+      buildConfigInput.setAttribute('data-value', configName || '');
+      buildConfigInput.dispatchEvent(new Event('input'));
+    }
+  }
+  
+}
+
 function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = false) {
   const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement; 
   const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
@@ -403,8 +436,6 @@ function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = fal
   } else {
     buildConfigInput.disabled = true;
   }
-
-  
 }
 
 

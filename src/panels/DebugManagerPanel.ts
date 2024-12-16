@@ -13,6 +13,8 @@ export class DebugManagerPanel {
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _disposables: vscode.Disposable[] = [];
+  public project: ZephyrProject | undefined;
+  public buildConfig: ZephyrProjectBuildConfiguration | undefined;
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -20,12 +22,15 @@ export class DebugManagerPanel {
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
   }
 
-  public async createContent() {
+  public async createContent(project?: ZephyrProject | undefined, buildConfig?: ZephyrProjectBuildConfiguration | undefined) {
+    this.project = project;
+    this.buildConfig = buildConfig;
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
     this._setWebviewMessageListener(this._panel.webview);
+    this._setDefaultSelection(this._panel.webview);
   }
 
-  public static render(extensionUri: vscode.Uri) {
+  public static render(extensionUri: vscode.Uri, project?: ZephyrProject | undefined, buildConfig?: ZephyrProjectBuildConfiguration | undefined) {
     if (DebugManagerPanel.currentPanel) {
       DebugManagerPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
     } else {
@@ -37,7 +42,7 @@ export class DebugManagerPanel {
       });
 
       DebugManagerPanel.currentPanel = new DebugManagerPanel(panel, extensionUri);
-      DebugManagerPanel.currentPanel.createContent();
+      DebugManagerPanel.currentPanel.createContent(project, buildConfig);
     }
   }
 
@@ -233,6 +238,14 @@ export class DebugManagerPanel {
         </body>
       </html>
     `;
+  }
+
+  private _setDefaultSelection(webview: vscode.Webview) {
+    webview.postMessage({ 
+      command: 'updateLaunchConfig', 
+      projectPath: this.project ? this.project.workspaceFolder.uri.fsPath : '',
+      configName: this.buildConfig ? this.buildConfig.name : '',
+    });
   }
 
   private _setWebviewMessageListener(webview: vscode.Webview) {

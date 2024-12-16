@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://zephyr-workbench.com",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -172,6 +172,12 @@
             "default": "",
             "description": "Path to STM32_Programmer_CLI executable",
             "scope": "machine-overridable"
+          },
+          "zephyr-workbench.build.active": {
+            "type": "number",
+            "default": 0,
+            "description": "Active configuration index",
+            "scope": "resource"
           },
           "zephyr-workbench.build.configurations": {
             "type": "array",
@@ -1067,7 +1073,7 @@
 						"type": "array",
 						"description": "The list of arguments"
 					},
-          "config": {
+					"config": {
 						"type": "string",
 						"description": "The name of the build configuration"
 					},

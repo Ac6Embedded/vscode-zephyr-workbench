@@ -1,4 +1,5 @@
 import fs from 'fs';
+import * as fsPromise from 'fs/promises';
 import os from 'os';
 import path from "path";
 import yaml from 'yaml';
@@ -13,7 +14,7 @@ import { checkHostTools } from "./installUtils";
 import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { ZephyrProject } from './ZephyrProject';
 import { getBoardsDirectories, getBoardsDirectoriesFromIdentifier, westTmpBuildSystemCommand } from './WestCommands';
-import { checkOrCreateTask, convertLegacyTasks, ZephyrTaskProvider } from './ZephyrTaskProvider';
+import { checkOrCreateTask, TaskConfig, ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 import { addConfig, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 
@@ -478,25 +479,47 @@ export async function findConfigTask(taskLabel: string, project: ZephyrProject, 
       return folder && folder.uri.toString() === project.workspaceFolder.uri.toString() && task.name === taskLabel;
     });
     if(task) {
-      for(let config of project.configs) {
-        if(configName === config.name) {
-          // Create temporary task with the configuration
-          const taskDefinition = { 
-            ...task.definition, 
-            config: configName 
-          };
-    
-          const tmpTask = new vscode.Task(
-            taskDefinition,
-            task.scope as vscode.WorkspaceFolder, 
-            `${task.name} [${config.name}]`,
-            task.source,
-            task.execution
-          );
-          
-          // Resolve the zephyr-workbench task
-          const newTask = ZephyrTaskProvider.resolve(tmpTask);
-          return newTask;
+      // If task found is already set for the chosen build configuration
+      if(task.definition.config === configName) {
+        return task;
+      } else {
+        // Else, if the build config differs, create temporary task to
+        // avoid messing with tasks.json
+        for(let config of project.configs) {
+          if(configName === config.name) {
+            const buildDirVar = getEnvVarFormat(getShell(), 'BUILD_DIR');
+            let args: string[] = [];
+            for(let arg of task.definition.args) {
+              // - Do not add user any --build-dir option, use value from BUILD_DIR variable
+              // - To avoid error with legacy project, if --board argument is set, remove it, west will
+              // use BOARD environment variable instead
+              if (!arg.startsWith('--build-dir') && !arg.startsWith('--board')) {
+                args.push(arg);
+              }
+            }
+            args.push(`--build-dir ${buildDirVar}`);
+
+            // Create temporary task with the args adapted to the config
+            const taskDefinition = { 
+              ...task.definition, 
+              config: configName, 
+              args: args
+            };
+
+            const tmpTask = new vscode.Task(
+              taskDefinition,
+              task.scope as vscode.WorkspaceFolder, 
+              `${task.name} [${config.name}]`,
+              task.source,
+              task.execution
+            );
+            
+            // Resolve the zephyr-workbench task to run task with correct env
+            const newTask = ZephyrTaskProvider.resolve(tmpTask);
+
+            vscode.window.showWarningMessage('Task execution: Arguments "--board" and "--build-dir" are ignored.');
+            return newTask;
+          }
         }
       }
     }
@@ -740,10 +763,10 @@ export function readZephyrSettings(buildDir: string): Record<string, string>  {
 
 /**
  * For legacy compatibility:
- * Temporary convert fonction to upgrade legacy projects
+ * Temporary convert method to upgrade legacy settings.json
  * Code to remove when no legacy project exists anymore
  */
-export async function convertLegacy(project: ZephyrProject): Promise<void> {
+export async function convertLegacySettings(project: ZephyrProject): Promise<void> {
   let boardIdentifier = project.boardId;
   let config = new ZephyrProjectBuildConfiguration('primary');
   config.boardIdentifier = boardIdentifier;
@@ -772,4 +795,43 @@ export async function convertLegacy(project: ZephyrProject): Promise<void> {
 
   // Update tasks.json
   await convertLegacyTasks(project.workspaceFolder);
+}
+
+/**
+ * For legacy compatibility:
+ * Temporary convert method to upgrade legacy tasks.json
+ * Code to remove when no legacy project exists anymore
+ */
+export async function convertLegacyTasks(workspaceFolder: vscode.WorkspaceFolder) {
+  function msleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+  
+  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
+  const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
+
+  
+  const data = await fsPromise.readFile(tasksJsonPath, 'utf8');
+  const config: TaskConfig = JSON.parse(data);
+  let needUpdate = false;
+  const newTasks = config.tasks.map(task => {
+    if(task.config === undefined) {
+      if(task.type === ZephyrTaskProvider.ZephyrType) {
+        task.config = "primary";
+        task.args = task.args.filter(arg => (arg !== "--board ${config:zephyr-workbench.board}") &&
+                                            (arg !== "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"));
+        task.args.push("--board ${config:zephyr-workbench.build.configurations.0.board}",);
+        task.args.push("--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}");
+        needUpdate = true;
+      }
+    }
+    return task;
+  }); 
+
+  if(needUpdate) {
+    config.tasks = newTasks;
+    await fsPromise.writeFile(tasksJsonPath, JSON.stringify(config, null, 2), 'utf8');
+    // Sleep to let VS Code time to reload the tasks.json
+    await msleep(500); 
+  }
 }

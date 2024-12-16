@@ -34,7 +34,8 @@ export async function changeBoardQuickStep(context: ExtensionContext, project: Z
       title: 'Change Board',
       placeHolder: 'Select a target board',
       matchOnDescription: true,
-      canPickMany: false
+      canPickMany: false,
+      ignoreFocusOut: true
     };
 
     const result = await vscode.window.showQuickPick(boardItems, options);

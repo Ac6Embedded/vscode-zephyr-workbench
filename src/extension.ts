@@ -7,7 +7,7 @@ import { WestWorkspace } from './WestWorkspace';
 import { ZephyrAppProject } from './ZephyrAppProject';
 import { ZephyrProject } from './ZephyrProject';
 import { ZephyrSDK } from './ZephyrSDK';
-import { createExtensionsJson, createTasksJson, setDefaultProjectSettings, ZephyrTaskProvider } from './ZephyrTaskProvider';
+import { createExtensionsJson, createTasksJson, setDefaultProjectSettings, updateTasks, ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { changeBoardQuickStep } from './changeBoardQuickStep';
 import { changeEnvVarQuickStep } from './changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
@@ -30,7 +30,7 @@ import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkD
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { addWorkspaceFolder, convertLegacy, copySampleSync, deleteFolder, fileExists, findConfigTask, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
+import { addWorkspaceFolder, convertLegacySettings, convertLegacyTasks, copySampleSync, deleteFolder, fileExists, findConfigTask, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProvider';
@@ -65,11 +65,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	statusBarBuildItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 101);
 	statusBarBuildItem.text = "$(gear) Build";
-	statusBarBuildItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
   statusBarBuildItem.command = "zephyr-workbench.build-app";
 	statusBarDebugItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
 	statusBarDebugItem.text = "$(debug-alt) Debug";
-	statusBarDebugItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
   statusBarDebugItem.command = "zephyr-workbench.debug-app";
 
   context.subscriptions.push(statusBarBuildItem);
@@ -367,7 +365,7 @@ export function activate(context: vscode.ExtensionContext) {
 				const debugManagerItem = 'Open Debug Manager';
 				const choice = await vscode.window.showWarningMessage('No debug launch configuration found, please configure the debug session on the Debug Manager', debugManagerItem);
 				if(choice === debugManagerItem) {
-					vscode.commands.executeCommand('zephyr-workbench.debug-manager');
+					vscode.commands.executeCommand('zephyr-workbench.debug-manager', node);
 				}
 			}
 
@@ -602,13 +600,14 @@ export function activate(context: vscode.ExtensionContext) {
 				let newConfig = new ZephyrProjectBuildConfiguration('');
 				let configName = await setConfigQuickStep(newConfig, node.project);
 				if(configName) {
+					newConfig.active = false;
 					newConfig.name = configName;
 					let boardId = await changeBoardQuickStep(context, node.project);
 					if(boardId) {
 						newConfig.boardIdentifier = boardId;
+						node.project.addBuildConfiguration(newConfig);
+						await addConfig(node.project.workspaceFolder, newConfig);
 					}
-					node.project.addBuildConfiguration(newConfig);
-					await addConfig(node.project.workspaceFolder, newConfig);
 				}
 			}
 		})
@@ -643,7 +642,19 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.activate-config', async (node: ZephyrConfigTreeItem) => {
 			if(node.buildConfig) {
 				node.buildConfig.active = true;
-				await saveConfigSetting(node.project.workspaceFolder, node.buildConfig.name, 'active', "true");
+				
+				let activeIndex = 0;
+				for(let configIndex = 0; configIndex < node.project.configs.length; configIndex++) {
+					if(node.project.configs[configIndex].name !== node.buildConfig.name) {
+						await saveConfigSetting(node.project.workspaceFolder, node.project.configs[configIndex].name, 'active', '');
+					} else {
+						let buildDir = path.join('${workspaceFolder}', 'build', node.buildConfig.name);
+						await saveConfigSetting(node.project.workspaceFolder, node.buildConfig.name, 'active', 'true');
+						await vscode.workspace.getConfiguration('C_Cpp', node.project.workspaceFolder).update('default.compileCommands', path.join(buildDir, 'compile_commands.json'), vscode.ConfigurationTarget.WorkspaceFolder);
+						activeIndex = configIndex;
+					}
+				}
+				updateTasks(node.project.workspaceFolder, node.buildConfig.name, activeIndex);
 			}
 		})
 	);
@@ -953,8 +964,16 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench.debug-manager", async () => {
-			DebugManagerPanel.render(context.extensionUri);
+		vscode.commands.registerCommand("zephyr-workbench.debug-manager", async (node: any) => {
+			let project = undefined;
+			let buildConfig = undefined;
+			if(node.project) {
+				project = node.project;
+			} 
+			if(node.buildConfig) {
+				buildConfig = node.buildConfig;
+			}
+			DebugManagerPanel.render(context.extensionUri, project, buildConfig);
 		})
 	);
 
@@ -1444,9 +1463,11 @@ export function activate(context: vscode.ExtensionContext) {
 					if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
 						const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
 						if(appProject.configs.length === 0) {
-							convertLegacy(appProject);
+							await convertLegacySettings(appProject);
 						}
 					}
+
+					await convertLegacyTasks(workspaceFolder);
 				}
 			}
 		}

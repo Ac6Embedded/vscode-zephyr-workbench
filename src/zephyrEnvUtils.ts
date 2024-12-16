@@ -57,12 +57,15 @@ export async function addConfig(workspaceFolder: vscode.WorkspaceFolder, configT
   const buildConfigs = config.get<any[]>('build.configurations') ? config.get<any[]>('build.configurations') : [];
 
   if(buildConfigs) {
-    let newBuildConfig = {
+    let newBuildConfig: { name: string; board: string; active?: string } = {
       name: configToAdd.name,
       board: configToAdd.boardIdentifier,
-      active: "true"
     };
-  
+    
+    if(configToAdd.active) {
+      newBuildConfig.active = "true";
+    }
+
     buildConfigs.push(newBuildConfig);
   }
   await config.update('build.configurations', buildConfigs, vscode.ConfigurationTarget.WorkspaceFolder);
