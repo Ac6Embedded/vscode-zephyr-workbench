@@ -91,9 +91,6 @@ export function createWestWrapper(project: ZephyrProject, buildConfigName?: stri
       break;
   }
 
-  const cmdEnv = getShellSourceCommand(shell, envScript);
-  const debugServerCommand = concatCommands(shell, cmdEnv, westCmd);
-  
   let envVars = {
     ...westWorkspace.buildEnv,
     ...project.buildEnv
@@ -101,10 +98,15 @@ export function createWestWrapper(project: ZephyrProject, buildConfigName?: stri
 
   if(buildConfig) {
     envVars = { ...envVars, ...buildConfig.envVars };
+    if(buildConfig.westArgs) {
+      westCmd = `${westCmd} ${buildConfig.westArgs}`;
+    }
   }
 
-  let envVarsCommands = '';
+  const cmdEnv = getShellSourceCommand(shell, envScript);
+  const debugServerCommand = concatCommands(shell, cmdEnv, westCmd);
 
+  let envVarsCommands = '';
   for (const [key, value] of Object.entries(envVars)) {
     switch (shell) {
       case 'bash': 

@@ -38,21 +38,21 @@ other_content:
 debug_tools:
 - tool: openocd
   name: OpenOCD
-  version: 0.12.0
+  version: 0.11.0
   website: https://openocd.org/
   group: debug_server
   install_dir: openocd
   root: false
   os:
     windows:
-      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/win32/openocd-0.12.0-ST-win32-x86_64.7z
-      sha256: a5cee7900f72904f0137ff12ab66423ff05bf5f99b004ac7ef1114e4b77624a5
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/win32/openocd-zephyr-0.11.0-win32-x86_64.7z
+      sha256: 0630ec590266b2f4ee1e83426ca26a4e277afd55b0e33c9a80df9f1ff0b972e4
     linux:
-      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/openocd-0.12.0-ST-linux-x86_64.tar.xz
-      sha256: ff79f73f24d5d5ae79510243a7c5da49fd092d03653e2207eb6b359012705223
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/openocd-zephyr-0.11.0-linux-x86_64.tar.xz
+      sha256: 8c4ac8edf6039f863a579bfe334e031a8ee13e9915f85d5321e8098064f61ce5
     darwin:
-      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/darwin/openocd-0.12.0-ST-darwin-aarch64.tar.xz
-      sha256: 6a2d4811d3e1b1d866b3c2a397caceee95734e723af0279202f236e3fd543359
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/darwin/openocd-zephyr-0.11.0-darwin-aarch64.tar.xz
+      sha256: cf7b0470219de559e5186bf47fa07b797a0564ac157636e37bffd9726b8c3ab0
 - tool: udev-rules
   name: Udev Rules
   version: 1.0.0 

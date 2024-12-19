@@ -1,4 +1,7 @@
+import path from "path";
+import os from 'os';
 import { RunnerType, WestRunner } from "./WestRunner";
+import { execCommandWithEnv } from "../../execUtils";
 
 export class STM32CubeProgrammer extends WestRunner {
   name = 'stm32cubeprogrammer';
@@ -9,7 +12,11 @@ export class STM32CubeProgrammer extends WestRunner {
   get executable(): string | undefined {
     const exec = super.executable;
     if(!exec) {
-      return 'STM32_Programmer_CLI';
+      if(process.platform === 'win32') {
+        return 'STM32_Programmer_CLI.exe';
+      } else {
+        return 'STM32_Programmer_CLI';
+      }
     }
   }
 
@@ -49,5 +56,85 @@ export class STM32CubeProgrammer extends WestRunner {
       cmdArgs += ` --extload ${this.serverPath}`;
     }
     return cmdArgs;
+  }
+
+  findSystemCubeProgrammer(): string | undefined {
+    let directoryPath = '';
+    switch(process.platform) {
+      case 'win32': {
+        directoryPath = path.win32.join('c:\\', 'Program Files', 'STMicroelectronics', 'STM32Cube', 'STM32CubeProgrammer', 'bin');
+        break;
+      } 
+      case 'linux': {
+        directoryPath = path.join(os.homedir(), 'STMicroelectronics', 'STM32Cube', 'STM32CubeProgrammer', 'bin');
+        break;
+      }
+      default: {
+        return undefined;
+      }
+    }
+
+    if (this.executable) {
+      return path.join(directoryPath, this.executable);
+    }
+    return undefined;
+  }
+
+  async detect(): Promise<boolean> {
+    let found = await super.detect();
+
+    if(found) {
+      return true;
+    }
+
+    return new Promise<boolean>(async (resolve, reject) => {
+      let execPath = this.findSystemCubeProgrammer();
+      
+      if (!execPath) {
+        resolve(false);
+        return;
+      }
+
+      let versionCmd = `${execPath} --version`;
+      if(process.platform === 'linux' || process.platform === 'darwin') {
+        versionCmd = `${versionCmd} 2>&1`;
+      }
+      
+      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
+        if (error) {
+          resolve(false);
+        } else {
+          resolve(true);
+        }
+      });
+    });
+  }
+
+  async detectVersion(): Promise<string | undefined> {
+    // let version = await super.detectVersion();
+
+    // if(version) {
+    //   return version;
+    // }
+    let execPath = this.findSystemCubeProgrammer();
+
+    let versionCmd = `${execPath} --version`;
+    return new Promise<string | undefined>((resolve, reject) => {
+      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
+        if (error) {
+          resolve(undefined);
+        } else if (stderr) {
+          resolve(undefined);
+        } else {
+          if(this.versionRegex) {
+            const versionMatch = stdout.match(this.versionRegex);
+            if (versionMatch) {
+                resolve(versionMatch[1]);
+            }
+          } 
+          reject(undefined);
+        }
+      });
+    });
   }
 }

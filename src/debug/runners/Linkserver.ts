@@ -83,7 +83,6 @@ export class Linkserver extends WestRunner {
         }
       });
     });
-    
   }
 
   findSystemLinkServer(): string | undefined {
@@ -100,6 +99,9 @@ export class Linkserver extends WestRunner {
       case 'darwin': {
         directoryPath = '/Applications';
         break;
+      }
+      default: {
+        return undefined;
       }
     }
 

@@ -97,14 +97,21 @@ export class DebugToolsPanel {
       let runner = getRunner(tool.tool);
       if(runner) {
         runner.loadArgs(undefined);
-        let version = await runner.detectVersion();
-        if(version) {
-          tool.version = version;
+        let installedVersion = await runner.detectVersion();
+        let actualVersion = tool.version;
+
+        if(installedVersion) {
+          tool.version = installedVersion;
           tool.found = "Installed";
+          if(tool.os && (actualVersion !== installedVersion)) {
+            tool.found = "New Version Available";
+          }
         } else {
           tool.version = "";
           tool.found = "Not installed";
         }
+
+        
       } else {
         tool.found = "";
       }
