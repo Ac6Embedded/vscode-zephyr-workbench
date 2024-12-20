@@ -45,6 +45,11 @@ export class STM32CubeProgrammer extends WestRunner {
       }
     }
 
+    // Search in system
+    if(!this.serverPath || this.serverPath.length === 0 ) {
+      this.serverPath = this.findSystemCubeProgrammer();
+    }
+
     if(args) {
       this.loadUserArgs(args);
     }
@@ -105,34 +110,6 @@ export class STM32CubeProgrammer extends WestRunner {
           resolve(false);
         } else {
           resolve(true);
-        }
-      });
-    });
-  }
-
-  async detectVersion(): Promise<string | undefined> {
-    // let version = await super.detectVersion();
-
-    // if(version) {
-    //   return version;
-    // }
-    let execPath = this.findSystemCubeProgrammer();
-
-    let versionCmd = `${execPath} --version`;
-    return new Promise<string | undefined>((resolve, reject) => {
-      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
-        if (error) {
-          resolve(undefined);
-        } else if (stderr) {
-          resolve(undefined);
-        } else {
-          if(this.versionRegex) {
-            const versionMatch = stdout.match(this.versionRegex);
-            if (versionMatch) {
-                resolve(versionMatch[1]);
-            }
-          } 
-          reject(undefined);
         }
       });
     });

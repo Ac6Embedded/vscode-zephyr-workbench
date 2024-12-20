@@ -124,6 +124,10 @@ export class WestRunner {
       execPath = this.executable;
     }
 
+    if(execPath.includes(' ')) {
+      execPath=`"${execPath}"`;
+    }
+
     let versionCmd = `${execPath} --version`;
     if(process.platform === 'linux' || process.platform === 'darwin') {
       versionCmd = `${versionCmd} 2>&1`;
@@ -151,6 +155,10 @@ export class WestRunner {
       execPath = this.getSetting('pathExec') as string;
     } else if(this.executable) {
       execPath = this.executable;
+    }
+
+    if(execPath.includes(' ')) {
+      execPath=`"${execPath}"`;
     }
 
     let versionCmd = `${execPath} --version`;
