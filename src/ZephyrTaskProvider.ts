@@ -8,7 +8,7 @@ import { ZephyrBoard } from './ZephyrBoard';
 import { ZephyrSDK } from './ZephyrSDK';
 import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { concatCommands, getEnvVarFormat, getShell, getShellArgs } from './execUtils';
-import { getWestWorkspace, getZephyrSDK } from './utils';
+import { getWestWorkspace, getZephyrSDK, msleep } from './utils';
 import { addConfig } from './zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 
@@ -102,6 +102,19 @@ const hardenConfigTask: ZephyrTaskDefinition = {
   ]
 };
 
+const spdxInitTask: ZephyrTaskDefinition = {
+  label: "Init SPDX",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "west",
+  config: "primary",
+  args: [
+    "spdx",
+    "--init",
+    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
+  ]
+};
+
 const spdxTask: ZephyrTaskDefinition = {
   label: "Generate SPDX",
   type: "zephyr-workbench",
@@ -110,8 +123,6 @@ const spdxTask: ZephyrTaskDefinition = {
   config: "primary",
   args: [
     "spdx",
-    "--init",
-    "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
   ]
 };
@@ -178,6 +189,7 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [guiConfigTask.label, guiConfigTask],
   [menuconfigTask.label, menuconfigTask],
   [hardenConfigTask.label, hardenConfigTask],
+  [spdxInitTask.label, spdxInitTask],
   [spdxTask.label, spdxTask],
   [flashTask.label, flashTask],
   [ramReportTask.label, ramReportTask],
@@ -391,7 +403,7 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
       guiConfigTask,
       menuconfigTask,
       hardenConfigTask,
-      spdxTask,
+      spdxInitTask,
       flashTask,
       ramReportTask,
       romReportTask,
@@ -404,10 +416,6 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
 }
 
 export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder, taskName: string): Promise<boolean> {
-  function msleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-  
   const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
   const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
 
@@ -442,10 +450,6 @@ export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder,
  * @returns 
  */
 export async function updateTasks(workspaceFolder: vscode.WorkspaceFolder, activeConfigName: string, activeIndex: number) {
-  function msleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-  
   const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
   const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
   try {

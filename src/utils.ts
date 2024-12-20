@@ -18,6 +18,10 @@ import { checkOrCreateTask, TaskConfig, ZephyrTaskProvider } from './ZephyrTaskP
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 import { addConfig, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 
+export function msleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export function normalizePath(pathToNormalize: string) {
   let newpath = path.normalize(pathToNormalize);
   if (newpath.includes(' ')) {
@@ -802,19 +806,15 @@ export async function convertLegacySettings(project: ZephyrProject): Promise<voi
  * Temporary convert method to upgrade legacy tasks.json
  * Code to remove when no legacy project exists anymore
  */
-export async function convertLegacyTasks(workspaceFolder: vscode.WorkspaceFolder) {
-  function msleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-  
+export async function convertLegacyTasks(workspaceFolder: vscode.WorkspaceFolder) { 
   const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
   const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
-
   
   const data = await fsPromise.readFile(tasksJsonPath, 'utf8');
   const config: TaskConfig = JSON.parse(data);
   let needUpdate = false;
   const newTasks = config.tasks.map(task => {
+    // Update from legacy project
     if(task.config === undefined) {
       if(task.type === ZephyrTaskProvider.ZephyrType) {
         task.config = "primary";
@@ -824,6 +824,12 @@ export async function convertLegacyTasks(workspaceFolder: vscode.WorkspaceFolder
         task.args.push("--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}");
         needUpdate = true;
       }
+    }
+
+    // Temporary fix to remove --board argument on spdx tasks
+    if(task.label === 'Generate SPDX') {
+      task.args = task.args.filter((arg: string) => !arg.startsWith("--board"));
+      needUpdate = true;
     }
     return task;
   }); 

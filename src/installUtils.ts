@@ -576,6 +576,76 @@ export function findVenvActivateScript(destDir: string): string | undefined {
   return undefined;
 }
 
+export async function createLocalVenvSPDX(context: vscode.ExtensionContext, workbenchFolder: vscode.WorkspaceFolder): Promise<string | undefined> {
+  let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
+  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+  if(installDirUri && envScript) {
+    let installScript: string = "";
+    let installCmd: string = "";
+    let installArgs: string = "";
+    let destDir: string = "";
+    let shell: string = "";
+    
+    destDir = workbenchFolder.uri.fsPath;
+    switch(process.platform) {
+      case 'linux': {
+        installScript = 'create_venv_spdx.sh';
+        installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        installArgs += ` ${destDir}`;
+        shell = 'bash';
+        break; 
+      }
+      case 'win32': {
+        installScript = 'create_venv_spdx.ps1';
+        installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        installArgs += ` -InstallDir ${destDir}`;
+        shell = 'powershell.exe';
+        break; 
+      }
+      case 'darwin': {
+        installScript = 'create_venv_spdx.sh';
+        installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        installArgs += ` ${destDir}`;
+        shell = 'bash';
+        break; 
+      }
+      default: {
+        vscode.window.showErrorMessage("Platform not supported !");
+        return undefined;
+      }
+    }
+
+    envScript = expandEnvVariables(envScript);
+
+    let shellOpts: vscode.ShellExecutionOptions = {
+      cwd: os.homedir(),
+      env: { ENV_FILE: envScript },
+      executable: shell,
+      shellArgs: getShellArgs(shell),
+    };
+    
+    await execShellCommand('Creating local virtual environment', installCmd + installArgs, shellOpts);
+    return findVenvActivateScript(destDir);
+
+  } else {
+    vscode.window.showErrorMessage("Cannot find installation script");
+  }
+  return undefined;
+}
+
+export function findVenvSPDXActivateScript(destDir: string): string | undefined {
+  let venvPath;
+  if(process.platform === 'linux' || process.platform === 'darwin') {
+    venvPath = path.join(destDir, '.venv-spdx', 'bin', 'activate');
+  } else {
+    venvPath = path.join(destDir, '.venv-spdx', 'Scripts', 'activate.bat');
+  }
+  if(fileExists(venvPath)) {
+    return venvPath;
+  }
+  return undefined;
+}
+
 export async function cleanupDownloadDir(context: vscode.ExtensionContext) {
   const fileDownloader: FileDownloader = await getApi();
   await fileDownloader.deleteAllItems(context);

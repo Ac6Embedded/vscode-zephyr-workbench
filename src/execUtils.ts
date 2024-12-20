@@ -139,15 +139,15 @@ export function expandEnvVariables(input: string): string {
   });
 }
 
-export async function executeTask(task: vscode.Task) {
+export async function executeTask(task: vscode.Task): Promise<vscode.TaskExecution> {
   const execution = await vscode.tasks.executeTask(task);
   
-  return new Promise<void>(resolve => {
+  return new Promise<vscode.TaskExecution>(resolve => {
     let disposable = vscode.tasks.onDidEndTask(e => {
       if (e.execution.task.name === task.name) {
         // getOutputChannel().appendLine(e.execution.task.name + ' has finished');
         disposable.dispose();
-        resolve();
+        resolve(e.execution);
       }
     });
   });

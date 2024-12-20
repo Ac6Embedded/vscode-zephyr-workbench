@@ -4,6 +4,20 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.2]
+
+- Fix access to debug manager
+- Change OpenOCD version to Zephyr's
+- Add SPDX support + Analysis tools
+
+## [1.3.1]
+
+- Restrict only one active configuration
+- Update zephyr-workbench task arguments and config
+- Enable run task by palette
+- Set default value on debug manager
+- Fix change board picker
+
 ## [1.3.0]
 
 - Support multi-build configuration

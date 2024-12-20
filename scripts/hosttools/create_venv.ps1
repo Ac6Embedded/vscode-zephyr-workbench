@@ -213,7 +213,7 @@ function Install-PythonVenv {
   python -m pip install -r "$RequirementsDirectory\requirements.txt" --quiet
 }
 
-$TemporaryDirectory = "$InstallDirectory\.zinstaller"
+$TemporaryDirectory = "$InstallDir\.zinstaller"
 $YamlFilePath = "$ScriptDirectory\tools.yml"
 $ManifestFilePath = "$TemporaryDirectory\manifest.ps1"
 $DownloadDirectory = "$TemporaryDirectory\downloads"
@@ -276,6 +276,6 @@ $ScriptDir = Split-Path -Path "$env:ENV_FILE" -Parent
 $EnvScript = Join-Path -Path "$ScriptDir" -ChildPath "env.ps1"
 . $EnvScript *>$null
 
-Install-PythonVenv -InstallDirectory $InstallDirectory -WorkDirectory $WorkDirectory
+Install-PythonVenv -InstallDirectory $InstallDir -WorkDirectory $WorkDirectory
 
 Remove-Item -Path $TemporaryDirectory -Recurse -Force

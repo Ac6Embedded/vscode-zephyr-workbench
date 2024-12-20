@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://zephyr-workbench.com",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -352,8 +352,24 @@
         "icon": "$(wrench)"
       },
       {
-        "command": "zephyr-workbench-app-explorer.spdx-app",
-        "title": "Generate SPDX"
+        "command": "zephyr-workbench-app-explorer.spdx.build",
+        "title": "Build SPDX"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.spdx.install-dependencies",
+        "title": "Install dependencies"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.spdx.analyze.ntia-checker",
+        "title": "ntia-checker"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.spdx.analyze.sbom2doc",
+        "title": "sbom2doc"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.spdx.analyze.cve-bin-tool",
+        "title": "cve-bin-tool"
       },
       {
         "command": "zephyr-workbench-app-explorer.run-app",
@@ -610,6 +626,18 @@
       {
         "id": "zephyr-workbench-app-explorer.config.memory-analysis",
         "label": "Memory Analysis"
+      },
+      {
+        "id": "zephyr-workbench-app-explorer.spdx",
+        "label": "SPDX"
+      },
+      {
+        "id": "zephyr-workbench-app-explorer.config.spdx",
+        "label": "SPDX"
+      },
+      {
+        "id": "zephyr-workbench-app-explorer.spdx.analyze",
+        "label": "Analyze SPDX"
       }
     ],
     "menus": {
@@ -687,7 +715,7 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.spdx-app",
+          "submenu": "zephyr-workbench-app-explorer.spdx",
           "group": "0@view/item/context@6",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
@@ -767,7 +795,7 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
-          "command": "zephyr-workbench-app-explorer.spdx-app",
+          "submenu": "zephyr-workbench-app-explorer.config.spdx",
           "group": "0@view/item/context@6",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
@@ -1021,6 +1049,54 @@
           "command": "zephyr-workbench-app-explorer.memory-analysis.puncover",
           "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        }
+      ],
+      "zephyr-workbench-app-explorer.spdx": [
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.install-dependencies",
+          "group": "0@view/item/context@0",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.build",
+          "group": "0@view/item/context@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.spdx.analyze",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        }
+      ],
+      "zephyr-workbench-app-explorer.config.spdx": [
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.install-dependencies",
+          "group": "0@view/item/context@0",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.build",
+          "group": "0@view/item/context@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.spdx.analyze",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        }
+      ],
+      "zephyr-workbench-app-explorer.spdx.analyze": [
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.analyze.ntia-checker",
+          "group": "0@view/item/context@0"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.analyze.sbom2doc",
+          "group": "0@view/item/context@1"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.analyze.cve-bin-tool",
+          "group": "0@view/item/context@2"
         }
       ]
     },

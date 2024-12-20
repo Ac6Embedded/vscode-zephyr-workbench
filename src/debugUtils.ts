@@ -98,9 +98,10 @@ export function createWestWrapper(project: ZephyrProject, buildConfigName?: stri
 
   if(buildConfig) {
     envVars = { ...envVars, ...buildConfig.envVars };
-    if(buildConfig.westArgs) {
-      westCmd = `${westCmd} ${buildConfig.westArgs}`;
-    }
+    // To uncomment when args VS build args are supported
+    // if(buildConfig.westArgs) {
+    //   westCmd = `${westCmd} ${buildConfig.westArgs}`;
+    // }
   }
 
   const cmdEnv = getShellSourceCommand(shell, envScript);

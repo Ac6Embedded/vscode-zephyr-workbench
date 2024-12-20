@@ -5,7 +5,9 @@ import * as vscode from 'vscode';
 import { westBoardsCommand, westInitCommand, westUpdateCommand } from './WestCommands';
 import { WestWorkspace } from './WestWorkspace';
 import { ZephyrAppProject } from './ZephyrAppProject';
+import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProvider';
 import { ZephyrProject } from './ZephyrProject';
+import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 import { ZephyrSDK } from './ZephyrSDK';
 import { createExtensionsJson, createTasksJson, setDefaultProjectSettings, updateTasks, ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { changeBoardQuickStep } from './changeBoardQuickStep';
@@ -13,8 +15,9 @@ import { changeEnvVarQuickStep } from './changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
 import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
+import { executeTask } from './execUtils';
 import { importProjectQuickStep } from './importProjectQuickStep';
-import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools } from './installUtils';
+import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools } from './installUtils';
 import { generateWestManifest } from './manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
@@ -22,6 +25,8 @@ import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
+import { pickApplicationQuickStep } from './pickApplicationQuickStep';
+import { pickBuildConfigQuickStep } from './pickBuildConfigQuickStep';
 import { WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
 import { ZephyrApplicationBoardTreeItem, ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem } from './providers/ZephyrApplicationProvider';
 import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsCommandProvider';
@@ -29,15 +34,12 @@ import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherReso
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
+import { setConfigQuickStep } from './setConfigQuickStep';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { addWorkspaceFolder, convertLegacySettings, convertLegacyTasks, copySampleSync, deleteFolder, fileExists, findConfigTask, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, removeWorkspaceFolder } from './utils';
+import { addWorkspaceFolder, convertLegacySettings, convertLegacyTasks, copySampleSync, deleteFolder, fileExists, findConfigTask, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, msleep, removeWorkspaceFolder } from './utils';
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
-import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProvider';
-import { pickApplicationQuickStep } from './pickApplicationQuickStep';
-import { setConfigQuickStep } from './setConfigQuickStep';
-import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
-import { pickBuildConfigQuickStep } from './pickBuildConfigQuickStep';
+import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './SPDXCommands';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -198,18 +200,6 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.pristine', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			// if(node.project) {
-			// 	const westRebuildTask = await findOrCreateTask('West Rebuild', node.project.workspaceFolder);
-			// 	if (westRebuildTask) {
-			// 		try {
-			// 			await vscode.tasks.executeTask(westRebuildTask);
-			// 		} catch (error) {
-			// 			vscode.window.showErrorMessage(`Error executing task: ${error}`);
-			// 		}
-			// 	} else {
-			// 			vscode.window.showErrorMessage('Cannot find Rebuild task.');
-			// 	}
-			// }
 			await executeConfigTask('West Rebuild', node);
 		})
 	);
@@ -244,72 +234,21 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.guiconfig-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			// if(node.project.sourceDir) {
-			// 	const guiConfigTask = await findOrCreateTask('Gui config', node.project.workspaceFolder);
-			// 	if (guiConfigTask) {
-			// 		try {
-			// 			await vscode.tasks.executeTask(guiConfigTask);
-			// 		} catch (error) {
-			// 			vscode.window.showErrorMessage(`Error executing task: ${error}`);
-			// 		}
-			// 	} else {
-			// 			vscode.window.showErrorMessage('Cannot find Guiconfig task.');
-			// 	}
-				
-			// }
 			await executeConfigTask('Gui config', node);
 		})
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.menuconfig-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			// if(node.project.sourceDir) {
-			// 	const menuconfigTask = await findOrCreateTask('Menuconfig', node.project.workspaceFolder);
-			// 	if (menuconfigTask) {
-			// 		try {
-			// 			await vscode.tasks.executeTask(menuconfigTask);
-			// 		} catch (error) {
-			// 			vscode.window.showErrorMessage(`Error executing task: ${error}`);
-			// 		}
-			// 	} else {
-			// 			vscode.window.showErrorMessage('Cannot find Menuconfig task.');
-			// 	}
-				
-			// }
 			await executeConfigTask('Menuconfig', node);
 		})
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.hardenconfig-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			// if(node.project.sourceDir) {
-			// 	const hardenConfigTask = await findOrCreateTask('Harden Config', node.project.workspaceFolder);
-			// 	if (hardenConfigTask) {
-			// 		try {
-			// 			await vscode.tasks.executeTask(hardenConfigTask);
-			// 		} catch (error) {
-			// 			vscode.window.showErrorMessage(`Error executing task: ${error}`);
-			// 		}
-			// 	} else {
-			// 			vscode.window.showErrorMessage('Cannot find Menuconfig task.');
-			// 	}
-				
-			// }
 			await executeConfigTask('Harden Config', node);
 		})
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.run-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-		// 	if(node.project.sourceDir) {
-		// 		const westFlashTask = await findOrCreateTask('West Flash', node.project.workspaceFolder);
-		// 		if (westFlashTask) {
-		// 			try {
-		// 				await vscode.tasks.executeTask(westFlashTask);
-		// 			} catch (error) {
-		// 				vscode.window.showErrorMessage(`Error executing task: ${error}`);
-		// 			}
-		// 		} else {
-		// 				vscode.window.showErrorMessage('Cannot find flash task.');
-		// 		}
-		// 	}
 			await executeConfigTask('West Flash', node);
 		})
 	);
@@ -355,7 +294,7 @@ export function activate(context: vscode.ExtensionContext) {
 						if(buildConfigName) {
 							configName = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`;
 						}
-						if(configurations.some((config: { name: string }) => config.name === configName)) {
+						if(configurations.some((config: { name: string }) => (config !== null) && (config.name === configName))) {
 							await vscode.debug.startDebugging(workspaceFolder, configName);
 							return;
 						}
@@ -371,23 +310,184 @@ export function activate(context: vscode.ExtensionContext) {
 
 		})
 	);
+
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem ) => {
-			// if(node.project.sourceDir) {
-			// 	const westFlashTask = await findOrCreateTask('Generate SPDX', node.project.workspaceFolder);
-			// 	if (westFlashTask) {
-			// 		try {
-			// 			await vscode.tasks.executeTask(westFlashTask);
-			// 		} catch (error) {
-			// 			vscode.window.showErrorMessage(`Error executing task: ${error}`);
-			// 		}
-			// 	} else {
-			// 		vscode.window.showErrorMessage('Cannot find SPDX task.');
-			// 	}
-			// }
-			await executeConfigTask('Generate SPDX', node);
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.install-dependencies', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem ) => {
+			vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: "Create new local environment for SDPX",
+				cancellable: false,
+			}, async () => {
+				await createLocalVenvSPDX(context, node.project.workspaceFolder);
+				//await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+			}
+		);
 		})
 	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.analyze.ntia-checker', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem ) => {
+			if(node.project) {
+				let parentUri;
+				if(node instanceof ZephyrApplicationTreeItem) {
+					if(node.project) {
+						const buildUri = vscode.Uri.file(node.project.configs[0].getBuildDir(node.project));
+						parentUri = vscode.Uri.joinPath(buildUri, 'spdx');
+					}
+				} else if(node instanceof ZephyrConfigTreeItem) {
+					if(node.project) {
+						const buildUri = vscode.Uri.file(node.buildConfig.getBuildDir(node.project));
+						parentUri = vscode.Uri.joinPath(buildUri, 'spdx');
+					}
+				} 
+				if(parentUri && fileExists(parentUri.fsPath)) {
+					const spdxFile = await openSPDXDialog(parentUri);
+					if(spdxFile) {
+						await execNtiaCheckerCommand(spdxFile.fsPath, node.project);
+					}
+				} else {
+					vscode.window.showErrorMessage("No SPDX file to analyze");
+				}
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.analyze.sbom2doc', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem ) => {
+			if(node.project) {
+				let parentUri;
+				if(node instanceof ZephyrApplicationTreeItem) {
+					if(node.project) {
+						const buildUri = vscode.Uri.file(node.project.configs[0].getBuildDir(node.project));
+						parentUri = vscode.Uri.joinPath(buildUri, 'spdx');
+						
+					}
+				} else if(node instanceof ZephyrConfigTreeItem) {
+					if(node.project) {
+						const buildUri = vscode.Uri.file(node.buildConfig.getBuildDir(node.project));
+						parentUri = vscode.Uri.joinPath(buildUri, 'spdx');
+					}
+				} 
+				if(parentUri) {
+					const spdxFile = await openSPDXDialog(parentUri);
+					if(spdxFile) {
+						await execSBom2DocCommand(spdxFile.fsPath, node.project);
+					}
+				} else {
+					vscode.window.showErrorMessage("No SPDX file to analyze");
+				}
+			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.analyze.cve-bin-tool', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem ) => {
+			if(node.project) {
+				let parentUri;
+				if(node instanceof ZephyrApplicationTreeItem) {
+					if(node.project) {
+						const buildUri = vscode.Uri.file(node.project.configs[0].getBuildDir(node.project));
+						parentUri = vscode.Uri.joinPath(buildUri, 'spdx');
+						
+					}
+				} else if(node instanceof ZephyrConfigTreeItem) {
+					if(node.project) {
+						const buildUri = vscode.Uri.file(node.buildConfig.getBuildDir(node.project));
+						parentUri = vscode.Uri.joinPath(buildUri, 'spdx');
+					}
+				} 
+				if(parentUri) {
+					const spdxFile = await openSPDXDialog(parentUri);
+					if(spdxFile) {
+						await execCveBinToolCommand(spdxFile.fsPath, node.project);
+					}
+				} else {
+					vscode.window.showErrorMessage("No SPDX file to analyze");
+				}
+			}
+		})
+	);
+
+	async function openSPDXDialog(parentDir?: vscode.Uri): Promise<vscode.Uri | undefined> {
+		const fileUri = await vscode.window.showOpenDialog({
+			defaultUri: parentDir,
+			canSelectFiles: true,
+			canSelectFolders: false,
+			canSelectMany: false,
+			openLabel: 'Select SPDX file',
+			filters: {
+				'SPDX files': ['spdx'],
+				'All files': ['*']
+			}
+		});
+
+		if (fileUri && fileUri[0]) {
+			return fileUri[0];
+		} else {
+			return undefined;
+		}
+	}
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.build', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem ) => {
+			let buildDir: string;
+			let source: any;
+			let workspaceFolder: vscode.WorkspaceFolder = node.project.workspaceFolder;
+			if(node instanceof ZephyrApplicationTreeItem) {
+				if(node.project) {
+					buildDir = 'build';
+					source = node.project.configs[0];
+				}
+			} else if(node instanceof ZephyrConfigTreeItem) {
+				if(node.project) {
+					buildDir = node.buildConfig.relativeBuildDir;
+					source = node.buildConfig;
+				}
+			} 
+			
+			// Delete build directory before SPDX init
+			if(node.project) {
+				vscode.window.withProgress({
+						location: vscode.ProgressLocation.Notification,
+						title: "Deleting Zephyr Application build directory",
+						cancellable: false,
+					}, async () => {
+						deleteFolder(path.join(node.project.folderPath, buildDir));
+					}
+				);
+			}
+
+			try {
+				if(source) {
+					await executeConfigTask('Init SPDX', node);
+					await saveConfigSetting(workspaceFolder, source.name, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, appendBuildOutputMeta(source.westArgs));
+					msleep(200);
+					await executeConfigTask('West Build', node);
+					await saveConfigSetting(workspaceFolder, source.name, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, source.westArgs);
+					msleep(200);
+					await executeConfigTask('Generate SPDX', node);
+				}
+			} catch (error) {
+        vscode.window.showErrorMessage(`Error executing tasks: ${error}`);
+    	}
+
+			function appendBuildOutputMeta(input: string): string {
+				if(input) {
+					if(input.includes('CONFIG_BUILD_OUTPUT_META=y')) {
+						return input;
+					} else if(input.includes('--')) {
+						return `${input} -DCONFIG_BUILD_OUTPUT_META=y`;
+					} else {
+						return `${input} -- -DCONFIG_BUILD_OUTPUT_META=y`;
+					}
+				} else {
+					return '-- -DCONFIG_BUILD_OUTPUT_META=y';
+				}
+			}
+		})
+	);
+
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-app-explorer.remove", async (node: ZephyrApplicationTreeItem) => {
 			if(node.project) {
@@ -510,45 +610,11 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.ram-report', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder) => {
-			// let folder: any = node ;
-			// if(node instanceof ZephyrApplicationTreeItem) {
-			// 	if(node.project) {
-			// 		folder = node.project.workspaceFolder;
-			// 	}
-			// }
-
-			// const ramReportTask = await findOrCreateTask('West RAM Report', folder);
-			// if (ramReportTask) {
-			// 	try {
-			// 		await vscode.tasks.executeTask(ramReportTask);
-			// 	} catch (error) {
-			// 		vscode.window.showErrorMessage(`Error executing task: ${error}`);
-			// 	}
-			// } else {
-			// 		vscode.window.showErrorMessage('Cannot find "West RAM Report" task.');
-			// }
 			await executeConfigTask('West RAM Report', node);
 		})
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.rom-report', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder) => {
-			// let folder: any = node ;
-			// if(node instanceof ZephyrApplicationTreeItem) {
-			// 	if(node.project) {
-			// 		folder = node.project.workspaceFolder;
-			// 	}
-			// }
-
-			// const romReportTask = await findOrCreateTask('West ROM Report', folder);
-			// if (romReportTask) {
-			// 	try {
-			// 		await vscode.tasks.executeTask(romReportTask);
-			// 	} catch (error) {
-			// 		vscode.window.showErrorMessage(`Error executing task: ${error}`);
-			// 	}
-			// } else {
-			// 		vscode.window.showErrorMessage('Cannot find "West ROM Report" task.');
-			// }
 			await executeConfigTask('West ROM Report', node);
 		})
 	);
@@ -561,26 +627,6 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			}
 
-			// const puncoverTask = await findOrCreateTask('West Puncover', folder);
-			// if (puncoverTask) {
-			// 	try {
-			// 		let taskExec = await vscode.tasks.executeTask(puncoverTask);
-			// 		const taskStartListener = vscode.tasks.onDidStartTask(async (event) => {
-			// 			if (event.execution === taskExec) {
-			// 				const stopItem = 'Terminate';
-			// 				const choice = await vscode.window.showWarningMessage('Puncover server is running...', stopItem);
-			// 				if (choice === stopItem) {
-			// 					taskExec.terminate();
-			// 					taskStartListener.dispose();
-			// 				};
-			// 			}
-			// 		});
-			// 	} catch (error) {
-			// 		vscode.window.showErrorMessage(`Error executing task: ${error}`);
-			// 	}
-			// } else {
-			// 		vscode.window.showErrorMessage('Cannot find "West Puncover" task.');
-			// }
 			let taskExec = await executeConfigTask('West Puncover', node);
 			const taskStartListener = vscode.tasks.onDidStartTask(async (event) => {
 				if (taskExec && event.execution === taskExec[0]) {
@@ -967,11 +1013,13 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand("zephyr-workbench.debug-manager", async (node: any) => {
 			let project = undefined;
 			let buildConfig = undefined;
-			if(node.project) {
-				project = node.project;
-			} 
-			if(node.buildConfig) {
-				buildConfig = node.buildConfig;
+			if(node) {
+				if(node.project) {
+					project = node.project;
+				} 
+				if(node.buildConfig) {
+					buildConfig = node.buildConfig;
+				}
 			}
 			DebugManagerPanel.render(context.extensionUri, project, buildConfig);
 		})
@@ -1465,9 +1513,8 @@ export function activate(context: vscode.ExtensionContext) {
 						if(appProject.configs.length === 0) {
 							await convertLegacySettings(appProject);
 						}
+						await convertLegacyTasks(workspaceFolder);
 					}
-
-					await convertLegacyTasks(workspaceFolder);
 				}
 			}
 		}
@@ -1535,25 +1582,25 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 	}
 	
 	// Get list of task to execute
-	let westBuildTasks: vscode.Task[] = [];
+	let listTasks: vscode.Task[] = [];
 	if(context && folder) {
 		// IF: In configuration name is provided execute it
 		// ELSE IF : run active if multiple build configurations
 		// ELSE IF : run task if only one build configuration
 		// ELSE [Legacy] run old build task 
 		if(configName) {
-			let westBuildTask = await findConfigTask(taskName, context, configName);
-			if(westBuildTask) {
-				westBuildTasks.push(westBuildTask);
+			let task = await findConfigTask(taskName, context, configName);
+			if(task) {
+				listTasks.push(task);
 			}
 		} else if(context.configs && context.configs.length > 1) {
 			for(let config of context.configs) {
 				let hasActive = false;
 				if(config.active) {
 					hasActive = true;
-					let westBuildTask = await findConfigTask(taskName, context, config.name);
-					if(westBuildTask) {
-						westBuildTasks.push(westBuildTask);
+					let task = await findConfigTask(taskName, context, config.name);
+					if(task) {
+						listTasks.push(task);
 					}
 				}
 
@@ -1562,36 +1609,38 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 				}
 			}
 		} else if(context.configs && context.configs.length === 1) {
-			let westBuildTask = await findConfigTask(taskName, context, context.configs[0].name);
-			if(westBuildTask) {
-				westBuildTasks.push(westBuildTask);
+			let task = await findConfigTask(taskName, context, context.configs[0].name);
+			if(task) {
+				listTasks.push(task);
 			}
 		} else {
 			// For legacy compatibility:
 			// If the project settings.json doesn't have any build configuration
-			let westBuildTask = await findOrCreateTask(taskName, folder);
-			if(westBuildTask) {
-				westBuildTasks.push(westBuildTask);
+			let task = await findOrCreateTask(taskName, folder);
+			if(task) {
+				listTasks.push(task);
 			}
 		}
 	}
 	
-	// Execute task
-	if (westBuildTasks.length > 0) {
-		try {
-			let tasksExec: vscode.TaskExecution[] = [];
-			for(let westBuildTask of westBuildTasks) {
-				tasksExec.push(await vscode.tasks.executeTask(westBuildTask));
+	return new Promise<vscode.TaskExecution[] | undefined >(async resolve => {
+		// Execute task
+		if (listTasks.length > 0) {
+			try {
+				let tasksExec: vscode.TaskExecution[] = [];
+				for(let task of listTasks) {
+					tasksExec.push(await executeTask(task));
+				}
+				resolve(tasksExec);
+			} catch (error) {
+				vscode.window.showErrorMessage(`Error executing task: ${error}`);
+				resolve(undefined);
 			}
-			return tasksExec;
-		} catch (error) {
-			vscode.window.showErrorMessage(`Error executing task: ${error}`);
-			return undefined;
+		} else {
+			vscode.window.showErrorMessage(`Cannot find "${taskName}" task.`);
+			resolve(undefined);
 		}
-	} else {
-		vscode.window.showErrorMessage(`Cannot find "${taskName}" task.`);
-		return undefined;
-	}
+	});
 }
 
 // This method is called when your extension is deactivated
