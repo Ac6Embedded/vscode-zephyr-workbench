@@ -14,7 +14,7 @@ Ac6 Zephyr Workbench for VS Code extension adds support of Zephyr development to
 * Supported on every platforms
 
 <p align="center">
-  <img alt="Zephyr Workbench Overview" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_overview.png" width="80%">
+  <img alt="Zephyr Workbench Overview" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/gifs/zw_create_app.gif">
 </p>
 
 ## Documentation
@@ -124,6 +124,10 @@ The previous steps ("Import West Workspace" and "Import Zephyr SDK") are mandato
 
 <p align="center">
   <img alt="Configure Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_manager.png" width="80%">
+</p>
+
+<p align="center">
+  <img alt="Configure Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/gifs/zw_debug_config.gif">
 </p>
 
 The newly debug configuration is named "Zephyr Workbench Debug"
