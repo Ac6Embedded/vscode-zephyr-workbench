@@ -55,7 +55,7 @@ export async function importProjectQuickStep(context: ExtensionContext) {
         state.projectLoc = folderUri[0].fsPath;
       }
     } else {
-      state.projectLoc = normalizePath(pick);
+      state.projectLoc = pick;
     }
 
     return (input: MultiStepInput) => pickReconfigure(input, state);
