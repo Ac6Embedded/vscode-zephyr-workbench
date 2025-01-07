@@ -1340,6 +1340,11 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-app", async (projectLoc, westWorkspace, zephyrBoard, zephyrSDK) => {
+			if(!fileExists(projectLoc)) {
+				vscode.window.showInformationMessage(`Project '${projectLoc}' not found !`);
+				return;
+			}
+			
 			await addWorkspaceFolder(projectLoc);
 
 			let workspaceFolder = getWorkspaceFolder(projectLoc);

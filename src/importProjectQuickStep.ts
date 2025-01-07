@@ -4,7 +4,7 @@ import { ZephyrBoard } from "./ZephyrBoard";
 import { ZephyrProject } from "./ZephyrProject";
 import { ZephyrSDK } from "./ZephyrSDK";
 import { MultiStepInput } from "./utilities/MultiStepQuickPick";
-import { getListZephyrSDKs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK } from "./utils";
+import { getListZephyrSDKs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, normalizePath } from "./utils";
 
 export async function importProjectQuickStep(context: ExtensionContext) {
   const title = 'Import Project';
@@ -54,6 +54,8 @@ export async function importProjectQuickStep(context: ExtensionContext) {
       if(folderUri && folderUri.length > 0) {
         state.projectLoc = folderUri[0].fsPath;
       }
+    } else {
+      state.projectLoc = normalizePath(pick);
     }
 
     return (input: MultiStepInput) => pickReconfigure(input, state);
