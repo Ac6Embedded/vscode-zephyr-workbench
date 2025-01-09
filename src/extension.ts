@@ -286,6 +286,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 			
 			if(workspaceFolder) {
+				// Search for existing launch configuration
 				const launchConfig = vscode.workspace.getConfiguration('launch', workspaceFolder.uri);
 				if(launchConfig) {
 					const configurations: vscode.DebugConfiguration[] = launchConfig.get('configurations', []);
@@ -301,11 +302,8 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				}
 				
-				const debugManagerItem = 'Open Debug Manager';
-				const choice = await vscode.window.showWarningMessage('No debug launch configuration found, please configure the debug session on the Debug Manager', debugManagerItem);
-				if(choice === debugManagerItem) {
-					vscode.commands.executeCommand('zephyr-workbench.debug-manager', node);
-				}
+				// Open Debug Manager if no launch configuration is found
+				vscode.commands.executeCommand('zephyr-workbench.debug-manager', node);
 			}
 
 		})
@@ -319,7 +317,6 @@ export function activate(context: vscode.ExtensionContext) {
 				cancellable: false,
 			}, async () => {
 				await createLocalVenvSPDX(context, node.project.workspaceFolder);
-				//await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
 			}
 		);
 		})
@@ -1496,7 +1493,7 @@ export function activate(context: vscode.ExtensionContext) {
 	setDefaultSettings();
 
 	// For legacy compatibility
-	// Upgrage project structure and settings
+	// Upgrade project structure and settings
 	{
 		vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification,

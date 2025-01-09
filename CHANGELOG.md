@@ -4,6 +4,16 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.4]
+
+- Open Debug Manager and remove notification when no existing launch configuration is found
+- Fix project import quickpick flow and add error message
+- Support GDB attach only
+
+## [1.3.3]
+
+- Fix project import quickpick
+
 ## [1.3.2]
 
 - Fix access to debug manager

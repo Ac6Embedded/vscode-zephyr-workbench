@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import path from "path";
 import { ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
 import { execCommandWithEnv } from '../../execUtils';
-import { platform } from 'os';
 import { formatWindowsPath } from '../../utils';
 
 export const ZEPHYR_WORKBENCH_DEBUG_PATH_SETTING_KEY = 'pathExec';
@@ -70,29 +69,6 @@ export class WestRunner {
        args += ` --gdb-port ${this.serverPort}`;
     }
     return args;
-  }
-
-  getSetupCommands(program: string): any[] {
-    let basename = path.basename(program);
-    let dirname = path.dirname(program);
-    return [
-      { "text": "-environment-cd " +`${formatWindowsPath(dirname)}`},
-      { "text": "-target-select remote " + `${this.serverAddress}:${this.serverPort}`, "description": "connect to target", "ignoreFailures": false },
-      { "text": "-file-exec-and-symbols " + `${basename}`, "description": "load file", "ignoreFailures": false},
-      { "text": "-interpreter-exec console \"monitor reset\"", "ignoreFailures": false },
-      { "text": "-target-download", "description": "flash target", "ignoreFailures": false },
-      { "text": "set breakpoint pending on", "description": "Set pending", "ignoreFailures": false },
-      { "text": "tbreak main", "description": "Set a breakpoint at main", "ignoreFailures": true },
-    ];
-
-    // return [
-    //   { "text": "-target-select remote " + `${this.serverAddress}:${this.serverPort}`, "description": "connect to target", "ignoreFailures": false },
-    //   { "text": "-file-exec-and-symbols " + `${program}`, "description": "load file", "ignoreFailures": false},
-    //   { "text": "-interpreter-exec console \"monitor reset\"", "ignoreFailures": false },
-    //   { "text": "-target-download", "description": "flash target", "ignoreFailures": false },
-    //   { "text": "set breakpoint pending on", "description": "Set pending", "ignoreFailures": false },
-    //   { "text": "tbreak main", "description": "Set a breakpoint at main", "ignoreFailures": true },
-    // ];
   }
 
   loadSettings() {

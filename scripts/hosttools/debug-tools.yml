@@ -96,9 +96,6 @@ debug_tools:
   website: https://pyocd.io/
   group: debug_server
 packs:
-- pack: nxp
-  name: NXP Debug Pack
-  tools: [openocd, linkserver]
 - pack: stm32
   name: STM32 Debug Pack
   tools: [openocd, stm32cubeprogrammer, udev-rules]

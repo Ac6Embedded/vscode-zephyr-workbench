@@ -1,4 +1,4 @@
-import { Button, TextField, allComponents,
+import { Button, RadioGroup, TextField, allComponents,
   provideVSCodeDesignSystem } from "@vscode/webview-ui-toolkit/";
 
 provideVSCodeDesignSystem().register(
@@ -188,6 +188,7 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
   const gdbPath = document.getElementById('gdbPath') as TextField;
   const gdbAddress = document.getElementById('gdbAddress') as TextField;
   const gdbPort = document.getElementById('gdbPort') as TextField;
+  const gdbModeRadioGroup = document.getElementById("gdbMode") as RadioGroup;
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
   const runnerPath = document.getElementById('runnerPath') as TextField;
   const runnerArgs = document.getElementById('runnerArgs') as TextField;
@@ -202,6 +203,7 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
       gdbPath: gdbPath.value,
       gdbAddress: gdbAddress.value,
       gdbPort: gdbPort.value,
+      gdbMode: gdbModeRadioGroup.value,
       runner: runnerInput.getAttribute('data-value'),
       runnerPath: runnerPath.value,
       runnerArgs: runnerArgs.value
@@ -217,6 +219,7 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
   const gdbPath = document.getElementById('gdbPath') as TextField;
   const gdbAddress = document.getElementById('gdbAddress') as TextField;
   const gdbPort = document.getElementById('gdbPort') as TextField;
+  const gdbModeRadioGroup = document.getElementById("gdbMode") as RadioGroup;
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
   const runnerPath = document.getElementById('runnerPath') as TextField;
   const runnerArgs = document.getElementById('runnerArgs') as TextField;
@@ -233,6 +236,7 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
       gdbPath: gdbPath.value,
       gdbAddress: gdbAddress.value,
       gdbPort: gdbPort.value,
+      gdbMode: gdbModeRadioGroup.value,
       runner: runnerInput.getAttribute('data-value'),
       runnerPath: runnerPath.value,
       runnerArgs: runnerArgs.value
@@ -446,6 +450,7 @@ function updateConfig(data: any) {
   const gdbPath = data.gdbPath;
   const gdbAddress = data.gdbAddress ? data.gdbAddress : 'localhost';
   const gdbPort = data.gdbPort ? data.gdbPort : '3333';
+  const gdbMode = data.gdbMode;
   const runnersHTML = data.runnersHTML;
   const runner = data.runnerName;
   const runnerPath = data.runnerPath;
@@ -457,6 +462,7 @@ function updateConfig(data: any) {
   const gdbPathText = document.getElementById('gdbPath') as TextField;
   const gdbAddressText = document.getElementById('gdbAddress') as TextField;
   const gdbPortText = document.getElementById('gdbPort') as TextField;
+  const gdbModeRadioGroup = document.getElementById("gdbMode") as RadioGroup;
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
   const runnersDropdown = document.getElementById('runnersDropdown') as HTMLElement;
   const runnerPathText = document.getElementById('runnerPath') as TextField;
@@ -467,6 +473,7 @@ function updateConfig(data: any) {
   gdbPathText.value = gdbPath ? gdbPath : '';
   gdbAddressText.value = gdbAddress? gdbAddress : '';
   gdbPortText.value = gdbPort ? gdbPort : '';
+  gdbModeRadioGroup.value = gdbMode ? gdbMode : 'program';
 
   if(runnersHTML.length > 0) {
     runnersDropdown.innerHTML = runnersHTML;

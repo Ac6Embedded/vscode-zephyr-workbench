@@ -7,6 +7,7 @@ import { getZephyrProject } from '../utils';
 import { WestRunner } from '../debug/runners/WestRunner';
 import { ZephyrProject } from '../ZephyrProject';
 import { ZephyrProjectBuildConfiguration } from '../ZephyrProjectBuildConfiguration';
+import { getGdbMode, getSetupCommands } from '../debug/gdbUtils';
 
 export class DebugManagerPanel {
   public static currentPanel: DebugManagerPanel | undefined;
@@ -185,6 +186,13 @@ export class DebugManagerPanel {
 
               <div class="grid-group-div">
                 <vscode-text-field size="50" type="text" id="gdbPort" value="">GDB Port:</vscode-text-field>
+              </div>
+
+              <div class="grid-group-div">
+                <vscode-radio-group id="gdbMode" orientation="horizontal">            
+                  <vscode-radio value="program" checked>Program</vscode-radio>
+                  <vscode-radio value="attach">Attach</vscode-radio>
+                </vscode-radio-group>
               </div>
             </fieldset>
 
@@ -378,6 +386,7 @@ export class DebugManagerPanel {
       const serverAddress = getServerAddressFromConfig(config);
       let gdbAddress = 'localhost';
       let gdbPort = '3333';
+      let gdbMode = getGdbMode(config.setupCommands);
       if(serverAddress) {
         if (serverAddress.includes(':')) {
           [gdbAddress, gdbPort] = serverAddress.split(':');
@@ -424,6 +433,7 @@ export class DebugManagerPanel {
         gdbPath: `${gdbPath}`,
         gdbAddress: `${gdbAddress}`,
         gdbPort: `${gdbPort}`,
+        gdbMode: `${gdbMode}`,
         runnersHTML: `${newRunnersHTML}`,
         runnerName: `${runnerLabel}`,
         runnerPath: `${runnerPath}`,
@@ -472,6 +482,7 @@ export class DebugManagerPanel {
       const serverAddress = getServerAddressFromConfig(config);
       let gdbAddress = 'localhost';
       let gdbPort = '3333';
+      let gdbMode = 'program';
       if(serverAddress) {
         if (serverAddress.includes(':')) {
           [gdbAddress, gdbPort] = serverAddress.split(':');
@@ -498,6 +509,7 @@ export class DebugManagerPanel {
         gdbPath: `${gdbPath}`,
         gdbAddress: `${gdbAddress}`,
         gdbPort: `${gdbPort}`,
+        gdbMode: `${gdbMode}`,
         runnersHTML: `${newRunnersHTML}`,
         serverArgs: `${serverArgs}`
       });
@@ -513,6 +525,7 @@ export class DebugManagerPanel {
       const gdbPath = message.gdbPath;
       const gdbAddress = message.gdbAddress;
       const gdbPort = message.gdbPort;
+      const gdbMode = message.gdbMode;
       const runnerName = message.runner;
       const runner = getRunner(runnerName);
       const runnerPath = message.runnerPath;
@@ -532,7 +545,7 @@ export class DebugManagerPanel {
           config.serverStarted = runner.serverStartedPattern;
           config.debugServerArgs = runner.getWestDebugArgs(buildConfig.relativeBuildDir);
           config.setupCommands = [];
-          for(const arg of runner.getSetupCommands(programPath)) {
+          for(const arg of getSetupCommands(programPath, runner.serverAddress, runner.serverPort, gdbMode)) {
             config.setupCommands.push(arg);
           }
         }

@@ -4,7 +4,7 @@ import { ZephyrBoard } from "./ZephyrBoard";
 import { ZephyrProject } from "./ZephyrProject";
 import { ZephyrSDK } from "./ZephyrSDK";
 import { MultiStepInput } from "./utilities/MultiStepQuickPick";
-import { getListZephyrSDKs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, normalizePath } from "./utils";
+import { fileExists, getListZephyrSDKs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, normalizePath } from "./utils";
 
 export async function importProjectQuickStep(context: ExtensionContext) {
   const title = 'Import Project';
@@ -43,19 +43,21 @@ export async function importProjectQuickStep(context: ExtensionContext) {
 			shouldResume: shouldResume
 		});
 
-    if(pick instanceof BrowseFolderButton) {
-      const folderUri = await vscode.window.showOpenDialog({
-        canSelectFiles: false,
-        canSelectFolders: true,
-        canSelectMany: false,
-        openLabel: 'Select parent location:',
-      });
-
-      if(folderUri && folderUri.length > 0) {
-        state.projectLoc = folderUri[0].fsPath;
+    if(pick) {
+      if(pick instanceof BrowseFolderButton) {
+        const folderUri = await vscode.window.showOpenDialog({
+          canSelectFiles: false,
+          canSelectFolders: true,
+          canSelectMany: false,
+          openLabel: 'Select parent location:',
+        });
+  
+        if(folderUri && folderUri.length > 0) {
+          state.projectLoc = folderUri[0].fsPath;
+        }
+      } else {
+        state.projectLoc = pick;
       }
-    } else {
-      state.projectLoc = pick;
     }
 
     return (input: MultiStepInput) => pickReconfigure(input, state);
@@ -214,7 +216,9 @@ export async function importProjectQuickStep(context: ExtensionContext) {
 	}
 
   async function validateProjectLocation(location: string) {
-    return undefined;
+    if(!fileExists(location)) {
+      return "Invalid project path.";
+    }
   }
 
   function shouldResume() {
