@@ -240,7 +240,8 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     // }).join(' ');
     // args = `${args} --build-dir ${buildDirVar}`;
     let args = _task.definition.args.join(' ');
-    if(config) {
+    if((_task.name === westBuildTask.label || _task.name === rebuildTask.label)
+      && config) {
       if(config.westArgs && config.westArgs.length > 0) {
         args = `${args} ${westArgVar}`;
       }

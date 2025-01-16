@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.5]
+
+- Remove west additional argument for non-build commands
+
 ## [1.3.4]
 
 - Open Debug Manager and remove notification when no existing launch configuration is found
