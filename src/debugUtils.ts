@@ -285,6 +285,24 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
         description: "connect to target",
         ignoreFailures: false 
       },
+      { 
+        text: "-interpreter-exec console \"monitor reset\"", 
+        ignoreFailures: false 
+      },
+      { 
+        text: "-target-download", "description": "flash target", 
+        ignoreFailures: false 
+      },
+      { 
+        text: "set breakpoint pending on", 
+        description: "Set pending", 
+        ignoreFailures: false 
+      },
+      { 
+        text: "tbreak main", 
+        description: "Set a breakpoint at main", 
+        ignoreFailures: true 
+      }
     ],
     logging: {
       moduleLoad: true,
