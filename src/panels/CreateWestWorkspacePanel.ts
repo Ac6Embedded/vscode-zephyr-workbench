@@ -22,7 +22,7 @@ export class CreateWestWorkspacePanel {
         canSelectFiles: true,
         canSelectFolders: false,
         canSelectMany: false,
-        openLabel: 'Select file:',
+        openLabel: 'Select',
       }).then(uri => {
         if (uri && uri.length > 0) {
           const selectedFileUri = uri[0];
@@ -39,7 +39,7 @@ export class CreateWestWorkspacePanel {
         canSelectFiles: true,
         canSelectFolders: false,
         canSelectMany: false,
-        openLabel: 'Select manifest file',
+        openLabel: 'Select',
         filters: {
           'Manifest files': ['yml'],
           'All files': ['*']
@@ -60,7 +60,7 @@ export class CreateWestWorkspacePanel {
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
-        openLabel: 'Select the workspace location',
+        openLabel: 'Select',
       }).then(uri => {
         if (uri && uri.length > 0) {
           const selectedFolderUri = uri[0].fsPath;

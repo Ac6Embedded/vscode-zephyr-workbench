@@ -107,6 +107,17 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	vscode.commands.registerCommand('zephyr-workbench.rebuild-app', async () => {
+		let currentProject = getCurrentWorkspaceFolder();
+		if(currentProject === undefined ) {
+			currentProject = await pickApplicationQuickStep(context);
+		}
+
+		if(currentProject) {
+			vscode.commands.executeCommand("zephyr-workbench-app-explorer.clean.pristine", currentProject);
+		}
+	});
+
 	vscode.commands.registerCommand('zephyr-workbench.debug-app', async () => {
 		let currentProjectFolder = getCurrentWorkspaceFolder();
 		if(currentProjectFolder === undefined ) {
@@ -199,8 +210,8 @@ export function activate(context: vscode.ExtensionContext) {
 		
 	);
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.pristine', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			await executeConfigTask('West Rebuild', node);
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.pristine', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder, configName?: string) => {
+			await executeConfigTask('West Rebuild', node, configName);
 		})
 	);
 	context.subscriptions.push(
@@ -411,7 +422,7 @@ export function activate(context: vscode.ExtensionContext) {
 			canSelectFiles: true,
 			canSelectFolders: false,
 			canSelectMany: false,
-			openLabel: 'Select SPDX file',
+			openLabel: 'Select',
 			filters: {
 				'SPDX files': ['spdx'],
 				'All files': ['*']

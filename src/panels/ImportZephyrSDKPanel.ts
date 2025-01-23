@@ -27,7 +27,7 @@ export class ImportZephyrSDKPanel {
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
-        openLabel: 'Select the workspace location',
+        openLabel: 'Select',
       }).then(uri => {
         if (uri && uri.length > 0) {
           const selectedFolderUri = uri[0].fsPath;

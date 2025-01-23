@@ -9,7 +9,7 @@ import { ZephyrSDK } from './ZephyrSDK';
 import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { concatCommands, getEnvVarFormat, getShell, getShellArgs } from './execUtils';
 import { getWestWorkspace, getZephyrSDK, msleep } from './utils';
-import { addConfig } from './zephyrEnvUtils';
+import { addConfig, deleteConfig } from './zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 
 export interface TaskConfig {
@@ -522,7 +522,11 @@ export async function setDefaultProjectSettings(workspaceFolder: vscode.Workspac
   await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, westWorkspace.rootUri.fsPath, vscode.ConfigurationTarget.WorkspaceFolder);
 	await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardIdentifier, vscode.ConfigurationTarget.WorkspaceFolder);
   await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_SDK_SETTING_KEY, zephyrSDK.rootUri.fsPath, vscode.ConfigurationTarget.WorkspaceFolder);
+  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, 'auto', vscode.ConfigurationTarget.WorkspaceFolder);
   let newConfig = new ZephyrProjectBuildConfiguration('primary');
+  // Remove old config if exists (while importing project)
+  await deleteConfig(workspaceFolder, newConfig);
+  
   newConfig.boardIdentifier = boardIdentifier;
   await addConfig(workspaceFolder, newConfig);
 

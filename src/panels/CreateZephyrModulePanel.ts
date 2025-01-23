@@ -20,7 +20,7 @@ export class CreateZephyrModulePanel {
         canSelectFiles: true,
         canSelectFolders: false,
         canSelectMany: false,
-        openLabel: 'Select file:',
+        openLabel: 'Select',
       }).then(uri => {
         if (uri && uri.length > 0) {
           const selectedFileUri = uri[0];
@@ -37,7 +37,7 @@ export class CreateZephyrModulePanel {
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
-        openLabel: 'Select Zephyr root location:',
+        openLabel: 'Select',
       }).then(uri => {
         if (uri && uri.length > 0) {
           const selectedFolderUri = uri[0].fsPath;

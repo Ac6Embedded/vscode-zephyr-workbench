@@ -235,280 +235,324 @@
     "commands": [
       {
         "command": "zephyr-workbench.install-host-tools",
-        "title": "Zephyr Workbench: Install Host Tools",
-        "icon": "$(desktop-download)"
+        "title": "Install Host Tools",
+        "icon": "$(desktop-download)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench.install-host-tools.open-manager",
-        "title": "Zephyr Workbench: Open Host Tools Manager",
-        "icon": "$(desktop-download)"
+        "title": "Open Host Tools Manager",
+        "icon": "$(desktop-download)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench.reinstall-venv",
-        "title": "Zephyr Workbench: Reinstall VENV",
-        "icon": "$(desktop-download)"
+        "title": "Reinstall VENV",
+        "icon": "$(desktop-download)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench.verify-host-tools",
-        "title": "Zephyr Workbench: Verify Host Tools",
-        "icon": "$(desktop-download)"
+        "title": "Verify Host Tools",
+        "icon": "$(desktop-download)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench.install-debug-tools",
-        "title": "Zephyr Workbench: Install Debug Tools",
-        "icon": "$(desktop-download)"
+        "title": "Install Debug Tools",
+        "icon": "$(desktop-download)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench.debug-manager",
-        "title": "Zephyr Workbench: Debug Manager",
-        "icon": "$(desktop-download)"
+        "title": "Debug Manager",
+        "icon": "$(desktop-download)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench.build-app",
-        "title": "Zephyr Workbench: Build Application",
-        "icon": "$(gear)"
+        "title": "Build Application",
+        "icon": "$(gear)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.rebuild-app",
+        "title": "Rebuild Application",
+        "icon": "$(gear)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench.debug-app",
-        "title": "Zephyr Workbench: Debug Application",
-        "icon": "$(debug-alt)"
-      },
-      {
-        "command": "zephyr-workbench-module-explorer.create-module",
-        "title": "Create new Zephyr Extra Module"
+        "title": "Debug Application",
+        "icon": "$(debug-alt)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench-app-explorer.open-wizard",
         "title": "Create new Zephyr Application",
-        "icon": "$(add)"
+        "icon": "$(add)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench-app-explorer.import-app-wizard",
         "title": "Import Zephyr Application",
-        "icon": "$(arrow-down)"
-      },
-      {
-        "command": "zephyr-workbench-app-explorer.create-app",
-        "title": "Create new Zephyr Application"
-      },
-      {
-        "command": "zephyr-workbench-app-explorer.import-app",
-        "title": "Import Zephyr Application"
+        "icon": "$(arrow-down)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench-app-explorer.refresh",
         "title": "Refresh",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.add-config",
-        "title": "Add Multibuild"
+        "title": "Add Multibuild",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.delete-config",
-        "title": "Delete"
+        "title": "Delete",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.activate-config",
-        "title": "Set Active"
+        "title": "Set Active",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.deactivate-config",
-        "title": "Set Inactive"
+        "title": "Set Inactive",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.rename-config",
         "title": "Rename",
-        "icon": "$(pencil)"
+        "icon": "$(pencil)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.build-app",
         "title": "Build",
-        "icon": "$(gear)"
+        "icon": "$(gear)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.clean.pristine",
         "title": "Rebuild/Pristine",
-        "icon": "$(clear-all)"
+        "icon": "$(clear-all)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.clean.delete",
         "title": "Delete Build",
-        "icon": "$(clear-all)"
+        "icon": "$(clear-all)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.guiconfig-app",
         "title": "Gui Config",
-        "icon": "$(wrench)"
+        "icon": "$(wrench)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.menuconfig-app",
         "title": "Menuconfig",
-        "icon": "$(wrench)"
+        "icon": "$(wrench)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.hardenconfig-app",
         "title": "Harden config",
-        "icon": "$(wrench)"
+        "icon": "$(wrench)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.spdx.build",
-        "title": "Build SPDX"
+        "title": "Build SPDX",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.spdx.install-dependencies",
-        "title": "Install dependencies"
+        "title": "Install dependencies",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.spdx.analyze.ntia-checker",
-        "title": "ntia-checker"
+        "title": "ntia-checker",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.spdx.analyze.sbom2doc",
-        "title": "sbom2doc"
+        "title": "sbom2doc",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.spdx.analyze.cve-bin-tool",
-        "title": "cve-bin-tool"
+        "title": "cve-bin-tool",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.run-app",
         "title": "Run",
-        "icon": "$(run)"
+        "icon": "$(run)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.debug-app",
         "title": "Debug",
-        "icon": "$(debug-alt)"
+        "icon": "$(debug-alt)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.remove",
         "title": "Remove",
-        "icon": "$(remove)"
+        "icon": "$(remove)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.delete",
         "title": "Delete from disk",
-        "icon": "$(trash)"
+        "icon": "$(trash)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.reveal-os",
         "title": "Open Containing Folder",
-        "icon": "$(explorer-view-icon)"
+        "icon": "$(explorer-view-icon)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.reveal-explorer",
         "title": "Open in Explorer",
-        "icon": "$(explorer-view-icon)"
+        "icon": "$(explorer-view-icon)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.change-board",
-        "title": "Change Board"
+        "title": "Change Board",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.change-west-workspace",
-        "title": "Change West Workspace"
+        "title": "Change West Workspace",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.change-pristine",
-        "title": "Change Pristine Setting"
+        "title": "Change Pristine Setting",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.create-venv",
-        "title": "Create local Python Virtual Environment"
+        "title": "Create local Python Virtual Environment",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.set-venv",
-        "title": "Set Python virtual environment"
+        "title": "Set Python virtual environment",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.open-terminal",
         "title": "Open Terminal",
-        "icon": "$(console)"
+        "icon": "$(console)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
         "title": "RAM Report",
-        "icon": "$(graph)"
+        "icon": "$(graph)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
         "title": "ROM Report",
-        "icon": "$(graph)"
+        "icon": "$(graph)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.memory-analysis.puncover",
         "title": "Puncover",
-        "icon": "$(graph)"
-      },
-      {
-        "command": "zephyr-workbench-module-explorer.refresh",
-        "title": "Refresh",
-        "icon": "$(refresh)"
+        "icon": "$(graph)",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-west-workspace.open-wizard",
         "title": "Initialize new west workspace",
-        "icon": "$(add)"
+        "icon": "$(add)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench-west-workspace.refresh",
         "title": "Refresh",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench-west-workspace.update",
-        "title": "Update"
+        "title": "Update",
+        "category": "Zephyr Workbench/Workspace"
       },
       {
         "command": "zephyr-workbench-west-workspace.delete",
         "title": "Delete from disk",
-        "icon": "$(trash)"
+        "icon": "$(trash)",
+        "category": "Zephyr Workbench/Workspace"
       },
       {
         "command": "zephyr-workbench-west-workspace.open-terminal",
         "title": "Open Terminal",
-        "icon": "$(console)"
+        "icon": "$(console)",
+        "category": "Zephyr Workbench/Workspace"
       },
       {
         "command": "zephyr-workbench-sdk-explorer.open-wizard",
         "title": "Add Zephyr SDK",
-        "icon": "$(add)"
+        "icon": "$(add)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench-sdk-explorer.remove-sdk",
         "title": "Remove Zephyr SDK",
-        "icon": "$(remove)"
+        "icon": "$(remove)",
+        "category": "Zephyr Workbench/SDK"
       },
       {
         "command": "zephyr-workbench-sdk-explorer.delete",
         "title": "Delete from disk",
-        "icon": "$(trash)"
+        "icon": "$(trash)",
+        "category": "Zephyr Workbench/SDK"
       },
       {
         "command": "zephyr-workbench-sdk-explorer.refresh",
         "title": "Refresh",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench.env.add",
         "title": "Add value",
-        "icon": "$(add)"
+        "icon": "$(add)",
+        "category": "Zephyr Workbench/Environment"
       },
       {
         "command": "zephyr-workbench.env.edit",
         "title": "Edit value",
-        "icon": "$(edit)"
+        "icon": "$(edit)",
+        "category": "Zephyr Workbench/Environment"
       },
       {
         "command": "zephyr-workbench.env.delete",
         "title": "Remove value",
-        "icon": "$(remove)"
+        "icon": "$(remove)",
+        "category": "Zephyr Workbench/Environment"
       },
       {
         "command": "zephyr-workbench.arg.edit",
         "title": "Edit value",
-        "icon": "$(edit)"
+        "icon": "$(edit)",
+        "category": "Zephyr Workbench/Arguments"
       },
       {
         "command": "west.version",
@@ -656,11 +700,6 @@
           "command": "zephyr-workbench-app-explorer.refresh",
           "group": "navigation",
           "when": "view == zephyr-workbench-app-explorer"
-        },
-        {
-          "command": "zephyr-workbench-module-explorer.refresh",
-          "group": "navigation",
-          "when": "view == zephyr-workbench-module-explorer"
         },
         {
           "command": "zephyr-workbench-west-workspace.open-wizard",
@@ -1097,6 +1136,181 @@
         {
           "command": "zephyr-workbench-app-explorer.spdx.analyze.cve-bin-tool",
           "group": "0@view/item/context@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "zephyr-workbench-app-explorer.build-app",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.clean.pristine",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.refresh",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.add-config",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.delete-config",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.activate-config",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.deactivate-config",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.rename-config",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.clean.delete",
+          "when": "false"
+        },
+        
+        {
+          "command": "zephyr-workbench-app-explorer.guiconfig-app",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.menuconfig-app",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.hardenconfig-app",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.build",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.install-dependencies",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.analyze.ntia-checker",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.analyze.sbom2doc",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.analyze.cve-bin-tool",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.remove",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.delete",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.reveal-os",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.reveal-explorer",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.change-board",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.change-west-workspace",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.change-pristine",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.create-venv",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.set-venv",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.run-app",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.debug-app",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.open-terminal",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.puncover",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.refresh",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.update",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.delete",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.open-terminal",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.remove-sdk",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.delete",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.refresh",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench.env.add",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench.env.edit",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench.env.delete",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench.arg.edit",
+          "when": "false"
         }
       ]
     },

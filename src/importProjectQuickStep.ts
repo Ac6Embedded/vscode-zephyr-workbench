@@ -49,7 +49,7 @@ export async function importProjectQuickStep(context: ExtensionContext) {
           canSelectFiles: false,
           canSelectFolders: true,
           canSelectMany: false,
-          openLabel: 'Select parent location:',
+          openLabel: 'Select',
         });
   
         if(folderUri && folderUri.length > 0) {

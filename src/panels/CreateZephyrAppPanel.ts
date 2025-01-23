@@ -256,7 +256,7 @@ export class CreateZephyrAppPanel {
         canSelectFolders: true,
         canSelectMany: false,
         defaultUri: uri,
-        openLabel: 'Select the project parent location',
+        openLabel: 'Select',
       }).then(uri => {
         if (uri && uri.length > 0) {
           const selectedFolderUri = uri[0].fsPath;

@@ -25,7 +25,7 @@ export async function changeEnvVarQuickStep(
       if (button === browseButton) {
 
         let options: vscode.OpenDialogOptions = {
-          openLabel: 'Select item:'
+          openLabel: 'Select'
         };
         if(key.endsWith('_FILE')) {
           options.canSelectFiles = true;

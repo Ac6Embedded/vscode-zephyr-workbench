@@ -176,7 +176,7 @@ export async function createProjectQuickStep(context: ExtensionContext) {
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
-        openLabel: 'Select parent location:',
+        openLabel: 'Select',
       });
 
       if(folderUri && folderUri.length > 0) {
