@@ -4,6 +4,15 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.7]
+
+- Set pristine default to auto for imported project
+- Change file/directory dialog label
+
+## [1.3.6]
+
+- Set default GDB mode to program
+
 ## [1.3.5]
 
 - Remove west additional argument for non-build commands
