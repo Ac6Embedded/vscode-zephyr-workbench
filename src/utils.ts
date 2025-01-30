@@ -607,7 +607,7 @@ export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?
               return new ZephyrBoard(boardDescUri);
             }
             return undefined;
-        });
+          });
         const boards = await Promise.all(boardPromises);
         listBoards.push(...boards.filter(board => board !== undefined));
       } catch (error) {

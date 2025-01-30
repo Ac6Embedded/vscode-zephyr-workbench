@@ -3,6 +3,8 @@ import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { listToolchainArch } from '../sdkUtils';
 
+// @unused
+// This class is unused but kept for potential future use
 export class SDKManagerPanel {
   public static currentPanel: SDKManagerPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;

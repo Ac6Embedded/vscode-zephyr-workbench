@@ -67,12 +67,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 	statusBarBuildItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 101);
 	statusBarBuildItem.text = "$(gear) Build";
-  statusBarBuildItem.command = "zephyr-workbench.build-app";
+	statusBarBuildItem.command = "zephyr-workbench.build-app";
 	statusBarDebugItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
 	statusBarDebugItem.text = "$(debug-alt) Debug";
-  statusBarDebugItem.command = "zephyr-workbench.debug-app";
+	statusBarDebugItem.command = "zephyr-workbench.debug-app";
 
-  context.subscriptions.push(statusBarBuildItem);
+	context.subscriptions.push(statusBarBuildItem);
 	context.subscriptions.push(statusBarDebugItem);
 
 	const zephyrShortcutProvider = new ZephyrShortcutCommandProvider();
@@ -288,8 +288,25 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			if(!buildConfigName && project) {
-				if(project.configs.length > 0) {
-					buildConfigName = await pickBuildConfigQuickStep(project);
+				if(project.configs.length > 1) {
+					let activeConfigName = undefined;
+					for(let config of project.configs) {
+						if(config.active) {
+							activeConfigName = config.name;
+							break;
+						}
+					}
+					
+					if(activeConfigName) {
+						buildConfigName = activeConfigName;
+					} else {
+						vscode.window.showInformationMessage("No active configuration found, please set one as active first.");
+						// If multiple build configs exist, ask user to select one
+						buildConfigName = await pickBuildConfigQuickStep(project);
+					}
+				} else if(project.configs.length === 1) {
+					// If only one build config exists, use it as default
+					buildConfigName = project.configs[0].name;
 				} else {
 					// For legacy compatibility
 					buildConfigName = undefined;

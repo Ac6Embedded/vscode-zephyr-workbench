@@ -18,7 +18,7 @@ echo "#        Install Udev Rules into /etc/udev/rules.d         #"
 echo "#              (root permission required)                  #"
 echo "############################################################"
 for file in $TMP_EXTRACTED_FOLDER/*.rules; do
-  sudo echo "Install $file into $DESTDIR..."
+  echo "Install $file into $DESTDIR..."
   filename=$(basename $file)
   if [ -f "$DESTDIR/$filename" ]; then
     echo "$DESTDIR/$filename already exists"

@@ -9,6 +9,19 @@ form {
   margin-bottom: 10px;
 }
 
+.help-link {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  font-size: calc(var(--type-ramp-base-font-size) + 2px);
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.help-link:hover {
+  text-decoration: underline;
+}
+
 .grid-group-div {
   margin-bottom: 10px;
 }
@@ -29,36 +42,43 @@ form {
   margin-bottom: 6px;
 }
 
-table {
+.app-form-table {
   width: 100%;
-  border-collapse: collapse;
-}
-
-th, td {
-  border-bottom: 1px solid var(--vscode-tab-border);
-  padding: 10px;
-  text-align: left;
+  padding: 0px;
+  margin: 0px;
 }
 
 .debug-tools-table {
   table-layout: fixed;
   width: 100%;
-  border: 1px yellow;
+  padding: 5px;
+  border-collapse: collapse;
 }
-.debug-tools-table th, td {
+
+.debug-tools-table th, .debug-tools-table td {
+  border-bottom: 1px solid var(--vscode-tab-border);
   width: 13%;
-  border: 1px red;
+  text-align: center;
 }
+
+.debug-tools-table th {
+  border-bottom: 3px solid var(--vscode-tab-border);
+  padding-bottom: 5px;
+}
+
 .debug-tools-table th:nth-child(1), .debug-tools-table td:nth-child(1) {
   width: 20px;
 }
+
 .debug-tools-table th:nth-child(2), .debug-tools-table td:nth-child(2) {
   width: 40%;
+  text-align: left;
 }
 
 fieldset {
   margin-bottom: 10px;
-  width: calc(var(--design-unit)* 160px);
+  width: calc(var(--design-unit)* 140px);
+  border: 1px solid var(--vscode-textBlockQuote-border);
 }
 
 fieldset.no-border  {
@@ -78,8 +98,13 @@ fieldset.no-border  {
 
 
 #boardImg {
-  max-width: 30vw;
-  max-height: 30vh;
+  min-width: 20vw;
+  min-height: 20vh;
+  max-width: 50vw;
+  max-height: 50vh;
+  width: 100%;
+  height: auto;
+  object-fit: contain; 
 }
 
 vscode-dropdown {
@@ -91,6 +116,11 @@ vscode-dropdown {
 vscode-text-field {
   width: calc(var(--design-unit)* 135px);
   min-width: calc(var(--design-unit)* 60px);
+}
+
+vscode-text-field.browse-field {
+  width: calc(var(--design-unit)* 114px);
+  min-width: calc(var(--design-unit)* 40px);
 }
 
 vscode-button {

@@ -7,6 +7,8 @@ import { getZephyrProject } from '../utils';
 import { WestRunner } from '../debug/runners/WestRunner';
 import { ZephyrProject } from '../ZephyrProject';
 
+// @unused
+// This class is unused but kept for potential future use
 export class RunManagerPanel {
   public static currentPanel: RunManagerPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
@@ -321,14 +323,16 @@ export class RunManagerPanel {
     
     async function applyHandler(message: any) {
       const projectPath = message.project;
+      const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
       const appProject = await getZephyrProject(projectPath);
+      const buildConfig = appProject.getBuildConfiguration(buildConfigName);
       const programPath = message.programPath;
       const runnerName = message.runner;
       const runner = getRunner(runnerName);
       const runnerPath = message.runnerPath;
       const runnerArgs = message.runnerArgs;
     
-      if(appProject) {
+      if(appProject && buildConfig) {
         let [launchJson, config] = await getLaunchConfiguration(appProject);
         config.program = programPath;
     
@@ -336,11 +340,8 @@ export class RunManagerPanel {
           runner.loadArgs(runnerArgs);
           runner.serverPath = runnerPath;
           config.serverStarted = runner.serverStartedPattern;
-          config.debugServerArgs = runner.getWestDebugArgs();
+          config.debugServerArgs = runner.getWestDebugArgs(buildConfig.relativeBuildDir);
           config.setupCommands = [];
-          for(const arg of runner.getSetupCommands(programPath)) {
-            config.setupCommands.push(arg);
-          }
         }
         writeLaunchJson(launchJson, appProject);
       }

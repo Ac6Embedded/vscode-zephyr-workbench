@@ -85,126 +85,126 @@ export class CreateZephyrAppPanel {
         
         <body>
           <h1>Create a new Zephyr Application Project</h1>
-
-          <table>
-            <td>
-              <form>
-                <div class="grid-group-div">
-                  <div class="grid-header-div">
-                    <label for="listWorkspaces">Select West Workspace:</label>
-                  </div>
-                  <div id="listWorkspaces" class="combo-dropdown grid-value-div">
-                    <input type="text" id="workspaceInput" class="combo-dropdown-control" placeholder="Choose your west workspace..." data-value="">
-                    <div aria-hidden="true" class="indicator" part="indicator">
-                      <slot name="indicator">  
-                        <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                          <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
-                        </svg>
-                      </slot>
+          <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/application">Read Docs</a>
+          <form>
+            <table class="app-form-table">
+              <td>
+                <form>
+                  <div class="grid-group-div">
+                    <div class="grid-header-div">
+                      <label for="listWorkspaces">Select West Workspace:</label>
                     </div>
-                    <div id="workspaceDropdown" class="dropdown-content" style="display: none;">
-                      ${workspacesHTML}
-                    </div>
-                  </div>
-                </div>
-
-                <div class="grid-group-div">
-                  <div class="grid-header-div">
-                    <label for="listSDKs">Select Zephyr SDK:</label>
-                  </div>
-                  <div id="listSdks" class="combo-dropdown grid-value-div">
-                    <input type="text" id="sdkInput" class="combo-dropdown-control" placeholder="Choose your SDK..." data-value="">
-                    <div aria-hidden="true" class="indicator" part="indicator">
-                      <slot name="indicator">  
-                        <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                          <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
-                        </svg>
-                      </slot>
-                    </div>
-                    <div id="sdkDropdown" class="dropdown-content" style="display: none;">
-                      ${sdkHTML}
+                    <div id="listWorkspaces" class="combo-dropdown grid-value-div">
+                      <input type="text" id="workspaceInput" class="combo-dropdown-control" placeholder="Choose your west workspace..." data-value="">
+                      <div aria-hidden="true" class="indicator" part="indicator">
+                        <slot name="indicator">  
+                          <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                            <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                          </svg>
+                        </slot>
+                      </div>
+                      <div id="workspaceDropdown" class="dropdown-content" style="display: none;">
+                        ${workspacesHTML}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div class="grid-group-div">
-                  <div class="grid-header-div">
-                    <label for="listBoards">Select Board:</label>
-                  </div>
-                  <div id="listBoards" class="combo-dropdown grid-value-div">
-                    <input type="text" id="boardInput" class="combo-dropdown-control" placeholder="Choose your target board..." data-value="">
-                    <div aria-hidden="true" class="indicator" part="indicator">
-                      <slot name="indicator">  
-                        <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                          <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
-                        </svg>
-                        <div class="spinner" id="boardDropdownSpinner" style="display:none;"></div>
-                      </slot>
+                  <div class="grid-group-div">
+                    <div class="grid-header-div">
+                      <label for="listSDKs">Select Zephyr SDK:</label>
                     </div>
-                    <div id="boardDropdown" class="dropdown-content">
-                    </div>
-                  </div>
-                </div>
-
-                <div class="grid-group-div">
-                  <div class="grid-header-div">
-                    <label for="listBoards">Select Sample project:</label>
-                  </div>
-                  <div id="listSamples" class="combo-dropdown grid-value-div">
-                    <input type="text" id="sampleInput" class="combo-dropdown-control" placeholder="Choose a sample as base..." data-value="">
-                    <div aria-hidden="true" class="indicator" part="indicator">
-                      <slot name="indicator">  
-                        <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                          <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
-                        </svg>
-                        <div class="spinner" id="samplesDropdownSpinner" style="display:none;"></div>
-                      </slot>
-                    </div>
-                    <div id="samplesDropdown" class="dropdown-content">
+                    <div id="listSdks" class="combo-dropdown grid-value-div">
+                      <input type="text" id="sdkInput" class="combo-dropdown-control" placeholder="Choose your SDK..." data-value="">
+                      <div aria-hidden="true" class="indicator" part="indicator">
+                        <slot name="indicator">  
+                          <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                            <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                          </svg>
+                        </slot>
+                      </div>
+                      <div id="sdkDropdown" class="dropdown-content" style="display: none;">
+                        ${sdkHTML}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div class="grid-group-div">
-                  <div class="grid-value-div">
-                    <vscode-text-field size="60" type="text" id="projectName" placeholder="Enter project name">Project Name:</vscode-text-field>
+                  <div class="grid-group-div">
+                    <div class="grid-header-div">
+                      <label for="listBoards">Select Board:</label>
+                    </div>
+                    <div id="listBoards" class="combo-dropdown grid-value-div">
+                      <input type="text" id="boardInput" class="combo-dropdown-control" placeholder="Choose your target board..." data-value="">
+                      <div aria-hidden="true" class="indicator" part="indicator">
+                        <slot name="indicator">  
+                          <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                            <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                          </svg>
+                          <div class="spinner" id="boardDropdownSpinner" style="display:none;"></div>
+                        </slot>
+                      </div>
+                      <div id="boardDropdown" class="dropdown-content">
+                      </div>
+                    </div>
                   </div>
-                </div>
 
-                <div class="grid-group-div">
-                  <div class="grid-value-div">
-                    <vscode-text-field type="text" id="projectParentPath">Project Location:</vscode-text-field>
-                    <vscode-button id="browseParentButton" class="browse-input-button">Browse...</vscode-button>
+                  <div class="grid-group-div">
+                    <div class="grid-header-div">
+                      <label for="listBoards">Select Sample project:</label>
+                    </div>
+                    <div id="listSamples" class="combo-dropdown grid-value-div">
+                      <input type="text" id="sampleInput" class="combo-dropdown-control" placeholder="Choose a sample as base..." data-value="">
+                      <div aria-hidden="true" class="indicator" part="indicator">
+                        <slot name="indicator">  
+                          <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                            <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                          </svg>
+                          <div class="spinner" id="samplesDropdownSpinner" style="display:none;"></div>
+                        </slot>
+                      </div>
+                      <div id="samplesDropdown" class="dropdown-content">
+                      </div>
+                    </div>
                   </div>
-                </div>
 
-                <div class="grid-group-div">
-                  <vscode-radio-group id="pristineMode" orientation="horizontal">
-                    <label slot="label">Pristine Builds option:&nbsp;&nbsp;
-                      <span class="tooltip" 
-                            data-tooltip="Indicate if the build folder must be clean before each build:\n
-                                          - (auto): detect if build directory needs to be made pristine before build\n
-                                          - (always): force the build directory pristine before build">?</span>
-                    </label>
-                    <vscode-radio value="auto" checked>auto</vscode-radio>
-                    <vscode-radio value="always">always</vscode-radio>
-                    <vscode-radio value="never">never</vscode-radio>
-                  </vscode-radio-group>
-                </div>
+                  <div class="grid-group-div">
+                    <div class="grid-value-div">
+                      <vscode-text-field size="60" type="text" id="projectName" placeholder="Enter project name">Project Name:</vscode-text-field>
+                    </div>
+                  </div>
 
-                <div class="grid-group-div">
-                  <vscode-button id="createButton">Create</vscode-button>
-                </div>
-              </form>
-            </td>
-            <td>
-              <img id="boardImg" src="" alt="No board image">
-            <td>
-          <table>
-          <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
-        </body>
-      </html>
-    `;
+                  <div class="grid-group-div">
+                    <div class="grid-value-div">
+                      <vscode-text-field class="browse-field" type="text" id="projectParentPath">Project Location:</vscode-text-field>
+                      <vscode-button id="browseParentButton" class="browse-input-button">Browse...</vscode-button>
+                    </div>
+                  </div>
+
+                  <div class="grid-group-div">
+                    <vscode-radio-group id="pristineMode" orientation="horizontal">
+                      <label slot="label">Pristine Builds option:&nbsp;&nbsp;
+                        <span class="tooltip" 
+                              data-tooltip="Indicate if the build folder must be clean before each build:\n
+                                            - (auto): detect if build directory needs to be made pristine before build\n
+                                            - (always): force the build directory pristine before build">?</span>
+                      </label>
+                      <vscode-radio value="auto" checked>auto</vscode-radio>
+                      <vscode-radio value="always">always</vscode-radio>
+                      <vscode-radio value="never">never</vscode-radio>
+                    </vscode-radio-group>
+                  </div>
+                </form>
+              </td>
+              <td style="text-align: top">
+                <img id="boardImg" src="" alt="No board image">
+              <td>
+            </table>
+            <div class="grid-group-div">
+              <vscode-button id="createButton">Create</vscode-button>
+            </div>
+          </form>
+        <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
+      </body>
+    </html>`;
   }
 
   private _setWebviewMessageListener(webview: vscode.Webview) {

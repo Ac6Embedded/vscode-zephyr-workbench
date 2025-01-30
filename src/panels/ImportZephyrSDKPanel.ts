@@ -123,6 +123,7 @@ export class ImportZephyrSDKPanel {
         
         <body>
           <h1>Add Zephyr SDK</h1>
+          <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/sdk">Read Docs</a>
           <form>
             <div class="grid-group-div">
               <vscode-radio-group id="srcType" orientation="vertical">

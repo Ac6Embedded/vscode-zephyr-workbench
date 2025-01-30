@@ -114,6 +114,7 @@ export class DebugManagerPanel {
         
         <body>
           <h1>Debug Manager</h1>
+          <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/debug-session">Get Help in online documentation</a>
           <form>
             <!-- Select Application Project -->
             <div class="grid-group-div">
@@ -159,11 +160,11 @@ export class DebugManagerPanel {
             <fieldset>
               <legend>Program</legend> 
               <div class="grid-group-div">
-                <vscode-text-field size="50" type="text" id="programPath" value="">Program Path:</vscode-text-field>
+                <vscode-text-field class="browse-field" size="50" type="text" id="programPath" value="">Program Path:</vscode-text-field>
                 <vscode-button id="browseProgramButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
               </div>
               <div class="grid-group-div">
-                <vscode-text-field size="50" type="text" id="svdPath" value="" placeholder="(Optional)" >SVD File:</vscode-text-field>
+                <vscode-text-field class="browse-field" size="50" type="text" id="svdPath" value="" placeholder="(Optional)" >SVD File:</vscode-text-field>
                 <vscode-button id="browseSvdButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
               </div>
             </fieldset>
@@ -176,7 +177,7 @@ export class DebugManagerPanel {
             <fieldset>
               <legend>GDB</legend> 
               <div class="grid-group-div">
-                <vscode-text-field size="50" type="text" id="gdbPath" value="">GDB Path:</vscode-text-field>
+                <vscode-text-field class="browse-field" size="50" type="text" id="gdbPath" value="">GDB Path:</vscode-text-field>
                 <vscode-button id="browseGdbButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
               </div>
 
@@ -226,7 +227,7 @@ export class DebugManagerPanel {
               </div>
 
               <div class="grid-group-div">
-                <vscode-text-field size="50" type="text" id="runnerPath" value="">Runner Path:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Enter to debug server's location if not found automatically in PATH">?</span>&nbsp;&nbsp;&nbsp;<span id="runnerDetect"></span></vscode-text-field>
+                <vscode-text-field class="browse-field" size="50" type="text" id="runnerPath" value="">Runner Path:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Enter to debug server's location if not found automatically in PATH">?</span>&nbsp;&nbsp;&nbsp;<span id="runnerDetect"></span></vscode-text-field>
                 <vscode-button id="browseRunnerButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
               </div>
             

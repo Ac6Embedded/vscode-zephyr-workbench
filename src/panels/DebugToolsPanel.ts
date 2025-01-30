@@ -189,6 +189,7 @@ export class DebugToolsPanel {
         
         <body>
           <h1>Install Debug Tools</h1>
+          <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/debug-tools">Read Docs</a>
           <form>
             <h2>Packs</h2>
             <table class="debug-tools-table">

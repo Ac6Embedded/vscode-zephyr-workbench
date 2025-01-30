@@ -4,6 +4,13 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.8]
+
+- Fix debug shortcut
+- Optimize debug tools installation
+- Add "Read Docs" links
+- Update style.css
+
 ## [1.3.7]
 
 - Set pristine default to auto for imported project

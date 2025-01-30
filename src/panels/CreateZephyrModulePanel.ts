@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 
+// @unused
+// This class is unused but kept for potential future use
 export class CreateZephyrModulePanel {
   public static currentPanel: CreateZephyrModulePanel | undefined;
   private readonly _panel: vscode.WebviewPanel;

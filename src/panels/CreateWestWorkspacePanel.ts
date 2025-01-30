@@ -127,6 +127,7 @@ export class CreateWestWorkspacePanel {
         
         <body>
           <h1>Create west workspace</h1>
+          <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/west-workspace">Read Docs</a>
           <form>
             <div class="grid-group-div">
               <vscode-radio-group id="srcType" orientation="vertical">
@@ -181,12 +182,12 @@ export class CreateWestWorkspacePanel {
             </div>
 
             <div class="grid-group-div" id="manifestGroup">
-              <vscode-text-field size="50" type="text" id="manifestPath" placeholder="(Optional)">Manifest:</vscode-text-field>
+              <vscode-text-field class="browse-field" size="50" type="text" id="manifestPath" placeholder="(Optional)">Manifest:</vscode-text-field>
               <vscode-button id="browseManifestButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
             </div>
 
             <div class="grid-group-div" id="locationGroup">
-              <vscode-text-field size="50" type="text" id="workspacePath" value="">Location:</vscode-text-field>
+              <vscode-text-field class="browse-field" size="50" type="text" id="workspacePath" value="">Location:</vscode-text-field>
               <vscode-button id="browseLocationButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
             </div>
 
