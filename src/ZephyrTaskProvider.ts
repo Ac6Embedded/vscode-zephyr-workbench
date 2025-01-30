@@ -533,6 +533,7 @@ export async function setDefaultProjectSettings(workspaceFolder: vscode.Workspac
   try {
     // Hush CMake settings
     await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('configureOnOpen', false, vscode.ConfigurationTarget.WorkspaceFolder);
+    await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('enableAutomaticKitScan', false, vscode.ConfigurationTarget.WorkspaceFolder);
   } catch(e) {
     vscode.window.showWarningMessage('Cannot setup cmake setting on project');
   }

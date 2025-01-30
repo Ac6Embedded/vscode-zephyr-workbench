@@ -114,7 +114,7 @@ export class DebugManagerPanel {
         
         <body>
           <h1>Debug Manager</h1>
-          <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/debug-session">Get Help in online documentation</a>
+          <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/debug-session">Read Docs</a>
           <form>
             <!-- Select Application Project -->
             <div class="grid-group-div">
