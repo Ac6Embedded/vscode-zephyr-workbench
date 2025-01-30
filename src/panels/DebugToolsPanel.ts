@@ -94,6 +94,8 @@ export class DebugToolsPanel {
   private async getToolsHTML(): Promise<string> {
     let toolsHTML = '';
     for(let tool of this.data.debug_tools) {
+      let toolHTML = '';
+      let hasSource = false;
       let runner = getRunner(tool.tool);
       if(runner) {
         runner.loadArgs(undefined);
@@ -110,13 +112,11 @@ export class DebugToolsPanel {
           tool.version = "";
           tool.found = "Not installed";
         }
-
-        
       } else {
         tool.found = "";
       }
 
-      toolsHTML += `<tr id="row-${tool.tool}">
+      toolHTML += `<tr id="row-${tool.tool}">
         <td><!--input type="checkbox"--></td>
         <td id="name-${tool.tool}">${tool.name}</td>
         <td id="version-${tool.tool}">${tool.version}</td>
@@ -124,7 +124,6 @@ export class DebugToolsPanel {
         <td id="buttons-${tool.tool}">`;
 
       if(tool.os) {
-        let hasSource = false;
         switch(process.platform) {
           case 'linux':
             hasSource = tool.os.linux ? true : false;
@@ -137,7 +136,7 @@ export class DebugToolsPanel {
             break;
         }
         if(hasSource) {
-          toolsHTML +=`<vscode-button appearance="icon" class="install-button" data-tool="${tool.tool}">
+          toolHTML +=`<vscode-button appearance="icon" class="install-button" data-tool="${tool.tool}">
                          <span class="codicon codicon-desktop-download"></span>
                        </vscode-button>
                        <!--vscode-button appearance="icon" class="remove-button" data-tool="${tool.tool}">
@@ -148,20 +147,24 @@ export class DebugToolsPanel {
       }
 
       if(tool.website) {
-        toolsHTML +=`<vscode-button appearance="icon" class="website-button" data-tool="${tool.tool}">
+        toolHTML +=`<vscode-button appearance="icon" class="website-button" data-tool="${tool.tool}">
                       <a href="${tool.website}">
                         <span class="codicon codicon-link"></span>
                       </a>
                     </vscode-button>`;
       }
       
-      toolsHTML +=`  </td>
+      toolHTML +=`  </td>
         <td>`;
         if(this.isToolCompatible(tool)) {
-          toolsHTML +=`<div class="progress-wheel" id="progress-${tool.tool}"><vscode-progress-ring></vscode-progress-ring></div>`;
+          toolHTML +=`<div class="progress-wheel" id="progress-${tool.tool}"><vscode-progress-ring></vscode-progress-ring></div>`;
         }
         `</td>
       </tr>`;
+
+      if(tool.website || hasSource) {
+        toolsHTML += toolHTML;
+      }
     }
     return toolsHTML;
   }
