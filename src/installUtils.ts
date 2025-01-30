@@ -478,29 +478,14 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
     };
 
     // Run install commands for every tools
-    const toolsCmdArg = listTools.map(tool => tool.tool).join(' ');
+    let toolsSeparator = ' ';
+    if(process.platform === 'win32') {
+      toolsSeparator = ',';
+    }
+
+    const toolsCmdArg = listTools.map(tool => tool.tool).join(toolsSeparator);
     const installCmdArgs = `${installArgs} ${toolsCmdArg}`;
     await execShellCommand('Installing Host debug tools', installCmd + " " + installCmdArgs, shellOpts);
-      // if((process.platform === 'linux' || process.platform === 'darwin')) {
-      //   // const options = {
-      //   //   name: 'Zephyr Workbench Installer',
-      //   // };
-      //   // output.show();
-      //   // sudo.exec(`${installCmd} ${installArgs}`, options, async (error, stdout, stderr) => {
-      //   //   if (error) {
-      //   //     output.append(`Error executing installer: ${error.message}`);
-      //   //     vscode.window.showErrorMessage(`Error executing installer: ${error.message}`);
-      //   //   } else {
-      //   //     output.append(`${stdout}`);
-      //   //     if (stderr) {
-      //   //       output.append(`${stderr}`);
-      //   //     }
-      //   //   }
-      //   // });
-      //   // await execShellCommand('Installing Host debug tools', installCmd + " " + installCmdArgs, shellOpts);
-      // } else {
-      //   await execShellCommand('Installing Host debug tools', installCmd + " " + installCmdArgs, shellOpts);
-      // }
 
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");

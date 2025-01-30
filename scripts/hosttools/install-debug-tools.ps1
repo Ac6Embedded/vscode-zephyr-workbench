@@ -1,8 +1,10 @@
 # Parse command-line arguments
 param (
     [string]$D,
-    [string[]]$Tools
+    [string[]]$ToolsArg
 )
+
+$Tools = $ToolsArg -split ','
 
 $BaseDirectory = Join-Path -Path $env:USERPROFILE -ChildPath ".zinstaller"
 $SelectedOperatingSystem = "windows"
@@ -12,7 +14,7 @@ $ScriptDirectory = Split-Path -Parent $ScriptPath
 
 function Show-Help {
     $helpText = @"
-Usage: install.ps1 -D <InstallDir> -Tools <tool1> [tool2 ...]
+Usage: install.ps1 -D <InstallDir> -Tools <tool1>[,tool2,tool3 ...]
 
 Arguments:
   InstallDir  The directory where the Zephyr environment will be installed. Defaults to '$env:USERPROFILE\.zinstaller'.
@@ -316,7 +318,7 @@ $SevenZPath = "C:\Program Files\7-Zip"
 
 $env:PATH = "$SevenZPath;" + $env:PATH
 
-foreach ($Tool in $TOOLS) {
+foreach ($Tool in $Tools) {
     Write-Host "Installing $Tool"
     $InstallerFilename = Get-FilenameFromUrl -Url $SOURCE_URLS[$Tool]
     Write-Host "INSTALLER_FILENAME=$InstallerFilename"
