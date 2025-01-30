@@ -10,6 +10,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Optimize debug tools installation
 - Add "Read Docs" links
 - Update style.css
+- Update default settings.json to avoid CMake automatic scan
 
 ## [1.3.7]
 

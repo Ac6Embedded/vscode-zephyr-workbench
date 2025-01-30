@@ -1416,6 +1416,10 @@ export function activate(context: vscode.ExtensionContext) {
 						await westBoardsCommand(workspaceDestPath);
 						CreateWestWorkspacePanel.currentPanel?.dispose();
 						await addWorkspaceFolder(workspaceDestPath);
+						
+						// Update settings.json to avoid CMake automatic scan after importing west workspace
+						const workspaceFolder = getWorkspaceFolder(workspaceDestPath);
+						await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('enableAutomaticKitScan', false, vscode.ConfigurationTarget.WorkspaceFolder);
 						westWorkspaceProvider.refresh();
 					} catch(e) {
 						if (e instanceof Error) {
