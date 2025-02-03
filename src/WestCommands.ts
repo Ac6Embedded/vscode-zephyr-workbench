@@ -81,7 +81,7 @@ export async function westBoardsCommand(workspacePath: string): Promise<void> {
 
 export async function westTmpBuildSystemCommand(zephyrProject: ZephyrProject, westWorkspace: WestWorkspace): Promise<string | undefined> {
   const redirect = getShellNullRedirect(getShell());
-  const tmpPath = path.join(zephyrProject.folderPath, '.tmp');
+  const tmpPath = normalizePath(path.join(zephyrProject.folderPath, '.tmp'));
   let command = `west build -t boards --board 96b_aerocore2 --build-dir ${tmpPath} ${redirect}`;
 
   if(zephyrProject.boardId === undefined || zephyrProject.folderPath === undefined) {
@@ -169,7 +169,8 @@ export async function getBoardsDirectories(parent: ZephyrAppProject | WestWorksp
     let cmd = 'west boards -f "{dir}"';
     if(boardRoots) {
       for(let boardRoot of boardRoots) {
-        cmd += ` --board-root ${boardRoot}`;
+        let normalizeBoardRoot = normalizePath(boardRoot);
+        cmd += ` --board-root ${normalizeBoardRoot}`;
       }
     }
     execWestCommandWithEnv(cmd, parent, (error: any, stdout: string, stderr: any) => {
@@ -208,7 +209,8 @@ export async function getBoardsDirectoriesFromIdentifier(boardIdentifier: string
     let cmd = `west boards --board ${boardName} -f "{dir}"`;
     if(boardRoots) {
       for(let boardRoot of boardRoots) {
-        cmd += ` --board-root ${boardRoot}`;
+        let normalizeBoardRoot = normalizePath(boardRoot);
+        cmd += ` --board-root ${normalizeBoardRoot}`;
       }
     }
     execWestCommandWithEnv(cmd, parent, (error: any, stdout: string, stderr: any) => {
