@@ -5,7 +5,7 @@ import yaml from 'yaml';
 import { ZephyrProject } from "./ZephyrProject";
 import { getBuildEnv, loadConfigEnv } from "./zephyrEnvUtils";
 import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalShell } from './execUtils';
-import { fileExists, getBoardFromIdentifier, getConfigValue, getWestWorkspace, getZephyrSDK, normalizePath } from './utils';
+import { fileExists, getBoardFromIdentifier, getConfigValue, getWestWorkspace, getZephyrSDK } from './utils';
 import { ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 
 export class ZephyrProjectBuildConfiguration {
@@ -75,7 +75,7 @@ export class ZephyrProjectBuildConfiguration {
   getBuildEnv(parentProject: ZephyrProject): { [key: string]: string; } {
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
-      BUILD_DIR: normalizePath(this.getBuildDir(parentProject)),
+      BUILD_DIR: this.getBuildDir(parentProject),
       WEST_ARGS: this.westArgs
     };
 

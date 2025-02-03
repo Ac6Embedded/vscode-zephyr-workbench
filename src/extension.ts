@@ -36,7 +36,7 @@ import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommand
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
 import { setConfigQuickStep } from './setConfigQuickStep';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { addWorkspaceFolder, convertLegacySettings, convertLegacyTasks, copySampleSync, deleteFolder, fileExists, findConfigTask, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, msleep, removeWorkspaceFolder } from './utils';
+import { addWorkspaceFolder, convertLegacySettings, convertLegacyTasks, copySampleSync, deleteFolder, fileExists, findConfigTask, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder } from './utils';
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './SPDXCommands';

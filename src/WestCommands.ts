@@ -169,8 +169,10 @@ export async function getBoardsDirectories(parent: ZephyrAppProject | WestWorksp
     let cmd = 'west boards -f "{dir}"';
     if(boardRoots) {
       for(let boardRoot of boardRoots) {
-        let normalizeBoardRoot = normalizePath(boardRoot);
-        cmd += ` --board-root ${normalizeBoardRoot}`;
+        if(boardRoot.length > 0) {
+          let normalizeBoardRoot = normalizePath(boardRoot);
+          cmd += ` --board-root ${normalizeBoardRoot}`;
+        }
       }
     }
     execWestCommandWithEnv(cmd, parent, (error: any, stdout: string, stderr: any) => {
@@ -209,8 +211,10 @@ export async function getBoardsDirectoriesFromIdentifier(boardIdentifier: string
     let cmd = `west boards --board ${boardName} -f "{dir}"`;
     if(boardRoots) {
       for(let boardRoot of boardRoots) {
-        let normalizeBoardRoot = normalizePath(boardRoot);
-        cmd += ` --board-root ${normalizeBoardRoot}`;
+        if(boardRoot.length > 0) {
+          let normalizeBoardRoot = normalizePath(boardRoot);
+          cmd += ` --board-root ${normalizeBoardRoot}`;
+        }
       }
     }
     execWestCommandWithEnv(cmd, parent, (error: any, stdout: string, stderr: any) => {
