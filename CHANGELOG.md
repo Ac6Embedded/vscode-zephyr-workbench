@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.9]
+
+- Fix west command to search for boards folders
+
 ## [1.3.8]
 
 - Fix debug shortcut
