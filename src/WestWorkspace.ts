@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import fs from "fs";
 import path from 'path';
-import { fileExists, getWorkspaceFolder } from './utils';
+import { fileExists, getWorkspaceFolder, normalizePath } from './utils';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { getBuildEnv, loadEnv } from './zephyrEnvUtils';
 import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalShell } from './execUtils';
@@ -155,8 +155,8 @@ export class WestWorkspace {
 
   get buildEnv(): { [key: string]: string; } {
     let baseEnv: { [key: string]: string } = {
-      ZEPHYR_BASE: this.kernelUri.fsPath,
-      ZEPHYR_PROJECT_DIRECTORY: this.rootUri.fsPath
+      ZEPHYR_BASE: normalizePath(this.kernelUri.fsPath),
+      ZEPHYR_PROJECT_DIRECTORY: normalizePath(this.rootUri.fsPath)
     };
 
     let additionalEnv = getBuildEnv(this.envVars);

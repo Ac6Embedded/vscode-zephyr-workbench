@@ -56,11 +56,11 @@ export class WestRunner {
   }
 
   getWestDebugArgs(relativeBuildDir: string): string {
-    return `debugserver --build-dir \${workspaceFolder}/${relativeBuildDir} ${this.autoArgs} ${this.userArgs}`;
+    return `debugserver --build-dir "\${workspaceFolder}/${relativeBuildDir}" ${this.autoArgs} ${this.userArgs}`;
   }
 
   getWestFlashArgs(relativeBuildDir: string): string {
-    return `flash --build-dir \${workspaceFolder}/build/${relativeBuildDir} ${this.autoArgs} ${this.userArgs}`;
+    return `flash --build-dir "\${workspaceFolder}/build/${relativeBuildDir}" ${this.autoArgs} ${this.userArgs}`;
   }
 
   get autoArgs(): string {

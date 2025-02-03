@@ -40,7 +40,7 @@ const westBuildTask: ZephyrTaskDefinition = {
     "build",
     "-p ${config:zephyr-workbench.build.pristine}",
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
 };
 
@@ -58,7 +58,7 @@ const rebuildTask: ZephyrTaskDefinition = {
     "build",
     "-p always",
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
 };
 
@@ -72,7 +72,7 @@ const guiConfigTask: ZephyrTaskDefinition = {
     "build",
     "-t guiconfig",
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
 };
 
@@ -85,7 +85,7 @@ const menuconfigTask: ZephyrTaskDefinition = {
     "build",
     "-t menuconfig",
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
 };
 
@@ -98,7 +98,7 @@ const hardenConfigTask: ZephyrTaskDefinition = {
     "build",
     "-t hardenconfig",
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
 };
 
@@ -111,7 +111,7 @@ const spdxInitTask: ZephyrTaskDefinition = {
   args: [
     "spdx",
     "--init",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
 };
 
@@ -123,7 +123,7 @@ const spdxTask: ZephyrTaskDefinition = {
   config: "primary",
   args: [
     "spdx",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
 };
 
@@ -137,7 +137,7 @@ const flashTask: ZephyrTaskDefinition = {
     "flash",
     "${input:west.runner}",
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
 };
 
@@ -151,7 +151,7 @@ const ramReportTask: ZephyrTaskDefinition = {
     "build",
     "-t ram_report",
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
 };
 
@@ -165,7 +165,7 @@ const romReportTask: ZephyrTaskDefinition = {
     "build",
     "-t rom_report",
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
 };
 
@@ -179,7 +179,7 @@ const puncoverTask: ZephyrTaskDefinition = {
     "build",
     "-t puncover",
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
-    "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}"
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
 };
 

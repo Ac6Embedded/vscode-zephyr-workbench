@@ -821,7 +821,7 @@ export async function convertLegacyTasks(workspaceFolder: vscode.WorkspaceFolder
         task.args = task.args.filter(arg => (arg !== "--board ${config:zephyr-workbench.board}") &&
                                             (arg !== "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"));
         task.args.push("--board ${config:zephyr-workbench.build.configurations.0.board}",);
-        task.args.push("--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}");
+        task.args.push("--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\"");
         needUpdate = true;
       }
     }

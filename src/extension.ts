@@ -721,7 +721,7 @@ export function activate(context: vscode.ExtensionContext) {
 					} else {
 						let buildDir = path.join('${workspaceFolder}', 'build', node.buildConfig.name);
 						await saveConfigSetting(node.project.workspaceFolder, node.buildConfig.name, 'active', 'true');
-						await vscode.workspace.getConfiguration('C_Cpp', node.project.workspaceFolder).update('default.compileCommands', path.join(buildDir, 'compile_commands.json'), vscode.ConfigurationTarget.WorkspaceFolder);
+						await vscode.workspace.getConfiguration('C_Cpp', node.project.workspaceFolder).update('default.compileCommands', normalizePath(path.join(buildDir, 'compile_commands.json')), vscode.ConfigurationTarget.WorkspaceFolder);
 						activeIndex = configIndex;
 					}
 				}
