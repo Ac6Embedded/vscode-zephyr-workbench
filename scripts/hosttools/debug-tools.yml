@@ -64,6 +64,17 @@ debug_tools:
     linux:
       source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/zw-udev-rules-1.0.0.tar.xz
       sha256: 0cd477139825438cef3e1f15ec01be801c9b9dfcf3085c43d7af284122f862b9
+- tool: cp210x-win-driver
+  name: USB to UART Bridge VCP CP210x Universal Windows Drivers 
+  version: 11.4.0 
+  website: https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers
+  vendor: Silicon Labs
+  group: driver
+  root: true
+  os:
+    windows:
+      source: https://www.silabs.com/documents/public/software/CP210x_Universal_Windows_Driver.zip
+      sha256: 80f1795e957f029a2d01d197c7801e91acb2fa3630404c832ee580ff1c8ff4a0
 - tool: stm32cubeprogrammer
   name: STM32CubeProgrammer
   version: 2.17.0 
@@ -99,3 +110,6 @@ packs:
 - pack: stm32
   name: STM32 Debug Pack
   tools: [openocd, stm32cubeprogrammer, udev-rules]
+- pack: esp32
+  name: ESP32 Debug Pack
+  tools: [cp210x-win-driver]

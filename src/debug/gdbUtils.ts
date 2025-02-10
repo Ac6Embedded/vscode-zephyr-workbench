@@ -11,7 +11,7 @@ export function getSetupCommands(program: string, serverAddress: string | undefi
     serverAddress = "localhost";
   }
 
-  if(serverPort) {
+  if(!serverPort) {
     serverPort = "3333";
   }
 

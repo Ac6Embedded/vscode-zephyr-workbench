@@ -102,9 +102,12 @@ function Download-FileWithHashCheck {
         # Using wget for downloading
         & $Wget -q $SourceUrl -O $FilePath
     } else {
-        # Using Invoke-WebRequest for downloading
-        Invoke-WebRequest -Uri $SourceUrl -OutFile $FilePath -ErrorAction Stop
-    }   
+        # Using Invoke-WebRequest for downloading, make it silent, if not it will be very slow
+        & {
+            $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest -Uri $SourceUrl -OutFile $FilePath -ErrorAction Stop
+        }
+    }
     # Check if the download was successful
     if (-Not (Test-Path -Path $FilePath)) {
         Print-Error 1 "Error: Failed to download the file."
@@ -275,16 +278,6 @@ foreach ($Tool in $ToolsList) {
 
 # Source manifest to get the array of elements
 . $ManifestFilePath
-
-#Print-Title "Wget"
-#$WgetExecutableName = "wget.exe"
-#Download-FileWithHashCheck $SOURCE_URLS["wget"] $SHA256_HASHES["wget"] $WgetExecutableName
-#Test-FileExistence -FilePath "$DownloadDirectory\$WgetExecutableName"
-
-#New-Item -Path "$ToolsDirectory\wget" -ItemType Directory -Force > $null 2>&1
-#Copy-Item -Path "$DownloadDirectory\$WgetExecutableName" -Destination "$ToolsDirectory\wget\$WgetExecutableName"
-
-#$Wget = "$ToolsDirectory\wget\$WgetExecutableName"
 
 Print-Title "7-Zip"
 

@@ -70,23 +70,25 @@ export class DebugToolsPanel {
         }
       });
       
-      packsHTML += `<tr id="row-${pack.pack}">
-        <td></td>
-        <td id="name-${pack.pack}">${pack.name} <span class="description">(${listToolsName.join(', ')})</span></td>
-        <td></td>
-        <td></td>
-        <td id="buttons-${pack.pack}">`;
+      if(listToolsName.length > 0) {
+        packsHTML += `<tr id="row-${pack.pack}">
+          <td></td>
+          <td id="name-${pack.pack}">${pack.name} <span class="description">(${listToolsName.join(', ')})</span></td>
+          <td></td>
+          <td></td>
+          <td id="buttons-${pack.pack}">`;
 
-      packsHTML +=` <vscode-button appearance="icon" class="install-pack-button" data-pack="${pack.pack}" data-tools="${pack.tools.join(';')}">
-                      <span class="codicon codicon-desktop-download"></span>
-                    </vscode-button>
-                    <!--vscode-button appearance="icon" class="remove-button" data-pack="${pack.pack}">
-                      <span class="codicon codicon-trash"></span>
-                    </vscode-button-->`;
+        packsHTML +=` <vscode-button appearance="icon" class="install-pack-button" data-pack="${pack.pack}" data-tools="${pack.tools.join(';')}">
+                        <span class="codicon codicon-desktop-download"></span>
+                      </vscode-button>
+                      <!--vscode-button appearance="icon" class="remove-button" data-pack="${pack.pack}">
+                        <span class="codicon codicon-trash"></span>
+                      </vscode-button-->`;
 
-      packsHTML +=`</td>
-        <td><div class="progress-wheel" id="progress-${pack.pack}"><vscode-progress-ring></vscode-progress-ring></div></td>
-      </tr>`;
+        packsHTML +=`</td>
+          <td><div class="progress-wheel" id="progress-${pack.pack}"><vscode-progress-ring></vscode-progress-ring></div></td>
+        </tr>`;
+      }
     }
     return packsHTML;
   }

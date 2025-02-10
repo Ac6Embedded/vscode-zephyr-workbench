@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://zephyr-workbench.com",
-  "version": "1.3.10",
+  "version": "1.3.11",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -1423,8 +1423,6 @@
     "ms-vscode.cpptools",
     "ms-vscode.cpptools-extension-pack",
     "ms-vscode.vscode-serial-monitor",
-    "redhat.vscode-yaml",
-    "marus25.cortex-debug",
     "mindaro-dev.file-downloader"
   ]
 }

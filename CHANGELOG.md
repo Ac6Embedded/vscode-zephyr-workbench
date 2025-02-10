@@ -4,6 +4,16 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.11]
+
+- Fix debug tools download
+- Fix debug server port attribute in gdb command
+- Add driver install for USB to UART Bridge on ESP32 boards
+
+## [1.3.10]
+
+- Fix variable with empty space
+
 ## [1.3.9]
 
 - Fix west command to search for boards folders
