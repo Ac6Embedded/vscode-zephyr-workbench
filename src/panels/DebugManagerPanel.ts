@@ -269,10 +269,6 @@ export class DebugManagerPanel {
             if(appProject) {
               if(appProject.configs.length > 0) {
                 updateBuildConfigs(appProject);
-              } else {
-                // For legacy project, update configuration
-                updateBuildConfigs(appProject);
-                await updateConfiguration(appProject);
               }
             }
             break;
@@ -371,14 +367,10 @@ export class DebugManagerPanel {
     async function updateConfiguration(project: ZephyrProject, buildConfig?: ZephyrProjectBuildConfiguration) {
       // Extract information from configuration
       let launchJson, config;
-      let compatibleRunners;
+      let compatibleRunners: string[] = [];
       if(buildConfig) {
         [launchJson, config] = await getLaunchConfiguration(project, buildConfig.name);
         compatibleRunners = await buildConfig.getCompatibleRunners(project);
-      } else {
-        // For legacy compatibility
-        [launchJson, config] = await getLaunchConfiguration(project);
-        compatibleRunners = await project.getCompatibleRunners();
       }
 
       const programPath = config.program;
@@ -473,9 +465,6 @@ export class DebugManagerPanel {
       let config;
       if(buildConfig) {
         config  = await createDefaultConfiguration(project, buildConfig.name);
-      } else {
-        // For legacy compatibility
-        config  = await createDefaultConfiguration(project);
       }
      
       const programPath = config.program;
@@ -494,7 +483,7 @@ export class DebugManagerPanel {
       }
     
       let newRunnersHTML = '';
-      let compatibleRunners = await project.getCompatibleRunners();
+      let compatibleRunners = await config.getCompatibleRunners();
       for(let runner of getDebugRunners()) {
         if(compatibleRunners.includes(runner.name)) {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
@@ -582,11 +571,6 @@ export class DebugManagerPanel {
           vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug', 
             appProject.workspaceFolder,
             `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`);
-        } else {
-          // For legacy compatibility
-          vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug', 
-            appProject.workspaceFolder,
-            ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME);
         }
       } else {
         vscode.window.showErrorMessage('Debug manager: No debug runner selected!');

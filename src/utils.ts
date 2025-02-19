@@ -563,27 +563,26 @@ export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?
 
     if(resource) {
       if(resource instanceof ZephyrProject) {
-        let buildDir = resource.buildDir;
         if(buildConfig) {
-          buildDir = buildConfig.getBuildDir(resource);
-        }
-        // Search the BOARD_ROOT definition from the zephyr_settings.txt 
-        // By looking into an existing buildDir or generating a tmp buildDir from dry run
-        let envVars: Record<string, string> | undefined;
-        if(fileExists(buildDir)) {
-          envVars = readZephyrSettings(buildDir);
-        } else {
-          const tmpBuildDir = await westTmpBuildSystemCommand(resource, westWorkspace);
-          if(tmpBuildDir) {
-            envVars = readZephyrSettings(tmpBuildDir);
-            deleteFolder(tmpBuildDir);
+          let buildDir = buildConfig.getBuildDir(resource);
+          // Search the BOARD_ROOT definition from the zephyr_settings.txt 
+          // By looking into an existing buildDir or generating a tmp buildDir from dry run
+          let envVars: Record<string, string> | undefined;
+          if(fileExists(buildDir)) {
+            envVars = readZephyrSettings(buildDir);
+          } else {
+            const tmpBuildDir = await westTmpBuildSystemCommand(resource, westWorkspace);
+            if(tmpBuildDir) {
+              envVars = readZephyrSettings(tmpBuildDir);
+              deleteFolder(tmpBuildDir);
+            }
           }
-        }
-        if(envVars) {
-          let keys = Object.keys(envVars);
-          for(let key of keys) {
-            if(key === 'BOARD_ROOT') {
-              boardRoots.push(envVars[key]);
+          if(envVars) {
+            let keys = Object.keys(envVars);
+            for(let key of keys) {
+              if(key === 'BOARD_ROOT') {
+                boardRoots.push(envVars[key]);
+              }
             }
           }
         }
@@ -763,81 +762,4 @@ export function readZephyrSettings(buildDir: string): Record<string, string>  {
     console.error(`Cannot read ${filePath}`);
   }
   return settings;
-}
-
-/**
- * For legacy compatibility:
- * Temporary convert method to upgrade legacy settings.json
- * Code to remove when no legacy project exists anymore
- */
-export async function convertLegacySettings(project: ZephyrProject): Promise<void> {
-  let boardIdentifier = project.boardId;
-  let config = new ZephyrProjectBuildConfiguration('primary');
-  config.boardIdentifier = boardIdentifier;
-  project.addBuildConfiguration(config);
-
-  // Update settings.json
-  await addConfig(project.workspaceFolder, config);
-  // Remove board from settings
-  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.workspaceFolder).update(ZEPHYR_PROJECT_BOARD_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
-
-  // Copy envs
-  for(let key of Object.keys(project.envVars)) {
-    config.envVars[key] = project.envVars[key];
-    if(config.envVars[key].length > 0) {
-      await saveConfigEnv(project.workspaceFolder, config.name, key, config.envVars[key]);
-    }
-    // Remove env settings
-    await saveEnv(project.workspaceFolder, key, undefined);
-  }
-
-  // Copy args
-  config.westArgs = project.westArgs;
-  await saveConfigSetting(project.workspaceFolder, config.name, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, config.westArgs);
-  // Remove west-args settings
-  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.workspaceFolder).update(ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, undefined);
-
-  // Update tasks.json
-  await convertLegacyTasks(project.workspaceFolder);
-}
-
-/**
- * For legacy compatibility:
- * Temporary convert method to upgrade legacy tasks.json
- * Code to remove when no legacy project exists anymore
- */
-export async function convertLegacyTasks(workspaceFolder: vscode.WorkspaceFolder) { 
-  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
-  const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
-  
-  const data = await fsPromise.readFile(tasksJsonPath, 'utf8');
-  const config: TaskConfig = JSON.parse(data);
-  let needUpdate = false;
-  const newTasks = config.tasks.map(task => {
-    // Update from legacy project
-    if(task.config === undefined) {
-      if(task.type === ZephyrTaskProvider.ZephyrType) {
-        task.config = "primary";
-        task.args = task.args.filter(arg => (arg !== "--board ${config:zephyr-workbench.board}") &&
-                                            (arg !== "--build-dir ${workspaceFolder}/build/${config:zephyr-workbench.board}"));
-        task.args.push("--board ${config:zephyr-workbench.build.configurations.0.board}",);
-        task.args.push("--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\"");
-        needUpdate = true;
-      }
-    }
-
-    // Temporary fix to remove --board argument on spdx tasks
-    if(task.label === 'Generate SPDX') {
-      task.args = task.args.filter((arg: string) => !arg.startsWith("--board"));
-      needUpdate = true;
-    }
-    return task;
-  }); 
-
-  if(needUpdate) {
-    config.tasks = newTasks;
-    await fsPromise.writeFile(tasksJsonPath, JSON.stringify(config, null, 2), 'utf8');
-    // Sleep to let VS Code time to reload the tasks.json
-    await msleep(500); 
-  }
 }

@@ -60,10 +60,8 @@ export function createWestWrapper(project: ZephyrProject, buildConfigName?: stri
     if(buildConfig) {
       buildDir = buildConfig.getInternalDebugDir(project);
     }
-  } else {
-    // For legacy compatibility
-    buildDir = project.internalDebugDir;
   }
+
   if(!buildDir) {
     return;
   }
@@ -93,7 +91,6 @@ export function createWestWrapper(project: ZephyrProject, buildConfigName?: stri
 
   let envVars = {
     ...westWorkspace.buildEnv,
-    ...project.buildEnv
   };
 
   if(buildConfig) {
@@ -185,11 +182,8 @@ export async function setupPyOCDTarget(project: ZephyrProject, buildConfigName?:
     if(buildConfig) {
       target = buildConfig.getPyOCDTarget(project);
     }
-  } else {
-    // For legacy compatibility
-    target = project.getPyOCDTarget();
-  }
-  
+  } 
+
   if(target) { 
     if(!(await checkPyOCDTarget(target))) {
       await updatePyOCDPack();
@@ -203,7 +197,7 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
   const zephyrSDK = getZephyrSDK(project.sdkPath);
   let buildConfig: ZephyrProjectBuildConfiguration | undefined = undefined;
   let targetBoard: ZephyrBoard | undefined;
-  let boardIdentifier = project.boardId;
+  let boardIdentifier;
 
   if(buildConfigName) {
     buildConfig = project.getBuildConfiguration(buildConfigName);
@@ -252,12 +246,6 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
     socToolchainName = buildConfig.getKConfigValue(project, 'SOC_TOOLCHAIN_NAME');
     program = path.join('${workspaceFolder}', `${buildConfig.relativeBuildDir}`, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
     wrapper = path.join('${workspaceFolder}', `${buildConfig.relativeInternalDebugDir}`, `${wrapperFile}`);
-  } else {
-    // For legacy compatibility
-    configName = `Zephyr Workbench Debug`;
-    socToolchainName = project.getKConfigValue('SOC_TOOLCHAIN_NAME');
-    program = path.join('${workspaceFolder}', 'build', '${config:zephyr-workbench.board}', ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
-    wrapper = path.join('${workspaceFolder}', 'build', '.debug', '${config:zephyr-workbench.board}', `${wrapperFile}`);
   }
   
   const launchJson = {
@@ -343,7 +331,6 @@ export async function findLaunchConfiguration(launchJson: any, project: ZephyrPr
   if(buildConfigName) {
     debugConfigName = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`;
   } else {
-    // For legacy compatibility
     debugConfigName = ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME;
   }
 

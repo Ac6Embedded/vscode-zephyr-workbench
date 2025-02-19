@@ -76,7 +76,7 @@ export class ZephyrProjectBuildConfiguration {
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
       BUILD_DIR: this.getBuildDir(parentProject),
-      WEST_ARGS: this.westArgs
+      ...(this.westArgs) ? { WEST_ARGS: this.westArgs } : {}
     };
 
     let additionalEnv = getBuildEnv(this.envVars);
@@ -88,7 +88,7 @@ export class ZephyrProjectBuildConfiguration {
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
       BUILD_DIR: this.getBuildDir(parentProject),
-      WEST_ARGS: this.westArgs
+      ...(this.westArgs) ? { WEST_ARGS: this.westArgs } : {}
     };
 
     let additionalEnv = getBuildEnv(this.envVars);
@@ -153,7 +153,7 @@ export class ZephyrProjectBuildConfiguration {
     const opts: vscode.TerminalOptions = {
       name: `${zephyrProject.folderName} (${buildConfig.name}) Terminal`,
       shellPath: `${shell}`,
-      env: {...zephyrSdk.buildEnv, ...westWorkspace.buildEnv, ...zephyrProject.buildEnv, ...buildConfig.getBuildEnv(zephyrProject) },
+      env: {...zephyrSdk.buildEnv, ...westWorkspace.buildEnv, ...buildConfig.getBuildEnv(zephyrProject) },
       cwd: fs.existsSync(buildConfig.getBuildDir(zephyrProject)) ? buildConfig.getBuildDir(zephyrProject):zephyrProject.folderPath
     };
 

@@ -3,7 +3,7 @@ import * as path from 'path';
 import { ZephyrAppProject } from '../ZephyrAppProject';
 import { getWestWorkspace } from '../utils';
 import { ZephyrProjectBuildConfiguration } from '../ZephyrProjectBuildConfiguration';
-import { loadConfigEnv } from '../zephyrEnvUtils';
+import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY } from '../constants';
 
 export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
 	private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | void>();
@@ -33,9 +33,7 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
     }
     
     if(element instanceof ZephyrApplicationTreeItem) {
-      const boardItem = new ZephyrApplicationBoardTreeItem(element.project);
       const workspaceItem = new ZephyrApplicationWestWorkspaceTreeItem(element.project);
-      // items.push(boardItem);
       items.push(workspaceItem);
 
       if(element.project.configs.length > 1) {
@@ -46,7 +44,7 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       } else if(element.project.configs.length === 1) {
         const config = element.project.configs[0];
         const boardItem = new ZephyrConfigBoardTreeItem(element.project, config);
-        const westArgsItem = new ZephyrConfigArgTreeItem(element.project, config, 'west arguments');
+        const westArgsItem = new ZephyrConfigArgTreeItem(element.project, config, 'west arguments', config.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
 
         items.push(boardItem);
         items.push(westArgsItem);
@@ -56,28 +54,17 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
           if(Array.isArray(config.envVars[key])) {
             envItem = new ZephyrConfigEnvTreeItem(element.project, config, key);
           } else {
-            envItem = new ZephyrConfigArgTreeItem(element.project, config, key);
+            envItem = new ZephyrConfigArgTreeItem(element.project, config, key, config.envVars[key]);
           }
           items.push(envItem);
         }
-      } else {
-        // For legacy compatibility,
-        // Display arguments and variable for project that has no build configuration
-        items.push(boardItem);
-        for(let key of ZephyrAppProject.envVarKeys) {
-          const envItem = new ZephyrApplicationEnvTreeItem(element.project, key);
-          items.push(envItem);
-        }
-  
-        const westArgsItem = new ZephyrApplicationArgTreeItem(element.project, 'west arguments');
-        items.push(westArgsItem);
       }
       return Promise.resolve(items);
     } 
 
     if(element instanceof ZephyrConfigTreeItem) {
       const boardItem = new ZephyrConfigBoardTreeItem(element.project, element.buildConfig);
-      const westArgsItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, 'west arguments');
+      const westArgsItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, 'west arguments', element.buildConfig.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
 
       items.push(boardItem);
       items.push(westArgsItem);
@@ -87,7 +74,7 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
         if(Array.isArray(element.buildConfig.envVars[key])) {
           envItem = new ZephyrConfigEnvTreeItem(element.project, element.buildConfig, key);
         } else {
-          envItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, key);
+          envItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, key, element.buildConfig.envVars[key]);
         }
         items.push(envItem);
       }
@@ -177,7 +164,7 @@ export class ZephyrApplicationTreeItem extends vscode.TreeItem {
       try {
         let westWorkspace = getWestWorkspace(project.westWorkspacePath);
         if(westWorkspace !== null) {
-          this.description = project.configs.length > 0 ? `[with ${westWorkspace.name}]` : `[legacy]`;
+          this.description = project.configs.length > 0 ? `[with ${westWorkspace.name}]` : `[invalid]`;
           this.contextValue = 'zephyr-application';
         } else {
           this.description = `[not configured]`;
@@ -233,20 +220,6 @@ export class ZephyrApplicationWestWorkspaceTreeItem extends ZephyrApplicationTre
 	}
 
   contextValue = 'zephyr-application-workspace';
-}
-
-export class ZephyrApplicationBoardTreeItem extends ZephyrApplicationTreeItem {
-  constructor(
-		public readonly project: ZephyrAppProject,
-	) {
-    super(project, vscode.TreeItemCollapsibleState.None);
-    this.label = project.boardId;
-    this.description = '';
-    this.tooltip = project.boardId;
-    this.iconPath = new vscode.ThemeIcon('circuit-board');
-	}
-  
-  contextValue = 'zephyr-application-board';
 }
 
 export class ZephyrConfigBoardTreeItem extends vscode.TreeItem {
@@ -332,15 +305,17 @@ export class ZephyrConfigArgTreeItem extends vscode.TreeItem {
   constructor(
 		public readonly project: ZephyrAppProject,
     public readonly config: ZephyrProjectBuildConfiguration,
-    public readonly argName: string
+    public readonly argName: string,
+    public argValue: string,
+    public readonly argSetting?: string
 	) {
     super(argName, vscode.TreeItemCollapsibleState.Collapsed);
-    if(argName === 'west arguments') {
-      this.description = ((config.westArgs === undefined) || (config.westArgs.length === 0)) ?'[not set]':'';
-    } else {
-      this.description = ((config.envVars[argName] === undefined) || (config.envVars[argName].length === 0)) ?'[not set]':'';
-    }
-
+    // if(argName === 'west arguments') {
+    //   this.description = ((config.westArgs === undefined) || (config.westArgs.length === 0)) ?'[not set]':'';
+    // } else {
+    //   this.description = ((config.envVars[argName] === undefined) || (config.envVars[argName].length === 0)) ?'[not set]':'';
+    // }
+    this.description = ((argValue === undefined) || (argValue.length === 0)) ?'[not set]':'';
     this.tooltip = argName;
     this.iconPath = new vscode.ThemeIcon('variable');
 	}

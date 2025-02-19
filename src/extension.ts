@@ -13,7 +13,7 @@ import { createExtensionsJson, createTasksJson, setDefaultProjectSettings, updat
 import { changeBoardQuickStep } from './changeBoardQuickStep';
 import { changeEnvVarQuickStep } from './changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
-import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
+import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
 import { executeTask } from './execUtils';
 import { importProjectQuickStep } from './importProjectQuickStep';
@@ -28,7 +28,7 @@ import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { pickApplicationQuickStep } from './pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './pickBuildConfigQuickStep';
 import { WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
-import { ZephyrApplicationBoardTreeItem, ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem } from './providers/ZephyrApplicationProvider';
+import { ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem } from './providers/ZephyrApplicationProvider';
 import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsCommandProvider';
 import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
@@ -36,7 +36,7 @@ import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommand
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
 import { setConfigQuickStep } from './setConfigQuickStep';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { addWorkspaceFolder, convertLegacySettings, convertLegacyTasks, copySampleSync, deleteFolder, fileExists, findConfigTask, findOrCreateTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder } from './utils';
+import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfigTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder } from './utils';
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './SPDXCommands';
@@ -168,18 +168,13 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.build-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder, configName?: string) => {
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.build-app', async (node: ZephyrConfigTreeItem | vscode.WorkspaceFolder, configName: string) => {
 			await executeConfigTask('West Build', node, configName);
 
 			// After first build, parse toolchain name from .config
 			let folder: vscode.WorkspaceFolder | undefined = undefined;
 			let boardIdentifier: string = '';
-			if(node instanceof ZephyrApplicationTreeItem) {
-				if(node.project) {
-					folder = node.project.workspaceFolder;
-					boardIdentifier = node.project.boardId;
-				}
-			} else if(node instanceof ZephyrConfigTreeItem) {
+			if(node instanceof ZephyrConfigTreeItem) {
 				if(node.project) {
 					folder = node.project.workspaceFolder;
 					boardIdentifier = node.buildConfig.boardIdentifier;
@@ -195,15 +190,11 @@ export function activate(context: vscode.ExtensionContext) {
 					
 					// Use-case if build out of APPLICATIONS view, means from WorkspaceFolder 
 					// Cannot know board identifier beforehand so detect if after parsing settings.json
-					// On non-legacy project, assume first config can be "master"
+					// On non-legacy project, assume first config can be the "master"
 					if(boardIdentifier.length === 0) {
-						if(project.boardId) {
-							boardIdentifier = project.boardId;
-						} else {
-							boardIdentifier = project.configs[0].boardIdentifier;
-						}
+						boardIdentifier = project.configs[0].boardIdentifier;
 					}
-					await updateCompileSetting(project, boardIdentifier);
+					await updateCompileSetting(project, configName, boardIdentifier);
 				}
 			}
 		})
@@ -307,9 +298,6 @@ export function activate(context: vscode.ExtensionContext) {
 				} else if(project.configs.length === 1) {
 					// If only one build config exists, use it as default
 					buildConfigName = project.configs[0].name;
-				} else {
-					// For legacy compatibility
-					buildConfigName = undefined;
 				}
 			}
 			
@@ -570,7 +558,7 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.change-board', async (node: ZephyrApplicationBoardTreeItem | ZephyrApplicationTreeItem | ZephyrConfigTreeItem | ZephyrConfigBoardTreeItem) => {
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.change-board', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | ZephyrConfigBoardTreeItem) => {
 			if(node.project) {
 				const boardId = await changeBoardQuickStep(context, node.project);
 				if(boardId) {
@@ -578,16 +566,11 @@ export function activate(context: vscode.ExtensionContext) {
 						await saveConfigSetting(node.project.workspaceFolder, node.buildConfig.name, ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId);
 					} else if(node instanceof ZephyrConfigBoardTreeItem) {
 						await saveConfigSetting(node.project.workspaceFolder, node.config.name, ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId);
-					} else if(node instanceof ZephyrApplicationBoardTreeItem || node instanceof ZephyrApplicationTreeItem) {
+					} else if(node instanceof ZephyrApplicationTreeItem) {
 						if(node.project.configs && node.project.configs.length === 1) {
 							await saveConfigSetting(node.project.workspaceFolder, node.project.configs[0].name, ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId);
-						} else {
-							// For legacy compatibility
-						// Keep supporting edit board from project
-						await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardId, vscode.ConfigurationTarget.WorkspaceFolder);
 						}
 					}
-					
 				}
 			}
 		})
@@ -906,6 +889,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
+		// The action should be able to modify argument and string environment variable
 		vscode.commands.registerCommand("zephyr-workbench.arg.edit", async (node: any) => {
 			if(node.project) {
 				const project = node.project;
@@ -914,15 +898,15 @@ export function activate(context: vscode.ExtensionContext) {
 					context = node.config;
 				}
 
-				let value = await changeEnvVarQuickStep(context, 'west arguments', context.westArgs);
+				let value = await changeEnvVarQuickStep(context, node.argName, node.argValue);
 				if(value !== undefined) {
-					context.westArgs = value;
+					node.argValue = value;
 					let workspaceFolder = getWorkspaceFolder(project.folderPath);
 					if(workspaceFolder) {
-						if(context === project) {
-							await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, context.westArgs);
+						if(node.argSetting) {
+							await saveConfigSetting(workspaceFolder, context.name, node.argSetting, node.argValue);
 						} else {
-							await saveConfigSetting(workspaceFolder, context.name, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, context.westArgs);
+							await saveConfigEnv(workspaceFolder, context.name, node.argName, node.argValue);
 						}
 					}
 				}
@@ -1523,36 +1507,6 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	setDefaultSettings();
-
-	// For legacy compatibility
-	// Upgrade project structure and settings
-	{
-		vscode.window.withProgress({
-			location: vscode.ProgressLocation.Notification,
-			title: "Checking projects...",
-			cancellable: false,
-		}, async (progress, token) => {
-			try {
-				await convertLegacyProjects();
-			} catch(e) {
-				
-			}	
-		});
-
-		async function convertLegacyProjects(): Promise<void> {
-			if(vscode.workspace.workspaceFolders) {
-				for(let workspaceFolder of vscode.workspace.workspaceFolders) {
-					if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
-						const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-						if(appProject.configs.length === 0) {
-							await convertLegacySettings(appProject);
-						}
-						await convertLegacyTasks(workspaceFolder);
-					}
-				}
-			}
-		}
-	}
 }
 
 function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
@@ -1578,14 +1532,17 @@ async function updateStatusBar() {
 	}
 }
 
-async function updateCompileSetting(project: ZephyrAppProject, boardIdentifier: string) {
+async function updateCompileSetting(project: ZephyrAppProject, configName: string, boardIdentifier: string) {
+	const buildConfig = project.getBuildConfiguration(configName);
 	const zephyrSDK = getZephyrSDK(project.sdkPath);
 	const westWorkspace = getWestWorkspace(project.westWorkspacePath);
 	const board = await getBoardFromIdentifier(boardIdentifier, westWorkspace);
 	
-	let socToolchainName = project.getKConfigValue('SOC_TOOLCHAIN_NAME');
-	if(socToolchainName) {
-		await vscode.workspace.getConfiguration('C_Cpp', project.workspaceFolder).update('default.compilerPath', zephyrSDK.getCompilerPath(board.arch, socToolchainName), vscode.ConfigurationTarget.WorkspaceFolder);
+	if(buildConfig) {
+		let socToolchainName = buildConfig.getKConfigValue(project, 'SOC_TOOLCHAIN_NAME');
+		if(socToolchainName) {
+			await vscode.workspace.getConfiguration('C_Cpp', project.workspaceFolder).update('default.compilerPath', zephyrSDK.getCompilerPath(board.arch, socToolchainName), vscode.ConfigurationTarget.WorkspaceFolder);
+		}
 	}
 }
 
@@ -1620,16 +1577,15 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 	if(context && folder) {
 		// IF: In configuration name is provided execute it
 		// ELSE IF : run active if multiple build configurations
-		// ELSE IF : run task if only one build configuration
-		// ELSE [Legacy] run old build task 
+		// ELSE IF : run task if only one build configuration 
 		if(configName) {
 			let task = await findConfigTask(taskName, context, configName);
 			if(task) {
 				listTasks.push(task);
 			}
 		} else if(context.configs && context.configs.length > 1) {
+			let hasActive = false;
 			for(let config of context.configs) {
-				let hasActive = false;
 				if(config.active) {
 					hasActive = true;
 					let task = await findConfigTask(taskName, context, config.name);
@@ -1637,24 +1593,18 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 						listTasks.push(task);
 					}
 				}
-
-				if(!hasActive) {
-					vscode.window.showInformationMessage("No active configuration found, please set one as active first.");
-				}
 			}
+
+			if(!hasActive) {
+				vscode.window.showInformationMessage("No active configuration found, please set one as active first.");
+			}
+
 		} else if(context.configs && context.configs.length === 1) {
 			let task = await findConfigTask(taskName, context, context.configs[0].name);
 			if(task) {
 				listTasks.push(task);
 			}
-		} else {
-			// For legacy compatibility:
-			// If the project settings.json doesn't have any build configuration
-			let task = await findOrCreateTask(taskName, folder);
-			if(task) {
-				listTasks.push(task);
-			}
-		}
+		} 
 	}
 	
 	return new Promise<vscode.TaskExecution[] | undefined >(async resolve => {

@@ -16,8 +16,6 @@ export class ZephyrProject {
   sdkPath!: string;
   configs: ZephyrProjectBuildConfiguration[] = [];
 
-  // Legacy attributes
-  boardId!: string;
   envVars: {[key:string]: any} = {
     EXTRA_CONF_FILE:[],
     EXTRA_DTC_OVERLAY_FILE:[],
@@ -38,8 +36,7 @@ export class ZephyrProject {
 
   private parseSettings() {
     this.westWorkspacePath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.workspaceContext).get(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, '');
-	  this.boardId = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.workspaceContext).get(ZEPHYR_PROJECT_BOARD_SETTING_KEY, '');
-    this.sdkPath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.workspaceContext).get(ZEPHYR_PROJECT_SDK_SETTING_KEY, '');
+	  this.sdkPath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.workspaceContext).get(ZEPHYR_PROJECT_SDK_SETTING_KEY, '');
     this.westArgs = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.workspaceContext).get(ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, '');
     for(let key of Object.keys(this.envVars)) {
       let values = loadEnv(this.workspaceContext, key);
@@ -80,47 +77,6 @@ export class ZephyrProject {
   get folderName(): string {
     return path.basename(this.folderPath);
   }
-  
-  /**
-   * Build directory
-   */
-  get buildDir(): string {
-    return path.join(this.folderPath, 'build', this.boardId);
-  }
-
-  /**
-   * Under build directory, the internal debug directory is used to generate wrappers, files, etc...
-   * and is not removed after pristine rebuilt. 
-   */
-  get internalDebugDir(): string {
-    return path.join(this.folderPath, 'build', '.debug', this.boardId);
-  }
-
-  get buildEnv(): { [key: string]: string; } {
-    let baseEnv: { [key: string]: string; } = {
-      BOARD: this.boardId,
-      BUILD_DIR: this.buildDir
-    };
-
-    let additionalEnv = getBuildEnv(this.envVars);
-    baseEnv = { ...baseEnv, ...additionalEnv };
-    return baseEnv;
-  }
-
-  get buildEnvWithVar(): { [key: string]: string; } {
-    let baseEnv: { [key: string]: string; } = {
-      BOARD: this.boardId,
-      BUILD_DIR: this.buildDir
-    };
-
-    let additionalEnv = getBuildEnv(this.envVars);
-    baseEnv = { ...baseEnv, ...additionalEnv };
-    return baseEnv;
-  }
-
-  setBoard(boardId: string) {
-    this.boardId = boardId;
-  }
 
   addBuildConfiguration(config: ZephyrProjectBuildConfiguration) {
     this.configs.push(config);
@@ -128,51 +84,6 @@ export class ZephyrProject {
 
   getBuildConfiguration(name: string): ZephyrProjectBuildConfiguration | undefined {
     return this.configs.find(config => config.name === name);
-  }
-
-  async getCompatibleRunners(): Promise<string[]> {
-    let runners: string[] = [];
-
-    // Search in project build directory runners.yaml
-    const runnersYAMLFilepath = path.join(this.buildDir, ZEPHYR_DIRNAME, 'runners.yaml');
-    if(fileExists(runnersYAMLFilepath)) {
-      const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
-      const data = yaml.parse(runnersYAMLFile);
-      runners = data.runners;
-    }
-
-    // Search in board.cmake if runners.yaml does not exists
-    if(runners.length === 0) {
-      const westWorkspace = getWestWorkspace(this.westWorkspacePath);
-      const board = await getBoardFromIdentifier(this.boardId, westWorkspace, this);
-      runners = board.getCompatibleRunners();
-    }
-
-    return runners;
-  }
-
-  getPyOCDTarget(): string | undefined {
-    const runnersYAMLFilepath = path.join(this.buildDir, ZEPHYR_DIRNAME, 'runners.yaml');
-    if(fileExists(runnersYAMLFilepath)) {
-      const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
-      const data = yaml.parse(runnersYAMLFile);
-      const pyOCDArgs = data?.args?.pyocd;
-      if (pyOCDArgs) {
-        const targetArg = pyOCDArgs.find((arg: string) => arg.startsWith('--target='));
-        if (targetArg) {
-            return targetArg.split('=')[1];
-        }
-      }
-    }
-    return undefined;
-  }
-
-  getKConfigValue(configKey: string): string | undefined {  
-    let dotConfig = path.join(this.buildDir, 'zephyr', '.config');
-    if(fileExists(dotConfig)) {
-      return getConfigValue(dotConfig, configKey);
-    }
-	  return undefined;
   }
 
   static async isZephyrProjectWorkspaceFolder(folder: vscode.WorkspaceFolder) {
@@ -213,8 +124,8 @@ export class ZephyrProject {
     const opts: vscode.TerminalOptions = {
       name: zephyrProject.folderName + ' Terminal',
       shellPath: `${shell}`,
-      env: {...zephyrProject.buildEnv, ...westWorkspace.buildEnv, ...zephyrSdk.buildEnv},
-      cwd: fs.existsSync(zephyrProject.buildDir) ? zephyrProject.buildDir:zephyrProject.folderPath
+      env: { ...westWorkspace.buildEnv, ...zephyrSdk.buildEnv},
+      cwd: zephyrProject.folderPath
     };
 
     const envVars = opts.env || {};

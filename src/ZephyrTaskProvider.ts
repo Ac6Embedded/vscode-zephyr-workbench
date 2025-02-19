@@ -275,8 +275,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       executable: shell,
       shellArgs: shellArgs,
       env: { ...activeSdk.buildEnvWithVar, 
-             ...westWorkspace.buildEnvWithVar, 
-             ...project.buildEnvWithVar},
+             ...westWorkspace.buildEnvWithVar},
     };
 
     if(config) {
