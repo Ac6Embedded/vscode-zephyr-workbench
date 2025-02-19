@@ -189,3 +189,11 @@ Uninstall tools not supported yet, please manually delete the ${USERDIR}/.zinsta
 
 For some JTAG probes, you might need to install its driver in order to run the debug session.  
 
+## How to rebuild the extension
+```
+git clone https://github.com/Ac6Embedded/vscode-zephyr-workbench
+code vscode-zephyr-workbench
+npm install
+npm run compile
+```
+Then `F5` to run the extension.
