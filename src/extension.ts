@@ -49,22 +49,11 @@ let zephyrDebugConfigurationProvide: vscode.Disposable | undefined;
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-	const requiredExtensions = [
-		'ms-vscode.cpptools',								// https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools
-		'ms-vscode.cpptools-extension-pack',// https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools-extension-pack
-		'ms-vscode.vscode-serial-monitor',  // https://marketplace.visualstudio.com/items?itemName=ms-vscode.vscode-serial-monitor
-		'ms-vscode.vscode-embedded-tools',  // https://marketplace.visualstudio.com/items?itemName=ms-vscode.vscode-embedded-tools
-		'redhat.vscode-yaml',								// https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml
-		'trond-snekvik.kconfig-lang',				// https://marketplace.visualstudio.com/items?itemName=trond-snekvik.kconfig-lang
-		'trond-snekvik.devicetree',					// https://marketplace.visualstudio.com/items?itemName=trond-snekvik.devicetree
-  ];
-
+	// Setup task and debug providers
 	zephyrTaskProvider = vscode.tasks.registerTaskProvider(ZephyrTaskProvider.ZephyrType, new ZephyrTaskProvider());
 	zephyrDebugConfigurationProvide = vscode.debug.registerDebugConfigurationProvider('cppdbg', new ZephyrDebugConfigurationProvider());
 
-	const workspacePath = (vscode.workspace.workspaceFolders && (vscode.workspace.workspaceFolders.length > 0))
-	? vscode.workspace.workspaceFolders[0].uri.fsPath : undefined;
-
+	// Setup Status bar
 	statusBarBuildItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 101);
 	statusBarBuildItem.text = "$(gear) Build";
 	statusBarBuildItem.command = "zephyr-workbench.build-app";
@@ -75,27 +64,31 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(statusBarBuildItem);
 	context.subscriptions.push(statusBarDebugItem);
 
+	// Setup Tree view providers
 	const zephyrShortcutProvider = new ZephyrShortcutCommandProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-shortcuts', zephyrShortcutProvider);
 
 	const zephyrSdkProvider = new ZephyrSdkDataProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-sdk-explorer', zephyrSdkProvider);
-	vscode.commands.registerCommand('zephyr-workbench-sdk-explorer.refresh', () => zephyrSdkProvider.refresh());
-
+	
 	const westWorkspaceProvider = new WestWorkspaceDataProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-west-workspace', westWorkspaceProvider);
-	vscode.commands.registerCommand('zephyr-workbench-west-workspace.refresh', () => westWorkspaceProvider.refresh());
-
+	
 	const zephyrAppProvider = new ZephyrApplicationDataProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-app-explorer', zephyrAppProvider);
-	vscode.commands.registerCommand('zephyr-workbench-app-explorer.refresh', () => zephyrAppProvider.refresh());
-
+	
 	const zephyrToolsCommandProvider = new ZephyrHostToolsCommandProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-tools-explorer', zephyrToolsCommandProvider);
 
 	const zephyrResourcesCommandProvider = new ZephyrOtherResourcesCommandProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-other-resources', zephyrResourcesCommandProvider);
 	
+	// Register commands
+	// TODO: Could be refactored / Optimized
+	vscode.commands.registerCommand('zephyr-workbench-sdk-explorer.refresh', () => zephyrSdkProvider.refresh());
+	vscode.commands.registerCommand('zephyr-workbench-west-workspace.refresh', () => westWorkspaceProvider.refresh());
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.refresh', () => zephyrAppProvider.refresh());
+
 	vscode.commands.registerCommand('zephyr-workbench.build-app', async () => {
 		let currentProject = getCurrentWorkspaceFolder();
 		if(currentProject === undefined ) {
@@ -207,21 +200,18 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.delete', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			let context: any;
-			let buildDir: string;
+			let buildDir: string = '';
 			if(node instanceof ZephyrApplicationTreeItem) {
 				if(node.project) {
-					context = node.project;
 					buildDir = 'build';
 				}
 			} else if(node instanceof ZephyrConfigTreeItem) {
-				if(node.project) {
-					context = node.project;
+				if(node.buildConfig) {
 					buildDir = node.buildConfig.relativeBuildDir;
 				}
 			}
 			
-			if(node.project) {
+			if(node.project && buildDir.length > 0) {
 				vscode.window.withProgress({
 						location: vscode.ProgressLocation.Notification,
 						title: "Deleting Zephyr Application build directory",
@@ -651,7 +641,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.add-config', async (node: ZephyrApplicationTreeItem) => {
 			if(node.project) {
-				let newConfig = new ZephyrProjectBuildConfiguration('');
+				let newConfig = new ZephyrProjectBuildConfiguration();
 				let configName = await setConfigQuickStep(newConfig, node.project);
 				if(configName) {
 					newConfig.active = false;

@@ -81,7 +81,7 @@ export class ZephyrBoard {
   }
 
   get imagePath(): string {
-    return path.join(this.docDirPath, 'img', `${this.boardName ? this.boardName : this.identifier}.jpg`);
+    return path.join(this.docDirPath, 'img', `${this.boardName ?? this.identifier}.jpg`);
   }
 
   get readmePath(): string {

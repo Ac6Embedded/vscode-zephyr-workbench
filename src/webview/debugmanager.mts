@@ -372,7 +372,7 @@ function initRunnersDropdown() {
       { 
         command: 'runnerChanged',
         runner: runnerInput.getAttribute('data-value'),
-        runnerPath: runnerPath.value ? runnerPath.value : '',
+        runnerPath: runnerPath.value ?? '',
       }
     );
   });
@@ -448,8 +448,8 @@ function updateConfig(data: any) {
   const programPath = data.programPath;
   const svdPath = data.svdPath;
   const gdbPath = data.gdbPath;
-  const gdbAddress = data.gdbAddress ? data.gdbAddress : 'localhost';
-  const gdbPort = data.gdbPort ? data.gdbPort : '3333';
+  const gdbAddress = data.gdbAddress ?? 'localhost';
+  const gdbPort = data.gdbPort ?? '3333';
   const gdbMode = data.gdbMode;
   const runnersHTML = data.runnersHTML;
   const runner = data.runnerName;
@@ -468,12 +468,12 @@ function updateConfig(data: any) {
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const runnerArgsText = document.getElementById('runnerArgs') as TextField;
 
-  programPathText.value = programPath ? programPath : '';
-  svdPathText.value = svdPath ? svdPath : '';
-  gdbPathText.value = gdbPath ? gdbPath : '';
-  gdbAddressText.value = gdbAddress? gdbAddress : '';
-  gdbPortText.value = gdbPort ? gdbPort : '';
-  gdbModeRadioGroup.value = gdbMode ? gdbMode : 'program';
+  programPathText.value = programPath ?? '';
+  svdPathText.value = svdPath ?? '';
+  gdbPathText.value = gdbPath ?? '';
+  gdbAddressText.value = gdbAddress?? '';
+  gdbPortText.value = gdbPort ?? '';
+  gdbModeRadioGroup.value = gdbMode ?? 'program';
 
   if(runnersHTML.length > 0) {
     runnersDropdown.innerHTML = runnersHTML;

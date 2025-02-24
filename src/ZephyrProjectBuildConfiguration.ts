@@ -24,9 +24,9 @@ export class ZephyrProjectBuildConfiguration {
   westArgs: string = '';
   
   constructor(
-    name: string,
+    name?: string,
   ) {
-    this.name = name;
+    this.name = name ?? '';
   }
 
   parseSettings(buildConfig: any, workspaceContext: vscode.WorkspaceFolder) {
