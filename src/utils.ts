@@ -1,5 +1,4 @@
 import fs from 'fs';
-import * as fsPromise from 'fs/promises';
 import os from 'os';
 import path from "path";
 import yaml from 'yaml';
@@ -11,12 +10,11 @@ import { ZephyrSDK } from "./ZephyrSDK";
 import { ZephyrSample } from "./ZephyrSample";
 import { getEnvVarFormat, getShell } from "./execUtils";
 import { checkHostTools } from "./installUtils";
-import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
+import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { ZephyrProject } from './ZephyrProject';
-import { getBoardsDirectories, getBoardsDirectoriesFromIdentifier, westTmpBuildSystemCommand } from './WestCommands';
-import { checkOrCreateTask, TaskConfig, ZephyrTaskProvider } from './ZephyrTaskProvider';
+import { getBoardsDirectories, westTmpBuildSystemCommand } from './WestCommands';
+import { checkOrCreateTask, ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
-import { addConfig, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 
 export function msleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -608,7 +606,7 @@ export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?
             return undefined;
           });
         const boards = await Promise.all(boardPromises);
-        listBoards.push(...boards.filter(board => board !== undefined));
+        listBoards.push(...boards.filter(board => board !== undefined) as ZephyrBoard[]);
       } catch (error) {
         console.error(`Error reading directory: ${dirUri.fsPath}`, error);
       }

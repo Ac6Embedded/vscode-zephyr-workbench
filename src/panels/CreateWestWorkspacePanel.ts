@@ -111,7 +111,7 @@ export class CreateWestWorkspacePanel {
     
     let templatesHTML = '';
     for(let hal of listHals) {
-      templatesHTML = templatesHTML.concat(`<div class="dropdown-item" data-value="${hal.name}" data-label="${hal.label}">${hal.label}</div>`)
+      templatesHTML = templatesHTML.concat(`<div class="dropdown-item" data-value="${hal.name}" data-label="${hal.label}">${hal.label}</div>`);
     }
   
     return /*html*/ `
