@@ -1059,9 +1059,7 @@
           
           "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
           "group": "0@view/item/context@1",
-          "when": "view == About
-
-Zephyr Workbench extension for Visual Studio Code zephyr-workbench-app-explorer && viewItem == zephyr-application"
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
           "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
