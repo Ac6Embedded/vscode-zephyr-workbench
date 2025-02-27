@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://zephyr-workbench.com",
-  "version": "1.3.11",
+  "version": "1.3.12",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -1059,7 +1059,9 @@
           
           "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
           "group": "0@view/item/context@1",
-          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+          "when": "view == About
+
+Zephyr Workbench extension for Visual Studio Code zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
           "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",

@@ -4,6 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.12]
+
+- End legacy compatibility
+- Fix argument / env vars definition
+
 ## [1.3.11]
 
 - Fix debug tools download
