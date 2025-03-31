@@ -495,10 +495,10 @@ function updateConfig(data: any) {
 function updateRunnerConfig(runnerPath: string, runnerArgs: string) {
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const runnerArgsText = document.getElementById('runnerArgs') as TextField;
-
   runnerPathText.value = runnerPath;
-  runnerArgsText.value = runnerArgs;
   runnerPathText.dispatchEvent(new Event('input'));
+  runnerArgsText.value = runnerArgs;
+  runnerArgsText.dispatchEvent(new Event('input'));
 }
 
 function updateRunnerDetect(runnerDetect: boolean) {

@@ -446,7 +446,8 @@ export class DebugManagerPanel {
       let found = await runner.detect();
       webview.postMessage({ 
         command: 'updateRunnerDetect', 
-        runnerDetect: found?'true':'false'
+        runnerDetect: found?'true':'false',
+        runnerPath: runner.serverPath? runner.serverPath:'',
       });
     }
 

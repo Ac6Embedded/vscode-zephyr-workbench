@@ -19,11 +19,12 @@ export class ZephyrProject {
   envVars: {[key:string]: any} = {
     EXTRA_CONF_FILE:[],
     EXTRA_DTC_OVERLAY_FILE:[],
-    EXTRA_ZEPHYR_MODULES:[]
+    EXTRA_ZEPHYR_MODULES:[],
+    SHIELD:[],
   };
   westArgs: string = '';
 
-  static envVarKeys = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES'];
+  static envVarKeys = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES', 'SHIELD'];
 
   public constructor(
     workspaceContext: any,

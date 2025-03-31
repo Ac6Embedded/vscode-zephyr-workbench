@@ -679,6 +679,46 @@ export async function parseSupportedBoards(westWorkspace: WestWorkspace, directo
 }
 
 /**
+ * Scans the west workspace for shield overlay files.
+ * It looks in the "boards/shields" directory and, for each shield folder,
+ * returns the names of all files ending with ".overlay" (without the extension).
+ *
+ * @param westWorkspace The WestWorkspace instance representing your west workspace.
+ * @returns A promise resolving to an array of shield names.
+ */
+export async function getSupportedShields(westWorkspace: WestWorkspace): Promise<string[]> {
+  const shieldNames: string[] = [];
+  // Construct the path to the shields directory: boards/shields under the workspace root.
+  const shieldsDirPath = path.join(westWorkspace.rootUri.fsPath, 'deps', 'zephyr', 'boards', 'shields');
+  const shieldsDirUri = vscode.Uri.file(shieldsDirPath);
+
+  try {
+    // Read the shields directory to get a list of subdirectories.
+    const shieldFolders = await vscode.workspace.fs.readDirectory(shieldsDirUri);
+    for (const [folderName, type] of shieldFolders) {
+      if (type === vscode.FileType.Directory) {
+        const shieldFolderUri = vscode.Uri.joinPath(shieldsDirUri, folderName);
+        try {
+          const files = await vscode.workspace.fs.readDirectory(shieldFolderUri);
+          for (const [fileName, fileType] of files) {
+            if (fileType === vscode.FileType.File && fileName.endsWith('.overlay')) {
+              // Remove the ".overlay" extension from the file name.
+              const shieldName = fileName.substring(0, fileName.length - '.overlay'.length);
+              shieldNames.push(shieldName);
+            }
+          }
+        } catch (err) {
+          console.error(`Error reading shield folder ${shieldFolderUri.fsPath}:`, err);
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`Error reading shields directory ${shieldsDirPath}:`, error);
+  }
+  return shieldNames;
+}
+
+/**
  * Compares two version strings in semantic versioning format.
  * @param v1 - The first version string.
  * @param v2 - The second version string.

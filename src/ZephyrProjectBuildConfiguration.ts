@@ -19,7 +19,8 @@ export class ZephyrProjectBuildConfiguration {
     CONF_FILE:'',
     EXTRA_CONF_FILE:[],
     EXTRA_DTC_OVERLAY_FILE:[],
-    EXTRA_ZEPHYR_MODULES:[]
+    EXTRA_ZEPHYR_MODULES:[],
+    SHIELD:[],
   };
   westArgs: string = '';
   
