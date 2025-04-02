@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.14]
+
+- Hotfix on Host tools installation
+
 ## [1.3.13]
 
 - Added shield support

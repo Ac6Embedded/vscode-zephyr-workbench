@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://zephyr-workbench.com",
-  "version": "1.3.13",
+  "version": "1.3.14",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -133,7 +133,11 @@
           },
           "zephyr-workbench.build.pristine": {
             "type": "string",
-            "enum": ["auto", "always", "never"],
+            "enum": [
+              "auto",
+              "always",
+              "never"
+            ],
             "default": "",
             "description": "The option controls whether the build directory is made pristine before the build.",
             "scope": "resource"
@@ -227,7 +231,9 @@
                   "description": "Optional suffix for filenames that will be added to Kconfig fragments and devicetree overlays"
                 }
               },
-              "required": ["name"]
+              "required": [
+                "name"
+              ]
             }
           }
         }
@@ -957,7 +963,6 @@
       ],
       "zephyr-workbench-app-explorer.clean": [
         {
-          
           "command": "zephyr-workbench-app-explorer.clean.pristine",
           "group": "clean@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
@@ -975,7 +980,6 @@
       ],
       "zephyr-workbench-app-explorer.config.clean": [
         {
-          
           "command": "zephyr-workbench-app-explorer.clean.pristine",
           "group": "clean@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
@@ -988,7 +992,6 @@
       ],
       "zephyr-workbench-app-explorer.configure": [
         {
-          
           "command": "zephyr-workbench-app-explorer.guiconfig-app",
           "group": "configure@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
@@ -1016,7 +1019,6 @@
       ],
       "zephyr-workbench-app-explorer.config.configure": [
         {
-          
           "command": "zephyr-workbench-app-explorer.guiconfig-app",
           "group": "configure@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
@@ -1044,7 +1046,6 @@
       ],
       "zephyr-workbench-app-explorer.local-venv": [
         {
-          
           "command": "zephyr-workbench-app-explorer.create-venv",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
@@ -1057,7 +1058,6 @@
       ],
       "zephyr-workbench-app-explorer.memory-analysis": [
         {
-          
           "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
@@ -1075,7 +1075,6 @@
       ],
       "zephyr-workbench-app-explorer.config.memory-analysis": [
         {
-          
           "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
@@ -1176,7 +1175,6 @@
           "command": "zephyr-workbench-app-explorer.clean.delete",
           "when": "false"
         },
-        
         {
           "command": "zephyr-workbench-app-explorer.guiconfig-app",
           "when": "false"
@@ -1356,18 +1354,18 @@
           "command"
         ],
         "properties": {
-					"command": {
-						"type": "string",
-						"description": "The command line to execute"
-					},
-					"args": {
-						"type": "array",
-						"description": "The list of arguments"
-					},
-					"config": {
-						"type": "string",
-						"description": "The name of the build configuration"
-					},
+          "command": {
+            "type": "string",
+            "description": "The command line to execute"
+          },
+          "args": {
+            "type": "array",
+            "description": "The list of arguments"
+          },
+          "config": {
+            "type": "string",
+            "description": "The name of the build configuration"
+          },
           "options": {
             "type": "object",
             "description": "Additional options",
@@ -1382,7 +1380,7 @@
               }
             }
           }
-				}
+        }
       }
     ]
   },
