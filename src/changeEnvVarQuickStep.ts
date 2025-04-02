@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { WestWorkspace } from "./WestWorkspace";
 import { ZephyrProject } from "./ZephyrProject";
-import { getSupportedShields, getWestWorkspace } from "./utils";
+import { getWestWorkspace } from "./utils";
+import { getSupportedShields } from './WestCommands';
 
 // If you want to keep changeEnvVarQuickStep as a generic handler, add this at the top:
 export async function changeEnvVarQuickStep(
@@ -18,45 +19,45 @@ export async function changeEnvVarQuickStep(
     } else if (value && (value as any).project) {
       project = (value as any).project;
     }
-    if (!project) {
-      vscode.window.showErrorMessage("Shield selection requires a project context.");
-      return undefined;
+    // Only perform shield selection if we have a valid project.
+    if (project) {
+      // Get the WestWorkspace from the project's westWorkspacePath.
+      const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+      if (westWorkspace) {
+        // Retrieve the list of supported shields (an array of shield names)
+        const shields = await getSupportedShields(westWorkspace);
+        if (shields.length > 0) {
+          // Map the shield names into quick pick items
+          const shieldItems: vscode.QuickPickItem[] = shields.map(shieldName => ({
+            label: shieldName
+          }));
+
+          // Show a quick pick menu for shields
+          const options: vscode.QuickPickOptions = {
+            title: "Select Shield",
+            placeHolder: "Select a shield",
+            canPickMany: false,
+            ignoreFocusOut: true
+          };
+
+          const result = await vscode.window.showQuickPick(shieldItems, options);
+          if (result) {
+            return result.label;
+          }
+        } else {
+          vscode.window.showInformationMessage("No shields found in the workspace.");
+          // Fall through to default behavior if no shields are found.
+        }
+      } else {
+        vscode.window.showErrorMessage("Unable to locate the west workspace for shield selection.");
+        // Fall through to default behavior.
+      }
     }
-
-    // Get the WestWorkspace from the project's westWorkspacePath.
-    const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-    if (!westWorkspace) {
-      vscode.window.showErrorMessage("Unable to locate the west workspace for shield selection.");
-      return undefined;
-    }
-
-    // Retrieve the list of supported shields (an array of shield names)
-    const shields = await getSupportedShields(westWorkspace);
-    if (shields.length === 0) {
-      vscode.window.showInformationMessage("No shields found in the workspace.");
-      return undefined;
-    }
-
-    // Map the shield names into quick pick items
-    const shieldItems: vscode.QuickPickItem[] = shields.map(shieldName => ({
-      label: shieldName
-    }));
-
-    // Show a quick pick menu for shields
-    const options: vscode.QuickPickOptions = {
-      title: "Select Shield",
-      placeHolder: "Select a shield",
-      canPickMany: false,
-      ignoreFocusOut: true
-    };
-
-    const result = await vscode.window.showQuickPick(shieldItems, options);
-    return result ? result.label : undefined;
+    // If no project context is available, we fall back to the default behavior.
   }
-
   // --- Default generic behavior below ---
   class BrowseButton implements vscode.QuickInputButton {
-    constructor(public iconPath: vscode.ThemeIcon, public tooltip: string) {}
+    constructor(public iconPath: vscode.ThemeIcon, public tooltip: string) { }
   }
 
   const browseButton = new BrowseButton(vscode.ThemeIcon.Folder, 'Select');
@@ -73,7 +74,7 @@ export async function changeEnvVarQuickStep(
         let options: vscode.OpenDialogOptions = {
           openLabel: 'Select'
         };
-        if(key.endsWith('_FILE')) {
+        if (key.endsWith('_FILE')) {
           options.canSelectFiles = true;
           options.canSelectFolders = false;
         } else {

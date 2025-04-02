@@ -194,6 +194,27 @@ export async function getBoardsDirectories(parent: ZephyrAppProject | WestWorksp
   }); 
 }
 
+/**
+ * Executes the "west shields" command and returns an array of shield names.
+ * @param parent The ZephyrAppProject or WestWorkspace instance.
+ * @returns A promise that resolves with the list of supported shield names.
+ */
+export async function getSupportedShields(parent: ZephyrAppProject | WestWorkspace): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    const cmd = 'west shields';
+    execWestCommandWithEnv(cmd, parent, (error: any, stdout: string, stderr: string) => {
+      if (error) {
+        return reject(`Error: ${stderr}`);
+      }
+
+      // Use the appropriate newline separator based on the platform
+      const separator = process.platform === 'win32' ? '\r\n' : '\n';
+      const shieldNames = stdout.trim().split(separator).filter(name => name.length > 0);
+      resolve(shieldNames);
+    });
+  });
+}
+
 export async function getBoardsDirectoriesFromIdentifier(boardIdentifier: string, parent: ZephyrAppProject | WestWorkspace, boardRoots?: string[]): Promise<string[]> {
   return new Promise((resolve, reject) => {
     let boardName = boardIdentifier;
