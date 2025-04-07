@@ -83,6 +83,21 @@ export function getShellNullRedirect(shell: string): string {
   }
 }
 
+export function getShellIgnoreErrorCommand(shell: string): string {
+  switch (shell) {
+    case 'bash':
+    case 'sh':
+    case 'zsh':
+      return '> /dev/null 2>&1 || true';
+    case 'cmd.exe':
+      return '> NUL 2>&1 || exit 0';
+    case 'powershell.exe':
+      return '> $null 2>&1; exit 0';
+    default:
+      return '';
+  }
+}
+
 export function getShellSourceCommand(shell: string, script: string): string {
   switch(shell) {
     case 'bash': 

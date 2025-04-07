@@ -569,7 +569,7 @@ export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?
           if(fileExists(buildDir)) {
             envVars = readZephyrSettings(buildDir);
           } else {
-            const tmpBuildDir = await westTmpBuildSystemCommand(resource, westWorkspace);
+            const tmpBuildDir = await westTmpBuildSystemCommand(resource, westWorkspace, buildConfig);
             if(tmpBuildDir) {
               envVars = readZephyrSettings(tmpBuildDir);
               deleteFolder(tmpBuildDir);

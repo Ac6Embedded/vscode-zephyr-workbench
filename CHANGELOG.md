@@ -4,6 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.16]
+
+- Fix for module-based custom board discovery.
+- Add support for module-based custom board discovery on multi-build.
+
 ## [1.3.15]
 
 - Refactor shield discovery to use native West command
