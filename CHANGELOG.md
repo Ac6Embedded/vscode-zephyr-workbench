@@ -4,10 +4,16 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.17]
+
+- Add sysbuild support
+- Add build/debug/rebuild buttons directly from explorer
+- Fix stm32h7x debug using OpenOCD
+
 ## [1.3.16]
 
-- Fix for module-based custom board discovery.
-- Add support for module-based custom board discovery on multi-build.
+- Fix for module-based custom board discovery
+- Add support for module-based custom board discovery on multi-build
 
 ## [1.3.15]
 

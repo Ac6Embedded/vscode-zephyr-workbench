@@ -241,11 +241,28 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
   let program;
   let wrapper;
 
-  if(buildConfig) {
+  if (buildConfig) {
     configName = `Zephyr Workbench Debug [${buildConfig.name}]`;
     socToolchainName = buildConfig.getKConfigValue(project, 'SOC_TOOLCHAIN_NAME');
-    program = path.join('${workspaceFolder}', `${buildConfig.relativeBuildDir}`, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
-    wrapper = path.join('${workspaceFolder}', `${buildConfig.relativeInternalDebugDir}`, `${wrapperFile}`);
+
+    // Resolve workspace folder absolute path
+    const workspacePath = project.workspaceFolder.uri.fsPath;
+    // Build directory absolute path
+    const buildFolderPath = path.join(workspacePath, buildConfig.relativeBuildDir);
+    // Use the project's workspace context name for the app folder
+    const appFolderName = project.workspaceContext.name;
+    // Check if that folder exists inside the build directory
+    const appNameDir = path.join(buildFolderPath, appFolderName);
+
+    if (fs.existsSync(appNameDir)) {
+      // If the folder exists, use it in the program path
+      program = path.join('${workspaceFolder}', buildConfig.relativeBuildDir, appFolderName, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
+    } else {
+      // Otherwise, revert to the previous command
+      program = path.join('${workspaceFolder}', buildConfig.relativeBuildDir, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
+    }
+
+    wrapper = path.join('${workspaceFolder}', buildConfig.relativeInternalDebugDir, wrapperFile);
   }
   
   const launchJson = {

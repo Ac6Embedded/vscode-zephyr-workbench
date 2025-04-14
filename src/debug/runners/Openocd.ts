@@ -8,13 +8,13 @@ export class Openocd extends WestRunner {
   name = 'openocd';
   label = 'OpenOCD';
   binDirPath = 'bin';
-  types = [ RunnerType.FLASH, RunnerType.DEBUG ];
+  types = [RunnerType.FLASH, RunnerType.DEBUG];
   serverStartedPattern = 'halted due to debug-request, current mode: Thread';
 
   get executable(): string | undefined {
     const exec = super.executable;
-    if(!exec) {
-      if(process.platform === 'win32') {
+    if (!exec) {
+      if (process.platform === 'win32') {
         return 'openocd.exe';
       } else {
         return 'openocd';
@@ -29,50 +29,50 @@ export class Openocd extends WestRunner {
   loadArgs(args: string | undefined) {
     super.loadArgs(args);
 
-    if(args) {
+    if (args) {
       const pathRegex = /--openocd\s+("[^"]+"|\S+)/;
       const scriptsRegex = /--openocd-search\s+("[^"]+"|\S+)/;
       const pathMatch = args.match(pathRegex);
       const scriptsMatch = args.match(scriptsRegex);
 
-      if(pathMatch) {
+      if (pathMatch) {
         this.serverPath = pathMatch[1];
-      } 
-      if(scriptsMatch) {
+      }
+      if (scriptsMatch) {
         this.args['scriptDir'] = scriptsMatch[1];
-      } 
+      }
     }
-    
+
     // Search if serverPath is set in settings
-    if(!this.serverPath || this.serverPath.length === 0 ) {
+    if (!this.serverPath || this.serverPath.length === 0) {
       let pathExecSetting = this.getSetting('pathExec');
-      if(pathExecSetting) {
+      if (pathExecSetting) {
         this.serverPath = pathExecSetting;
       }
     }
 
-    if(args) {
+    if (args) {
       this.loadUserArgs(args);
     }
   }
 
   async loadInternalArgs() {
-    if(!this.serverPath || this.serverPath.length === 0) {
+    if (!this.serverPath || this.serverPath.length === 0) {
       this.serverPath = await this.searchServerPath();
     }
   }
 
   get autoArgs(): string {
     let cmdArgs = super.autoArgs;
-    if(this.serverPath && this.serverPath.length !== 0) {
+    if (this.serverPath && this.serverPath.length !== 0) {
       cmdArgs += ` --openocd ${this.serverPath}`;
     } else {
       let pathExecSetting = this.getSetting('pathExec');
-      if(pathExecSetting) {
+      if (pathExecSetting) {
         cmdArgs += ` --openocd ${pathExecSetting}`;
       }
     }
-    
+
     cmdArgs += ' --config openocd.cfg';
     cmdArgs += ' --config ${workspaceFolder}/build/.debug/gdb.cfg';
 
@@ -83,7 +83,7 @@ export class Openocd extends WestRunner {
     let internalOpenOCDPath = path.join(getInternalDirRealPath(), 'tools', 'openocd', 'bin', 'openocd');
     try {
       const stats = await fs.promises.stat(internalOpenOCDPath);
-      if(stats.isFile()) {
+      if (stats.isFile()) {
         return internalOpenOCDPath;
       }
     } catch (error: unknown) {
@@ -93,16 +93,16 @@ export class Openocd extends WestRunner {
   }
 
   async detectVersion(): Promise<string | undefined> {
-    if(!this.versionRegex) {
+    if (!this.versionRegex) {
       return undefined;
     }
-    
+
     let execPath = '';
-    if(this.serverPath) {
+    if (this.serverPath) {
       execPath = this.serverPath;
-    } else if(this.getSetting('pathExec')) {
+    } else if (this.getSetting('pathExec')) {
       execPath = this.getSetting('pathExec') as string;
-    } else if(this.executable) {
+    } else if (this.executable) {
       execPath = this.executable;
     }
 
@@ -116,12 +116,12 @@ export class Openocd extends WestRunner {
         } else if (stderr) {
           resolve(undefined);
         } else {
-          if(this.versionRegex) {
+          if (this.versionRegex) {
             const versionMatch = stdout.match(this.versionRegex);
             if (versionMatch) {
-                resolve(versionMatch[1]);
+              resolve(versionMatch[1]);
             }
-          } 
+          }
           reject(undefined);
         }
 
@@ -131,16 +131,32 @@ export class Openocd extends WestRunner {
 
   static createWorkaroundCfg(parentDir: string) {
     let buildDir = path.join(parentDir, 'build', '.debug');
-  
-    if(!fs.existsSync(buildDir)) {
+
+    if (!fs.existsSync(buildDir)) {
       fs.mkdirSync(buildDir, { recursive: true });
     }
     const cfgPath = path.join(buildDir, 'gdb.cfg');
     const cfgContent = `# Workaround to force OpenOCD to shutdown when gdb is detached (auto-generated)
 
-$_TARGETNAME configure -event gdb-detach {
-  shutdown
-}`;
+    if {[info exists _TARGETNAME]} {
+      $_TARGETNAME configure -event gdb-detach {
+        shutdown
+      }
+    } else {
+      # Fallback targets using CHIPNAME-based naming
+      if {[info exists _CHIPNAME]} {
+        if {[target names] contains "$_CHIPNAME.cpu0"} {
+          $_CHIPNAME.cpu0 configure -event gdb-detach {
+            shutdown
+          }
+        }
+        if {[target names] contains "$_CHIPNAME.cpu1"} {
+          $_CHIPNAME.cpu1 configure -event gdb-detach {
+            shutdown
+          }
+        }
+      }
+    }`;    
     fs.writeFileSync(cfgPath, cfgContent);
   }
 }

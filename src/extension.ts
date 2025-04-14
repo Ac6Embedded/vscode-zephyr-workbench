@@ -11,9 +11,9 @@ import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfigurati
 import { ZephyrSDK } from './ZephyrSDK';
 import { createExtensionsJson, createTasksJson, setDefaultProjectSettings, updateTasks, ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { changeBoardQuickStep } from './changeBoardQuickStep';
-import { changeEnvVarQuickStep } from './changeEnvVarQuickStep';
+import { changeEnvVarQuickStep, toggleSysbuild } from './changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
-import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
+import { ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
 import { executeTask } from './execUtils';
 import { importProjectQuickStep } from './importProjectQuickStep';
@@ -161,7 +161,7 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.build-app', async (node: ZephyrConfigTreeItem | vscode.WorkspaceFolder, configName: string) => {
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.build-app', async (node: ZephyrConfigTreeItem | vscode.WorkspaceFolder | vscode.Uri, configName: string) => {
 			await executeConfigTask('West Build', node, configName);
 
 			// After first build, parse toolchain name from .config
@@ -172,8 +172,12 @@ export function activate(context: vscode.ExtensionContext) {
 					folder = node.project.workspaceFolder;
 					boardIdentifier = node.buildConfig.boardIdentifier;
 				}
-			} else {
-				folder = node;
+			} else if ((node as vscode.WorkspaceFolder).uri) {
+				// It's a WorkspaceFolder
+				folder = node as vscode.WorkspaceFolder;
+			} else if ((node as vscode.Uri).fsPath) {
+				// It's a Uri from right-click in Explorer
+				folder = vscode.workspace.getWorkspaceFolder(node as vscode.Uri) || undefined;
 			}
 
 			if (folder) {
@@ -191,11 +195,20 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			}
 		})
-
 	);
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.pristine', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder, configName?: string) => {
+		vscode.commands.registerCommand('zephyr-workbench.explorer.build', async (uri: vscode.Uri) => {
+			await vscode.commands.executeCommand('zephyr-workbench-app-explorer.build-app', uri);
+		})
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.pristine', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder | vscode.Uri, configName?: string) => {
 			await executeConfigTask('West Rebuild', node, configName);
+		})
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench.explorer.rebuild', async (uri: vscode.Uri) => {
+			await vscode.commands.executeCommand('zephyr-workbench-app-explorer.clean.pristine', uri);
 		})
 	);
 	context.subscriptions.push(
@@ -245,17 +258,20 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.debug-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder) => {
-			let workspaceFolder: any = node;
-			let project: ZephyrProject | undefined = undefined;
-			let buildConfigName: string | undefined = undefined;
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.debug-app', async (
+			node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder | vscode.Uri
+		) => {
+			let workspaceFolder: vscode.WorkspaceFolder | undefined;
+			let project: ZephyrProject | undefined;
+			let buildConfigName: string | undefined;
+
 			if (node instanceof ZephyrApplicationTreeItem) {
 				if (node.project) {
 					project = node.project;
 					workspaceFolder = node.project.workspaceFolder;
 
-					if (node.project.configs && node.project.configs.length === 1) {
-						buildConfigName = node.project.configs[0].name;
+					if (project.configs.length === 1) {
+						buildConfigName = project.configs[0].name;
 					}
 				}
 			} else if (node instanceof ZephyrConfigTreeItem) {
@@ -264,54 +280,58 @@ export function activate(context: vscode.ExtensionContext) {
 					workspaceFolder = node.project.workspaceFolder;
 					buildConfigName = node.buildConfig.name;
 				}
-			} else {
-				project = await getZephyrProject(node.uri.fsPath);
+			} else if ((node as vscode.WorkspaceFolder).uri) {
+				workspaceFolder = node as vscode.WorkspaceFolder;
+				project = await getZephyrProject(workspaceFolder.uri.fsPath);
+			} else if ((node as vscode.Uri).fsPath) {
+				workspaceFolder = vscode.workspace.getWorkspaceFolder(node as vscode.Uri) || undefined;
+				if (workspaceFolder) {
+					project = await getZephyrProject(workspaceFolder.uri.fsPath);
+				}
 			}
 
-			if (!buildConfigName && project) {
-				if (project.configs.length > 1) {
-					let activeConfigName = undefined;
-					for (let config of project.configs) {
-						if (config.active) {
-							activeConfigName = config.name;
-							break;
-						}
-					}
+			if (!project || !workspaceFolder) {
+				vscode.window.showErrorMessage("Could not determine the Zephyr project or workspace folder.");
+				return;
+			}
 
-					if (activeConfigName) {
-						buildConfigName = activeConfigName;
+			if (!buildConfigName) {
+				if (project.configs.length > 1) {
+					const activeConfig = project.configs.find(config => config.active);
+					if (activeConfig) {
+						buildConfigName = activeConfig.name;
 					} else {
 						vscode.window.showInformationMessage("No active configuration found, please set one as active first.");
-						// If multiple build configs exist, ask user to select one
 						buildConfigName = await pickBuildConfigQuickStep(project);
 					}
 				} else if (project.configs.length === 1) {
-					// If only one build config exists, use it as default
 					buildConfigName = project.configs[0].name;
 				}
 			}
 
 			if (workspaceFolder) {
-				// Search for existing launch configuration
 				const launchConfig = vscode.workspace.getConfiguration('launch', workspaceFolder.uri);
-				if (launchConfig) {
-					const configurations: vscode.DebugConfiguration[] = launchConfig.get('configurations', []);
-					if (configurations) {
-						let configName = ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME;
-						if (buildConfigName) {
-							configName = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`;
-						}
-						if (configurations.some((config: { name: string }) => (config !== null) && (config.name === configName))) {
-							await vscode.debug.startDebugging(workspaceFolder, configName);
-							return;
-						}
-					}
+				const configurations: vscode.DebugConfiguration[] = launchConfig.get('configurations', []);
+
+				let configName = ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME;
+				if (buildConfigName) {
+					configName = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`;
 				}
 
-				// Open Debug Manager if no launch configuration is found
-				vscode.commands.executeCommand('zephyr-workbench.debug-manager', node);
-			}
+				const found = configurations?.some((config: { name: string }) => config && config.name === configName);
 
+				if (found) {
+					await vscode.debug.startDebugging(workspaceFolder, configName);
+				} else {
+					// Fallback: open Debug Manager if config is not found
+					vscode.commands.executeCommand('zephyr-workbench.debug-manager', node);
+				}
+			}
+		})
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench.explorer.debug', async (uri: vscode.Uri) => {
+			await vscode.commands.executeCommand('zephyr-workbench-app-explorer.debug-app', uri);
 		})
 	);
 
@@ -591,6 +611,32 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		})
 	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.sysbuild.enable', async (node: any) => {
+			if (node instanceof ZephyrConfigTreeItem) {
+				await toggleSysbuild(node.project.workspaceFolder, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, true, node.project, node.buildConfig.name);
+			}
+			if (node.project) {
+				await toggleSysbuild(node.project.workspaceFolder, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, true, node.project);
+			}
+			vscode.window.showInformationMessage("Sysbuild enabled.");
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.sysbuild.disable', async (node: any) => {
+			if (node instanceof ZephyrConfigTreeItem) {
+				await toggleSysbuild(node.project.workspaceFolder, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, false, node.project, node.buildConfig.name);
+			}
+			if (node.project) {
+				await toggleSysbuild(node.project.workspaceFolder, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, false, node.project);
+			}
+			vscode.window.showInformationMessage("Sysbuild disabled.");
+		})
+	);
+
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.open-terminal', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
 			if (node instanceof ZephyrApplicationTreeItem) {
@@ -1563,7 +1609,14 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 			folder = node.project.workspaceFolder;
 			configName = node.buildConfig.name;
 		}
-	} else {
+	} else if (node instanceof vscode.Uri) {
+		folder = vscode.workspace.getWorkspaceFolder(node);
+		if (folder) {
+			context = await getZephyrProject(folder.uri.fsPath);
+			configName = undefined;
+		}
+	}
+	else {
 		context = await getZephyrProject(node.uri.fsPath);
 		folder = node;
 	}

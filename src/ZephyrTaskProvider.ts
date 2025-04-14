@@ -246,7 +246,14 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
         args = `${args} ${westArgVar}`;
       }
     }
-    const fullCommand = `${cmd} ${args}`;
+
+// Convert the value to lowercase and compare to "true"
+    const sysbuildEnabled =
+    config && String(config.sysbuild).toLowerCase() === "true";
+
+    const sysbuildFlag = sysbuildEnabled ? " --sysbuild" : "";
+
+    const fullCommand = `${cmd} ${args}${sysbuildFlag}`;
 
     const envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
     let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);

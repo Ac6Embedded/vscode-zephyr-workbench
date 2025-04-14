@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { WestWorkspace } from "./WestWorkspace";
 import { ZephyrProject } from "./ZephyrProject";
+import { saveConfigSetting } from './zephyrEnvUtils';
 import { getWestWorkspace } from "./utils";
 import { getSupportedShields } from './WestCommands';
 
@@ -100,4 +101,52 @@ export async function changeEnvVarQuickStep(
 
     inputBox.show();
   });
+}
+
+/**
+ * Toggle the sysbuild flag in the build configuration.
+ *
+ * @param workspaceFolder The workspace folder in which to update the configuration.
+ * @param key The configuration key (e.g. "zephyr-workbench") under which the settings are stored.
+ * @param buildConfigName (Optional) The name of the build configuration. If not provided, the active configuration is used.
+ * @param enabled A boolean indicating whether to enable or disable sysbuild.
+ * @param project An instance of your ZephyrProject which holds the build configurations.
+ */
+export async function toggleSysbuild(
+  workspaceFolder: vscode.WorkspaceFolder,
+  key: string,
+  enabled: boolean,
+  project: ZephyrProject,
+  buildConfigName?: string | undefined,
+): Promise<void> {
+  const config: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration(key, workspaceFolder.uri);
+
+  const buildConfigs = config.get<any[]>('build.configurations') || [];
+
+  let targetConfig;
+  if (buildConfigName) {
+    targetConfig = project.getBuildConfiguration(buildConfigName);
+  } else {
+    for (let cfg of project.configs) {
+      if (cfg.active === true) {
+        targetConfig = cfg;
+        break;
+      }
+    }
+    // Fallback: if none are marked active but there is at least one configuration,
+    // pick the first one.
+    if (!targetConfig && project.configs.length > 0) {
+      targetConfig = project.configs[0];
+    }
+  }
+
+  if (targetConfig) {
+    // Update the sysbuild property as a string "true" or "false"
+    //targetConfig.sysbuild = enabled ? "true" : "false";
+
+    // Since updating nested properties isn’t directly supported by the VS Code API,
+    // update the entire build.configurations array.
+    //await config.update('build.configurations', buildConfigs, vscode.ConfigurationTarget.WorkspaceFolder);
+    await saveConfigSetting(workspaceFolder, targetConfig.name, key, enabled ? "true" : "false");
+  }
 }

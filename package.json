@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://zephyr-workbench.com",
-  "version": "1.3.16",
+  "version": "1.3.17",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -184,6 +184,12 @@
             "description": "Active configuration index",
             "scope": "resource"
           },
+          "zephyr-workbench.sysbuildEnabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "When enabled, the --sysbuild flag will be appended to West build commands.",
+            "scope": "resource"
+          },
           "zephyr-workbench.build.configurations": {
             "type": "array",
             "description": "Build Configurations",
@@ -204,6 +210,11 @@
                   "type": "string",
                   "default": "",
                   "description": "User additional args to west command"
+                },
+                "sysbuild": {
+                  "type": "string",
+                  "default": "false",
+                  "description": "When true, the --sysbuild flag will be appended to west build commands."
                 },
                 "env.CONF_FILE": {
                   "type": "string",
@@ -345,10 +356,18 @@
         "category": "Zephyr Workbench/Application"
       },
       {
+        "command": "zephyr-workbench.explorer.build",
+        "title": "Zephyr Workbench: Build"
+      },
+      {
         "command": "zephyr-workbench-app-explorer.clean.pristine",
         "title": "Rebuild/Pristine",
         "icon": "$(clear-all)",
         "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench.explorer.rebuild",
+        "title": "Zephyr Workbench: Pristine Build/Rebuild"
       },
       {
         "command": "zephyr-workbench-app-explorer.clean.delete",
@@ -412,6 +431,10 @@
         "category": "Zephyr Workbench/Application"
       },
       {
+        "command": "zephyr-workbench.explorer.debug",
+        "title": "Zephyr Workbench: Debug"
+      },
+      {
         "command": "zephyr-workbench-app-explorer.remove",
         "title": "Remove",
         "icon": "$(remove)",
@@ -443,6 +466,16 @@
       {
         "command": "zephyr-workbench-app-explorer.change-west-workspace",
         "title": "Change West Workspace",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.sysbuild.enable",
+        "title": "Enable",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.sysbuild.disable",
+        "title": "Disable",
         "category": "Zephyr Workbench/Application"
       },
       {
@@ -689,6 +722,10 @@
       {
         "id": "zephyr-workbench-app-explorer.spdx.analyze",
         "label": "Analyze SPDX"
+      },
+      {
+        "id": "zephyr-workbench-app-explorer.sysbuild-submenu",
+        "label": "Sysbuild"
       }
     ],
     "menus": {
@@ -729,6 +766,20 @@
           "when": "view == zephyr-workbench-sdk-explorer"
         }
       ],
+      "explorer/context": [
+        {
+          "command": "zephyr-workbench.explorer.build",
+          "group": "zephyr@997"
+        },
+        {
+          "command": "zephyr-workbench.explorer.debug",
+          "group": "zephyr@998"
+        },
+        {
+          "command": "zephyr-workbench.explorer.rebuild",
+          "group": "zephyr@999"
+        }
+      ],      
       "view/item/context": [
         {
           "command": "zephyr-workbench-app-explorer.build-app",
@@ -993,55 +1044,75 @@
       "zephyr-workbench-app-explorer.configure": [
         {
           "command": "zephyr-workbench-app-explorer.guiconfig-app",
-          "group": "configure@0",
+          "group": "0@view/item/context@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
           "command": "zephyr-workbench-app-explorer.menuconfig-app",
-          "group": "configure@1",
+          "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
           "command": "zephyr-workbench-app-explorer.hardenconfig-app",
-          "group": "configure@2",
+          "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
           "command": "zephyr-workbench-app-explorer.change-board",
-          "group": "configure@3",
+          "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
           "command": "zephyr-workbench-app-explorer.change-west-workspace",
-          "group": "configure@4",
+          "group": "0@view/item/context@4",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.sysbuild-submenu",
+          "group": "0@view/item/context@5",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ],
       "zephyr-workbench-app-explorer.config.configure": [
         {
           "command": "zephyr-workbench-app-explorer.guiconfig-app",
-          "group": "configure@0",
+          "group": "0@view/item/context@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
           "command": "zephyr-workbench-app-explorer.menuconfig-app",
-          "group": "configure@1",
+          "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
           "command": "zephyr-workbench-app-explorer.hardenconfig-app",
-          "group": "configure@2",
+          "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
           "command": "zephyr-workbench-app-explorer.change-board",
-          "group": "configure@3",
+          "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
           "command": "zephyr-workbench-app-explorer.change-west-workspace",
-          "group": "configure@4",
+          "group": "0@view/item/context@4",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.sysbuild-submenu",
+          "group": "0@view/item/context@5",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        }
+      ],
+      "zephyr-workbench-app-explorer.sysbuild-submenu": [
+        {
+          "command": "zephyr-workbench-app-explorer.sysbuild.enable",
+          "group": "0@view/item/context@0"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.sysbuild.disable",
+          "group": "0@view/item/context@1"
         }
       ],
       "zephyr-workbench-app-explorer.local-venv": [
@@ -1229,6 +1300,14 @@
         },
         {
           "command": "zephyr-workbench-app-explorer.change-west-workspace",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.sysbuild.enable",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.sysbuild.disable",
           "when": "false"
         },
         {

@@ -23,6 +23,8 @@ export class ZephyrProjectBuildConfiguration {
     SHIELD:[],
   };
   westArgs: string = '';
+
+  sysbuild: string = "false";
   
   constructor(
     name?: string,
@@ -39,6 +41,11 @@ export class ZephyrProjectBuildConfiguration {
       if(values) {
         this.envVars[key] = values;
       }
+    }
+    if (typeof buildConfig["sysbuild"] !== "undefined") {
+      this.sysbuild = buildConfig["sysbuild"];
+    } else {
+      this.sysbuild = "false";
     }
   }
 

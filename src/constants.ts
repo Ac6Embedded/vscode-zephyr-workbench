@@ -18,3 +18,4 @@ export const ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY = 'build.west-args';
 
 export const ZEPHYR_ENV_SETTING_PREFIX_KEY = 'env';
 export const ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY = 'west-args';
+export const ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY = 'sysbuild';
