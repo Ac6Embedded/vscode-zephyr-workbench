@@ -138,25 +138,23 @@ export class Openocd extends WestRunner {
     const cfgPath = path.join(buildDir, 'gdb.cfg');
     const cfgContent = `# Workaround to force OpenOCD to shutdown when gdb is detached (auto-generated)
 
-    if {[info exists _TARGETNAME]} {
-      $_TARGETNAME configure -event gdb-detach {
+if {[info exists _TARGETNAME]} {
+  $_TARGETNAME configure -event gdb-detach {
+    shutdown
+  }
+} else {
+  # Fallback: check available targets dynamically
+  set targets [target names]
+
+  foreach t $targets {
+    if {[string match "*.cpu*" $t]} {
+      $t configure -event gdb-detach {
         shutdown
       }
-    } else {
-      # Fallback targets using CHIPNAME-based naming
-      if {[info exists _CHIPNAME]} {
-        if {[target names] contains "$_CHIPNAME.cpu0"} {
-          $_CHIPNAME.cpu0 configure -event gdb-detach {
-            shutdown
-          }
-        }
-        if {[target names] contains "$_CHIPNAME.cpu1"} {
-          $_CHIPNAME.cpu1 configure -event gdb-detach {
-            shutdown
-          }
-        }
-      }
-    }`;    
+    }
+  }
+}
+`;
     fs.writeFileSync(cfgPath, cfgContent);
   }
 }
