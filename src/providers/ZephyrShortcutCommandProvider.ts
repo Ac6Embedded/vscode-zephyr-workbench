@@ -57,12 +57,12 @@ const newWestWorkspaceMenuItem = new MenuItem(
 );
 
 const newSDKMenuItem = new MenuItem(
-  'New Zephyr SDK',
+  'New Toolchain',
   vscode.TreeItemCollapsibleState.None,
   'file-directory-create',
   {
     command: 'zephyr-workbench-sdk-explorer.open-wizard',
-    title: 'New Zephyr SDK',
+    title: 'New Toolchain',
   }
 );
 

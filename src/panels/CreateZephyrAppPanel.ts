@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { fileExists, getBase64, getBoard, getListSamples, getListZephyrSDKs, getSample, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK } from "../utils";
+import { fileExists, getBase64, getBoard, getListSamples, getListZephyrSDKs, getListIARs, getIarToolchainForSdk, getSample, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK } from "../utils";
+import { ZephyrSDK, IARToolchain } from '../ZephyrSDK';
 import path from "path";
 
 export class CreateZephyrAppPanel {
@@ -33,10 +34,10 @@ export class CreateZephyrAppPanel {
       });
 
       panel.iconPath = {
-      	light: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'light', 'folder.svg'),
-      	dark: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'dark', 'folder.svg')
+        light: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'light', 'folder.svg'),
+        dark: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'dark', 'folder.svg')
       };
-      
+
       CreateZephyrAppPanel.currentPanel = new CreateZephyrAppPanel(panel, extensionUri);
       CreateZephyrAppPanel.currentPanel.createContent();
     }
@@ -54,23 +55,34 @@ export class CreateZephyrAppPanel {
       }
     }
   }
-  
+
   private async _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
     const webviewUri = getUri(webview, extensionUri, ["out", "createzephyrapp.js"]);
     const styleUri = getUri(webview, extensionUri, ["out", "style.css"]);
     const codiconUri = getUri(webview, extensionUri, ["out", "codicon.css"]);
-    
+
     const nonce = getNonce();
     let workspacesHTML: string = '';
-    for(let westWorkspace of getWestWorkspaces()) {
+    for (let westWorkspace of getWestWorkspaces()) {
       workspacesHTML = workspacesHTML.concat(`<div class="dropdown-item" data-value="${westWorkspace.rootUri}" data-label="${westWorkspace.name}">${westWorkspace.name}<span class="description">${westWorkspace.rootUri.fsPath}</span></div>`);
     }
 
     let sdkHTML: string = '';
-    for(let sdk of await getListZephyrSDKs()) {
+    for (let sdk of await getListZephyrSDKs()) {
       sdkHTML = sdkHTML.concat(`<div class="dropdown-item" data-value="${sdk.rootUri}" data-label="${sdk.name}">${sdk.name}<span class="description">${sdk.rootUri.fsPath}</span></div>`);
     }
-      
+
+    for (const iar of await getListIARs()) {
+      const label = path.basename(iar.iarPath);           // e.g. "arm-9.20.1"
+      sdkHTML += `<div class="dropdown-item"
+                       data-type="iar"
+                       data-value="${iar.iarPath}"
+                       data-label="${label}">
+                    IAR (${label})
+                    <span class="description">${iar.iarPath}</span>
+                  </div>`;
+    }
+
     return /*html*/ `
       <!DOCTYPE html>
       <html lang="en">
@@ -111,7 +123,7 @@ export class CreateZephyrAppPanel {
 
                   <div class="grid-group-div">
                     <div class="grid-header-div">
-                      <label for="listSDKs">Select Zephyr SDK:</label>
+                      <label for="listSDKs">Select Toolchain:</label>
                     </div>
                     <div id="listSdks" class="combo-dropdown grid-value-div">
                       <input type="text" id="sdkInput" class="combo-dropdown-control" placeholder="Choose your SDK..." data-value="">
@@ -221,26 +233,32 @@ export class CreateZephyrAppPanel {
             break;
           case 'boardChanged':
             updateBoardImage(webview, message.boardYamlPath);
-            break; 
+            break;
           case 'openLocationDialog':
             const westWorkspacePath = message.westWorkspacePath;
-            if(westWorkspacePath && westWorkspacePath.length > 0) {
+            if (westWorkspacePath && westWorkspacePath.length > 0) {
               this.openLocationDialog(vscode.Uri.parse(message.westWorkspacePath, false));
             } else {
               this.openLocationDialog(undefined);
             }
-            
+
             break;
           case 'create':
             checkCreateParameters(message);
             let westWorkspace = getWestWorkspace(vscode.Uri.parse(message.westWorkspacePath, true).fsPath);
-            let sdk = getZephyrSDK(vscode.Uri.parse(message.zephyrsdkPath, true).fsPath);
+            //let sdk = getZephyrSDK(vscode.Uri.parse(message.zephyrsdkPath, true).fsPath);
+            let   toolchain: ZephyrSDK | IARToolchain | undefined;
+            toolchain = getIarToolchainForSdk(message.zephyrSdkPath);
+            /* if not IAR, fall back to a classic Zephyr SDK */
+            if (!toolchain) {
+              toolchain = getZephyrSDK(vscode.Uri.parse(message.zephyrSdkPath, true).fsPath);
+            }
             let board = getBoard(message.boardYamlPath);
             let sample = await getSample(message.samplePath);
             let projectName = message.projectName;
             let projectLoc = message.projectParentPath;
             let pristineMode = message.pristine;
-            vscode.commands.executeCommand("zephyr-workbench-app-explorer.create-app", westWorkspace, sample, board, projectLoc, projectName, sdk, pristineMode);
+            vscode.commands.executeCommand("zephyr-workbench-app-explorer.create-app", westWorkspace, sample, board, projectLoc, projectName, toolchain, pristineMode);
             break;
         }
       },
@@ -261,7 +279,7 @@ export class CreateZephyrAppPanel {
         if (uri && uri.length > 0) {
           const selectedFolderUri = uri[0].fsPath;
           // Send the selected file URI back to the webview
-          this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: selectedFolderUri, id: 'projectParentPath'});
+          this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: selectedFolderUri, id: 'projectParentPath' });
         }
       });
     }
@@ -269,7 +287,7 @@ export class CreateZephyrAppPanel {
 }
 
 async function updateForm(webview: vscode.Webview, workspaceUri: string) {
-  if(workspaceUri && workspaceUri.length > 0) {
+  if (workspaceUri && workspaceUri.length > 0) {
     let westWorkspace = getWestWorkspace(vscode.Uri.parse(workspaceUri, true).fsPath);
     const boards = await getSupportedBoards(westWorkspace);
     boards.sort((a, b) => {
@@ -283,18 +301,18 @@ async function updateForm(webview: vscode.Webview, workspaceUri: string) {
     });
 
     let newBoardsHTML = '';
-    for(let board of boards) {
+    for (let board of boards) {
       newBoardsHTML += `<div class="dropdown-item" data-value="${board.yamlFileUri.fsPath}" data-label="${board.name}">${board.name}<span class="description">(${board.identifier})</span></div>`;
     }
     webview.postMessage({ command: 'updateBoardDropdown', boardHTML: newBoardsHTML });
 
     const samples = await getListSamples(westWorkspace);
-    const helloWorldPath = path.join('samples','hello_world');
+    const helloWorldPath = path.join('samples', 'hello_world');
     samples.sort((a, b) => {
-      if(a.rootDir.fsPath.endsWith(helloWorldPath)) {
+      if (a.rootDir.fsPath.endsWith(helloWorldPath)) {
         return -99;
       }
-      if(b.rootDir.fsPath.endsWith(helloWorldPath)) {
+      if (b.rootDir.fsPath.endsWith(helloWorldPath)) {
         return 99;
       }
       if (a.name < b.name) {
@@ -307,7 +325,7 @@ async function updateForm(webview: vscode.Webview, workspaceUri: string) {
     });
 
     let newSamplesHTML = '';
-    for(let sample of samples) {
+    for (let sample of samples) {
       newSamplesHTML += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${sample.rootDir.fsPath}</span></div>`;
     }
     webview.postMessage({ command: 'updateSamplesDropdown', samplesHTML: newSamplesHTML });
@@ -315,39 +333,39 @@ async function updateForm(webview: vscode.Webview, workspaceUri: string) {
 }
 
 async function updateBoardImage(webview: vscode.Webview, boardYamlPath: string) {
-  if((boardYamlPath && boardYamlPath.length > 0)) {
+  if ((boardYamlPath && boardYamlPath.length > 0)) {
     const board = getBoard(boardYamlPath);
-    if(fileExists(board.imagePath)) {
+    if (fileExists(board.imagePath)) {
       const base64img = getBase64(board.imagePath);
       webview.postMessage({ command: 'updateBoardImage', imgPath: `data:image/jpeg;base64,${base64img}` });
     } else {
       webview.postMessage({ command: 'updateBoardImage', imgPath: 'noImg' });
     }
-  } 
+  }
 }
 
 function checkCreateParameters(message: any) {
-  if(message.westWorkspacePath.length === 0) {
+  if (message.westWorkspacePath.length === 0) {
     vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
     return;
   }
 
-  if(message.zephyrsdkPath.length === 0) {
+  if(message.zephyrSdkPath.length === 0) {
     vscode.window.showErrorMessage('Missing Zephyr SDK, a SDK is required to provide toolchain to your project');
     return;
   }
 
-  if(message.projectName.length === 0) {
+  if (message.projectName.length === 0) {
     vscode.window.showErrorMessage('The project name is empty or invalid');
     return;
   }
 
-  if(message.boardYamlPath.length === 0) {
+  if (message.boardYamlPath.length === 0) {
     vscode.window.showErrorMessage('Missing target board');
     return;
   }
-  
-  if(message.samplePath === 0) {
+
+  if (message.samplePath === 0) {
     vscode.window.showErrorMessage('Missing selected sample, it serves as base for your project');
     return;
   }

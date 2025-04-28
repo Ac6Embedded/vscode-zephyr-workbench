@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ZephyrSDK } from '../ZephyrSDK';
-import { getInternalZephyrSDK, getListZephyrSDKs } from '../utils';
+import { ZephyrSDK, IARToolchain } from '../ZephyrSDK';
+import { getInternalZephyrSDK, getListZephyrSDKs, getListIARs} from '../utils';
 
 export class ZephyrSdkDataProvider implements vscode.TreeDataProvider<ZephyrSdkTreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<ZephyrSdkTreeItem | undefined | void> = new vscode.EventEmitter<ZephyrSdkTreeItem | undefined | void>();
@@ -14,24 +14,44 @@ export class ZephyrSdkDataProvider implements vscode.TreeDataProvider<ZephyrSdkT
     return element;
   }
 
-  async getChildren(element?: ZephyrSdkTreeItem | undefined): Promise<ZephyrSdkTreeItem[]> {
-    if(element === undefined) {
-			let treeItems: ZephyrSdkTreeItem[] = [];
-
-			const sdks = await getListZephyrSDKs();
-			const internalSDK = await getInternalZephyrSDK();
-			for(const sdk of sdks) {
-				let isInternal = false;
-				if(internalSDK && internalSDK.rootUri.fsPath === sdk.rootUri.fsPath) {
-					isInternal = true;
-				}
-				const sdkItem = new ZephyrSdkTreeItem(sdk, isInternal, vscode.TreeItemCollapsibleState.None);
-				treeItems.push(sdkItem);
-			}
-			return treeItems;
+  async getChildren(element?: ZephyrSdkTreeItem): Promise<ZephyrSdkTreeItem[]> {
+	const items: ZephyrSdkTreeItem[] = [];
+  
+	const zephyrSDKs = await getListZephyrSDKs();
+	const iars = await getListIARs();
+	const internal = await getInternalZephyrSDK();
+  
+	if (!element) {
+	  // Top-level SDKs
+	  for (const sdk of zephyrSDKs) {
+		const isInternal = internal?.rootUri.fsPath === sdk.rootUri.fsPath;
+		items.push(new ZephyrSdkTreeItem(sdk, isInternal, vscode.TreeItemCollapsibleState.None));
+	  }
+  
+	  // Top-level IARs
+	  for (const iar of iars) {
+		items.push(new ZephyrSdkTreeItem(iar, false, vscode.TreeItemCollapsibleState.Collapsed));
+	  }
+  
+	  return items;
+	}
+  
+	// If this is an IAR, show its associated SDK
+	if (element.sdk instanceof IARToolchain) {
+		const sdkPath = element.sdk.zephyrSdkPath;
+		const sdk = zephyrSDKs.find(s => s.rootUri.fsPath === sdkPath);
+		if (sdk) {
+		  const isInternal = internal?.rootUri.fsPath === sdk.rootUri.fsPath;
+		  return [
+			new ZephyrSdkTreeItem(sdk, isInternal, vscode.TreeItemCollapsibleState.None)
+		  ];
 		}
-		return [];
+	  }
+  
+	return [];
   }
+  
+  
 
   getParent?(element: ZephyrSdkTreeItem): vscode.ProviderResult<ZephyrSdkTreeItem> {
     return null;
@@ -47,23 +67,27 @@ export class ZephyrSdkDataProvider implements vscode.TreeDataProvider<ZephyrSdkT
 
 }
 export class ZephyrSdkTreeItem extends vscode.TreeItem {
-  constructor(
-		public readonly sdk: ZephyrSDK,
-		private isInternal: boolean,
-		public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+	constructor(
+	  public readonly sdk: ZephyrSDK | IARToolchain,
+	  public readonly isInternal: boolean,
+	  public readonly collapsibleState: vscode.TreeItemCollapsibleState
 	) {
-		super(sdk.name, collapsibleState);
-
-		this.tooltip = `Zephyr SDK ${sdk.version} [${sdk.rootUri.fsPath}]`;
-		this.description = this.isInternal ? "[Internal]" : "";
-		this.contextValue = this.isInternal ? 'zephyr-sdk-internal' : 'zephyr-sdk';
+	  super(sdk.name, collapsibleState);
+  
+	  if (sdk instanceof IARToolchain) {
+		this.label = sdk.name;
+		//this.description = sdk.iarPath;
+		this.tooltip = `IAR Toolchain @ ${sdk.iarPath}`;
+		this.contextValue = "iar-toolchain";
+		this.iconPath = path.join(__filename, '..', '..', 'res', 'icons', 'iar-logo.jpg');
+	  } else {
+		this.label = `Zephyr SDK ${sdk.version}`;
+		//this.description = sdk.rootUri.fsPath + (isInternal ? " [Internal]" : "");
+		this.tooltip = `Zephyr SDK ${sdk.version} @ ${sdk.rootUri.fsPath}`;
+		this.contextValue = isInternal ? "zephyr-sdk-internal" : "zephyr-sdk";
+		this.iconPath = new vscode.ThemeIcon("symbol-method");
+	  }
 	}
-
-	iconPath = new vscode.ThemeIcon('symbol-method');
-
-	// iconPath = {
-	// 	light: path.join(__filename, '..', '..', 'resources', 'light', 'zephyrsdk.svg'),
-	// 	dark: path.join(__filename, '..', '..', 'resources', 'dark', 'zephyrsdk.svg')
-	// };
-
-}
+  }
+  
+  

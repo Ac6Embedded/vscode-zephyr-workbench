@@ -8,12 +8,12 @@ import { ZephyrAppProject } from './ZephyrAppProject';
 import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProvider';
 import { ZephyrProject } from './ZephyrProject';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
-import { ZephyrSDK } from './ZephyrSDK';
+import { ZephyrSDK, IARToolchain } from './ZephyrSDK';
 import { createExtensionsJson, createTasksJson, setDefaultProjectSettings, updateTasks, ZephyrTaskProvider } from './ZephyrTaskProvider';
 import { changeBoardQuickStep } from './changeBoardQuickStep';
 import { changeEnvVarQuickStep, toggleSysbuild } from './changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
-import { ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
+import { ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
 import { executeTask } from './execUtils';
 import { importProjectQuickStep } from './importProjectQuickStep';
@@ -25,6 +25,7 @@ import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
+import { changeToolchainQuickStep } from "./changeToolchainQuickStep";
 import { pickApplicationQuickStep } from './pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './pickBuildConfigQuickStep';
 import { WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
@@ -33,7 +34,7 @@ import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsComma
 import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
-import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK } from './sdkUtils';
+import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain } from './sdkUtils';
 import { setConfigQuickStep } from './setConfigQuickStep';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
 import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfigTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder } from './utils';
@@ -602,6 +603,33 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		})
 	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+		  "zephyr-workbench-app-explorer.change-toolchain",
+		  async (node: ZephyrApplicationTreeItem) => {
+			if (!node.project) { return; }
+	  
+			const pick = await changeToolchainQuickStep(context, node.project);
+			if (!pick) { return; }
+	  
+			const cfg = vscode.workspace.getConfiguration(
+			  ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
+			  node.project.workspaceFolder
+			);
+	  
+			if (pick.tcKind === "zephyr_sdk") {
+			  await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "zephyr_sdk", vscode.ConfigurationTarget.WorkspaceFolder);
+			  await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY,       pick.sdkPath,  vscode.ConfigurationTarget.WorkspaceFolder);
+			  await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY,       undefined,     vscode.ConfigurationTarget.WorkspaceFolder);
+			} else {
+			  await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "iar",         vscode.ConfigurationTarget.WorkspaceFolder);
+			  await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY,       pick.iarPath, vscode.ConfigurationTarget.WorkspaceFolder);
+			}
+		  }
+		)
+	  );		
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-app-explorer.change-pristine", async (node: ZephyrApplicationTreeItem) => {
 			if (node.project) {
@@ -1241,6 +1269,7 @@ export function activate(context: vscode.ExtensionContext) {
 					await registerZephyrSDK(sdkPath);
 					zephyrSdkProvider.refresh();
 					vscode.window.showInformationMessage("Importing SDK done.");
+
 				} else {
 					vscode.window.showErrorMessage("The folder is not a Zephyr SDK");
 				}
@@ -1251,11 +1280,41 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.import-iar-sdk", async (iarZephyrSdkPath: string, token: string, iarPath?: string) => {
+			if (!iarPath || !token) {
+				vscode.window.showErrorMessage(
+					"Please provide both IAR SDK path and Token."
+				);
+				return;
+			}
+			if (!IARToolchain.isIarPath(iarPath)) {
+				vscode.window.showErrorMessage("The folder is not a valid IAR SDK.");
+				return;
+			}
+
+			ImportZephyrSDKPanel.currentPanel?.dispose();
+
+			await registerIARToolchain({
+				zephyrSdkPath: iarZephyrSdkPath,
+				iarPath: iarPath,
+				token,
+			});
+
+			zephyrSdkProvider.refresh();
+			vscode.window.showInformationMessage("IAR toolchain imported.");
+		})
+	);
+
+	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.remove-sdk", async (node: ZephyrSdkTreeItem) => {
 			if (node.sdk) {
-				if (await showConfirmMessage(`Remove ${node.sdk.name} from workspace ?`)) {
-					await unregisterZephyrSDK(node.sdk.rootUri.fsPath);
-					zephyrSdkProvider.refresh();
+				if (await showConfirmMessage(`Remove ${node.sdk.name} from workspace?`)) {
+					if (node.sdk instanceof ZephyrSDK) {
+						await unregisterZephyrSDK(node.sdk.rootUri.fsPath);
+						zephyrSdkProvider.refresh();
+					} else {
+						vscode.window.showWarningMessage("Cannot remove IAR Toolchain using this command.");
+					}
 				}
 			}
 		})
@@ -1263,21 +1322,82 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.delete", async (node: ZephyrSdkTreeItem) => {
-			if (node.sdk) {
-				if (await showConfirmMessage(`Delete ${node.sdk.name} permanently ?`)) {
-					vscode.window.withProgress({
-						location: vscode.ProgressLocation.Notification,
-						title: "Deleting Zephyr SDK",
-						cancellable: false,
-					}, async () => {
-						await unregisterZephyrSDK(node.sdk.rootUri.fsPath);
-						deleteFolder(node.sdk.rootUri.fsPath);
-					}
+			if (!node.sdk) return;
+
+			if (await showConfirmMessage(`Delete ${node.sdk.name} permanently?`)) {
+				if (node.sdk instanceof ZephyrSDK) {
+					const sdkPath = node.sdk.rootUri.fsPath;
+
+					vscode.window.withProgress(
+						{
+							location: vscode.ProgressLocation.Notification,
+							title: "Deleting Zephyr SDK",
+							cancellable: false,
+						},
+						async () => {
+							await unregisterZephyrSDK(sdkPath);
+							deleteFolder(sdkPath);
+							zephyrSdkProvider.refresh();
+						}
+					);
+				} else {
+					vscode.window.showWarningMessage(
+						"Cannot delete IAR Toolchain from disk. Please remove it manually."
 					);
 				}
 			}
 		})
 	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench-sdk-explorer.remove-iar",
+			async (node: ZephyrSdkTreeItem) => {
+				if (!node.sdk || !(node.sdk instanceof IARToolchain)) return;
+
+				if (await showConfirmMessage(`Remove ${node.sdk.name} from workspace?`)) {
+					await unregisterIARToolchain(node.sdk.iarPath);
+					zephyrSdkProvider.refresh();
+				}
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench-sdk-explorer.delete-iar",
+			async (node: ZephyrSdkTreeItem) => {
+				/* guard‑rails */
+				if (!node.sdk || !(node.sdk instanceof IARToolchain)) {
+					vscode.window.showWarningMessage("No IAR toolchain selected.");
+					return;
+				}
+
+				/* confirm with user */
+				if (
+					!(await showConfirmMessage(`Delete ${node.sdk.name} permanently?`))
+				) {
+					return;
+				}
+
+				const iarPath = node.sdk.iarPath;
+
+				vscode.window.withProgress(
+					{
+						location: vscode.ProgressLocation.Notification,
+						title: "Deleting IAR Toolchain",
+						cancellable: false,
+					},
+					async () => {
+						await unregisterIARToolchain(iarPath); // ← helper we wrote earlier
+						deleteFolder(iarPath);                 // your existing util
+						zephyrSdkProvider.refresh();           // same provider as SDKs
+					}
+				);
+			}
+		)
+	);
+
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-app-explorer.open-wizard", async () => {
@@ -1325,13 +1445,13 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', zephyrSDK, pristineValue = 'auto') => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchain, pristineValue = 'auto') => {
 			if (!westWorkspace) {
 				vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
 				return;
 			}
 
-			if (!zephyrSDK) {
+			if (!toolchain) {
 				vscode.window.showErrorMessage('Missing Zephyr SDK, a SDK is required to provide toolchain to your project');
 				return;
 			}
@@ -1376,7 +1496,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 				let workspaceFolder = getWorkspaceFolder(projLoc);
 				if (workspaceFolder) {
-					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK);
+					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchain);
 					await createTasksJson(workspaceFolder);
 					await createExtensionsJson(workspaceFolder);
 					await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);

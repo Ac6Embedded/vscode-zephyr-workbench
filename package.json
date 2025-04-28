@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://zephyr-workbench.com",
-  "version": "1.3.18",
+  "version": "1.3.19",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -71,6 +71,12 @@
             "description": "List of paths which point to Zephyr SDK supported on Zephyr Workbench",
             "scope": "machine"
           },
+          "zephyr-workbench.listIARs": {
+            "type": "array",
+            "default": [],
+            "description": "List of registered IAR ARM Toolchain entries.\nEach entry is an object { \"zephyrSdkPath\": \"...\", \"iarPath\": \"...\", \"token\": \"...\" }",
+            "scope": "machine"
+          },
           "zephyr-workbench.westWorkspace": {
             "type": "string",
             "default": "",
@@ -87,6 +93,22 @@
             "type": "string",
             "default": "",
             "description": "The path to the Zephyr SDK that provide toolchains",
+            "scope": "resource"
+          },
+          "zephyr-workbench.toolchain": {
+            "type": "string",
+            "enum": [
+              "zephyr_sdk",
+              "iar"
+            ],
+            "default": "zephyr_sdk",
+            "description": "Which toolchain to use for the project: 'zephyr_sdk' or 'iar'",
+            "scope": "resource"
+          },
+          "zephyr-workbench.iar": {
+            "type": "string",
+            "default": "",
+            "description": "Per-workspace override for which IAR toolchain to use.\nMust be one of the objects defined in zephyr-workbench.listIARs.",
             "scope": "resource"
           },
           "zephyr-workbench.env.ARCH_ROOT": {
@@ -469,6 +491,12 @@
         "category": "Zephyr Workbench/Application"
       },
       {
+        "command": "zephyr-workbench-app-explorer.change-toolchain",
+        "title": "Change Toolchain",
+        "icon": "$(wrench)",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
         "command": "zephyr-workbench-app-explorer.sysbuild.enable",
         "title": "Enable",
         "category": "Zephyr Workbench/Application"
@@ -548,13 +576,13 @@
       },
       {
         "command": "zephyr-workbench-sdk-explorer.open-wizard",
-        "title": "Add Zephyr SDK",
+        "title": "Add Toolchain",
         "icon": "$(add)",
         "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench-sdk-explorer.remove-sdk",
-        "title": "Remove Zephyr SDK",
+        "title": "Remove Toolchain",
         "icon": "$(remove)",
         "category": "Zephyr Workbench/SDK"
       },
@@ -563,6 +591,18 @@
         "title": "Delete from disk",
         "icon": "$(trash)",
         "category": "Zephyr Workbench/SDK"
+      },
+      {
+        "command": "zephyr-workbench-sdk-explorer.remove-iar",
+        "title": "Remove IAR Toolchain",
+        "icon": "$(remove)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench-sdk-explorer.delete-iar",
+        "title": "Delete IAR Toolchain",
+        "category": "Zephyr Workbench",
+        "icon": "$(trash)"
       },
       {
         "command": "zephyr-workbench-sdk-explorer.refresh",
@@ -643,15 +683,15 @@
         },
         {
           "id": "zephyr-workbench-sdk-explorer",
-          "name": "Zephyr SDK",
-          "contextualTitle": "Zephyr SDK",
+          "name": "Toolchains",
+          "contextualTitle": "Toolchains",
           "icon": "$(extensions-view-icon)",
           "type": "tree"
         },
         {
           "id": "zephyr-workbench-tools-explorer",
           "name": "Host tools",
-          "contextualTitle": "Zephyr SDK",
+          "contextualTitle": "Toolchains",
           "icon": "$(extensions-view-icon)",
           "type": "tree"
         },
@@ -679,7 +719,7 @@
       },
       {
         "view": "zephyr-workbench-sdk-explorer",
-        "contents": "[Import Zephyr SDK](command:zephyr-workbench-sdk-explorer.open-wizard)"
+        "contents": "[Import Toolchain](command:zephyr-workbench-sdk-explorer.open-wizard)"
       }
     ],
     "submenus": [
@@ -779,7 +819,7 @@
           "command": "zephyr-workbench.explorer.rebuild",
           "group": "zephyr@999"
         }
-      ],      
+      ],
       "view/item/context": [
         {
           "command": "zephyr-workbench-app-explorer.build-app",
@@ -1002,14 +1042,29 @@
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
         },
         {
+          "command": "zephyr-workbench-sdk-explorer.remove-iar",
+          "group": "0@view/item/context@1",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == iar-toolchain"
+        },
+        {
           "command": "zephyr-workbench-sdk-explorer.delete",
           "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
         },
         {
+          "command": "zephyr-workbench-sdk-explorer.delete-iar",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == iar-toolchain"
+        },
+        {
           "command": "zephyr-workbench-sdk-explorer.remove-sdk",
           "group": "inline@0",
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.remove-iar",
+          "group": "inline@0",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == iar-toolchain"
         }
       ],
       "zephyr-workbench-app-explorer.clean": [
@@ -1068,8 +1123,13 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "submenu": "zephyr-workbench-app-explorer.sysbuild-submenu",
+          "command": "zephyr-workbench-app-explorer.change-toolchain",
           "group": "0@view/item/context@5",
+          "when":  "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.sysbuild-submenu",
+          "group": "0@view/item/context@6",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ],
@@ -1100,8 +1160,13 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
-          "submenu": "zephyr-workbench-app-explorer.sysbuild-submenu",
+          "command": "zephyr-workbench-app-explorer.change-toolchain",
           "group": "0@view/item/context@5",
+          "when":  "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.sysbuild-submenu",
+          "group": "0@view/item/context@6",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         }
       ],

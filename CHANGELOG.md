@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.19]
+
+- Add support for IAR toolchain
+
 ## [1.3.18]
 
 - Optimize debug using OpenOCD

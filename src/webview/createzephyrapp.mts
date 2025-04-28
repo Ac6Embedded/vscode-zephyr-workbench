@@ -1,5 +1,7 @@
-import { Button, Dropdown, RadioGroup, TextField, allComponents,
-  provideVSCodeDesignSystem } from "@vscode/webview-ui-toolkit/";
+import {
+  Button, Dropdown, RadioGroup, TextField, allComponents,
+  provideVSCodeDesignSystem
+} from "@vscode/webview-ui-toolkit/";
 
 provideVSCodeDesignSystem().register(
   allComponents
@@ -37,20 +39,20 @@ function main() {
     });
   }
 
-  workspaceInput.addEventListener('focusin', function() {
-    if(workspaceDropdown) {
+  workspaceInput.addEventListener('focusin', function () {
+    if (workspaceDropdown) {
       workspaceDropdown.style.display = 'block';
     }
   });
 
-  workspaceInput.addEventListener('focusout', function() {
-    if(workspaceDropdown) {
+  workspaceInput.addEventListener('focusout', function () {
+    if (workspaceDropdown) {
       workspaceDropdown.style.display = 'none';
     }
   });
 
-  workspaceInput.addEventListener('click', function(event) {
-    if(workspaceDropdown) {
+  workspaceInput.addEventListener('click', function (event) {
+    if (workspaceDropdown) {
       workspaceDropdown.style.display = 'block';
     }
   });
@@ -63,30 +65,30 @@ function main() {
     filterFunction(workspaceInput, workspaceDropdown);
   });
 
-  workspaceDropdown.addEventListener('mousedown', function(event) {
+  workspaceDropdown.addEventListener('mousedown', function (event) {
     event.preventDefault();
   });
 
-  workspaceDropdown.addEventListener('mouseup', function(event) {
+  workspaceDropdown.addEventListener('mouseup', function (event) {
     event.preventDefault();
   });
 
   addDropdownItemEventListeners(workspaceDropdown, workspaceInput);
 
-  sdkInput.addEventListener('focusin', function() {
-    if(sdkDropdown) {
+  sdkInput.addEventListener('focusin', function () {
+    if (sdkDropdown) {
       sdkDropdown.style.display = 'block';
     }
   });
 
-  sdkInput.addEventListener('focusout', function() {
-    if(sdkDropdown) {
+  sdkInput.addEventListener('focusout', function () {
+    if (sdkDropdown) {
       sdkDropdown.style.display = 'none';
     }
   });
 
-  sdkInput.addEventListener('click', function(event) {
-    if(sdkDropdown) {
+  sdkInput.addEventListener('click', function (event) {
+    if (sdkDropdown) {
       sdkDropdown.style.display = 'block';
     }
   });
@@ -95,31 +97,31 @@ function main() {
     filterFunction(sdkInput, sdkDropdown);
   });
 
-  sdkDropdown.addEventListener('mousedown', function(event) {
+  sdkDropdown.addEventListener('mousedown', function (event) {
     event.preventDefault();
   });
 
-  sdkDropdown.addEventListener('mouseup', function(event) {
+  sdkDropdown.addEventListener('mouseup', function (event) {
     event.preventDefault();
   });
 
   addDropdownItemEventListeners(sdkDropdown, sdkInput);
 
 
-  boardInput.addEventListener('focusin', function() {
-    if(boardDropdown) {
+  boardInput.addEventListener('focusin', function () {
+    if (boardDropdown) {
       boardDropdown.style.display = 'block';
     }
   });
 
-  boardInput.addEventListener('focusout', function() {
-    if(boardDropdown) {
+  boardInput.addEventListener('focusout', function () {
+    if (boardDropdown) {
       boardDropdown.style.display = 'none';
     }
   });
 
-  boardInput.addEventListener('click', function(event) {
-    if(boardDropdown) {
+  boardInput.addEventListener('click', function (event) {
+    if (boardDropdown) {
       boardDropdown.style.display = 'block';
     }
   });
@@ -130,7 +132,7 @@ function main() {
 
   boardInput.addEventListener('input', () => {
     webviewApi.postMessage(
-      { 
+      {
         command: 'boardChanged',
         workspace: listWorkspaces.value,
         boardYamlPath: boardInput.getAttribute('data-value')
@@ -138,28 +140,28 @@ function main() {
     );
   });
 
-  boardDropdown.addEventListener('mousedown', function(event) {
+  boardDropdown.addEventListener('mousedown', function (event) {
     event.preventDefault();
   });
 
-  boardDropdown.addEventListener('mouseup', function(event) {
+  boardDropdown.addEventListener('mouseup', function (event) {
     event.preventDefault();
   });
 
-  sampleInput.addEventListener('focusin', function() {
-    if(samplesDropdown) {
+  sampleInput.addEventListener('focusin', function () {
+    if (samplesDropdown) {
       samplesDropdown.style.display = 'block';
     }
   });
 
-  sampleInput.addEventListener('focusout', function() {
-    if(samplesDropdown) {
+  sampleInput.addEventListener('focusout', function () {
+    if (samplesDropdown) {
       samplesDropdown.style.display = 'none';
     }
   });
 
-  sampleInput.addEventListener('click', function(event) {
-    if(samplesDropdown) {
+  sampleInput.addEventListener('click', function (event) {
+    if (samplesDropdown) {
       samplesDropdown.style.display = 'block';
     }
   });
@@ -172,15 +174,15 @@ function main() {
     projectNameText.value = sampleInput.value || '';
   });
 
-  samplesDropdown.addEventListener('mousedown', function(event) {
+  samplesDropdown.addEventListener('mousedown', function (event) {
     event.preventDefault();
   });
 
-  samplesDropdown.addEventListener('mouseup', function(event) {
+  samplesDropdown.addEventListener('mouseup', function (event) {
     event.preventDefault();
   });
 
-  document.addEventListener('click', function(event: MouseEvent) {
+  document.addEventListener('click', function (event: MouseEvent) {
     const target = event.target as HTMLElement;
     if (target && !target.closest('.combo-dropdown')) {
       if (boardDropdown) {
@@ -201,21 +203,28 @@ function main() {
 
   browseParentButton.addEventListener("click", browseParentHandler);
   createButton.addEventListener("click", createHandler);
-  
+
 }
 
-function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputElement) {
-  const items = dropdown.getElementsByClassName('dropdown-item');
+function addDropdownItemEventListeners(dropdown: HTMLElement,
+  input: HTMLInputElement) {
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i] as HTMLElement;
-    item.addEventListener('click', () => {
-      input.value = item.getAttribute('data-label') || '';
-      input.setAttribute('data-value', item.getAttribute('data-value') || '');
-      input.dispatchEvent(new Event('input'));
-      dropdown.style.display = 'none';
+  Array.from(dropdown.getElementsByClassName("dropdown-item"))
+    .forEach(itemEl => {
+      const item = itemEl as HTMLElement;
+
+      item.addEventListener("pointerdown", () => {
+        /* common fields */
+        const value = item.dataset.value ?? "";
+        const label = item.dataset.label ?? "";
+
+        /* Zephyr SDK or IAR – same visual behaviour */
+        input.value = label;
+        input.setAttribute("data-value", value);
+        input.dispatchEvent(new Event("input"));
+        dropdown.style.display = "none";
+      });
     });
-  }
 }
 
 function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
@@ -235,7 +244,7 @@ function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
 
 async function westWorkspaceChanged(selectedWorkspaceUri: string) {
   webviewApi.postMessage(
-    { 
+    {
       command: 'westWorkspaceChanged',
       workspace: selectedWorkspaceUri
     }
@@ -243,8 +252,8 @@ async function westWorkspaceChanged(selectedWorkspaceUri: string) {
 
   const boardDropdownSpinner = document.getElementById('boardDropdownSpinner') as HTMLElement;
   const samplesDropdownSpinner = document.getElementById('samplesDropdownSpinner') as HTMLElement;
-  boardDropdownSpinner.style.display = 'block'; 
-  samplesDropdownSpinner.style.display = 'block'; 
+  boardDropdownSpinner.style.display = 'block';
+  samplesDropdownSpinner.style.display = 'block';
 }
 
 async function updateBoardDropdown(boardHTML: string) {
@@ -253,7 +262,7 @@ async function updateBoardDropdown(boardHTML: string) {
   const boardDropdownSpinner = document.getElementById('boardDropdownSpinner') as HTMLElement;
   boardDropdown.innerHTML = boardHTML;
   addDropdownItemEventListeners(boardDropdown, boardInput);
-  boardDropdownSpinner.style.display = 'none'; 
+  boardDropdownSpinner.style.display = 'none';
 
 }
 
@@ -262,7 +271,7 @@ function updateBoardImage(imgSrc: string) {
   if (imgSrc && imgSrc !== 'noImg') {
     boardImage.src = imgSrc;
     boardImage.style.visibility = 'visible';
-    boardImage.style.display = 'block'; 
+    boardImage.style.display = 'block';
   } else {
     boardImage.src = '';
     boardImage.style.visibility = 'hidden';
@@ -276,13 +285,13 @@ async function updateSamplesDropdown(samplesHTML: string) {
   const samplesDropdownSpinner = document.getElementById('samplesDropdownSpinner') as HTMLElement;
   samplesDropdown.innerHTML = samplesHTML;
   addDropdownItemEventListeners(samplesDropdown, sampleInput);
-  samplesDropdownSpinner.style.display = 'none'; 
+  samplesDropdownSpinner.style.display = 'none';
 }
 
 function setVSCodeMessageListener() {
   window.addEventListener("message", (event) => {
     const command = event.data.command;
-    switch(command) {
+    switch (command) {
       case 'folderSelected':
         setLocalPath(event.data.id, event.data.folderUri);
         break;
@@ -316,9 +325,9 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
 
   webviewApi.postMessage(
     {
-      command: 'create',
-      westWorkspacePath: workspaceInput.getAttribute('data-value'),
-      zephyrsdkPath: sdkInput.getAttribute('data-value'),
+      command:            "create",
+      westWorkspacePath:  workspaceInput.getAttribute("data-value"),
+      zephyrSdkPath:      sdkInput.getAttribute("data-value"),
       boardYamlPath: boardInput.getAttribute('data-value'),
       samplePath: sampleInput.getAttribute('data-value'),
       projectName: projectNameText.value,
@@ -331,8 +340,8 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
 function browseParentHandler(this: HTMLElement, ev: MouseEvent) {
   const workspaceInput = document.getElementById('workspaceInput') as HTMLInputElement;
   webviewApi.postMessage(
-    { 
-      command: 'openLocationDialog', 
+    {
+      command: 'openLocationDialog',
       westWorkspacePath: workspaceInput.getAttribute('data-value')
     }
   );

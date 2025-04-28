@@ -4,18 +4,20 @@ import { ZephyrBoard } from "./ZephyrBoard";
 import { ZephyrProject } from "./ZephyrProject";
 import { ZephyrSDK } from "./ZephyrSDK";
 import { MultiStepInput } from "./utilities/MultiStepQuickPick";
-import { fileExists, getListZephyrSDKs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, normalizePath } from "./utils";
+import { fileExists, getListZephyrSDKs, getListIARs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, normalizePath } from "./utils";
 
 export async function importProjectQuickStep(context: ExtensionContext) {
   const title = 'Import Project';
 
   interface ProjectConfig {
-    projectLoc: string,
-    reconfigure: boolean,
-    westWorkspace: WestWorkspace,
-    sdk: ZephyrSDK,
-    board: ZephyrBoard,
+    projectLoc: string;
+    reconfigure: boolean;
+    westWorkspace: WestWorkspace;
+    sdk?: ZephyrSDK;       // Zephyr SDK choice
+    iarPath?: string;      // IAR choice
+    board: ZephyrBoard;
   }
+  
 
   class BrowseFolderButton implements vscode.QuickInputButton {
 		constructor(public iconPath: ThemeIcon, public tooltip: string) { }
@@ -114,29 +116,53 @@ export async function importProjectQuickStep(context: ExtensionContext) {
         }
       }
     }
-    return (input: MultiStepInput) => pickZephyrSDK(input, state);
+    return (input: MultiStepInput) => pickToolchain(input, state);
   }
 
-  async function pickZephyrSDK(input: MultiStepInput, state: Partial<ProjectConfig>) {
-    const zephyrSDKItems: QuickPickItem[] = [];
-
-    for(let zephyrSDK of await getListZephyrSDKs()) {
-      zephyrSDKItems.push({ label: zephyrSDK.name, description: zephyrSDK.version, detail: zephyrSDK.rootUri.fsPath });
+  async function pickToolchain(input: MultiStepInput, state: Partial<ProjectConfig>) {
+    type TcItem = QuickPickItem & {
+      tcKind: "zephyr_sdk" | "iar";
+      sdk?: ZephyrSDK;
+      iarPath?: string;
+    };
+  
+    const items: TcItem[] = [];
+  
+    for (const sdk of await getListZephyrSDKs()) {
+      items.push({
+        label:        sdk.name,
+        description:  sdk.version,
+        detail:       sdk.rootUri.fsPath,
+        tcKind:       "zephyr_sdk",
+        sdk
+      });
     }
-
+  
+    for (const iar of await getListIARs()) {
+      items.push({
+        label:        iar.name,
+        description:  "IAR toolchain",
+        detail:       iar.iarPath,
+        tcKind:       "iar",
+        iarPath:      iar.iarPath
+      });
+    }
+  
     const pick = await input.showQuickPick({
-			title,
-			step: 3,
-			totalSteps: 4,
-			placeholder: 'Select the Zephyr SDK',
-			items: zephyrSDKItems,
+      title,
+      step: 3,
+      totalSteps: 4,
+      placeholder: "Select the toolchain",
+      items,
       ignoreFocusOut: true,
-			shouldResume: shouldResume
-		});
-
-    if(pick) {
-      if(pick.detail) {
-        state.sdk = getZephyrSDK(pick.detail);
+      shouldResume
+    }) as TcItem | undefined;
+  
+    if (pick) {
+      if (pick.tcKind === "zephyr_sdk") {
+        state.sdk = pick.sdk!;
+      } else {
+        state.iarPath = pick.iarPath!;
       }
     }
     return (input: MultiStepInput) => pickBoard(input, state);

@@ -2,7 +2,7 @@
 import * as vscode from "vscode";
 import path from "path";
 import { execCommand, extract, getFirstDirectoryName7z } from "./installUtils";
-import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "./constants";
+import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY } from "./constants";
 import { getGitTags } from "./execUtils";
 import { url } from "inspector";
 
@@ -118,6 +118,37 @@ export async function registerZephyrSDK(sdkPath: string) {
 	}
 }
 
+/**
+ * Append a {zephyrSdkPath, iarPath, token} object to
+ *    zephyr‑workbench.listIARs  (machine scope, array)
+ */
+export async function registerIARToolchain(iar: {
+	zephyrSdkPath: string;
+	iarPath: string;
+	token: string;
+  }) {
+	const cfg = vscode.workspace.getConfiguration(
+	  ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
+	);
+  
+	/* read current list (or []) */
+	const list: any[] =
+	  cfg.get(ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY) ?? [];
+  
+	/* ensure we don’t store the same IAR twice */
+	if (list.find((e) => e.iarPath === iar.iarPath)) {
+	  throw new Error(`This IAR toolchain [${iar.iarPath}] is already registered.`);
+	}
+  
+	list.push(iar);
+  
+	await cfg.update(
+	  ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY,
+	  list,
+	  vscode.ConfigurationTarget.Global,
+	);
+  }
+
 export async function unregisterZephyrSDK(sdkPath: string) {
 	let listSDKs: string[] | undefined = await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY);
 	if(listSDKs) {
@@ -134,6 +165,33 @@ export async function unregisterZephyrSDK(sdkPath: string) {
 		throw new Error(`Cannot unregister SDK: setting value corrupted, please edit the settings.json `);
 	}
 }
+
+export async function unregisterIARToolchain(iarPath: string) {
+	let listIARs: any[] | undefined =
+	  vscode.workspace
+		.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
+		.get(ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY);
+  
+	if (listIARs) {
+	  const idx = listIARs.findIndex(i => i.iarPath === iarPath);
+	  if (idx !== -1) {
+		listIARs.splice(idx, 1);
+		await vscode.workspace
+		  .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
+		  .update(
+			ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY,
+			listIARs,
+			vscode.ConfigurationTarget.Global
+		  );
+		return;
+	  }
+	  throw new Error(`This IAR toolchain [${iarPath}] is not found.`);
+	} else {
+	  throw new Error(
+		"Cannot unregister IAR Toolchain: setting value corrupted, please edit settings.json"
+	  );
+	}
+  }
 
 export async function extractSDKTar(filePath: string, destPath: string, progress: vscode.Progress<{
   message?: string | undefined;

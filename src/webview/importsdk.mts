@@ -1,209 +1,233 @@
-import { provideVSCodeDesignSystem, Button, RadioGroup, TextField, vsCodeButton, vsCodeCheckbox, vsCodeTextField , vsCodeRadioGroup, vsCodeRadio, vsCodePanels, vsCodePanelView, vsCodePanelTab, Checkbox} from "@vscode/webview-ui-toolkit/";
-import { list } from "node-7z";
+/******************************************************************
+ *  vscode‑zephyr‑workbench  ·  importsdk.mts  (Web‑view side)
+ ******************************************************************/
+
+import {
+  provideVSCodeDesignSystem,
+  Button,
+  Checkbox,
+  RadioGroup,
+  TextField,
+  vsCodeButton,
+  vsCodeCheckbox,
+  vsCodeTextField,
+  vsCodeRadio,
+  vsCodeRadioGroup,
+  vsCodePanels,
+  vsCodePanelView,
+  vsCodePanelTab,
+} from "@vscode/webview-ui-toolkit/";
 
 provideVSCodeDesignSystem().register(
-  vsCodeButton(), 
+  vsCodeButton(),
   vsCodeCheckbox(),
   vsCodeTextField(),
   vsCodeRadio(),
   vsCodeRadioGroup(),
-  vsCodePanels(), 
-  vsCodePanelTab(), 
-  vsCodePanelView()
+  vsCodePanels(),
+  vsCodePanelTab(),
+  vsCodePanelView(),
 );
 
-const webviewApi = acquireVsCodeApi();
+/*──────────────────────── helpers ────────────────────────*/
+function getEl<T extends HTMLElement>(id: string): T {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`Missing #${id} in Webview DOM`);
+  return el as T;
+}
 
-window.addEventListener("load", main);
+/* VS Code bridge */
+const vscode = acquireVsCodeApi();
 
-function main() {
-
+/*──────────────────────── entry point ─────────────────────*/
+window.addEventListener("load", () => {
   setVSCodeMessageListener();
-
   initVersionsDropdown();
+  initIarSdkDropdown();
 
-  const srcTypeRadioGroup = document.getElementById("srcType") as RadioGroup;
-  srcTypeRadioGroup.addEventListener("click", modifySrcTypeHandler);
-  srcTypeRadioGroup.addEventListener("select", modifySrcTypeHandler);
-  srcTypeRadioGroup.dispatchEvent(new Event('select'));
+  /* category / sub‑choice listeners */
+  const sourceCat  = getEl<RadioGroup>("sourceCategory");
+  const zephyrSub  = getEl<RadioGroup>("srcTypeZephyr");
+  const sdkTypeSub = getEl<RadioGroup>("sdkType");
 
-  const sdkTypeRadioGroup = document.getElementById("sdkType") as RadioGroup;
-  sdkTypeRadioGroup.addEventListener("click", modifySdkTypeHandler);
-  sdkTypeRadioGroup.addEventListener("select", modifySdkTypeHandler);
+  sourceCat.addEventListener("click",  modifyCategoryHandler);
+  sourceCat.addEventListener("select", modifyCategoryHandler);
+  zephyrSub.addEventListener("click",  modifySrcTypeHandler);
+  zephyrSub.addEventListener("select", modifySrcTypeHandler);
+  getEl<RadioGroup>("srcTypeIar")
+    .addEventListener("select", modifySrcTypeHandler);
 
-  const browseLocationButton = document.getElementById("browseLocationButton") as Button;
-  browseLocationButton?.addEventListener("click", browseLocationHandler);
+  sdkTypeSub.addEventListener("click",  modifySdkTypeHandler);
+  sdkTypeSub.addEventListener("select", modifySdkTypeHandler);
 
-  const importButton = document.getElementById("importButton") as Button;
-  importButton?.addEventListener("click", importHandler);
-
-}
-
-function setVSCodeMessageListener() {
-  window.addEventListener("message", (event) => {
-    const command = event.data.command;
-
-    switch(command) {
-      case 'folderSelected':
-        setLocalPath(event.data.id, event.data.folderUri);
-        break;
-    }
-  });
-}
-
-function setLocalPath(id: string, path: string) {
-  const localPath = document.getElementById(id) as TextField;
-  localPath.value = path;
-}
-
-
-function modifySrcTypeHandler(this: HTMLElement) {
-  const srcTypeRadioGroup = document.getElementById("srcType") as RadioGroup;
-  const officialForm = document.getElementById("official-form") as HTMLElement;
-  const srcRemotePath = document.getElementById("remotePath") as TextField;
-
-  // Enable/Disable form section depending on user choice
-  if(srcTypeRadioGroup.value === 'official') {
-    officialForm.style.display = "block";
-    srcRemotePath.setAttribute('disabled', '');
-    srcRemotePath.style.display = "none";
-  } else if(srcTypeRadioGroup.value === 'remote') {
-    officialForm.style.display = "none";
-    srcRemotePath.removeAttribute('disabled');
-    srcRemotePath.style.display = "block";
-  } else if(srcTypeRadioGroup.value === 'local') {
-    officialForm.style.display = "none";
-    srcRemotePath.setAttribute('disabled', '');
-    srcRemotePath.style.display = "none";
-  } 
-}
-
-function modifySdkTypeHandler(this: HTMLElement) {
-  const sdkTypeRadioGroup = this as RadioGroup;
-  const tCheckboxes = document.getElementsByClassName('toolchain-checkbox');
-  for(let tCheckbox of tCheckboxes) {
-    if(sdkTypeRadioGroup.value === 'minimal') {
-      tCheckbox.removeAttribute('disabled');
-    } else {
-      tCheckbox.setAttribute('disabled', '');
-    }
-  }
-}
-
-function browseLocationHandler(this: HTMLElement, ev: MouseEvent) {
-  webviewApi.postMessage(
-    { 
-      command: 'openLocationDialog', 
-    }
-  );
-}
-
-function importHandler(this: HTMLElement, ev: MouseEvent) {
-  const srcTypeRadioGroup = document.getElementById("srcType") as RadioGroup;
-  const srcRemotePath = document.getElementById("remotePath") as TextField;
-  const workspacePath = document.getElementById("workspacePath") as TextField;
-  const sdkTypeRadioGroup = document.getElementById("sdkType") as RadioGroup;
-  const versionInput = document.getElementById('versionInput') as HTMLInputElement;
-  const listToolchains = getListSelectedToolchains();
-  
-  webviewApi.postMessage(
-    {
-      command: 'import',
-      srcType: srcTypeRadioGroup.value,
-      remotePath: srcRemotePath.value,
-      workspacePath: workspacePath.value,
-      sdkType: sdkTypeRadioGroup.value,
-      sdkVersion: versionInput.getAttribute('data-value'),
-      listToolchains: listToolchains
-    }
-  );
-}
-
-
-
-function initVersionsDropdown() {
-  const versionInput = document.getElementById('versionInput') as HTMLInputElement;
-  const versionsDropdown = document.getElementById('versionsDropdown') as HTMLElement;
-  
-  versionInput.addEventListener('focusin', function() {
-    if(versionsDropdown) {
-      versionsDropdown.style.display = 'block';
-    }
-  });
-
-  versionInput.addEventListener('focusout', function() {
-    if(versionsDropdown) {
-      versionsDropdown.style.display = 'none';
-    }
-  });
-
-  versionInput.addEventListener('click', function(event) {
-    if(versionsDropdown) {
-      versionsDropdown.style.display = 'block';
-    }
-  });
-
-  versionInput.addEventListener('input', () => {
-    //filterFunction(versionInput, versionsDropdown);
-  });
-
-  versionInput.addEventListener('keyup', () => {
-  });
-
-  versionsDropdown.addEventListener('mousedown', function(event) {
-    event.preventDefault();
-  });
-
-  versionsDropdown.addEventListener('mouseup', function(event) {
-    event.preventDefault();
-  });
-
-  addDropdownItemEventListeners(versionsDropdown, versionInput);
-
-  // Select first value
-  const firstItem = versionsDropdown.querySelector('.dropdown-item') as HTMLElement;
-  if (firstItem) {
-    firstItem.click();
-  }
-}
-
-function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputElement) {
-  const items = dropdown.getElementsByClassName('dropdown-item');
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i] as HTMLElement;
-    item.addEventListener('click', () => {
-      input.value = item.getAttribute('data-label') || '';
-      input.setAttribute('data-value', item.getAttribute('data-value') || '');
-      input.dispatchEvent(new Event('input'));
-      dropdown.style.display = 'none';
+  /* browse + import */
+  getEl<Button>("browseLocationButton")
+    .addEventListener("click", () => {
+      vscode.postMessage({ command: "openLocationDialog", id: "workspacePath" });
     });
-  }
-}
 
-function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
-  const filter = input.value.toUpperCase();
-  const items = dropdown.getElementsByClassName('dropdown-item');
+  getEl<Button>("importButton")
+    .addEventListener("click", importHandler);
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i] as HTMLElement;
-    const textValue = item.textContent || item.innerText;
-    if (textValue.toUpperCase().indexOf(filter) > -1) {
-      item.style.display = '';
-    } else {
-      item.style.display = 'none';
+  /* first layout refresh */
+  sourceCat.dispatchEvent(new Event("select"));
+});
+
+/*────────────────── VS Code → Web‑view messages ──────────*/
+function setVSCodeMessageListener(): void {
+  window.addEventListener("message", (event) => {
+    if (event.data.command !== "folderSelected") return;
+
+    switch (event.data.id) {
+      case "sdkInput": {
+        const sdkInput = getEl<HTMLInputElement>("sdkInput");
+        sdkInput.value = event.data.folderUri;
+        sdkInput.setAttribute("data-value", event.data.folderUri);
+        break;
+      }
+      case "workspacePath": {
+        (getEl<TextField>("workspacePath") as unknown as { value: string }).value =
+          event.data.folderUri;
+        break;
+      }
+      case "iarPath": {
+        (getEl<TextField>("iarPath") as unknown as { value: string }).value =
+          event.data.folderUri;
+        break;
+      }
     }
+  });
+}
+
+/*──────────────────── visibility helpers ─────────────────*/
+function modifyCategoryHandler(): void {
+  const cat = (getEl<RadioGroup>("sourceCategory") as unknown as { value: string }).value;
+  getEl("zephyrOptions").style.display = cat === "zephyr" ? "block" : "none";
+  getEl("iarOptions").style.display    = cat === "iar"    ? "block" : "none";
+
+  modifySrcTypeHandler();
+}
+
+function modifySrcTypeHandler(): void {
+  const catRadio     = getEl<RadioGroup>("sourceCategory") as unknown as { value: string };
+  const zephyrGroup  = getEl<RadioGroup>("srcTypeZephyr")  as unknown as { value: string };
+
+  const officialForm = getEl("official-form");
+  const remotePath   = getEl<TextField>("remotePath");
+  const iarForm      = getEl("iar-form");
+
+  if (catRadio.value === "zephyr") {
+    if (zephyrGroup.value === "official") {
+      officialForm.style.display = "block";
+      remotePath.setAttribute("disabled", "");
+      remotePath.style.display = "none";
+      iarForm.style.display = "none";
+    } else if (zephyrGroup.value === "remote") {
+      officialForm.style.display = "none";
+      remotePath.removeAttribute("disabled");
+      remotePath.style.display = "block";
+      iarForm.style.display = "none";
+    } else { /* local */ 
+      officialForm.style.display = "none";
+      remotePath.setAttribute("disabled", "");
+      remotePath.style.display = "none";
+      iarForm.style.display = "none";
+    }
+  } else { /* IAR branch */
+    officialForm.style.display = "none";
+    remotePath.setAttribute("disabled", "");
+    remotePath.style.display = "none";
+    iarForm.style.display = "block";
   }
 }
 
+function modifySdkTypeHandler(): void {
+  const isMinimal = (getEl<RadioGroup>("sdkType") as unknown as { value: string }).value === "minimal";
+  Array.from(document.getElementsByClassName("toolchain-checkbox"))
+       .forEach(cb => {
+         if (isMinimal) { cb.removeAttribute("disabled"); }
+         else           { cb.setAttribute("disabled", ""); }
+       });
+}
+
+/*──────────────────── IAR‑SDK dropdown ───────────────────*/
+function initIarSdkDropdown(): void {
+  const sdkInput    = getEl<HTMLInputElement>("sdkInput");
+  const sdkDropdown = getEl("sdkDropdown");
+
+  /* show / hide */
+  ["focusin", "click"].forEach(evt => {
+    sdkInput.addEventListener(evt, () => {
+      sdkDropdown.style.display = "block";
+    });
+  });
+  sdkInput.addEventListener("focusout", () => {
+    setTimeout(() => { sdkDropdown.style.display = "none"; }, 80);
+  });
+
+  addDropdownItemListeners(sdkDropdown, sdkInput);
+}
+
+/*──────────── IMPORT payload to extension ────────────────*/
+function importHandler(): void {
+  const isZephyr = (getEl<RadioGroup>("sourceCategory") as unknown as { value: string }).value === "zephyr";
+  const srcType  = isZephyr
+      ? (getEl<RadioGroup>("srcTypeZephyr") as unknown as { value: string }).value
+      : "iar";
+
+  vscode.postMessage({
+    command:        "import",
+    srcType,
+    remotePath:     (getEl<TextField>("remotePath") as unknown as { value: string }).value,
+    workspacePath:  (getEl<TextField>("workspacePath") as unknown as { value: string }).value,
+    sdkType:        (getEl<RadioGroup>("sdkType") as unknown as { value: string }).value,
+    sdkVersion:     getEl<HTMLInputElement>("versionInput").getAttribute("data-value"),
+    listToolchains: getListSelectedToolchains(),
+    iarZephyrSdkPath:     getEl<HTMLInputElement>("sdkInput").getAttribute("data-value") || "",
+    iarToken:       (getEl<TextField>("iarToken") as unknown as { value: string }).value,
+  });
+}
+
+/*──────────────── dropdown helpers (Version) ─────────────*/
+function initVersionsDropdown(): void {
+  const versionInput    = getEl<HTMLInputElement>("versionInput");
+  const versionsDropdown = getEl("versionsDropdown");
+
+  ["focusin", "click"].forEach(evt => {
+    versionInput.addEventListener(evt, () => {
+      versionsDropdown.style.display = "block";
+    });
+  });
+  versionInput.addEventListener("focusout", () => {
+    setTimeout(() => { versionsDropdown.style.display = "none"; }, 80);
+  });
+
+  addDropdownItemListeners(versionsDropdown, versionInput);
+
+  /* pre‑select first version if any */
+  const firstItem = versionsDropdown.querySelector<HTMLElement>(".dropdown-item");
+  firstItem?.click();
+}
+
+/* generic item‑picker binding */
+function addDropdownItemListeners(dropdown: HTMLElement, input: HTMLInputElement) {
+  dropdown.querySelectorAll<HTMLElement>(".dropdown-item")
+    .forEach(item => {
+      item.addEventListener("pointerdown", () => {
+        if (item.dataset.value === "browse") return;   // handled elsewhere
+        input.value = item.dataset.label ?? "";
+        input.setAttribute("data-value", item.dataset.value ?? "");
+        input.dispatchEvent(new Event("input"));
+        dropdown.style.display = "none";
+      });
+    });
+}
+
+/*──────────── util for “minimal” toolchains ──────────────*/
 function getListSelectedToolchains(): string {
-  const tCheckboxes = document.getElementsByClassName('toolchain-checkbox') as HTMLCollectionOf<Checkbox>;
-  let listTools : string[] = [];
-  for(let tCheckbox of tCheckboxes) {
-    if(tCheckbox.getAttribute('current-checked') === 'true') {
-      console.log(tCheckbox);
-      listTools.push(`${tCheckbox.value}`);
-    }
-  }
-  return listTools.join(' ');
+  const cbs = document.getElementsByClassName("toolchain-checkbox") as HTMLCollectionOf<Checkbox>;
+  return Array.from(cbs)
+    .filter(cb => cb.getAttribute("current-checked") === "true")
+    .map(cb => (cb as unknown as { value: string }).value)
+    .join(" ");
 }
