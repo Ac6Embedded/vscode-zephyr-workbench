@@ -4,6 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.20]
+
+- Add "install python dependencies" button for west workspaces
+- Add new setting to prevent conflicts with CMake Tools
+
 ## [1.3.19]
 
 - Add support for IAR toolchain

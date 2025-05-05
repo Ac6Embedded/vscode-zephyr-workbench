@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import path from 'path';
 import * as vscode from 'vscode';
-import { westBoardsCommand, westInitCommand, westUpdateCommand } from './WestCommands';
+import { westBoardsCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand } from './WestCommands';
 import { WestWorkspace } from './WestWorkspace';
 import { ZephyrAppProject } from './ZephyrAppProject';
 import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProvider';
@@ -606,29 +606,29 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand(
-		  "zephyr-workbench-app-explorer.change-toolchain",
-		  async (node: ZephyrApplicationTreeItem) => {
-			if (!node.project) { return; }
-	  
-			const pick = await changeToolchainQuickStep(context, node.project);
-			if (!pick) { return; }
-	  
-			const cfg = vscode.workspace.getConfiguration(
-			  ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
-			  node.project.workspaceFolder
-			);
-	  
-			if (pick.tcKind === "zephyr_sdk") {
-			  await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "zephyr_sdk", vscode.ConfigurationTarget.WorkspaceFolder);
-			  await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY,       pick.sdkPath,  vscode.ConfigurationTarget.WorkspaceFolder);
-			  await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY,       undefined,     vscode.ConfigurationTarget.WorkspaceFolder);
-			} else {
-			  await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "iar",         vscode.ConfigurationTarget.WorkspaceFolder);
-			  await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY,       pick.iarPath, vscode.ConfigurationTarget.WorkspaceFolder);
+			"zephyr-workbench-app-explorer.change-toolchain",
+			async (node: ZephyrApplicationTreeItem) => {
+				if (!node.project) { return; }
+
+				const pick = await changeToolchainQuickStep(context, node.project);
+				if (!pick) { return; }
+
+				const cfg = vscode.workspace.getConfiguration(
+					ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
+					node.project.workspaceFolder
+				);
+
+				if (pick.tcKind === "zephyr_sdk") {
+					await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "zephyr_sdk", vscode.ConfigurationTarget.WorkspaceFolder);
+					await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY, pick.sdkPath, vscode.ConfigurationTarget.WorkspaceFolder);
+					await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+				} else {
+					await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "iar", vscode.ConfigurationTarget.WorkspaceFolder);
+					await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, pick.iarPath, vscode.ConfigurationTarget.WorkspaceFolder);
+				}
 			}
-		  }
 		)
-	  );		
+	);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-app-explorer.change-pristine", async (node: ZephyrApplicationTreeItem) => {
@@ -797,6 +797,13 @@ export function activate(context: vscode.ExtensionContext) {
 				terminal.show();
 			}
 		})
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-west-workspace.install-python-deps", async (node: WestWorkspaceTreeItem) => {
+			if (!node?.westWorkspace) { return; }
+			await westPackagesInstallCommand(node.westWorkspace.rootUri.fsPath);
+		}
+		)
 	);
 
 	context.subscriptions.push(
@@ -1667,6 +1674,38 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		})
 	);
+
+	// One-time setup to apply multiple CMake settings in one go
+	(async () => {
+		const cmakeConfig = vscode.workspace.getConfiguration('cmake');
+
+		const settingsToApply: [string, any][] = [
+			['ignoreCMakeListsMissing', true],
+			['configureOnOpen', false],
+			['enableAutomaticKitScan', false],
+			['sourceDirectory', '${workspaceFolder}/nonexistent']
+		];
+
+		// Check if any setting needs to be updated
+		const needsChange = settingsToApply.some(([key, desiredValue]) => {
+			const currentValue = cmakeConfig.get(key);
+			return currentValue !== desiredValue;
+		});
+
+		if (needsChange) {
+			const choice = await vscode.window.showInformationMessage(
+				'Zephyr Workbench recommends applying CMake settings to prevent popup conflicts (e.g., sourceDirectory). Apply now?',
+				'Yes', 'No'
+			);
+
+			if (choice === 'Yes') {
+				for (const [key, value] of settingsToApply) {
+					await cmakeConfig.update(key, value, vscode.ConfigurationTarget.Workspace);
+				}
+				vscode.window.showInformationMessage('Zephyr Workbench applied recommended CMake settings.');
+			}
+		}
+	})();
 
 	setDefaultSettings();
 }

@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://zephyr-workbench.com",
-  "version": "1.3.19",
+  "version": "1.3.20",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -575,6 +575,12 @@
         "category": "Zephyr Workbench/Workspace"
       },
       {
+        "command": "zephyr-workbench-west-workspace.install-python-deps",
+        "title": "Install Python Dependencies",
+        "icon": "$(package)",
+        "category": "Zephyr Workbench/Workspace"
+      },      
+      {
         "command": "zephyr-workbench-sdk-explorer.open-wizard",
         "title": "Add Toolchain",
         "icon": "$(add)",
@@ -1007,8 +1013,18 @@
           "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace"
         },
         {
+          "command": "zephyr-workbench-west-workspace.install-python-deps",
+          "group": "0@view/item/context@3",
+          "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace"
+        },
+        {
           "command": "zephyr-workbench-west-workspace.open-terminal",
           "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.install-python-deps",
+          "group": "inline@1",
           "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace"
         },
         {
