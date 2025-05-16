@@ -1,5 +1,6 @@
 import * as sevenBin from '7zip-bin';
 import { FileDownloader, getApi } from "@microsoft/vscode-file-downloader-api";
+import { installHostTools as doWinInstall } from "./hostToolsInstaller";
 import { ExecException, exec } from "child_process";
 import * as fs from 'fs';
 import * as node7zip from "node-7z";
@@ -11,6 +12,7 @@ import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPA
 import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs } from "./execUtils";
 import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSDK } from "./utils";
 import { getZephyrTerminal } from "./zephyrTerminalUtils";
+import { text } from 'stream/consumers';
 
 export let output = vscode.window.createOutputChannel("Installing Host Tools");
 
@@ -34,13 +36,13 @@ export function removeHostTools() {
   let hostToolsPath = path.join(getInternalDirRealPath(), 'tools');
   let venvPath = path.join(getInternalDirRealPath(), '.venv');
 
-  if(fs.existsSync(tmpPath)) {
+  if (fs.existsSync(tmpPath)) {
     fs.rmdirSync(tmpPath, { recursive: true });
   }
-  if(fs.existsSync(hostToolsPath)) {
+  if (fs.existsSync(hostToolsPath)) {
     fs.rmdirSync(hostToolsPath, { recursive: true });
   }
-  if(fs.existsSync(venvPath)) {
+  if (fs.existsSync(venvPath)) {
     fs.rmdirSync(venvPath, { recursive: true });
   }
 }
@@ -72,17 +74,17 @@ export async function autoSetHostToolsSettings(): Promise<void> {
 
     // Set default internal Zephyr SDK
     let sdk = await getInternalZephyrSDK();
-    if(sdk) {
+    if (sdk) {
       let zephyrSDKPaths: string[] | undefined = await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY);
-      if(!zephyrSDKPaths || zephyrSDKPaths.length === 0) {
+      if (!zephyrSDKPaths || zephyrSDKPaths.length === 0) {
         // If the setting is undefined
         let listSDKs: string[] = [];
         listSDKs.push(sdk.rootUri.fsPath);
         await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, listSDKs, vscode.ConfigurationTarget.Global);
       } else {
         // If the first entry is not the local internal sdk, push it first
-        if(zephyrSDKPaths.length > 0) {
-          if(zephyrSDKPaths.at(0) !== sdk.rootUri.fsPath) {
+        if (zephyrSDKPaths.length > 0) {
+          if (zephyrSDKPaths.at(0) !== sdk.rootUri.fsPath) {
             zephyrSDKPaths.unshift(sdk.rootUri.fsPath);
           }
           await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, zephyrSDKPaths, vscode.ConfigurationTarget.Global);
@@ -97,24 +99,24 @@ export async function setDefaultSettings(): Promise<void> {
   return new Promise(async (resolve) => {
     // Set default environment script
     let envPathSetting = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, "");
-    if(!(envPathSetting && envPathSetting.length > 0)) {
+    if (!(envPathSetting && envPathSetting.length > 0)) {
       let envPath = findDefaultEnvScriptPath();
       await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, envPath, vscode.ConfigurationTarget.Global);
     }
 
     // Set default internal Zephyr SDK
     let sdk = await getInternalZephyrSDK();
-    if(sdk) {
+    if (sdk) {
       let zephyrSDKPaths: string[] | undefined = await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY);
-      if(!zephyrSDKPaths || zephyrSDKPaths.length === 0) {
+      if (!zephyrSDKPaths || zephyrSDKPaths.length === 0) {
         // If the setting is undefined
         let listSDKs: string[] = [];
         listSDKs.push(sdk.rootUri.fsPath);
         await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, listSDKs, vscode.ConfigurationTarget.Global);
       } else {
         // If the first entry is not the local internal sdk, push it first
-        if(zephyrSDKPaths.length > 0) {
-          if(zephyrSDKPaths.at(0) !== sdk.rootUri.fsPath) {
+        if (zephyrSDKPaths.length > 0) {
+          if (zephyrSDKPaths.at(0) !== sdk.rootUri.fsPath) {
             zephyrSDKPaths.unshift(sdk.rootUri.fsPath);
           }
           await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, zephyrSDKPaths, vscode.ConfigurationTarget.Global);
@@ -129,11 +131,11 @@ export async function setOpenOCDSettings(): Promise<void> {
   let openocdExecPath = findDefaultOpenOCDPath();
   let openocdScriptsPath = findDefaultOpenOCDScriptPath();
 
-  if(openocdExecPath.length > 0) {
+  if (openocdExecPath.length > 0) {
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, openocdExecPath, vscode.ConfigurationTarget.Global);
   }
 
-  if(openocdScriptsPath.length > 0) {
+  if (openocdScriptsPath.length > 0) {
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, openocdScriptsPath, vscode.ConfigurationTarget.Global);
   }
 }
@@ -149,30 +151,28 @@ export async function verifyInstallScript(): Promise<void> {
  * TODO: better progress tracking and support cancel token
  * @param context 
  */
-export async function runInstallHostTools(context: vscode.ExtensionContext, 
-                                          skipSdk: boolean, 
-                                          listToolchains: string,
-                                          progress: vscode.Progress<{
-                                            message?: string | undefined;
-                                            increment?: number | undefined;
-                                          }>, 
-                                          token: vscode.CancellationToken) {
-  const activeTerminal = await getZephyrTerminal();
-  activeTerminal.show();
+export async function runInstallHostTools(context: vscode.ExtensionContext,
+  skipSdk: boolean,
+  listToolchains: string,
+  progress: vscode.Progress<{
+    message?: string | undefined;
+    increment?: number | undefined;
+  }>,
+  token: vscode.CancellationToken) {
 
   // To implement: token.onCancellationRequested()
 
   progress.report({ message: "Installing host tools into user directory" });
-  if(await checkHostTools()) {
+  if (await checkHostTools()) {
     progress.report({ message: "Host tools already installed", increment: 100 });
   } else {
     await installHostTools(context, skipSdk, listToolchains);
   }
 
   progress.report({ message: "Check if environment is well set up", increment: 80 });
-  if(await checkHostTools()) {
+  if (await checkHostTools()) {
     progress.report({ message: "Successfully Installing host tools", increment: 90 });
-    if(await checkEnvFile()) {
+    if (await checkEnvFile()) {
       autoSetHostToolsSettings();
       vscode.window.showInformationMessage("Setup Zephyr environment successful");
       progress.report({ message: "Auto-detect environment file", increment: 100 });
@@ -183,14 +183,14 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
   }
 }
 
-export async function forceInstallHostTools(context: vscode.ExtensionContext, 
-                                            skipSdk: boolean, 
-                                            listToolchains: string,
-                                            progress: vscode.Progress<{
-                                            message?: string | undefined;
-                                            increment?: number | undefined;
-                                          }>, 
-                                          token: vscode.CancellationToken) {
+export async function forceInstallHostTools(context: vscode.ExtensionContext,
+  skipSdk: boolean,
+  listToolchains: string,
+  progress: vscode.Progress<{
+    message?: string | undefined;
+    increment?: number | undefined;
+  }>,
+  token: vscode.CancellationToken) {
   const activeTerminal = await getZephyrTerminal();
   activeTerminal.show();
 
@@ -199,9 +199,9 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
   await installHostTools(context, skipSdk, listToolchains);
 
   progress.report({ message: "Check if environment is well set up", increment: 80 });
-  if(await checkHostTools()) {
+  if (await checkHostTools()) {
     progress.report({ message: "Successfully Installing host tools", increment: 90 });
-    if(await checkEnvFile()) {
+    if (await checkEnvFile()) {
       autoSetHostToolsSettings();
       vscode.window.showInformationMessage("Setup Zephyr environment successful");
       progress.report({ message: "Auto-detect environment file", increment: 100 });
@@ -213,20 +213,20 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
 }
 
 export async function getInstallHostToolsArgs(option: string, listSdks: string[]) {
-  if(option === 'skip') {
-    switch(process.platform) {
-      case 'linux': 
+  if (option === 'skip') {
+    switch (process.platform) {
+      case 'linux':
       case 'darwin':
         return '--skip-sdk';
       case 'win32':
         return '-SkipSdk ';
     }
-  } else if(option === 'all') {
+  } else if (option === 'all') {
     return '';
   } else {
-    if(listSdks) {
-      switch(process.platform) {
-        case 'linux': 
+    if (listSdks) {
+      switch (process.platform) {
+        case 'linux':
         case 'darwin':
           return `--select-sdk="${listSdks.join(' ')}"`;
         case 'win32':
@@ -238,7 +238,7 @@ export async function getInstallHostToolsArgs(option: string, listSdks: string[]
 
 export async function installHostTools(context: vscode.ExtensionContext, skipSdk: boolean = false, listTools: string = "") {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
-  if(installDirUri) {
+  if (installDirUri) {
     let installScript: string = "";
     let installCmd: string = "";
     let installArgs: string = "";
@@ -246,45 +246,44 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
     let shell: string = "";
 
     destDir = getInstallDirRealPath();
-    switch(process.platform) {
+    switch (process.platform) {
       case 'linux': {
         installScript = 'install.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        if(skipSdk) {
+        if (skipSdk) {
           installArgs += ' --skip-sdk';
-        } else if(listTools.length > 0) {
+        } else if (listTools.length > 0) {
           installArgs += ` --select-sdk="${listTools}"`;
         }
         installArgs += ' --portable';
         installArgs += ` ${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       case 'win32': {
-        installScript = 'install.ps1';
-        installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        if(skipSdk) {
-          installArgs += ' -SkipSdk ';
-        } else if(listTools.length > 0) {
-          installArgs += ` -SelectSdk "${listTools}"`;
-        }
-        installArgs += ' --Portable';
-        installArgs += ` -InstallDir ${destDir}`;
-        shell = 'powershell.exe';
-        break; 
-      }
+        output.show(true);
+        const opts = {
+            installDir: destDir,
+            portable: true,            
+            onlyCheck: false,
+            reinstallVenv: false,
+            log: (text : string) => { output.appendLine(text);}
+        };
+        await doWinInstall(opts);
+        return;           // <-- no shell command, job done
+    }
       case 'darwin': {
         installScript = 'install-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        if(skipSdk) {
+        if (skipSdk) {
           installArgs += ' --skip-sdk';
-        } else if(listTools.length > 0) {
+        } else if (listTools.length > 0) {
           installArgs += ` --select-sdk="${listTools}"`;
         }
         installArgs += ' --portable';
         installArgs += ` ${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       default: {
         vscode.window.showErrorMessage("Platform not supported !");
@@ -298,8 +297,8 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
       executable: shell,
       shellArgs: getShellArgs(shell),
     };
-    
-    if(process.platform === 'linux') {
+
+    if (process.platform === 'linux') {
       const options = {
         name: 'Zephyr Workbench Installer',
       };
@@ -327,7 +326,7 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
 
 export async function installVenv(context: vscode.ExtensionContext) {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
-  if(installDirUri) {
+  if (installDirUri) {
     let installScript: string = "";
     let installCmd: string = "";
     let installArgs: string = "";
@@ -335,27 +334,32 @@ export async function installVenv(context: vscode.ExtensionContext) {
     let shell: string = "";
 
     destDir = getInstallDirRealPath();
-    switch(process.platform) {
+    switch (process.platform) {
       case 'linux': {
         installScript = 'install.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` ${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       case 'win32': {
-        installScript = 'install.ps1';
-        installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += ` -InstallDir ${destDir}`;
-        shell = 'powershell.exe';
-        break; 
+        output.show(true);
+        await doWinInstall({
+          installDir: destDir,
+          portable: true,
+          onlyCheck: false,
+          reinstallVenv: true,
+          log: (text : string) => { output.appendLine(text);}
+      });
+      return;
       }
+
       case 'darwin': {
         installScript = 'install-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` ${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       default: {
         vscode.window.showErrorMessage("Platform not supported !");
@@ -368,8 +372,8 @@ export async function installVenv(context: vscode.ExtensionContext) {
       executable: shell,
       shellArgs: getShellArgs(shell),
     };
-    
-    if(process.platform === 'linux' || process.platform === 'darwin') {
+
+    if (process.platform === 'linux' || process.platform === 'darwin') {
       await execShellCommand('Installing Venv', installCmd + " --reinstall-venv " + installArgs, shellOpts);
     } else {
       await execShellCommand('Installing Venv', installCmd + " -ReinstallVenv " + installArgs, shellOpts);
@@ -381,7 +385,7 @@ export async function installVenv(context: vscode.ExtensionContext) {
 
 export async function verifyHostTools(context: vscode.ExtensionContext) {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
-  if(installDirUri) {
+  if (installDirUri) {
     let installScript: string = "";
     let installCmd: string = "";
     let installArgs: string = "";
@@ -389,27 +393,32 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
     let shell: string = "";
 
     destDir = getInstallDirRealPath();
-    switch(process.platform) {
+    switch (process.platform) {
       case 'linux': {
         installScript = 'install.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += `${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       case 'win32': {
-        installScript = 'install.ps1';
-        installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += `-InstallDir ${destDir}`;
-        shell = 'powershell.exe';
-        break; 
+        output.show(true);
+        await doWinInstall({
+          installDir: destDir,
+          portable: true,
+          onlyCheck: true,
+          reinstallVenv: false,
+          log: (text : string) => { output.appendLine(text);}
+      });
+      return;      
       }
+
       case 'darwin': {
         installScript = 'install-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += `${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       default: {
         vscode.window.showErrorMessage("Platform not supported !");
@@ -422,8 +431,8 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
       executable: shell,
       shellArgs: getShellArgs(shell),
     };
-    
-    if(process.platform === 'linux' || process.platform === 'darwin') {
+
+    if (process.platform === 'linux' || process.platform === 'darwin') {
       await execShellCommandWithEnv('Installing Host tools', installCmd + " --only-check " + installArgs, shellOpts);
     } else {
       await execShellCommandWithEnv('Installing Host tools', installCmd + " -OnlyCheck " + installArgs, shellOpts);
@@ -435,7 +444,7 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
 
 export async function installHostDebugTools(context: vscode.ExtensionContext, listTools: any[]) {
   let scriptsDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
-  if(scriptsDirUri) {
+  if (scriptsDirUri) {
     let installScript: string = "";
     let installCmd: string = "";
     let installArgs: string = "";
@@ -445,25 +454,25 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
     destDir = getInstallDirRealPath();
     installArgs += ` -D ${destDir}`;
 
-    switch(process.platform) {
+    switch (process.platform) {
       case 'linux': {
         installScript = 'install-debug-tools.sh';
         installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
         shell = 'bash';
-        break; 
+        break;
       }
       case 'win32': {
         installScript = 'install-debug-tools.ps1';
         installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
         shell = 'powershell.exe';
         installArgs += ' -Tools ';
-        break; 
+        break;
       }
       case 'darwin': {
         installScript = 'install-debug-tools-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
         shell = 'bash';
-        break; 
+        break;
       }
       default: {
         vscode.window.showErrorMessage("Platform not supported !");
@@ -479,7 +488,7 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
 
     // Run install commands for every tools
     let toolsSeparator = ' ';
-    if(process.platform === 'win32') {
+    if (process.platform === 'win32') {
       toolsSeparator = ',';
     }
 
@@ -495,35 +504,35 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
 export async function createLocalVenv(context: vscode.ExtensionContext, workbenchFolder: vscode.WorkspaceFolder): Promise<string | undefined> {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  if(installDirUri && envScript) {
+  if (installDirUri && envScript) {
     let installScript: string = "";
     let installCmd: string = "";
     let installArgs: string = "";
     let destDir: string = "";
     let shell: string = "";
-    
+
     destDir = workbenchFolder.uri.fsPath;
-    switch(process.platform) {
+    switch (process.platform) {
       case 'linux': {
         installScript = 'create_venv.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` ${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       case 'win32': {
         installScript = 'create_venv.ps1';
         installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` -InstallDir ${destDir}`;
         shell = 'powershell.exe';
-        break; 
+        break;
       }
       case 'darwin': {
         installScript = 'create_venv.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` ${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       default: {
         vscode.window.showErrorMessage("Platform not supported !");
@@ -539,7 +548,7 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
       executable: shell,
       shellArgs: getShellArgs(shell),
     };
-    
+
     await execShellCommand('Creating local virtual environment', installCmd + installArgs, shellOpts);
     return findVenvActivateScript(destDir);
 
@@ -551,12 +560,12 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
 
 export function findVenvActivateScript(destDir: string): string | undefined {
   let venvPath;
-  if(process.platform === 'linux' || process.platform === 'darwin') {
+  if (process.platform === 'linux' || process.platform === 'darwin') {
     venvPath = path.join(destDir, '.venv', 'bin', 'activate');
   } else {
     venvPath = path.join(destDir, '.venv', 'Scripts', 'activate.bat');
   }
-  if(fileExists(venvPath)) {
+  if (fileExists(venvPath)) {
     return venvPath;
   }
   return undefined;
@@ -565,35 +574,35 @@ export function findVenvActivateScript(destDir: string): string | undefined {
 export async function createLocalVenvSPDX(context: vscode.ExtensionContext, workbenchFolder: vscode.WorkspaceFolder): Promise<string | undefined> {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  if(installDirUri && envScript) {
+  if (installDirUri && envScript) {
     let installScript: string = "";
     let installCmd: string = "";
     let installArgs: string = "";
     let destDir: string = "";
     let shell: string = "";
-    
+
     destDir = workbenchFolder.uri.fsPath;
-    switch(process.platform) {
+    switch (process.platform) {
       case 'linux': {
         installScript = 'create_venv_spdx.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` ${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       case 'win32': {
         installScript = 'create_venv_spdx.ps1';
         installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` -InstallDir ${destDir}`;
         shell = 'powershell.exe';
-        break; 
+        break;
       }
       case 'darwin': {
         installScript = 'create_venv_spdx.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` ${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       default: {
         vscode.window.showErrorMessage("Platform not supported !");
@@ -609,7 +618,7 @@ export async function createLocalVenvSPDX(context: vscode.ExtensionContext, work
       executable: shell,
       shellArgs: getShellArgs(shell),
     };
-    
+
     await execShellCommand('Creating local virtual environment', installCmd + installArgs, shellOpts);
     return findVenvActivateScript(destDir);
 
@@ -621,12 +630,12 @@ export async function createLocalVenvSPDX(context: vscode.ExtensionContext, work
 
 export function findVenvSPDXActivateScript(destDir: string): string | undefined {
   let venvPath;
-  if(process.platform === 'linux' || process.platform === 'darwin') {
+  if (process.platform === 'linux' || process.platform === 'darwin') {
     venvPath = path.join(destDir, '.venv-spdx', 'bin', 'activate');
   } else {
     venvPath = path.join(destDir, '.venv-spdx', 'Scripts', 'activate.bat');
   }
-  if(fileExists(venvPath)) {
+  if (fileExists(venvPath)) {
     return venvPath;
   }
   return undefined;
@@ -638,14 +647,14 @@ export async function cleanupDownloadDir(context: vscode.ExtensionContext) {
 }
 
 export async function download(url: string, destDir: string, context: vscode.ExtensionContext, progress: vscode.Progress<{
-	message?: string | undefined;
-	increment?: number | undefined;
+  message?: string | undefined;
+  increment?: number | undefined;
 }>, token: vscode.CancellationToken): Promise<vscode.Uri> {
   const fileDownloader: FileDownloader = await getApi();
   const fileName = path.basename(url);
 
   const progressCallback = (downloadedBytes: number, totalBytes: number | undefined) => {
-    if(totalBytes) {
+    if (totalBytes) {
       const increment = (downloadedBytes / totalBytes) * 100;
       progress.report({
         message: `Downloading... ${Math.round(increment)}%`,
@@ -654,15 +663,15 @@ export async function download(url: string, destDir: string, context: vscode.Ext
   };
 
   const destFileUri: vscode.Uri | undefined = await fileDownloader.tryGetItem(fileName, context);
-  if(destFileUri) {
+  if (destFileUri) {
     const overwriteItem = 'Overwrite';
     const cancelItem = 'Use existing';
     const choice = await vscode.window.showInformationMessage(fileName + ' already exists, Do you want to download it again ?', overwriteItem, cancelItem);
-    if(choice === cancelItem) {
+    if (choice === cancelItem) {
       return destFileUri;
     }
   }
- 
+
   const file: vscode.Uri = await fileDownloader.downloadFile(
     vscode.Uri.parse(url),
     fileName,
@@ -736,7 +745,7 @@ export async function getFirstDirectoryName7z(filePath: string): Promise<string>
         folderNames.add(parts[0]);
       }
     });
-  
+
     stream.on('error', () => {
       reject();
     });
@@ -749,10 +758,10 @@ export async function getFirstDirectoryName7z(filePath: string): Promise<string>
 }
 
 export function getFirstItemOfSet(set: Set<string>) {
-  for(let item of set) {
-    if(item) {
-       return item;
-    }   
+  for (let item of set) {
+    if (item) {
+      return item;
+    }
   }
   return undefined;
 }
@@ -761,9 +770,9 @@ export async function extract(filePath: string, destPath: string, progress: vsco
   message?: string | undefined;
   increment?: number | undefined;
 }>, token: vscode.CancellationToken) {
-  if(filePath.includes(".7z")) {
+  if (filePath.includes(".7z")) {
     await extract7z(filePath, destPath, progress, token);
-  } else if(filePath.includes(".tar")) {
+  } else if (filePath.includes(".tar")) {
     await extractTar(filePath, destPath, progress, token);
   } else {
     return Promise.reject(new Error("Unsupported file format"));
@@ -774,24 +783,24 @@ export async function runSetupScript(filePath: string) {
   let setupScript = '';
   let cmd = '';
   let shell = '';
-  switch(process.platform) {
+  switch (process.platform) {
     case 'linux': {
       setupScript = 'setup.sh';
       cmd = `yes | ${path.join(filePath, setupScript)}`;
       shell = 'bash';
-      break; 
+      break;
     }
     case 'win32': {
       setupScript = 'setup.cmd';
       cmd = `${path.join(filePath, setupScript)} /c`;
       shell = 'powershell.exe';
-      break; 
+      break;
     }
     case 'darwin': {
       setupScript = 'setup.sh';
       cmd = `yes | ${path.join(filePath, setupScript)}`;
       shell = 'bash';
-      break; 
+      break;
     }
     default: {
       vscode.window.showErrorMessage("Platform not supported !");
@@ -804,23 +813,23 @@ export async function runSetupScript(filePath: string) {
     executable: shell,
     shellArgs: getShellArgs(shell),
   };
-  await execShellCommand('Setup SDK',cmd, shellOpts);
+  await execShellCommand('Setup SDK', cmd, shellOpts);
 }
 
 export function execCommand(command: string, options?: { cwd?: string }): Promise<string> {
-	return new Promise((resolve, reject) => {
-		exec(command, options, (error: ExecException | null, stdout: string | Buffer, stderr: string | Buffer) => {
-			if (error) {
-				reject(error);
-				return;
-			}
-			if (stderr) {
-				reject(new Error(stderr.toString()));
-				return;
-			}
-			resolve(stdout.toString());
-		});
-	});
+  return new Promise((resolve, reject) => {
+    exec(command, options, (error: ExecException | null, stdout: string | Buffer, stderr: string | Buffer) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      if (stderr) {
+        reject(new Error(stderr.toString()));
+        return;
+      }
+      resolve(stdout.toString());
+    });
+  });
 }
 
 export async function checkHomebrew(): Promise<boolean> {

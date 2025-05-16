@@ -4,6 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.21]
+
+- Refactor Windows host tools installation to use integrated TypeScript implementation
+- Optimize Sysbuild run process
+
 ## [1.3.20]
 
 - Add "install python dependencies" button for west workspaces

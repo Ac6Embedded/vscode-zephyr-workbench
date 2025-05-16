@@ -251,7 +251,14 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     const sysbuildEnabled =
       config && String(config.sysbuild).toLowerCase() === "true";
 
-    const sysbuildFlag = sysbuildEnabled ? " --sysbuild" : "";
+    const isFlashCmd =
+      _task.name === flashTask.label
+      || /\bflash\b/.test(args);
+
+    const sysbuildFlag =
+      sysbuildEnabled && !isFlashCmd
+        ? " --sysbuild"
+        : "";
 
     const fullCommand = `${cmd} ${args}${sysbuildFlag}`;
 
