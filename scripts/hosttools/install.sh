@@ -114,6 +114,20 @@ DL_DIR="$TMP_DIR/downloads"
 TOOLS_DIR="$INSTALL_DIR/tools"
 ENV_FILE="$INSTALL_DIR/env.sh"
 
+# ----------------------------------------
+# get_sources <tool> <os>
+#   extrait toutes les lignes "- https://…" du bloc YAML demandé
+# ----------------------------------------
+get_sources() {
+    local tool="$1" os="$2"
+    awk -v t="tool: $tool" -v os="$os:" '
+        $0 ~ t          {found=1; next}
+        found && $0 ~ "^ *os:"            {next}
+        found && $0 ~ "^ *"os            {in_os=1; next}
+        in_os && /source:/                {getline; while($0 ~ /^[[:space:]]*-/){print; getline}; exit}
+    ' "$YAML_FILE"
+}
+
 pr_title() {
     local width=40
     local border=$(printf '%*s' "$width" | tr ' ' '-')
@@ -140,54 +154,72 @@ pr_warn() {
     echo "WARN: $message"
 }
 
-# Function to download the file and check its SHA-256 hash
-download_and_check_hash() {
-    local source=$1
-    local expected_hash=$2
-    local filename=$3
-
-    # Full path where the file will be saved
-    local file_path="$DL_DIR/$filename"
-
-    # Download the file using wget
-    wget --no-check-certificate -q "$source" -O "$file_path"
-
-    # Check if the download was successful
-    if [ ! -f "$file_path" ]; then
-        pr_error 1 "Error: Failed to download the file."
-        exit 1
-    fi
-
-    # Compute the SHA-256 hash of the downloaded file
-    local computed_hash=$(sha256sum "$file_path" | awk '{print $1}')
-
-    # Compare the computed hash with the expected hash
-    if [ "$computed_hash" == "$expected_hash" ]; then
-        echo "DL: $filename downloaded successfully"
-    else
-        pr_error 2 "Error: Hash mismatch."
-        pr_error 2 "Expected: $expected_hash"
-        pr_error 2 "Computed: $computed_hash"
-        exit 2
-    fi
+# ----------------------------------------
+# internal helper: turn YAML value → array
+# ----------------------------------------
+to_url_array() {
+    # strip leading "- " if present, keep non-empty lines
+    echo "$1" | sed 's/^[[:space:]]*-\s*//' | awk 'NF'
 }
 
-# Function to download the file and check its SHA-256 hash
-download() {
-    local source=$1
-    local filename=$2
-
-    # Full path where the file will be saved
+# ----------------------------------------
+# download + hash check
+# $1 = source (string or YAML list)
+# $2 = expected SHA-256
+# $3 = filename
+# ----------------------------------------
+download_and_check_hash() {
+    local sources_raw="$1" expected_hash="$2" filename="$3"
     local file_path="$DL_DIR/$filename"
+    mkdir -p "$DL_DIR"
 
-    # Download the file using wget
-    wget --no-check-certificate -q "$source" -O "$file_path"
+    mapfile -t urls < <(to_url_array "$sources_raw")
 
-    # Check if the download was successful
-    if [ ! -f "$file_path" ]; then
-        pr_error 1 "Error: Failed to download the file."
-        exit 1
-    fi
+    for url in "${urls[@]}"; do
+        echo "Download $filename from $url"
+        rm -f "$file_path"
+        if wget --no-check-certificate -q "$url" -O "$file_path"; then
+            local digest
+            digest=$(sha256sum "$file_path" | awk '{print $1}')
+            if [[ "$digest" == "$expected_hash" ]]; then
+                echo "DL: $filename OK"
+                return 0
+            fi
+            echo "Hash mismatch - trying next mirror"
+        else
+            echo "Download failed - trying next mirror"
+        fi
+    done
+
+    pr_error 1 "All download links failed for $filename"
+    exit 1
+}
+
+# ----------------------------------------
+# download without hash
+# $1 = source (string or YAML list)
+# $2 = filename
+# ----------------------------------------
+download() {
+    local sources_raw="$1" filename="$2"
+    local file_path="$DL_DIR/$filename"
+    mkdir -p "$DL_DIR"
+
+    mapfile -t urls < <(to_url_array "$sources_raw")
+
+    for url in "${urls[@]}"; do
+        echo "Download $filename from $url"
+        rm -f "$file_path"
+        if wget --no-check-certificate -q "$url" -O "$file_path"; then
+            echo "DL: $filename OK"
+            return 0
+        else
+            echo "Download failed – trying next mirror"
+        fi
+    done
+
+    pr_error 1 "All download links failed for $filename"
+    exit 1
 }
 
 install_python_venv() {
@@ -281,11 +313,18 @@ if [[ $non_root_packages == true ]]; then
 
     pr_title "YQ"
     YQ="yq"
-    YQ_SOURCE=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'source' | awk -F": " '{print $2}')
-    YQ_SHA256=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'sha256' | awk -F": " '{print $2}')
+
+    YQ_SOURCE=$(get_sources yq "$SELECTED_OS")
+    YQ_SHA256=$(awk -v t="tool: yq" -v os="$SELECTED_OS:" '
+      $0 ~ t {f=1; next}
+      f && $0 ~ "^ *"os {getline; while($0 !~ /sha256:/) getline; print $2; exit}
+    ' "$YAML_FILE")
+
     download_and_check_hash "$YQ_SOURCE" "$YQ_SHA256" "$YQ"
+
+    chmod +x "$DL_DIR/$YQ"     
     YQ="$DL_DIR/$YQ"
-    chmod +x $YQ
+    export PATH="$DL_DIR:$PATH"
 
     # Start generating the manifest file
     echo "#!/bin/bash" > $MANIFEST_FILE
@@ -334,7 +373,7 @@ if [[ $non_root_packages == true ]]; then
       pr_title "OpenSSL"
       OPENSSL_FOLDER_NAME="openssl-1.1.1t"
       OPENSSL_ARCHIVE_NAME="${OPENSSL_FOLDER_NAME}.tar.bz2"
-      download_and_check_hash ${openssl[source]} ${openssl[sha256]} "$OPENSSL_ARCHIVE_NAME"
+      download_and_check_hash "${openssl[source]}" "${openssl[sha256]}" "$OPENSSL_ARCHIVE_NAME"
       tar xf "$DL_DIR/$OPENSSL_ARCHIVE_NAME" -C "$TOOLS_DIR"
       openssl_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME/usr/local/bin"
       openssl_lib_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME/usr/local/lib"
@@ -344,7 +383,7 @@ if [[ $non_root_packages == true ]]; then
       pr_title "Python"
       PYTHON_FOLDER_NAME="3.11.9"
       PYTHON_ARCHIVE_NAME="cpython-${PYTHON_FOLDER_NAME}-linux-x86_64.tar.gz"
-      download_and_check_hash ${python_portable[source]} ${python_portable[sha256]} "$PYTHON_ARCHIVE_NAME"
+      download_and_check_hash "${python_portable[source]}" "${python_portable[sha256]}" "$PYTHON_ARCHIVE_NAME"
       tar xf "$DL_DIR/$PYTHON_ARCHIVE_NAME" -C "$TOOLS_DIR"
       python_path="$INSTALL_DIR/tools/$PYTHON_FOLDER_NAME/bin"
       export PATH="$python_path:$PATH"
@@ -352,14 +391,14 @@ if [[ $non_root_packages == true ]]; then
 
     pr_title "Ninja"
     NINJA_ARCHIVE_NAME="ninja-linux.zip"
-    download_and_check_hash ${ninja[source]} ${ninja[sha256]} "$NINJA_ARCHIVE_NAME"
+    download_and_check_hash "${ninja[source]}" "${ninja[sha256]}" "$NINJA_ARCHIVE_NAME"
     mkdir -p "$TOOLS_DIR/ninja"
     unzip -o "$DL_DIR/$NINJA_ARCHIVE_NAME" -d "$TOOLS_DIR/ninja"
 
     pr_title "CMake"
     CMAKE_FOLDER_NAME="cmake-3.29.2-linux-x86_64"
     CMAKE_ARCHIVE_NAME="${CMAKE_FOLDER_NAME}.tar.gz"
-    download_and_check_hash ${cmake[source]} ${cmake[sha256]} "$CMAKE_ARCHIVE_NAME"
+    download_and_check_hash "${cmake[source]}" "${cmake[sha256]}" "$CMAKE_ARCHIVE_NAME"
     tar xf "$DL_DIR/$CMAKE_ARCHIVE_NAME" -C "$TOOLS_DIR"
 
     if [ $skip_sdk_bool = false ]; then
@@ -392,7 +431,7 @@ if [[ $non_root_packages == true ]]; then
         done
       else
         ZEPHYR_SDK_ARCHIVE_NAME="zephyr-sdk-${SDK_VERSION}_linux-x86_64.tar.xz"
-        download_and_check_hash ${zephyr_sdk[source]} ${zephyr_sdk[sha256]} "$ZEPHYR_SDK_ARCHIVE_NAME"
+        download_and_check_hash "${zephyr_sdk[source]}" "${zephyr_sdk[sha256]}" "$ZEPHYR_SDK_ARCHIVE_NAME"
         tar xf "$DL_DIR/$ZEPHYR_SDK_ARCHIVE_NAME" -C "$INSTALL_DIR"
       fi
       

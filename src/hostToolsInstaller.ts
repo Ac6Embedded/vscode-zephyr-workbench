@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { rmSync } from "fs";
 import crypto from "crypto";
 import { pipeline } from "stream";
 import { spawn, execFileSync } from "child_process";
@@ -34,9 +35,22 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
   const DL = path.join(ROOT, "tmp", "dl");
   const VENV = path.join(ROOT, ".venv");
 
+  process.env.PATH = [
+    path.join(TOOLS, "git", "bin"),
+    path.join(TOOLS, "cmake", "bin"),
+    path.join(TOOLS, "dtc", "usr", "bin"),
+    path.join(TOOLS, "gperf", "bin"),
+    path.join(TOOLS, "ninja"),
+    path.join(TOOLS, "wget"),
+    path.join(TOOLS, "7zip"),
+    path.join(TOOLS, "python", "python-3.11.8.amd64"),
+    process.env.PATH
+  ].join(path.delimiter);
+
   const yamlPath = path.resolve(__dirname, "..", "scripts", "hosttools", "tools.yml");
   const yaml = YAML.parse(fs.readFileSync(yamlPath, "utf8"));
-  type Section = { tool: string; os: Record<string, { source: string; sha256: string }> };
+  type OsEntry = { source: string | string[]; sha256: string };
+  type Section = { tool: string; os: Record<string, OsEntry> };
   const sections: Section[] = [...(yaml.other_content || []), ...(yaml.zephyr_content || [])];
   const windowsTools = sections.filter(t => t.os?.windows);
 
@@ -57,17 +71,48 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
     logger("\n" + "-".repeat(width));
     logger(padded);
     logger("-".repeat(width));
-  }  
+  }
   function sha256(f: string) { return crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex"); }
 
   async function download(url: string, dst: string) {
     if (fs.existsSync(dst)) return;
+
     logger(chalk.gray(`⇣  ${url}`));
-    const r = await fetch(url);
-    if (!r.ok || !r.body) throw Error(r.statusText);
+    const res = await fetch(url);
+
+    // Important: force error on 404 or other bad status
+    if (!res.ok || !res.body) {
+      throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    }
+
     await fs.promises.mkdir(path.dirname(dst), { recursive: true });
-    await streamPipeline(r.body, fs.createWriteStream(dst));
+    await streamPipeline(res.body, fs.createWriteStream(dst));
   }
+
+
+  async function downloadWithFallback(urls: string[], dst: string) {
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+
+      logger(chalk.gray(`⇣  [${i + 1}/${urls.length}] ${url}`));
+
+      try {
+        await download(url, dst);
+        logger(chalk.green(`Download succeeded (mirror ${i + 1})`));
+        return;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger(chalk.yellow(`Download failed: ${msg}`));
+
+        // automatically delete the half-downloaded file, if any
+        try { if (fs.existsSync(dst)) fs.unlinkSync(dst); } catch { /* ignore */ }
+        // loop continues to the next mirror
+      }
+    }
+
+    throw new Error(`All mirrors failed for ${path.basename(dst)}`);
+  }
+
 
   function findFile(dir: string, name: string): string | undefined {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -105,33 +150,33 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
   /* quick check ---------------------------------------------------*/
   if (onlyCheck) {
     logLineCentered("Check Installed Packages");
-  
+
     const verInfo: Record<string, { exe: string; args: string[]; re: RegExp }> = {
-      python_portable:  { exe: "python\\python-3.11.8.amd64\\python.exe", args: ["--version"], re: /Python (\S+)/ },
-      cmake:            { exe: "cmake\\bin\\cmake.exe",                  args: ["--version"], re: /version (\S+)/ },
-      ninja:            { exe: "ninja\\ninja.exe",                       args: ["--version"], re: /^(\S+)/ },
-      git:              { exe: "git\\bin\\git.exe",                      args: ["--version"], re: /git version ([^\s]+)/ },
-      gperf:            { exe: "gperf\\bin\\gperf.exe",                  args: ["--version"], re: /GNU gperf (\S+)/ },
-      dtc:              { exe: "dtc\\usr\\bin\\dtc.exe",                 args: ["--version"], re: /Version: DTC (\S+)/ },
-      wget:             { exe: "wget\\wget.exe",                         args: ["--version"], re: /GNU Wget (\S+)/ },
-      seven_z_portable: { exe: "7zip\\7z.exe",                           args: [],            re: /7-Zip.*?(\d+\.\d+)/ },
-      zstd:             { exe: "zstd\\zstd.exe",                         args: ["--version"], re: /v?(\d+\.\d+\.\d+)/ }
+      python_portable: { exe: "python\\python-3.11.8.amd64\\python.exe", args: ["--version"], re: /Python (\S+)/ },
+      cmake: { exe: "cmake\\bin\\cmake.exe", args: ["--version"], re: /version (\S+)/ },
+      ninja: { exe: "ninja\\ninja.exe", args: ["--version"], re: /^(\S+)/ },
+      git: { exe: "git\\bin\\git.exe", args: ["--version"], re: /git version ([^\s]+)/ },
+      gperf: { exe: "gperf\\bin\\gperf.exe", args: ["--version"], re: /GNU gperf (\S+)/ },
+      dtc: { exe: "dtc\\usr\\bin\\dtc.exe", args: ["--version"], re: /Version: DTC (\S+)/ },
+      wget: { exe: "wget\\wget.exe", args: ["--version"], re: /GNU Wget (\S+)/ },
+      seven_z_portable: { exe: "7zip\\7z.exe", args: [], re: /7-Zip.*?(\d+\.\d+)/ },
+      zstd: { exe: "zstd\\zstd.exe", args: ["--version"], re: /v?(\d+\.\d+\.\d+)/ }
     };
-  
+
     const results: string[] = [];
     let missing = 0;
-  
+
     for (const tool of TOOL_ORDER) {
       const info = verInfo[tool];
       if (!info) continue;
-  
+
       const exePath = path.join(TOOLS, info.exe);
       if (!fs.existsSync(exePath)) {
         results.push(`${tool.padEnd(15)} ${chalk.red("[missing]")}`);
         missing++;
         continue;
       }
-  
+
       try {
         const out = execFileSync(exePath, info.args, { encoding: "utf8" });
         const match = info.re.exec(out.trim());
@@ -142,7 +187,7 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
         missing++;
       }
     }
-  
+
     results.forEach(line => logger(line));
     if (missing > 0) {
       logger(chalk.red(`\n${missing} tool(s) are missing or failed.`));
@@ -151,7 +196,7 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
       logger(chalk.green("\nAll specified packages are installed."));
       return;
     }
-  }  
+  }
 
   /* Python Zephyr requirements -----------------------------------------*/
   const reqFiles = [
@@ -210,12 +255,14 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
   /* install loop --------------------------------------------------*/
   for (const name of TOOL_ORDER) {
     const info = windowsTools.find(t => t.tool === name)!;
-    const { source, sha256: hash } = info.os.windows;
-    const dstFile = path.join(DL, path.basename(source));
+    const entry = info.os.windows;
+    const sourcesArr = Array.isArray(entry.source) ? entry.source : [entry.source];
+    const dstFile = path.join(DL, path.basename(sourcesArr[0]));
+    const { sha256: hash } = info.os.windows;
     const dstDir = path.join(TOOLS, name === "python_portable" ? "python" : name);
 
     logLine(`Installing ${name}`);
-    await download(source, dstFile);
+    await downloadWithFallback(sourcesArr, dstFile);
     if (hash && sha256(dstFile).toUpperCase() !== hash.toUpperCase())
       throw Error(`${name}: SHA256 mismatch`);
 
@@ -363,6 +410,13 @@ $env:PATH="$PSScriptRoot\\tools\\cmake\\bin;$PSScriptRoot\\tools\\dtc\\usr\\bin;
 . "$PSScriptRoot\\.venv\\Scripts\\Activate.ps1"
 `.trim();
   fs.writeFileSync(path.join(ROOT, "env.ps1"), ps1, "ascii");
+
+  // remove everything under ROOT/tmp
+  const tmpDir = path.join(ROOT, "tmp");
+  if (fs.existsSync(tmpDir)) {
+    rmSync(tmpDir, { recursive: true, force: true });
+    logger(chalk.gray(`Cleaned up temporary directory: ${tmpDir}`));
+  }
 
   logger(chalk.green("\nHost tools ready"));
 }
