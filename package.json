@@ -1536,7 +1536,7 @@
               },
               "env": {
                 "type": "object",
-                "markdownDescription": "Additional environment variables with the format \"name\" : \"value\"."
+                "markdownDescription": "Additional environment variables with the format \"name\" : \"value\"."
               }
             }
           }

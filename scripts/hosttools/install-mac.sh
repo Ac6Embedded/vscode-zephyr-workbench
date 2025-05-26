@@ -140,54 +140,64 @@ pr_warn() {
     echo "WARN: $message"
 }
 
-# Function to download the file and check its SHA-256 hash
-download_and_check_hash() {
-    local source=$1
-    local expected_hash=$2
-    local filename=$3
-
-    # Full path where the file will be saved
-    local file_path="$DL_DIR/$filename"
-
-    # Download the file using wget
-    wget --no-check-certificate -q "$source" -O "$file_path"
-
-    # Check if the download was successful
-    if [ ! -f "$file_path" ]; then
-        pr_error 1 "Error: Failed to download the file."
-        exit 1
-    fi
-
-    # Compute the SHA-256 hash of the downloaded file
-    local computed_hash=$(shasum -a 256 "$file_path" | awk '{print $1}')
-
-    # Compare the computed hash with the expected hash
-    if [ "$computed_hash" == "$expected_hash" ]; then
-        echo "DL: $filename downloaded successfully"
-    else
-        pr_error 2 "Error: Hash mismatch."
-        pr_error 2 "Expected: $expected_hash"
-        pr_error 2 "Computed: $computed_hash"
-        exit 2
-    fi
+to_url_array() {
+    echo "$1" | sed 's/^[[:space:]]*-\s*//' | awk 'NF'
 }
 
-# Function to download the file and check its SHA-256 hash
-download() {
-    local source=$1
-    local filename=$2
-
-    # Full path where the file will be saved
+# ----------------------------------------
+# download + hash check (mirrors)
+# $1 = source (string or YAML list)
+# $2 = expected SHA-256
+# $3 = filename
+# ----------------------------------------
+download_and_check_hash() {
+    local sources_raw="$1" expected_hash="$2" filename="$3"
     local file_path="$DL_DIR/$filename"
+    mkdir -p "$DL_DIR"
 
-    # Download the file using wget
-    wget --no-check-certificate -q "$source" -O "$file_path"
+    mapfile -t urls < <(to_url_array "$sources_raw")
+    for url in "${urls[@]}"; do
+        echo "Download $filename from $url"
+        rm -f "$file_path"
+        if curl -fsSL "$url" -o "$file_path"; then
+            local digest
+            digest=$(shasum -a 256 "$file_path" | awk '{print $1}')
+            if [[ "$digest" == "$expected_hash" ]]; then
+                echo "DL: $filename OK"
+                return 0
+            fi
+            echo "Hash mismatch - next mirror"
+        else
+            echo "Download failed - next mirror"
+        fi
+    done
+    pr_error 1 "All download links failed for $filename"
+    exit 1
+}
 
-    # Check if the download was successful
-    if [ ! -f "$file_path" ]; then
-        pr_error 1 "Error: Failed to download the file."
-        exit 1
-    fi
+# ----------------------------------------
+# download without hash (mirrors)
+# $1 = source (string or YAML list)
+# $2 = filename
+# ----------------------------------------
+download() {
+    local sources_raw="$1" filename="$2"
+    local file_path="$DL_DIR/$filename"
+    mkdir -p "$DL_DIR"
+
+    mapfile -t urls < <(to_url_array "$sources_raw")
+    for url in "${urls[@]}"; do
+        echo "Download $filename from $url"
+        rm -f "$file_path"
+        if curl -fsSL "$url" -o "$file_path"; then
+            echo "DL: $filename OK"
+            return 0
+        else
+            echo "Download failed – next mirror"
+        fi
+    done
+    pr_error 1 "All download links failed for $filename"
+    exit 1
 }
 
 install_python_venv() {

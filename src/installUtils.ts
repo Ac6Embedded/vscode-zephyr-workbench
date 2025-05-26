@@ -1,6 +1,7 @@
 import * as sevenBin from '7zip-bin';
 import { FileDownloader, getApi } from "@microsoft/vscode-file-downloader-api";
 import { installHostTools as doWinInstall } from "./hostToolsInstaller";
+import { installDebugTools } from './installDebugTools';
 import { ExecException, exec } from "child_process";
 import * as fs from 'fs';
 import * as node7zip from "node-7z";
@@ -263,15 +264,15 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
       case 'win32': {
         output.show(true);
         const opts = {
-            installDir: destDir,
-            portable: true,            
-            onlyCheck: false,
-            reinstallVenv: false,
-            log: (text : string) => { output.appendLine(text);}
+          installDir: destDir,
+          portable: true,
+          onlyCheck: false,
+          reinstallVenv: false,
+          log: (text: string) => { output.appendLine(text); }
         };
         await doWinInstall(opts);
-        return;           // <-- no shell command, job done
-    }
+        return;
+      }
       case 'darwin': {
         installScript = 'install-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
@@ -349,9 +350,9 @@ export async function installVenv(context: vscode.ExtensionContext) {
           portable: true,
           onlyCheck: false,
           reinstallVenv: true,
-          log: (text : string) => { output.appendLine(text);}
-      });
-      return;
+          log: (text: string) => { output.appendLine(text); }
+        });
+        return;
       }
 
       case 'darwin': {
@@ -408,9 +409,9 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
           portable: true,
           onlyCheck: true,
           reinstallVenv: false,
-          log: (text : string) => { output.appendLine(text);}
-      });
-      return;      
+          log: (text: string) => { output.appendLine(text); }
+        });
+        return;
       }
 
       case 'darwin': {
@@ -462,11 +463,12 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
         break;
       }
       case 'win32': {
-        installScript = 'install-debug-tools.ps1';
-        installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
-        shell = 'powershell.exe';
-        installArgs += ' -Tools ';
-        break;
+        const destDir = getInstallDirRealPath();
+        await installDebugTools(
+          listTools.map(t => t.tool),
+          destDir
+        );
+        return;
       }
       case 'darwin': {
         installScript = 'install-debug-tools-mac.sh';
@@ -488,9 +490,9 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
 
     // Run install commands for every tools
     let toolsSeparator = ' ';
-    if (process.platform === 'win32') {
-      toolsSeparator = ',';
-    }
+    // if (process.platform === 'win32') {
+    // toolsSeparator = ',';
+    // }
 
     const toolsCmdArg = listTools.map(tool => tool.tool).join(toolsSeparator);
     const installCmdArgs = `${installArgs} ${toolsCmdArg}`;
