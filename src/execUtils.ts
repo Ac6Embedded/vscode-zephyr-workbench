@@ -4,6 +4,7 @@ import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTI
 import { ChildProcess, ExecException, ExecOptions, SpawnOptions, SpawnOptionsWithoutStdio, exec, spawn } from 'child_process';
 
 let _channel: vscode.OutputChannel;
+const pyOCDOutput = vscode.window.createOutputChannel('pyOCD');
 
 export function concatCommands(shell: string, ...cmds: string[]): string {
   switch(shell) {
@@ -368,60 +369,62 @@ export async function getGitTags(gitUrl: string): Promise<string[]> {
   });
 }
 
+async function execPyOCD(cmd: string, cwd?: string): Promise<string> {
+  pyOCDOutput.show(true);
+  pyOCDOutput.clear();
+  let fullOutput = '';
 
-export async function getPyOCDTargets(): Promise<string[]> {
-  const pyOCDCmd = 'pyocd list --targets';
+  // await the Promise<ChildProcess>
+  const proc: ChildProcess = await execCommandWithEnv(cmd, cwd);
+
+  // now stream in real time
+  proc.stdout?.on('data', chunk => {
+    const text = chunk.toString();
+    fullOutput += text;
+    pyOCDOutput.appendLine(text);
+  });
+  proc.stderr?.on('data', chunk => {
+    const text = chunk.toString();
+    fullOutput += text;
+    pyOCDOutput.append(text);
+  });
+
+  // resolve/reject when it’s done
   return new Promise((resolve, reject) => {
-    execCommandWithEnv(pyOCDCmd, undefined, (error: any, stdout: string, stderr: any) => {
-      if (error) {
-        reject(`Error: ${stderr}`);
+    proc.on('error', err => {
+      pyOCDOutput.appendLine(`\n ${err.message}`);
+      reject(err);
+    });
+    proc.on('close', code => {
+      if (code === 0) {
+        resolve(fullOutput);
+      } else {
+        const err = new Error(`Process exited with code ${code}`);
+        pyOCDOutput.appendLine(`\n ${err.message}`);
+        reject(err);
       }
-
-      // Process the output and split into an array of supported targets names
-      const targets = stdout
-        .split('\n')
-        .slice(2)       // Skip header lines
-        .filter(line => line.trim().length > 0)
-        .map(line => line.trim().split(/\s+/)[0]);
-
-      resolve(targets);
     });
   });
 }
 
-export async function checkPyOCDTarget(targetName: string) {
-  let targets = await getPyOCDTargets();
-  return (targets.includes(targetName.trim()));
+export async function getPyOCDTargets(): Promise<string[]> {
+  const out = await execPyOCD('pyocd list --targets');
+  return out
+    .split('\n')
+    .slice(2)
+    .filter(l => l.trim())
+    .map(l => l.trim().split(/\s+/)[0]);
+}
+
+export async function checkPyOCDTarget(targetName: string): Promise<boolean> {
+  const targets = await getPyOCDTargets();
+  return targets.includes(targetName.trim());
 }
 
 export async function updatePyOCDPack(): Promise<string> {
-  const pyOCDUpdateCmd = 'pyocd pack update';
-  return new Promise((resolve, reject) => {
-    execCommandWithEnv(pyOCDUpdateCmd, undefined, (error: any, stdout: string, stderr: any) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      if (stderr) {
-          console.error(`stderr: ${stderr}`);
-      }
-      resolve(stdout);
-    });
-  });
+  return execPyOCD('pyocd pack update');
 }
 
 export async function installPyOCDTarget(targetName: string): Promise<string> {
-  const pyOCDInstallCmd = `pyocd pack install ${targetName}`;
-  return new Promise((resolve, reject) => {
-    execCommandWithEnv(pyOCDInstallCmd, undefined, (error: any, stdout: string, stderr: any) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      if (stderr) {
-          console.error(`stderr: ${stderr}`);
-      }
-      resolve(stdout);
-    });
-  });
+  return execPyOCD(`pyocd pack install ${targetName}`);
 }

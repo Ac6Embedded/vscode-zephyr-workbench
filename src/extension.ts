@@ -1675,38 +1675,41 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	// One-time setup to apply multiple CMake settings in one go
-	(async () => {
-		const cmakeConfig = vscode.workspace.getConfiguration('cmake');
+if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+  (async () => {
+    const cmakeConfig = vscode.workspace.getConfiguration('cmake');
 
-		const settingsToApply: [string, any][] = [
-			['ignoreCMakeListsMissing', true],
-			['configureOnOpen', false],
-			['enableAutomaticKitScan', false],
-			['sourceDirectory', '${workspaceFolder}/nonexistent']
-		];
+    const settingsToApply: [string, any][] = [
+      ['ignoreCMakeListsMissing', true],
+      ['configureOnOpen', false],
+      ['enableAutomaticKitScan', false],
+      ['sourceDirectory', '${workspaceFolder}/nonexistent']
+    ];
 
-		// Check if any setting needs to be updated
-		const needsChange = settingsToApply.some(([key, desiredValue]) => {
-			const currentValue = cmakeConfig.get(key);
-			return currentValue !== desiredValue;
-		});
+    // Check if any setting needs to be updated
+    const needsChange = settingsToApply.some(([key, desiredValue]) => {
+      const currentValue = cmakeConfig.get(key);
+      return currentValue !== desiredValue;
+    });
 
-		if (needsChange) {
-			const choice = await vscode.window.showInformationMessage(
-				'Zephyr Workbench recommends applying CMake settings to prevent popup conflicts (e.g., sourceDirectory). Apply now?',
-				'Yes', 'No'
-			);
+    if (needsChange) {
+      const choice = await vscode.window.showInformationMessage(
+        'Zephyr Workbench recommends applying CMake settings to prevent popup conflicts (e.g., sourceDirectory). Apply now?',
+        'Yes', 'No'
+      );
 
-			if (choice === 'Yes') {
-				for (const [key, value] of settingsToApply) {
-					await cmakeConfig.update(key, value, vscode.ConfigurationTarget.Workspace);
-				}
-				vscode.window.showInformationMessage('Zephyr Workbench applied recommended CMake settings.');
-			}
-		}
-	})();
-
+      if (choice === 'Yes') {
+        for (const [key, value] of settingsToApply) {
+          // target workspace-wide, not global or per-folder
+          await cmakeConfig.update(key, value, vscode.ConfigurationTarget.Workspace);
+        }
+        vscode.window.showInformationMessage(
+          'Zephyr Workbench applied recommended CMake settings.'
+        );
+      }
+    }
+  })();
+}
 	setDefaultSettings();
 }
 

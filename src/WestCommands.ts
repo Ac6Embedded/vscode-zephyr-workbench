@@ -78,7 +78,7 @@ export async function westPackagesInstallCommand(workspacePath: string): Promise
   };
 
   await execWestCommand(
-    "West – install Python dependencies for current workspace",
+    "West - install Python dependencies for current workspace",
     command,
     options
   );
