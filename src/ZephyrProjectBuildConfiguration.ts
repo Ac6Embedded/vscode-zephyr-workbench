@@ -126,7 +126,20 @@ export class ZephyrProjectBuildConfiguration {
   }
 
   getPyOCDTarget(parentProject: ZephyrProject): string | undefined {
-    const runnersYAMLFilepath = path.join(this.getBuildDir(parentProject), ZEPHYR_DIRNAME, 'runners.yaml');
+    let runnersYAMLFilepath = undefined;
+    const appFolderName = parentProject.workspaceContext.name;
+        const buildFolderPath = path.join(this.getBuildDir(parentProject));
+        // Check if that folder exists inside the build directory
+        const appNameDir = path.join(buildFolderPath, appFolderName);
+
+        if (fs.existsSync(appNameDir)) {
+          runnersYAMLFilepath = path.join(this.getBuildDir(parentProject), appFolderName, ZEPHYR_DIRNAME, 'runners.yaml');
+ 
+        } else {
+          runnersYAMLFilepath = path.join(this.getBuildDir(parentProject), ZEPHYR_DIRNAME, 'runners.yaml');
+        }
+
+
     if(fileExists(runnersYAMLFilepath)) {
       const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
       const data = yaml.parse(runnersYAMLFile);

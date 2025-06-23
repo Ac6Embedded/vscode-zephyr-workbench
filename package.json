@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://zephyr-workbench.com",
-  "version": "1.3.20",
+  "version": "1.3.21",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -457,6 +457,10 @@
         "title": "Zephyr Workbench: Debug"
       },
       {
+        "command": "zephyr-workbench.explorer.terminal",
+        "title": "Zephyr Workbench: Open Terminal"
+      },
+      {
         "command": "zephyr-workbench-app-explorer.remove",
         "title": "Remove",
         "icon": "$(remove)",
@@ -815,14 +819,18 @@
       "explorer/context": [
         {
           "command": "zephyr-workbench.explorer.build",
-          "group": "zephyr@997"
+          "group": "zephyr@996"
         },
         {
           "command": "zephyr-workbench.explorer.debug",
-          "group": "zephyr@998"
+          "group": "zephyr@997"
         },
         {
           "command": "zephyr-workbench.explorer.rebuild",
+          "group": "zephyr@998"
+        },
+        {
+          "command": "zephyr-workbench.explorer.terminal",
           "group": "zephyr@999"
         }
       ],

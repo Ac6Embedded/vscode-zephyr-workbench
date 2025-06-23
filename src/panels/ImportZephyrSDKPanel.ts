@@ -288,7 +288,7 @@ export class ImportZephyrSDKPanel {
 
     <div class="grid-group-div">
       <vscode-text-field id="iarToken" size="50" type="password">
-        Token:
+        IAR_LMS_BEARER_TOKEN:
       </vscode-text-field>
     </div>
   </form>
@@ -324,14 +324,16 @@ export class ImportZephyrSDKPanel {
   /*────────────────── PRIVATE: Webview → Extension ──────────────────*/
   private _setWebviewMessageListener(webview: vscode.Webview) {
     webview.onDidReceiveMessage(
-      (msg) => {
+      async (msg) => {
         switch (msg.command) {
           case "openLocationDialog":
             this.openLocationDialog(msg.id);
             return;
 
           case "import":
-            if (!checkParameters(msg)) return;
+            if (!(await checkParameters(msg))) {
+              return;
+            }
 
             const { srcType, workspacePath } = msg;
 
@@ -379,7 +381,7 @@ export class ImportZephyrSDKPanel {
 }
 
 /*────────────────────────── helpers ──────────────────────────*/
-function checkParameters(msg: any): boolean {
+export async function checkParameters(msg: any): Promise<boolean> {
   const { srcType, workspacePath } = msg;
 
   if (!workspacePath) {
@@ -411,8 +413,17 @@ function checkParameters(msg: any): boolean {
       return false;
     }
     if (!msg.iarToken) {
-      vscode.window.showErrorMessage("Missing Token, please enter it.");
-      return false;
+      const response = await vscode.window.showWarningMessage(
+      "No *IAR_LMS_BEARER_TOKEN* was supplied.\n\n" +
+      "Zephyr Workbench will use the IAR toolchain under its perpetual licence.\n\n" +
+      "Do you want to proceed?",
+        { modal: true },
+        "Continue"
+      );
+      if (response !== "Continue") {
+        // User clicked Cancel or closed the dialog
+        return false;
+      }
     }
   }
 

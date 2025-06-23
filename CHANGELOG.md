@@ -4,6 +4,13 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.21]
+
+- Optimize setting to prevent conflicts with CMake Tools
+- Optimize Sysbuild run process
+- Add new open terminal button from explorer
+- Display PyOCD messages
+
 ## [1.3.20]
 
 - Add "install python dependencies" button for west workspaces

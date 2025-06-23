@@ -398,6 +398,7 @@ export async function getZephyrProject(projectPath: string): Promise<ZephyrProje
       }
     }
   }
+  vscode.window.showInformationMessage(`${projectPath}` + " is not a Zephyr Workbench project");
   throw new Error(`Cannot find project ${projectPath}`);
 }
 

@@ -1,6 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import path from 'path';
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { westBoardsCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand } from './WestCommands';
 import { WestWorkspace } from './WestWorkspace';
@@ -210,6 +211,12 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench.explorer.rebuild', async (uri: vscode.Uri) => {
 			await vscode.commands.executeCommand('zephyr-workbench-app-explorer.clean.pristine', uri);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench.explorer.terminal', async (uri: vscode.Uri) => {
+			await vscode.commands.executeCommand('zephyr-workbench-app-explorer.open-terminal', uri);
 		})
 	);
 	context.subscriptions.push(
@@ -667,6 +674,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.open-terminal', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
+			let workspaceFolder: vscode.WorkspaceFolder | undefined;
+			let project: ZephyrProject | undefined;
 			if (node instanceof ZephyrApplicationTreeItem) {
 				if (node.project) {
 					if (node.project.configs && node.project.configs.length === 1) {
@@ -683,7 +692,30 @@ export function activate(context: vscode.ExtensionContext) {
 					terminal.show();
 				}
 			}
-
+			else if ((node as vscode.Uri).fsPath) {
+				workspaceFolder = vscode.workspace.getWorkspaceFolder(node as vscode.Uri) || undefined;
+				if (!workspaceFolder) {
+					vscode.window.showInformationMessage("No workspace folder found for the selected path.");
+					return;
+				}
+				const isWestWorkspace = WestWorkspace.isWestWorkspaceFolder(workspaceFolder);
+				if (isWestWorkspace) {
+					const westWorkspace = getWestWorkspace(workspaceFolder.uri.fsPath);
+					let terminal: vscode.Terminal = WestWorkspace.getTerminal(westWorkspace);
+					terminal.show();
+				}
+				if (workspaceFolder && !isWestWorkspace) {
+					project = await getZephyrProject(workspaceFolder.uri.fsPath);
+					if (project.configs && project.configs.length === 1) {
+						let terminal: vscode.Terminal = ZephyrProjectBuildConfiguration.getTerminal(project, project.configs[0]);
+						terminal.show();
+					}
+					else {
+						let terminal: vscode.Terminal = ZephyrProject.getTerminal(project);
+						terminal.show();
+					}
+				}
+			}
 		})
 	);
 	context.subscriptions.push(
@@ -1287,29 +1319,50 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.import-iar-sdk", async (iarZephyrSdkPath: string, token: string, iarPath?: string) => {
-			if (!iarPath || !token) {
-				vscode.window.showErrorMessage(
-					"Please provide both IAR SDK path and Token."
-				);
-				return;
+		vscode.commands.registerCommand(
+			"zephyr-workbench-sdk-explorer.import-iar-sdk",
+			async (
+				iarZephyrSdkPath: string,
+				token: string,
+				iarPath?: string
+			) => {
+				if (!iarPath) {
+					vscode.window.showErrorMessage(
+						"Please provide IAR SDK path."
+					);
+					return;
+				}
+
+				let candidate = iarPath;
+				if (path.basename(candidate).toLowerCase() === "arm") {
+					const parent = path.dirname(candidate);
+					if (fs.existsSync(path.join(parent, "common"))) {
+						candidate = parent;
+					}
+				}
+				iarPath = candidate;
+
+				if (!IARToolchain.isIarPath(iarPath)) {
+					vscode.window.showErrorMessage("The folder is not a valid IAR SDK.");
+					return;
+				}
+
+				if (!token) {
+					vscode.window.showInformationMessage("No IAR_LMS_BEARER_TOKEN provided. Using perpetual license.");
+				}
+
+				ImportZephyrSDKPanel.currentPanel?.dispose();
+
+				await registerIARToolchain({
+					zephyrSdkPath: iarZephyrSdkPath,
+					iarPath: iarPath,
+					token,
+				});
+
+				zephyrSdkProvider.refresh();
+				vscode.window.showInformationMessage("IAR toolchain imported.");
 			}
-			if (!IARToolchain.isIarPath(iarPath)) {
-				vscode.window.showErrorMessage("The folder is not a valid IAR SDK.");
-				return;
-			}
-
-			ImportZephyrSDKPanel.currentPanel?.dispose();
-
-			await registerIARToolchain({
-				zephyrSdkPath: iarZephyrSdkPath,
-				iarPath: iarPath,
-				token,
-			});
-
-			zephyrSdkProvider.refresh();
-			vscode.window.showInformationMessage("IAR toolchain imported.");
-		})
+		)
 	);
 
 	context.subscriptions.push(
@@ -1675,37 +1728,41 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	// One-time setup to apply multiple CMake settings in one go
-	(async () => {
-		const cmakeConfig = vscode.workspace.getConfiguration('cmake');
+	if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+		(async () => {
+			const cmakeConfig = vscode.workspace.getConfiguration('cmake');
 
-		const settingsToApply: [string, any][] = [
-			['ignoreCMakeListsMissing', true],
-			['configureOnOpen', false],
-			['enableAutomaticKitScan', false],
-			['sourceDirectory', '${workspaceFolder}/nonexistent']
-		];
+			const settingsToApply: [string, any][] = [
+				['ignoreCMakeListsMissing', true],
+				['configureOnOpen', false],
+				['enableAutomaticKitScan', false],
+				['sourceDirectory', '${workspaceFolder}/nonexistent']
+			];
 
-		// Check if any setting needs to be updated
-		const needsChange = settingsToApply.some(([key, desiredValue]) => {
-			const currentValue = cmakeConfig.get(key);
-			return currentValue !== desiredValue;
-		});
+			// Check if any setting needs to be updated
+			const needsChange = settingsToApply.some(([key, desiredValue]) => {
+				const currentValue = cmakeConfig.get(key);
+				return currentValue !== desiredValue;
+			});
 
-		if (needsChange) {
-			const choice = await vscode.window.showInformationMessage(
-				'Zephyr Workbench recommends applying CMake settings to prevent popup conflicts (e.g., sourceDirectory). Apply now?',
-				'Yes', 'No'
-			);
+			if (needsChange) {
+				const choice = await vscode.window.showInformationMessage(
+					'Zephyr Workbench recommends applying CMake settings to prevent popup conflicts (e.g., sourceDirectory). Apply now?',
+					'Yes', 'No'
+				);
 
-			if (choice === 'Yes') {
-				for (const [key, value] of settingsToApply) {
-					await cmakeConfig.update(key, value, vscode.ConfigurationTarget.Workspace);
+				if (choice === 'Yes') {
+					for (const [key, value] of settingsToApply) {
+						// target workspace-wide, not global or per-folder
+						await cmakeConfig.update(key, value, vscode.ConfigurationTarget.Workspace);
+					}
+					vscode.window.showInformationMessage(
+						'Zephyr Workbench applied recommended CMake settings.'
+					);
 				}
-				vscode.window.showInformationMessage('Zephyr Workbench applied recommended CMake settings.');
 			}
-		}
-	})();
+		})();
+	}
 
 	setDefaultSettings();
 }
