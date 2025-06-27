@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { fileExists, getBase64, getBoard, getListSamples, getListZephyrSDKs, getListIARs, getIarToolchainForSdk, getSample, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK } from "../utils";
+import { fileExists, getBase64, getBoard, getListSamples, getListZephyrSDKs, getListIARs, getIarToolchainForSdk, getSample, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils";
 import { ZephyrSDK, IARToolchain } from '../ZephyrSDK';
 import path from "path";
 
@@ -160,6 +160,14 @@ export class CreateZephyrAppPanel {
                   </div>
 
                   <div class="grid-group-div">
+                    <vscode-radio-group id="appTypeGroup" orientation="horizontal">
+                      <label slot="label">Application type:&nbsp;</label>
+                      <vscode-radio value="create" checked>Create new application</vscode-radio>
+                      <vscode-radio value="import">Import existing application</vscode-radio>
+                    </vscode-radio-group>
+                  </div>
+
+                  <div class="grid-group-div create-only">
                     <div class="grid-header-div">
                       <label for="listBoards">Select Sample project:</label>
                     </div>
@@ -178,7 +186,7 @@ export class CreateZephyrAppPanel {
                     </div>
                   </div>
 
-                  <div class="grid-group-div">
+                  <div class="grid-group-div create-only">
                     <div class="grid-value-div">
                       <vscode-text-field size="60" type="text" id="projectName" placeholder="Enter project name">Project Name:</vscode-text-field>
                     </div>
@@ -243,23 +251,71 @@ export class CreateZephyrAppPanel {
             }
 
             break;
-          case 'create':
-            checkCreateParameters(message);
-            let westWorkspace = getWestWorkspace(vscode.Uri.parse(message.westWorkspacePath, true).fsPath);
-            //let sdk = getZephyrSDK(vscode.Uri.parse(message.zephyrsdkPath, true).fsPath);
-            let   toolchain: ZephyrSDK | IARToolchain | undefined;
-            toolchain = getIarToolchainForSdk(message.zephyrSdkPath);
-            /* if not IAR, fall back to a classic Zephyr SDK */
-            if (!toolchain) {
-              toolchain = getZephyrSDK(vscode.Uri.parse(message.zephyrSdkPath, true).fsPath);
+
+          case "create": {
+            /* always present */
+            const projectLoc = message.projectParentPath;
+            const isCreate = message.appType === "create";
+
+            if (isCreate) {
+              if (!checkCreateParameters(message)) { return; }
+
+              const westWorkspace = getWestWorkspace(
+                vscode.Uri.parse(message.westWorkspacePath, true).fsPath);
+              const board = getBoard(message.boardYamlPath);
+              const sample = await getSample(message.samplePath);
+              const toolchain =
+                getIarToolchainForSdk(message.zephyrSdkPath) ??
+                getZephyrSDK(vscode.Uri.parse(message.zephyrSdkPath, true).fsPath);
+
+              vscode.commands.executeCommand(
+                "zephyr-workbench-app-explorer.create-app",
+                westWorkspace, sample, board, projectLoc,
+                message.projectName, toolchain, message.pristine);
+
+            } else {
+              const err = await validateProjectLocation(projectLoc);
+              if (err) { vscode.window.showErrorMessage(err); return; }
+
+              const hasBoard = !!message.boardYamlPath?.length;
+              const hasSdk = !!message.zephyrSdkPath?.length;
+              const hasWorkspace = !!message.westWorkspacePath?.length;
+
+              if (!hasBoard && !hasSdk && !hasWorkspace) {
+                /* local import – nothing else provided */
+                vscode.commands.executeCommand(
+                  "zephyr-workbench-app-explorer.import-local",
+                  projectLoc);
+                vscode.window.showInformationMessage("Importing project using existing project configuration.");
+                CreateZephyrAppPanel.currentPanel?.dispose();
+              }
+              const missing: string[] = [];
+              if (!hasWorkspace) missing.push("workspace");
+              if (!hasBoard) missing.push("board");
+              if (!hasSdk) missing.push("toolchain");
+
+              if (missing.length && missing.length < 3) {
+                vscode.window.showInformationMessage(
+                  `${missing.join(", ")} not provided, using existing project configuration.`);
+              }
+
+              /* resolve only what was provided */
+              const westWorkspace = hasWorkspace
+                ? getWestWorkspace(vscode.Uri.parse(message.westWorkspacePath, true).fsPath)
+                : undefined;
+              const board = hasBoard ? getBoard(message.boardYamlPath) : undefined;
+              const toolchain = hasSdk
+                ? (getIarToolchainForSdk(message.zephyrSdkPath) ??
+                  getZephyrSDK(vscode.Uri.parse(message.zephyrSdkPath, true).fsPath))
+                : undefined;
+
+              await vscode.commands.executeCommand(
+                "zephyr-workbench-app-explorer.import-app",
+                projectLoc, westWorkspace, board, toolchain);
+              CreateZephyrAppPanel.currentPanel?.dispose();
+              break;
             }
-            let board = getBoard(message.boardYamlPath);
-            let sample = await getSample(message.samplePath);
-            let projectName = message.projectName;
-            let projectLoc = message.projectParentPath;
-            let pristineMode = message.pristine;
-            vscode.commands.executeCommand("zephyr-workbench-app-explorer.create-app", westWorkspace, sample, board, projectLoc, projectName, toolchain, pristineMode);
-            break;
+          }
         }
       },
       undefined,
@@ -347,27 +403,29 @@ async function updateBoardImage(webview: vscode.Webview, boardYamlPath: string) 
 function checkCreateParameters(message: any) {
   if (message.westWorkspacePath.length === 0) {
     vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
-    return;
+    return false;
   }
 
-  if(message.zephyrSdkPath.length === 0) {
+  if (message.zephyrSdkPath.length === 0) {
     vscode.window.showErrorMessage('Missing Zephyr SDK, a SDK is required to provide toolchain to your project');
-    return;
+    return false;
   }
 
   if (message.projectName.length === 0) {
     vscode.window.showErrorMessage('The project name is empty or invalid');
-    return;
+    return false;
   }
 
   if (message.boardYamlPath.length === 0) {
     vscode.window.showErrorMessage('Missing target board');
-    return;
+    return false;
   }
 
   if (message.samplePath === 0) {
     vscode.window.showErrorMessage('Missing selected sample, it serves as base for your project');
-    return;
+    return false;
   }
+
+  return true;
 }
 

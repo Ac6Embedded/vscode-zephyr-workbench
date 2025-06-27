@@ -1583,7 +1583,7 @@ export function activate(context: vscode.ExtensionContext) {
 				await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK);
 				await createTasksJson(workspaceFolder);
 				await createExtensionsJson(workspaceFolder);
-				vscode.window.showInformationMessage(`Creating Application '${workspaceFolder.name}' done`);
+				vscode.window.showInformationMessage(`Importing Application '${workspaceFolder.name}' done`);
 			}
 		})
 	);

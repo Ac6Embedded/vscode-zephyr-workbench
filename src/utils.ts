@@ -398,7 +398,7 @@ export async function getZephyrProject(projectPath: string): Promise<ZephyrProje
       }
     }
   }
-  vscode.window.showInformationMessage(`${projectPath}` + " is not a Zephyr Workbench project");
+  vscode.window.showInformationMessage("This is not a Zephyr application " +`${projectPath}`);
   throw new Error(`Cannot find project ${projectPath}`);
 }
 
@@ -800,4 +800,10 @@ export function readZephyrSettings(buildDir: string): Record<string, string> {
     console.error(`Cannot read ${filePath}`);
   }
   return settings;
+}
+
+export async function validateProjectLocation(location: string) {
+  if(!fileExists(location)) {
+    return "Invalid project path.";
+  }
 }

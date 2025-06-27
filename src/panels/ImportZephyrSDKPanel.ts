@@ -288,7 +288,7 @@ export class ImportZephyrSDKPanel {
 
     <div class="grid-group-div">
       <vscode-text-field id="iarToken" size="50" type="password">
-        IAR_LMS_BEARER_TOKEN:
+        IAR LMS BEARER TOKEN:
       </vscode-text-field>
     </div>
   </form>
@@ -414,7 +414,7 @@ export async function checkParameters(msg: any): Promise<boolean> {
     }
     if (!msg.iarToken) {
       const response = await vscode.window.showWarningMessage(
-      "No *IAR_LMS_BEARER_TOKEN* was supplied.\n\n" +
+      "No IAR LMS BEARER TOKEN was supplied.\n\n" +
       "Zephyr Workbench will use the IAR toolchain under its perpetual licence.\n\n" +
       "Do you want to proceed?",
         { modal: true },
