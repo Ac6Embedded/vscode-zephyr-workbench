@@ -196,7 +196,7 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
 
   removeHostTools();
   progress.report({ message: "Reinstalling host tools into user directory" });
-  await installHostTools(context, skipSdk, listToolchains);
+  await installHostTools(context, true, listToolchains);
 
   progress.report({ message: "Check if environment is well set up", increment: 80 });
   if(await checkHostTools()) {
@@ -262,7 +262,7 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
       }
       case 'win32': {
         installScript = 'install.ps1';
-        installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        installCmd = `powershell -ExecutionPolicy Bypass --% -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         if(skipSdk) {
           installArgs += ' -SkipSdk ';
         } else if(listTools.length > 0) {

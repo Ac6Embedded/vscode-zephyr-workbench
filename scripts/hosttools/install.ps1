@@ -15,7 +15,7 @@ $ScriptPath = $MyInvocation.MyCommand.Path
 $ScriptDirectory = Split-Path -Parent $ScriptPath
 $YamlFilePath = "$ScriptDirectory\tools.yml"
 
-$ZinstallerVersion="0.7"
+$ZinstallerVersion="1.0"
 $ZinstallerMd5 = Get-FileHash -Path $ScriptPath -Algorithm MD5 | Select-Object -ExpandProperty Hash
 $ToolsYmlMd5 = Get-FileHash -Path $YamlFilePath -Algorithm MD5 | Select-Object -ExpandProperty Hash
 
@@ -131,7 +131,11 @@ function Install-PythonVenv {
 	Download-WithoutCheck "$RequirementsBaseUrl/requirements-build-test.txt" "requirements-build-test.txt"
 	Download-WithoutCheck "$RequirementsBaseUrl/requirements-base.txt" "requirements-base.txt"
 	Move-Item -Path "$DownloadDirectory/require*.txt" -Destination "$RequirementsDirectory"
-
+	
+	if (Test-Path -Path "$InstallDirectory\.venv") {
+		Remove-Item -Path "$InstallDirectory\.venv" -Recurse -Force
+	}
+	
     python -m venv "$InstallDirectory\.venv"
     . "$InstallDirectory\.venv\Scripts\Activate.ps1"
     python -m pip install setuptools wheel windows-curses west pyelftools --quiet
@@ -532,7 +536,6 @@ if (! $OnlyCheck -or $ReinstallVenv) {
         $WinPythonSetupFilename = "Winpython64.exe"
         Download-FileWithHashCheck $python_portable_array[0] $python_portable_array[1] $WinPythonSetupFilename
 
-        $WinPythonVersion = "3.11.8"
         $PythonInstallDirectory = "$ToolsDirectory\python"
 
         # Extract and wait
@@ -542,8 +545,8 @@ if (! $OnlyCheck -or $ReinstallVenv) {
         }
         #Rename the folder that starts with WPy64- to python
         Rename-Item -Path (Get-ChildItem -Directory -Filter "WPy64-*" -Path $ToolsDirectory | Select-Object -First 1).FullName -NewName "python"
-        Copy-Item -Path "$ToolsDirectory\python\python-${WinPythonVersion}.amd64\python.exe" -Destination "$ToolsDirectory\python\python-${WinPythonVersion}.amd64\python3.exe"
-        $PythonPath = "$ToolsDirectory\python\python-${WinPythonVersion}.amd64;$ToolsDirectory\python\python-${WinPythonVersion}.amd64\Scripts"
+        Copy-Item -Path "$ToolsDirectory\python\python\python.exe" -Destination "$ToolsDirectory\python\python\python3.exe"
+        $PythonPath = "$ToolsDirectory\python\python;$ToolsDirectory\python\python\Scripts"
     } else {
         $PythonSetupFilename = "python_installer.exe"
         Download-FileWithHashCheck $python_array[0] $python_array[1] $PythonSetupFilename
@@ -578,7 +581,8 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 	  
     Print-Title "Python VENV"
     Install-PythonVenv -InstallDirectory $InstallDirectory
-    
+
+# bat script  
 @"
 @echo off
 set "BASE_DIR=%~dp0"
@@ -613,6 +617,66 @@ if exist "%VENV_ACTIVATE_PATH%" (
     
 "@ | Out-File -FilePath "$InstallDirectory\env.bat" -Encoding ASCII
 
+#bash script
+@"
+#!/usr/bin/env bash
+
+# Resolve the directory this script lives in, even when sourced from zsh
+if [ -n "`${BASH_SOURCE-}" ]; then
+    _src="`${BASH_SOURCE[0]}"
+elif [ -n "`${ZSH_VERSION-}" ]; then
+    _src="`${(%):-%N}"
+else
+    _src="`$0"
+fi
+base_dir="`$(cd -- "`$(dirname -- "`${_src}")" && pwd -P)"
+echo "Base directory: `$base_dir"
+tools_dir="`$base_dir/tools"
+
+cmake_path="`$tools_dir/cmake/bin"
+dtc_path="`$tools_dir/dtc/usr/bin"
+gperf_path="`$tools_dir/gperf/bin"
+ninja_path="`$tools_dir/ninja"
+wget_path="`$tools_dir/wget"
+git_path="`$tools_dir/git/bin"
+python_path="`$tools_dir/python/python"
+seven_z_path="`$tools_dir/7-Zip"
+
+# keep whatever python_path was, but blank it out if the dir isn't there
+if [[ ! -d "`${python_path}" ]]; then
+    python_path=""
+fi
+
+if [[ ! -d "`${seven_z_path}" ]]; then
+    python_path=""
+fi
+
+export PATH="`$python_path:`$git_path:`$wget_path:`$ninja_path:`$gperf_path:`$dtc_path:`$cmake_path:`$seven_z_path:`$PATH"
+
+# Default virtual environment activation script path
+default_venv_activate_path="`$base_dir/.venv/Scripts/activate"
+
+# Use the provided PYTHON_VENV_ACTIVATE_PATH if set and not empty, otherwise use the default path
+if [[ -n "`$PYTHON_VENV_ACTIVATE_PATH" ]]; then
+    venv_activate_path="`$PYTHON_VENV_ACTIVATE_PATH"
+else
+    venv_activate_path="`$default_venv_activate_path"
+fi
+
+# Check if the activation script exists at the specified path
+if [[ -f "`$venv_activate_path" ]]; then
+    # Source the virtual environment activation script
+    source "`$venv_activate_path"
+    echo "Activated virtual environment at `$venv_activate_path"
+else
+    echo "Error: Virtual environment activation script not found at `$venv_activate_path."
+fi
+"@ | Out-File -FilePath "$InstallDirectory\env.sh" -Encoding ASCII
+
+# (optional) make it executable for WSL, Git-Bash, etc.
+try { & chmod +x "$InstallDirectory\env.sh" } catch { }
+
+# Powershell script  
 @"
 `$BaseDir = `"$`PSScriptRoot`"
 `$ToolsDir = `"$`BaseDir\tools`"

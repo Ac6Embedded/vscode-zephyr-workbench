@@ -15,7 +15,7 @@ reinstall_venv_bool=false
 portable=false
 INSTALL_DIR=""
 
-zinstaller_version="0.7"
+zinstaller_version="1.0"
 zinstaller_md5=$(md5 -q "$BASH_SOURCE")
 tools_yml_md5=$(md5 -q "$YAML_FILE")
 

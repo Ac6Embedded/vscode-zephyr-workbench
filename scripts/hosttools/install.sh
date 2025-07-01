@@ -15,7 +15,7 @@ reinstall_venv_bool=false
 portable=false
 INSTALL_DIR=""
 
-zinstaller_version="0.7"
+zinstaller_version="1.0"
 zinstaller_md5=$(md5sum "$BASH_SOURCE")
 tools_yml_md5=$(md5sum "$YAML_FILE")
 
@@ -342,7 +342,7 @@ if [[ $non_root_packages == true ]]; then
       export PATH="$openssl_path:$PATH"
 
       pr_title "Python"
-      PYTHON_FOLDER_NAME="3.11.9"
+      PYTHON_FOLDER_NAME="3.13.5"
       PYTHON_ARCHIVE_NAME="cpython-${PYTHON_FOLDER_NAME}-linux-x86_64.tar.gz"
       download_and_check_hash ${python_portable[source]} ${python_portable[sha256]} "$PYTHON_ARCHIVE_NAME"
       tar xf "$DL_DIR/$PYTHON_ARCHIVE_NAME" -C "$TOOLS_DIR"

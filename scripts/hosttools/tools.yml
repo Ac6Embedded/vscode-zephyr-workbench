@@ -102,19 +102,19 @@ zephyr_content:
 - tool: python
   os:
     windows:
-      source: https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
-      sha256: 5ee42c4eee1e6b4464bb23722f90b45303f79442df63083f05322f1785f5fdde
+      source: https://github.com/winpython/winpython/releases/download/16.6.20250620final/Winpython64-3.13.5.0dot.exe
+      sha256: 9f9488eca6aba8fbe75cccde84457b6753cb100a66a4c6c9116107907c4df096
     darwin:
       source: xxx
       sha256: xxx
 - tool: python_portable
   os:
     linux:
-      source: https://www.ac6-tools.com/downloads/zinstaller/tools/linux/cpython-3.11.9-linux-x86_64.tar.gz
-      sha256: 1229384bd7c4610b1ba4e80fd78f340bac3f9d8dac189d21105294da03475069
+      source: https://www.ac6-tools.com/downloads/zinstaller/tools/linux/cpython/cpython-3.13.5-linux-x86_64.tar.gz
+      sha256: fe36195e7a255d835b19d2faed8da42d46b34a79b9f03d69321730a7b19e68b1
     windows:
-      source: https://github.com/winpython/winpython/releases/download/7.1.20240203final/Winpython64-3.11.8.0dot.exe
-      sha256: 54c501574df21c3c1883fda4f5e8ff73883ede72844ae6700252143ecc024d47
+      source: https://github.com/winpython/winpython/releases/download/16.6.20250620final/Winpython64-3.13.5.0dot.exe
+      sha256: 9f9488eca6aba8fbe75cccde84457b6753cb100a66a4c6c9116107907c4df096
     darwin:
       source: xxx
       sha256: xxx

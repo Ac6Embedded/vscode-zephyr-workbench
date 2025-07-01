@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.23]
+
+- Update host tools to support newer Zephyr versions
+
 ## [1.3.22]
 
 - Add import option in "Create new application" tab

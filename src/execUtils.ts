@@ -128,6 +128,7 @@ export function getShellEchoCommand(shell: string): string {
 export function getShellClearCommand(shell: string): string {
   switch (shell) {
     case 'bash':
+    case 'zsh':
       return 'clear';
     case 'cmd.exe':
       return 'cls';

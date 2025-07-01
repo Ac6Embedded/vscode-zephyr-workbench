@@ -38,7 +38,7 @@ import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommand
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain } from './sdkUtils';
 import { setConfigQuickStep } from './setConfigQuickStep';
 import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfigTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder } from './utils';
+import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfigTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder, checkZinstallerVersion } from './utils';
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './SPDXCommands';
@@ -1025,61 +1025,73 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench.install-host-tools", async (force = false, skipSdk = false, listToolchains = "") => {
-			vscode.window.withProgress({
-				location: vscode.ProgressLocation.Notification,
-				title: "Installing host tools",
-				cancellable: true,
-			}, async (progress, token) => {
-				SDKManagerPanel.currentPanel?.dispose();
+		vscode.commands.registerCommand(
+			"zephyr-workbench.install-host-tools",
+			async (force = false,
+				skipSdk = false,
+				listToolchains = "") => {
 
-				if (!force) {
-					await runInstallHostTools(context, skipSdk, listToolchains, progress, token);
-				} else {
-					await forceInstallHostTools(context, skipSdk, listToolchains, progress, token);
-				}
+				return vscode.window.withProgress(
+					{
+						location: vscode.ProgressLocation.Notification,
+						title: "Installing host tools",
+						cancellable: true,
+					},
+					async (progress, token) => {
+						SDKManagerPanel.currentPanel?.dispose();
 
-				zephyrSdkProvider.refresh();
-				zephyrShortcutProvider.refresh();
-				zephyrToolsCommandProvider.refresh();
+						if (!force) {
+							await runInstallHostTools(
+								context, skipSdk, listToolchains, progress, token);
+						} else {
+							await forceInstallHostTools(
+								context, skipSdk, listToolchains, progress, token);
+						}
+
+						zephyrSdkProvider.refresh();
+						zephyrShortcutProvider.refresh();
+						zephyrToolsCommandProvider.refresh();
+					}
+				);
 			}
-			);
-		})
+		)
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench.install-host-tools.open-manager", async (force = false) => {
-			// FIXME: ByPass SDK Manager for now. Uncomment when ready
-			//SDKManagerPanel.render(context.extensionUri, force);
+		vscode.commands.registerCommand(
+			"zephyr-workbench.install-host-tools.open-manager",
+			async (force = false) => {
 
-			// TODO: When SDKManagerPanel will be used, remove this line 
-			if (process.platform === 'darwin') {
-				try {
-					const isHomebrewInstalled = await checkHomebrew();
-					if (isHomebrewInstalled) {
-						console.log('Homebrew is installed.');
-					} else {
-						vscode.window.showErrorMessage('Homebrew is not installed or not in your PATH. Please install it first.');
+				if (process.platform === "darwin") {
+					try {
+						if (!(await checkHomebrew())) {
+							vscode.window.showErrorMessage(
+								"Homebrew is not installed or not in your PATH. " +
+								"Please install it first.");
+							return;
+						}
+					} catch {
+						vscode.window.showErrorMessage(
+							"Homebrew is not installed or not in your PATH. " +
+							"Please install it first.");
 						return;
 					}
-				} catch (error) {
-					vscode.window.showErrorMessage('Homebrew is not installed or not in your PATH. Please install it first.');
-					return;
 				}
-			}
 
-			if (force) {
-				const choice = await showConfirmMessage("Are you certain you want to reinstall the host tools ?");
-				if (choice) {
-					vscode.commands.executeCommand('zephyr-workbench.install-host-tools', force, true, "");
-				} else {
-					return;
+				if (force) {
+					const yes = await showConfirmMessage(
+						"Are you sure you want to reinstall the host tools ?");
+					if (!yes) { return; }
 				}
-			} else {
-				vscode.commands.executeCommand('zephyr-workbench.install-host-tools', false, true, "");
-			}
 
-		})
+				return vscode.commands.executeCommand(
+					"zephyr-workbench.install-host-tools",
+					force,
+					true,
+					""
+				);
+			}
+		)
 	);
 
 	context.subscriptions.push(
@@ -1763,6 +1775,8 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		})();
 	}
+
+	checkZinstallerVersion(context).catch(console.error);
 
 	setDefaultSettings();
 }

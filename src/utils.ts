@@ -10,7 +10,7 @@ import { ZephyrSDK, IARToolchain } from "./ZephyrSDK";
 import { ZephyrSample } from "./ZephyrSample";
 import { getEnvVarFormat, getShell } from "./execUtils";
 import { checkHostTools } from "./installUtils";
-import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY } from './constants';
+import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY, ZINSTALLER_MINIMUM_VERSION } from './constants';
 import { ZephyrProject } from './ZephyrProject';
 import { getBoardsDirectories, westTmpBuildSystemCommand } from './WestCommands';
 import { checkOrCreateTask, ZephyrTaskProvider } from './ZephyrTaskProvider';
@@ -805,5 +805,51 @@ export function readZephyrSettings(buildDir: string): Record<string, string> {
 export async function validateProjectLocation(location: string) {
   if(!fileExists(location)) {
     return "Invalid project path.";
+  }
+}
+
+function versionAtLeast(current: string, minimum: string): boolean {
+  const a = current.split('.').map(Number);
+  const b = minimum.split('.').map(Number);
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+      const x = a[i] ?? 0;
+      const y = b[i] ?? 0;
+      if (x > y) {return true;}
+      if (x < y) {return false;}
+  }
+  return true;
+}
+
+export async function checkZinstallerVersion(
+  context: vscode.ExtensionContext)
+{
+  const versionFile = path.join(
+    getInternalDirRealPath(),
+    "zinstaller_version"
+  );
+
+  if (!fs.existsSync(versionFile)) { return; }
+
+  let current = "0";
+  try {
+    const txt = await fs.promises.readFile(versionFile, "utf8");
+    const m = /^Script Version:\s*([0-9.]+)/m.exec(txt);
+    if (m) { current = m[1]; }
+  } catch { return; }
+
+  if (versionAtLeast(current, ZINSTALLER_MINIMUM_VERSION)) { return; }
+
+
+  const answer = await vscode.window.showWarningMessage(
+    "Your host tools are outdated.",
+    "Reinstall Host Tools"
+  );
+
+  if (answer === "Reinstall Host Tools") {
+    await vscode.commands.executeCommand(
+      "zephyr-workbench.install-host-tools",
+      true 
+    );
   }
 }
