@@ -4,47 +4,46 @@ import path from 'path';
 import { fileExists, getWorkspaceFolder } from './utils';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from './constants';
 import { getBuildEnv, loadEnv } from './zephyrEnvUtils';
-import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalShell } from './execUtils';
+import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalShell, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from './execUtils';
 
 export class WestWorkspace {
   versionArray!: { [key: string]: string };
   manifestPath!: string;
   manifestFile!: string;
   zephyrBase!: string;
-  envVars: { [key:string]: any } = {
-    ARCH_ROOT:[],
-    SOC_ROOT:[],
-    BOARD_ROOT:[],
-    DTS_ROOT:[]
+  envVars: { [key: string]: any } = {
+    ARCH_ROOT: [],
+    SOC_ROOT: [],
+    BOARD_ROOT: [],
+    DTS_ROOT: []
   };
 
   static envVarKeys = ['ARCH_ROOT', 'SOC_ROOT', 'BOARD_ROOT', 'DTS_ROOT'];
 
   constructor(
-    public readonly name: string, 
-    public readonly rootUri: vscode.Uri) 
-  {
+    public readonly name: string,
+    public readonly rootUri: vscode.Uri) {
     // Parsing information from west config file
     const configData = this.parseConfig();
     this.manifestPath = configData['manifest']['path'];
     this.manifestFile = configData['manifest']['file'];
-    
-    if(configData['zephyr']) {
+
+    if (configData['zephyr']) {
       this.zephyrBase = configData['zephyr']['base'];
     } else {
       this.zephyrBase = 'zephyr';
     }
-    
+
     // Parsing full version
     this.versionArray = this.parseVersion();
 
     // Load settings
     this.loadSettings();
   }
-  
+
   parseConfig(): { [key: string]: { [key: string]: string } } {
     // If the config does not exists, assume missing information
-    if(!fileExists(this.westConfUri.fsPath)) {
+    if (!fileExists(this.westConfUri.fsPath)) {
       return {};
     }
 
@@ -78,7 +77,7 @@ export class WestWorkspace {
     let version: string = '';
 
     // If the config does not exists, assume missing information
-    if(!fileExists(this.versionUri.fsPath)) {
+    if (!fileExists(this.versionUri.fsPath)) {
       return {};
     }
 
@@ -90,20 +89,20 @@ export class WestWorkspace {
 
     let match: RegExpExecArray | null;
     while ((match = keyValuePattern.exec(versionContent)) !== null) {
-        const key = match[1].trim();
-        const value = match[2].trim();
-        ver[key] = value;
+      const key = match[1].trim();
+      const value = match[2].trim();
+      ver[key] = value;
     }
-    
+
     return ver;
   }
 
   loadSettings() {
     const workspaceFolder = getWorkspaceFolder(this.rootUri.fsPath);
-    if(workspaceFolder) {
-      for(let key of Object.keys(this.envVars)) {
+    if (workspaceFolder) {
+      for (let key of Object.keys(this.envVars)) {
         let values = loadEnv(workspaceFolder, key);
-        if(values) {
+        if (values) {
           this.envVars[key] = values;
         }
       }
@@ -111,21 +110,21 @@ export class WestWorkspace {
   }
 
   get version(): string {
-    if(!this.versionArray['VERSION_MAJOR']) {
+    if (!this.versionArray['VERSION_MAJOR']) {
       return 'No version found';
     }
 
     let version = `${this.versionArray['VERSION_MAJOR']}.${this.versionArray['VERSION_MINOR']}.${this.versionArray['PATCHLEVEL']}`;
-    if(this.versionArray['VERSION_TWEAK']) {
+    if (this.versionArray['VERSION_TWEAK']) {
       version += `+${this.versionArray['VERSION_TWEAK']}`;
     }
-    if(this.versionArray['EXTRAVERSION']) {
+    if (this.versionArray['EXTRAVERSION']) {
       version += `-${this.versionArray['EXTRAVERSION']}`;
     }
     return version;
   }
 
-  get westDirUri(): vscode.Uri  {
+  get westDirUri(): vscode.Uri {
     return vscode.Uri.joinPath(this.rootUri, '.west');
   }
 
@@ -187,25 +186,30 @@ export class WestWorkspace {
 
 
   private static openTerminal(westWorkspace: WestWorkspace): vscode.Terminal {
-    const shell = getTerminalShell();
+    const { path: shellPath, args: shellArgs } = getResolvedShell();
+    const shellType = classifyShell(shellPath);
     let opts: vscode.TerminalOptions = {
       name: westWorkspace.name + ' Terminal',
-      shellPath: `${shell}`,
+      shellPath: `${shellPath}`,
+      shellArgs: shellArgs,
       env: westWorkspace.buildEnv,
       cwd: westWorkspace.rootUri
     };
 
     const envVars = opts.env || {};
 
-    const echoCommand = getShellEchoCommand(shell);
-    const clearCommand = getShellClearCommand(shell);
+    const echoCommand = getShellEchoCommand(shellType);
+    const clearCommand = getShellClearCommand(shellType);
     const printEnvCommands = Object.entries(envVars).map(([key, value]) => {
-      return `${echoCommand} ${key}="${value}"`;
+      const v = (shellType === 'bash')
+        ? winToPosixPath(String(value))
+        : String(value);
+      return `${echoCommand} ${key}="${v}"`;
     });
-    const printEnvCommand = concatCommands(shell, ...printEnvCommands);
-    
-    const printHeaderCommand = concatCommands(shell,
-      `${clearCommand}`,  
+    const printEnvCommand = concatCommands(shellType, ...printEnvCommands);
+
+    const printHeaderCommand = concatCommands(shellType,
+      `${clearCommand}`,
       `echo "======= Zephyr Workbench Environment ======="`,
       `${printEnvCommand}`,
       `echo "============================================"`
@@ -216,31 +220,26 @@ export class WestWorkspace {
 
     return terminal;
   }
-  
+
   static getTerminal(westWorkspace: WestWorkspace): vscode.Terminal {
     const terminals = <vscode.Terminal[]>(<any>vscode.window).terminals;
-    for(let i=0; i<terminals.length; i++) {
+    for (let i = 0; i < terminals.length; i++) {
       const cTerminal = terminals[i];
-      if(cTerminal.name === westWorkspace.name + ' Terminal') {
+      if (cTerminal.name === westWorkspace.name + ' Terminal') {
         return cTerminal;
       }
     }
 
     let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-    if(!envScript) {
+    if (!envScript) {
       throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Ac6 Zephyr');
-    } 
-  
-    let terminal = WestWorkspace.openTerminal(westWorkspace);
-    const shell = getTerminalShell();
-    let srcEnvCmd = `. ${envScript}`;
-    if(shell === 'powershell.exe') {
-      envScript = envScript.replace(/%([^%]+)%/g, '${env:$1}');
-      envScript = envScript.replace('env.bat', 'env.ps1');
-      srcEnvCmd = `. ${envScript}`;
-    } else if(shell === 'cmd.exe'){
-      srcEnvCmd = `call ${envScript}`;
     }
+
+    let terminal = WestWorkspace.openTerminal(westWorkspace);
+    const { path: shellPath, args: shellArgs } = getResolvedShell();
+    const shellType = classifyShell(shellPath);
+    envScript = normalizePathForShell(shellType, envScript);
+    let srcEnvCmd = `. ${envScript}`;
     terminal.sendText(srcEnvCmd);
     return terminal;
   }

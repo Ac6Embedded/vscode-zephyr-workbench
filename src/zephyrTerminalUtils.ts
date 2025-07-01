@@ -1,60 +1,66 @@
-import * as vscode from "vscode";
-import { Terminal } from "vscode";
+import * as vscode from 'vscode';
+import { getShellExe, getResolvedShell } from './execUtils';
+
+/* detect Windows profile env (keeps file self-contained) */
+function getProfileEnv(): Record<string, string> | undefined {
+  if (process.platform !== 'win32') {
+    return undefined;
+  }
+
+  const termCfg = vscode.workspace.getConfiguration('terminal.integrated');
+  const profName = termCfg.get<string>('defaultProfile.windows');
+  const profiles = termCfg.get<any>('profiles.windows');
+
+  if (!profName || !profiles || !profiles[profName]) {
+    return undefined;
+  }
+
+  return profiles[profName].env as Record<string, string> | undefined;
+}
 
 export async function openZephyrTerminal(): Promise<vscode.Terminal> {
-  let shell: string = "";
-  switch(process.platform) {
-    case 'linux': {
-      shell = 'bash';
-      break; 
-    }
-    case 'win32': {
-      shell = 'cmd.exe';
-      break; 
-    }
-    case 'darwin': {
-      shell = 'bash';
-      break; 
-    }
-    default: {
-      shell = 'bash';
-      break; 
-    }
+
+  let shellPath  = 'bash'; 
+  let shellArgs: string[] | undefined;    
+
+  if (process.platform === 'win32') {
+    const resolved = getResolvedShell();
+    shellPath  = resolved.path;
+    shellArgs  = resolved.args;
   }
-  
-  let opts: vscode.TerminalOptions = {
-    name: "Zephyr BuildSystem Terminal",
-    shellPath: `${shell}`,
-    env: getZephyrEnvironment(),
+
+  const opts: vscode.TerminalOptions = {
+    name: 'Zephyr BuildSystem Terminal',
+    shellPath,
+    shellArgs,
+    env: {
+      ...getProfileEnv(),
+      ...getZephyrEnvironment()
+    }
   };
+
   const terminal = vscode.window.createTerminal(opts);
   return terminal;
 }
 
 export async function getZephyrTerminal(): Promise<vscode.Terminal> {
-  const terminals = <vscode.Terminal[]>(<any>vscode.window).terminals;
-  for(let i=0; i<terminals.length; i++) {
-    const cTerminal = terminals[i];
-    if(cTerminal.name === "Zephyr BuildSystem Terminal") {
-      return cTerminal;
+  const terms = (vscode.window as any).terminals as vscode.Terminal[];
+  for (const t of terms) {
+    if (t.name === 'Zephyr BuildSystem Terminal') {
+      return t;
     }
   }
-
-  return await openZephyrTerminal();
+  return openZephyrTerminal();
 }
 
-export async function runCommandTerminal(terminal: Terminal, command: string) {
-  if(command) {
-    terminal.sendText(command);
+export async function runCommandTerminal(t: vscode.Terminal, cmd: string) {
+  if (cmd) {
+    t.sendText(cmd);
   }
 }
 
-export function getZephyrEnvironment(): { [key: string]: string | null | undefined; } | undefined {
-  let env = process.env;
-
-	// env["TEST_ZEPHYR"] = "Shell variable";
-	// env["PATH"] = path.join("/newpath/test/", ":" + env["PATH"]);
-
-	return env;
+export function getZephyrEnvironment():
+  | { [key: string]: string | null | undefined }
+  | undefined {
+  return process.env;
 }
-
