@@ -8,7 +8,7 @@ import { ZephyrProject } from './ZephyrProject';
 import { ZephyrSDK } from './ZephyrSDK';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
-import { concatCommands, execShellCommandWithEnv, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand } from './execUtils';
+import { concatCommands, execShellCommandWithEnv, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive } from './execUtils';
 import { fileExists, getWestWorkspace, getZephyrSDK, normalizePath } from './utils';
 
 export function registerWestCommands(context: vscode.ExtensionContext): void {
@@ -208,7 +208,7 @@ export async function westDebugCommand(zephyrProject: ZephyrProject, westWorkspa
  * @returns 
  */
 export async function execWestCommand(cmdName: string, cmd: string, options: vscode.ShellExecutionOptions) {
-  await execShellCommandWithEnv(cmdName, cmd, options);
+  await execShellCommandWithEnvInteractive(cmdName, cmd, options);
 }
 
 

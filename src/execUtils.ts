@@ -15,7 +15,7 @@ import {
 let _channel: vscode.OutputChannel;
 const pyOCDOutput = vscode.window.createOutputChannel('pyOCD');
 
-/* ───────────── helpers ───────────── */
+/* helpers */
 
 export function concatCommands(shell: string, ...cmds: string[]): string {
   switch (shell) {
@@ -52,22 +52,21 @@ export function getShell(): string {
   return 'bash';
 }
 
-export function getResolvedShell():
-  { path: string; args?: string[] } {
+export function getResolvedShell(): { path: string; args?: string[] } {
 
   const prof = detectTerminalProfile();
   if (prof?.exe) {
     return { path: prof.exe, args: prof.args };
   }
 
-  if (vscode.env.shell) {                        
+  if (vscode.env.shell) {
     return { path: vscode.env.shell };
   }
 
   return {
     path: process.platform === 'win32'
-            ? 'C:\\Windows\\System32\\cmd.exe'
-            : '/bin/bash'
+      ? 'C:\\Windows\\System32\\cmd.exe'
+      : '/bin/bash'
   };
 }
 
@@ -106,6 +105,14 @@ export function normalizePathForShell(shellType: string, p: string): string {
   return out;
 }
 
+function normalisePathsInString(kind: string, text: string): string {
+  if (!text) { return text; }
+  if (kind === 'cmd.exe' || kind === 'powershell.exe') { return text; }
+
+  // crude but effective: replace every d:\foo\bar or C:\ with POSIX form
+  return text.replace(/\\/g, '/');
+}
+
 
 export function getTerminalShell(): string {
   const prof = detectTerminalProfile();
@@ -117,18 +124,17 @@ export function getTerminalShell(): string {
 
 function detectTerminalProfile():
   | {
-      kind: 'bash' | 'cmd.exe' | 'powershell.exe';
-      exe:  string;
-      args?: string[];
-      env?: Record<string, string>;
-    }
-  | undefined
-{
+    kind: 'bash' | 'cmd.exe' | 'powershell.exe';
+    exe: string;
+    args?: string[];
+    env?: Record<string, string>;
+  }
+  | undefined {
   if (process.platform !== 'win32') {
-    return undefined; 
+    return undefined;
   }
 
-  const termCfg  = vscode.workspace.getConfiguration('terminal.integrated');
+  const termCfg = vscode.workspace.getConfiguration('terminal.integrated');
   const profName = termCfg.get<string>('defaultProfile.windows');
   const profiles = termCfg.get<any>('profiles.windows');
 
@@ -137,19 +143,19 @@ function detectTerminalProfile():
   }
 
   const entry = profiles[profName];
-  const exe   = String(entry.path ?? '');
-  const low   = exe.toLowerCase();
+  const exe = String(entry.path ?? '');
+  const low = exe.toLowerCase();
 
   const kind =
-        low.includes('bash')       ? 'bash' :
-        low.includes('powershell') ? 'powershell.exe' :
-                                     'cmd.exe';
+    low.includes('bash') ? 'bash' :
+      low.includes('powershell') ? 'powershell.exe' :
+        'cmd.exe';
 
   return {
     kind,
     exe,
     args: entry.args as string[] | undefined,
-    env : entry.env  as Record<string,string>|undefined
+    env: entry.env as Record<string, string> | undefined
   };
 }
 
@@ -189,6 +195,9 @@ export function getShellArgs(shell: string): string[] {
 export function getShellNullRedirect(shell: string): string {
   switch (shell) {
     case 'bash':
+    case 'zsh':
+    case 'dash':
+    case 'fish':
       return '> /dev/null 2>&1';
     case 'cmd.exe':
       return '> NUL 2>&1';
@@ -282,6 +291,40 @@ export async function executeTask(task: vscode.Task): Promise<vscode.TaskExecuti
   });
 }
 
+export async function execShellCommandInteractive(
+  cmdName: string,
+  cmd: string,
+  options: vscode.ShellExecutionOptions = {}
+): Promise<vscode.Terminal> {
+
+  if (!cmd) {
+    throw new Error('Missing command to execute');
+  }
+
+  const shellPath = options.executable ?? getShellExe();      // helpers from your utils
+  const shellArgs   = options.shellArgs;
+  const terminalEnv = { ...process.env, ...options.env };
+
+  const termOpts: vscode.TerminalOptions = {
+    name: cmdName,
+    cwd: options.cwd,
+    env: terminalEnv,
+    shellPath,
+    shellArgs,
+    iconPath: new vscode.ThemeIcon('terminal')
+  };
+
+  const term = vscode.window.createTerminal(termOpts);
+  term.show(true);
+
+  term.sendText(cmd, true);
+
+  return term;
+}
+
+function isCygwin(shellPath: string): boolean {
+  return /\\cygwin[^\\]*\\bin\\bash.exe$/i.test(shellPath);
+}
 
 export async function execShellCommand(
   cmdName: string,
@@ -335,7 +378,7 @@ export async function execShellCommandWithEnv(
   const kind = getShell();
   const exe = getShellExe();
   options.executable = exe;
-  options.shellArgs = getShellArgs(kind);
+  // options.shellArgs = getShellArgs(kind);
 
   options.env = {
     ...getProfileEnv(),
@@ -347,6 +390,83 @@ export async function execShellCommandWithEnv(
   const cmdEnv = `${getShellSourceCommand(kind, envScript)} ${redirect}`;
   await execShellCommand(cmdName, concatCommands(kind, cmdEnv, cmd), options);
 }
+
+export async function execShellCommandWithEnvInteractive(
+  cmdName: string,
+  cmd: string,
+  options: vscode.ShellExecutionOptions = {}
+) {
+
+  const cfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY);
+  const envScriptRaw = cfg.get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+  const venvRaw = cfg.get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+
+  if (!envScriptRaw) {
+    throw new Error(
+      'Missing Zephyr environment script.',
+      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
+    );
+  }
+  if (venvRaw && !fileExists(venvRaw)) {
+    throw new Error(
+      'Invalid Python virtual environment.',
+      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}` }
+    );
+  }
+
+  const shellPath = options.executable ?? getShellExe();
+  const shellKind = classifyShell(shellPath);
+  let shellArgs = options.shellArgs;
+
+  if (!shellArgs && isCygwin(shellPath)) {
+    shellArgs = ['--login', '-i'];
+  }
+
+  const needsChere = isCygwin(shellPath);
+
+  const isPosixish =
+    shellKind === 'bash' || shellKind === 'zsh' ||
+    shellKind === 'dash' || shellKind === 'fish';
+
+  const norm = (p?: string) =>
+    p ? normalizePathForShell(shellKind, p) : p;
+
+  const envScript = normalizePathForShell(shellKind, envScriptRaw!);
+  const venvPath = venvRaw ? normalizePathForShell(shellKind, venvRaw!) : undefined;
+
+  if (isPosixish) {
+    cmd = normalisePathsInString(shellKind, cmd);
+    if (options.cwd) {
+      options.cwd = normalisePathsInString(shellKind, options.cwd);
+    }
+    if (options.env) {
+      for (const k of Object.keys(options.env)) {
+        const v = options.env[k];
+        if (typeof v === 'string') {
+          options.env[k] = normalisePathsInString(shellKind, v);
+        }
+      }
+    }
+  }
+
+  const redirect = getShellNullRedirect(shellKind);
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
+  const fullCmd = concatCommands(shellKind, cmdEnv, cmd);
+
+  options.env = {
+    ...(needsChere ? { CHERE_INVOKING: '1' } : {}),
+    ...getProfileEnv(),
+    ...options.env,
+    ...(venvPath ? { PYTHON_VENV_ACTIVATE_PATH: venvPath } : {})
+  };
+
+  return execShellCommandInteractive(cmdName, fullCmd, {
+    ...options,
+    executable: shellPath,
+    shellArgs
+  });
+}
+
 
 export async function execCommandWithEnv(
   cmd: string,
@@ -465,7 +585,17 @@ export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): Ch
   return spawn(concatCommands(kind, cmdEnv, cmd), options);
 }
 
-/* ───────────── git helpers ───────────── */
+export function getTerminalDefaultProfile(): string | undefined {
+  const termCfg = vscode.workspace.getConfiguration('terminal.integrated');
+
+  const key =
+    process.platform === 'win32'  ? 'defaultProfile.windows' :
+    process.platform === 'darwin' ? 'defaultProfile.osx'     :
+                                    'defaultProfile.linux';
+  return termCfg.get<string>(key);
+}
+
+/* git helpers */
 
 export async function getGitTags(gitUrl: string): Promise<string[]> {
   const gitCmd = `git ls-remote --tags ${gitUrl}`;
@@ -486,7 +616,7 @@ export async function getGitTags(gitUrl: string): Promise<string[]> {
   });
 }
 
-/* ───────────── pyOCD helpers ───────────── */
+/* pyOCD helpers */
 
 async function execPyOCD(cmd: string, cwd?: string): Promise<string> {
   pyOCDOutput.show(true);
