@@ -4,6 +4,14 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.24]
+
+- Add partial support for custom terminals (Git Bash, CygWin, zsh, etc.) — applies to "Open Terminal" and "Build"
+- Support for other features with custom terminals is still in progress
+- Update host tools install script to prevent issues with puncover
+- Fix for importing projects using "Import Zephyr Application"
+- Fix west using powershell
+
 ## [1.3.23]
 
 - Update host tools to support newer Zephyr versions
