@@ -141,8 +141,10 @@ export function fileExists(path: string): boolean {
   return fs.existsSync(path);
 }
 
-export function deleteFolder(path: string) {
-  fs.rmSync(path, { recursive: true });
+export function deleteFolder(dir: string): void {
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+  }
 }
 
 export function getBase64(imgPath: string): string {

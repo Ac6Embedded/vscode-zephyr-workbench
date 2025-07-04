@@ -34,12 +34,16 @@ export function concatCommands(shell: string, ...cmds: string[]): string {
 
 export function getEnvVarFormat(shell: string, env: string): string {
   switch (shell) {
+    // POSIX-like shells
     case 'bash':
-      return `\${${env}}`;
+    case 'zsh':
+    case 'dash':
+    case 'fish':
+      return `\\\${${env}}`;
     case 'cmd.exe':
       return `%${env}%`;
     case 'powershell.exe':
-      return `\${env:${env}}`;
+      return `$env:${env}`;
     default:
       return `$${env}`;
   }
@@ -87,21 +91,25 @@ export function classifyShell(shellPath: string):
 
 export function normalizePathForShell(shellType: string, p: string): string {
   let out = p;
+
   if (shellType === 'bash' || shellType === 'zsh' ||
-    shellType === 'dash' || shellType === 'fish') {
-    out = out.replace(/\.(bat|ps1)$/i, '.sh');
+      shellType === 'dash' || shellType === 'fish') {
+
+    out = out.replace(/\.(bat|ps1)$/i, '.sh')
+             .replace(/%(\w+)%/g, '${$1}');
+
   } else if (shellType === 'powershell.exe') {
-    out = out.replace(/\.(bat|sh)$/i, '.ps1');
+
+    out = out.replace(/\.(bat|sh)$/i, '.ps1')
+             .replace(/%(\w+)%/g, '$env:$1')
+             .replace(/\$\{(\w+)\}/g, '$env:$1');
   }
 
-  if (shellType === 'bash') {
+  if (shellType === 'bash' || shellType === 'zsh' ||
+      shellType === 'dash' || shellType === 'fish') {
     out = out.replace(/\\/g, '/');
-
-    if (/\s/.test(out)) {
-      out = `"${out}"`;
-    }
+    if (/\s/.test(out)) { out = `"${out}"`; }
   }
-
   return out;
 }
 
