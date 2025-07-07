@@ -383,7 +383,7 @@ export async function execShellCommandWithEnv(
     );
   }
 
-  const kind = getShell();
+  const shellKind = classifyShell(getShellExe());
   const exe = getShellExe();
   options.executable = exe;
   // options.shellArgs = getShellArgs(kind);
@@ -394,9 +394,9 @@ export async function execShellCommandWithEnv(
     ...(activatePath ? { PYTHON_VENV_ACTIVATE_PATH: activatePath } : {})
   };
 
-  const redirect = getShellNullRedirect(kind);
-  const cmdEnv = `${getShellSourceCommand(kind, envScript)} ${redirect}`;
-  await execShellCommand(cmdName, concatCommands(kind, cmdEnv, cmd), options);
+  const redirect = getShellNullRedirect(shellKind);
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
+  await execShellCommand(cmdName, concatCommands(shellKind, cmdEnv, cmd), options);
 }
 
 export async function execShellCommandWithEnvInteractive(
@@ -511,10 +511,12 @@ export async function execCommandWithEnv(
     shell: getShellExe()
   };
 
-  const kind = getShell();
-  const redirect = getShellNullRedirect(kind);
-  const cmdEnv = `${getShellSourceCommand(kind, envScript)} ${redirect}`;
-  return exec(concatCommands(kind, cmdEnv, cmd), options, cb);
+
+
+  const shellKind = classifyShell(getShellExe());
+  const redirect = getShellNullRedirect(shellKind);
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
+  return exec(concatCommands(shellKind, cmdEnv, cmd), options, cb);
 }
 
 export function execCommandWithEnvCB(
@@ -553,10 +555,10 @@ export function execCommandWithEnvCB(
   }
   options.shell = getShellExe();
 
-  const kind = getShell();
-  const redirect = getShellNullRedirect(kind);
-  const cmdEnv = `${getShellSourceCommand(kind, envScript)} ${redirect}`;
-  return exec(concatCommands(kind, cmdEnv, cmd), options, cb);
+  const shellKind = classifyShell(getShellExe());
+  const redirect = getShellNullRedirect(shellKind);
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
+  return exec(concatCommands(shellKind, cmdEnv, cmd), options, cb);
 }
 
 export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): ChildProcess {
@@ -587,10 +589,10 @@ export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): Ch
   };
   options.shell = getShellExe();
 
-  const kind = getShell();
-  const redirect = getShellNullRedirect(kind);
-  const cmdEnv = `${getShellSourceCommand(kind, envScript)} ${redirect}`;
-  return spawn(concatCommands(kind, cmdEnv, cmd), options);
+  const shellKind = classifyShell(getShellExe());
+  const redirect = getShellNullRedirect(shellKind);
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
+  return spawn(concatCommands(shellKind, cmdEnv, cmd), options);
 }
 
 export function getTerminalDefaultProfile(): string | undefined {
