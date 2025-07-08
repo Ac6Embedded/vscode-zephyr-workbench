@@ -139,7 +139,6 @@ export function normalizeEnvVarsForShell(
   return out;
 }
 
-
 export function getTerminalShell(): string {
   const prof = detectTerminalProfile();
   if (prof) {

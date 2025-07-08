@@ -327,7 +327,7 @@ export async function westDebugCommand(zephyrProject: ZephyrProject, westWorkspa
  * @returns 
  */
 export async function execWestCommand(cmdName: string, cmd: string, options: vscode.ShellExecutionOptions) {
-  await execShellCommandWithEnvInteractive(cmdName, cmd, options);
+  await execShellCommandWithEnv(cmdName, cmd, options);
 }
 
 
@@ -517,8 +517,8 @@ export function execWestCommandWithEnvAsync(
   };
 
   if (parent instanceof ZephyrAppProject) {
-    const project       = parent;
-    const activeSdk     = getZephyrSDK(project.sdkPath);
+    const project = parent;
+    const activeSdk = getZephyrSDK(project.sdkPath);
     const westWorkspace = getWestWorkspace(project.westWorkspacePath);
     const buildEnv = project.getBuildConfiguration;
 
