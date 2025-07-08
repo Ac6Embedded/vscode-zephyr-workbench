@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { concatCommands, execShellCommand, getShell, getShellArgs, getShellSourceCommand } from "./execUtils";
+import { concatCommands, execShellCommand,   classifyShell, getShellExe,getShell, getShellArgs, getShellSourceCommand, normalizePathForShell, normalisePathsInString } from "./execUtils";
 import { ZephyrProject } from './ZephyrProject';
 import { findVenvSPDXActivateScript } from './installUtils';
 import { fileExists } from './utils';
@@ -19,25 +19,50 @@ export async function execCveBinToolCommand(spdxFile: string, zephyrProject: Zep
   await execSPDXCommand('cve-bin-tool', command, zephyrProject);
 }
 
-export async function execSPDXCommand(cmdName: string, cmd: string, zephyrProject: ZephyrProject) {
-  if(!cmd || cmd.length === 0) {
-    throw new Error('Missing command to execute', { cause: "missing.command" });
+export async function execSPDXCommand(
+  cmdName      : string,
+  cmd          : string,
+  zephyrProject: ZephyrProject
+) {
+
+  if (!cmd?.length) {
+    throw new Error('Missing command to execute', { cause: 'missing.command' });
   }
 
+  /* locate the venv’s activate script ------------------------------------------------ */
   let activateScript = findVenvSPDXActivateScript(zephyrProject.workspaceFolder.uri.fsPath);
-  if(!activateScript || !fileExists(activateScript)) {
-    throw new Error('Missing SPDX tools, please install the dependencies', { cause: "missing.command" });
+  if (!activateScript || !fileExists(activateScript)) {
+    throw new Error(
+      'Missing SPDX tools, please install the dependencies',
+      { cause: 'missing.spdx.tools' }
+    );
   }
 
-  const shell: string = getShell();
-  const shellArgs: string[] = getShellArgs(shell);
-  let options: vscode.ShellExecutionOptions = {
-    cwd: zephyrProject.folderPath,
-    executable: shell,
-    shellArgs: shellArgs
+  /* detect & classify current shell -------------------------------------------------- */
+  const shellExe  = getShellExe();
+  const shellKind = classifyShell(shellExe);
+  const shellArgs = getShellArgs(shellKind);
+
+  /* path conversions for POSIX-ish shells on Windows --------------------------------- */
+  const posixish = ['bash', 'zsh', 'dash', 'fish'].includes(shellKind);
+
+  if (posixish) {
+    activateScript = normalizePathForShell(shellKind, activateScript);
+    cmd            = normalisePathsInString(shellKind, cmd);
+  }
+
+  /* build ShellExecution options ----------------------------------------------------- */
+  const options: vscode.ShellExecutionOptions = {
+    cwd       : zephyrProject.folderPath,
+    executable: shellExe,
+    shellArgs
   };
 
-  // Prepend environment script before any command
-  let cmdEnv = getShellSourceCommand(shell, activateScript);
-  await execShellCommand(cmdName, concatCommands(shell, cmdEnv, cmd), options);
-} 
+  /* prepend ‘source <activate>’ and run ---------------------------------------------- */
+  const cmdEnv = getShellSourceCommand(shellKind, activateScript);
+  await execShellCommand(
+    cmdName,
+    concatCommands(shellKind, cmdEnv, cmd),
+    options
+  );
+}

@@ -81,11 +81,19 @@ function install_python_venv() {
     pr_title "Install SPDX tools"
 
     python3 -m venv "$install_directory/.venv-spdx"
-    source "$install_directory/.venv-spdx/bin/activate"
-    python3 -m pip install ntia-conformance-checker
-    python3 -m pip install cve-bin-tool
-    python3 -m pip install sbom2doc
 
+    if [ -f "$install_directory/.venv-spdx/bin/activate" ]; then
+        source "$install_directory/.venv-spdx/bin/activate"
+    elif [ -f "$install_directory/.venv-spdx/Scripts/activate" ]; then
+        source "$install_directory/.venv-spdx/Scripts/activate"
+    else
+        echo "ERROR: Cannot find activate script in .venv-spdx" >&2
+        return 1
+    fi
+
+    python3 -m pip install ntia-conformance-checker \
+                         cve-bin-tool \
+                         sbom2doc
 }
 
 install_python_venv "$INSTALL_DIR"
