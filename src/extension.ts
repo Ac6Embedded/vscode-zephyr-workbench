@@ -3,7 +3,7 @@
 import path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { westBoardsCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBuildCommand } from './WestCommands';
+import { westBoardsCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBuildCommand, execWestCommandWithEnvAsync, westConfigCommand } from './WestCommands';
 import { WestWorkspace } from './WestWorkspace';
 import { ZephyrAppProject } from './ZephyrAppProject';
 import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProvider';
@@ -16,7 +16,7 @@ import { changeEnvVarQuickStep, toggleSysbuild } from './changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
 import { ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
-import { executeTask, getTerminalDefaultProfile } from './execUtils';
+import { execShellTaskWithEnvAndWait, executeTask, getTerminalDefaultProfile } from './execUtils';
 import { importProjectQuickStep } from './importProjectQuickStep';
 import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools } from './installUtils';
 import { generateWestManifest } from './manifestUtils';
@@ -42,6 +42,7 @@ import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfi
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './SPDXCommands';
+import { exec } from 'child_process';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -169,8 +170,8 @@ export function activate(context: vscode.ExtensionContext) {
 			if (!profile) {
 				await executeConfigTask('West Build', node, configName);
 			}
-			
-			if (node instanceof ZephyrApplicationTreeItem && profile){
+
+			if (node instanceof ZephyrApplicationTreeItem && profile) {
 				const westWorkspace = getWestWorkspace(node.project.westWorkspacePath);
 				westBuildCommand(node.project, westWorkspace);
 			}
@@ -247,7 +248,7 @@ export function activate(context: vscode.ExtensionContext) {
 			else {
 				await executeConfigTask('West Rebuild', node, configName);
 			}
-			
+
 		})
 	);
 	context.subscriptions.push(
@@ -289,17 +290,55 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.guiconfig-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			await executeConfigTask('Gui config', node);
+			const profile = getTerminalDefaultProfile();
+
+			if (!profile) {
+				await executeConfigTask('Gui config', node);
+				return;
+			}
+
+			if (node instanceof ZephyrConfigTreeItem && profile) {
+				const westWorkspace = getWestWorkspace(node.project.westWorkspacePath);
+				westConfigCommand(node.project, westWorkspace, "guiconfig");
+			}
+			else if (node instanceof ZephyrApplicationTreeItem && profile) {
+				const westWorkspace = getWestWorkspace(node.project.westWorkspacePath);
+				westConfigCommand(node.project, westWorkspace, "guiconfig");
+			}
 		})
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.menuconfig-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			await executeConfigTask('Menuconfig', node);
+			const profile = getTerminalDefaultProfile();
+			if (!profile) {
+				await executeConfigTask('Menuconfig', node);
+				return;
+			}
+			if (node instanceof ZephyrConfigTreeItem && profile) {
+				const westWorkspace = getWestWorkspace(node.project.westWorkspacePath);
+				westConfigCommand(node.project, westWorkspace, "menuconfig");
+			}
+			else if (node instanceof ZephyrApplicationTreeItem && profile) {
+				const westWorkspace = getWestWorkspace(node.project.westWorkspacePath);
+				westConfigCommand(node.project, westWorkspace, "menuconfig");
+			}
 		})
 	);
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.hardenconfig-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			await executeConfigTask('Harden Config', node);
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.hardenconfig-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {	
+			const profile = getTerminalDefaultProfile();
+			if (!profile) {
+				await executeConfigTask('Harden Config', node);
+				return;
+			}
+			if (node instanceof ZephyrConfigTreeItem && profile) {
+				const westWorkspace = getWestWorkspace(node.project.westWorkspacePath);
+				westConfigCommand(node.project, westWorkspace, "hardenconfig");
+			}
+			else if (node instanceof ZephyrApplicationTreeItem && profile) {
+				const westWorkspace = getWestWorkspace(node.project.westWorkspacePath);
+				westConfigCommand(node.project, westWorkspace, "hardenconfig");
+			}
 		})
 	);
 	context.subscriptions.push(
@@ -506,6 +545,7 @@ export function activate(context: vscode.ExtensionContext) {
 			let buildDir: string;
 			let source: any;
 			let workspaceFolder: vscode.WorkspaceFolder = node.project.workspaceFolder;
+			const profile = getTerminalDefaultProfile();
 			if (node instanceof ZephyrApplicationTreeItem) {
 				if (node.project) {
 					buildDir = 'build';
@@ -531,7 +571,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			try {
-				if (source) {
+				if (source && !profile) {
 					await executeConfigTask('Init SPDX', node);
 					await saveConfigSetting(workspaceFolder, source.name, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, appendBuildOutputMeta(source.westArgs));
 					msleep(200);
@@ -540,6 +580,16 @@ export function activate(context: vscode.ExtensionContext) {
 					msleep(200);
 					await executeConfigTask('Generate SPDX', node);
 				}
+				else if (source && profile) {
+					const westWorkspace = getWestWorkspace(node.project.westWorkspacePath);
+					const buildDir = vscode.Uri.file(node.project.configs[0].getBuildDir(node.project)).fsPath;
+					await execShellTaskWithEnvAndWait('SPDX init',`west spdx --init --build-dir "${buildDir}"`, { cwd: westWorkspace.rootUri.fsPath });
+					await saveConfigSetting(workspaceFolder, source.name, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, appendBuildOutputMeta(source.westArgs));
+					const extraArgs = appendBuildOutputMeta(source.westArgs);
+					await westBuildCommand(node.project, westWorkspace, extraArgs);
+					await saveConfigSetting(workspaceFolder, source.name, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, source.westArgs);
+					await execShellTaskWithEnvAndWait('SPDX generate',`west spdx --build-dir "${buildDir}"`,{ cwd: westWorkspace.rootUri.fsPath });
+				} 
 			} catch (error) {
 				vscode.window.showErrorMessage(`Error executing tasks: ${error}`);
 			}

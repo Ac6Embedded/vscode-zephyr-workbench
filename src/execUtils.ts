@@ -93,31 +93,30 @@ export function normalizePathForShell(shellType: string, p: string): string {
   let out = p;
 
   if (shellType === 'bash' || shellType === 'zsh' ||
-      shellType === 'dash' || shellType === 'fish') {
+    shellType === 'dash' || shellType === 'fish') {
 
     out = out.replace(/\.(bat|ps1)$/i, '.sh')
-             .replace(/%(\w+)%/g, '${$1}');
+      .replace(/%(\w+)%/g, '${$1}');
 
   } else if (shellType === 'powershell.exe') {
 
     out = out.replace(/\.(bat|sh)$/i, '.ps1')
-             .replace(/%(\w+)%/g, '$env:$1')
-             .replace(/\$\{(\w+)\}/g, '$env:$1');
+      .replace(/%(\w+)%/g, '$env:$1')
+      .replace(/\$\{(\w+)\}/g, '$env:$1');
   }
 
   if (shellType === 'bash' || shellType === 'zsh' ||
-      shellType === 'dash' || shellType === 'fish') {
+    shellType === 'dash' || shellType === 'fish') {
     out = out.replace(/\\/g, '/');
     if (/\s/.test(out)) { out = `"${out}"`; }
   }
   return out;
 }
 
-function normalisePathsInString(kind: string, text: string): string {
+export function normalisePathsInString(kind: string, text: string): string {
   if (!text) { return text; }
   if (kind === 'cmd.exe' || kind === 'powershell.exe') { return text; }
 
-  // crude but effective: replace every d:\foo\bar or C:\ with POSIX form
   return text.replace(/\\/g, '/');
 }
 
@@ -190,6 +189,9 @@ function getProfileEnv(): Record<string, string> | undefined {
 export function getShellArgs(shell: string): string[] {
   switch (shell) {
     case 'bash':
+    case 'zsh':
+    case 'dash':
+    case 'fish':
       return ['-c'];
     case 'cmd.exe':
       return ['/d', '/c'];
@@ -310,7 +312,7 @@ export async function execShellCommandInteractive(
   }
 
   const shellPath = options.executable ?? getShellExe();      // helpers from your utils
-  const shellArgs   = options.shellArgs;
+  const shellArgs = options.shellArgs;
   const terminalEnv = { ...process.env, ...options.env };
 
   const termOpts: vscode.TerminalOptions = {
@@ -383,7 +385,7 @@ export async function execShellCommandWithEnv(
     );
   }
 
-  const kind = getShell();
+  const shellKind = classifyShell(getShellExe());
   const exe = getShellExe();
   options.executable = exe;
   // options.shellArgs = getShellArgs(kind);
@@ -394,9 +396,9 @@ export async function execShellCommandWithEnv(
     ...(activatePath ? { PYTHON_VENV_ACTIVATE_PATH: activatePath } : {})
   };
 
-  const redirect = getShellNullRedirect(kind);
-  const cmdEnv = `${getShellSourceCommand(kind, envScript)} ${redirect}`;
-  await execShellCommand(cmdName, concatCommands(kind, cmdEnv, cmd), options);
+  const redirect = getShellNullRedirect(shellKind);
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
+  await execShellCommand(cmdName, concatCommands(shellKind, cmdEnv, cmd), options);
 }
 
 export async function execShellCommandWithEnvInteractive(
@@ -511,10 +513,10 @@ export async function execCommandWithEnv(
     shell: getShellExe()
   };
 
-  const kind = getShell();
-  const redirect = getShellNullRedirect(kind);
-  const cmdEnv = `${getShellSourceCommand(kind, envScript)} ${redirect}`;
-  return exec(concatCommands(kind, cmdEnv, cmd), options, cb);
+  const shellKind = classifyShell(getShellExe());
+  const redirect = getShellNullRedirect(shellKind);
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
+  return exec(concatCommands(shellKind, cmdEnv, cmd), options, cb);
 }
 
 export function execCommandWithEnvCB(
@@ -553,10 +555,10 @@ export function execCommandWithEnvCB(
   }
   options.shell = getShellExe();
 
-  const kind = getShell();
-  const redirect = getShellNullRedirect(kind);
-  const cmdEnv = `${getShellSourceCommand(kind, envScript)} ${redirect}`;
-  return exec(concatCommands(kind, cmdEnv, cmd), options, cb);
+  const shellKind = classifyShell(getShellExe());
+  const redirect = getShellNullRedirect(shellKind);
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
+  return exec(concatCommands(shellKind, cmdEnv, cmd), options, cb);
 }
 
 export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): ChildProcess {
@@ -587,19 +589,82 @@ export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): Ch
   };
   options.shell = getShellExe();
 
-  const kind = getShell();
-  const redirect = getShellNullRedirect(kind);
-  const cmdEnv = `${getShellSourceCommand(kind, envScript)} ${redirect}`;
-  return spawn(concatCommands(kind, cmdEnv, cmd), options);
+  const shellKind = classifyShell(getShellExe());
+  const redirect = getShellNullRedirect(shellKind);
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
+  return spawn(concatCommands(shellKind, cmdEnv, cmd), options);
+}
+
+export async function execShellTaskWithEnvAndWait(
+  cmdName: string,
+  cmd: string,
+  options: vscode.ShellExecutionOptions = {}
+): Promise<void> {
+
+  /* ── locate the Zephyr env script ──────────────────────────────────── */
+  const envScriptRaw = vscode.workspace
+    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
+    .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+
+  if (!envScriptRaw) {
+    throw new Error(
+      'Missing Zephyr environment script.\n' +
+      'Set “Zephyr Workbench > Path To Env Script” in Settings.'
+    );
+  }
+
+  const exe = options.executable ?? getShellExe();
+  const shellKind = classifyShell(exe);
+
+  let shellArgs = options.shellArgs ?? getShellArgs(shellKind);
+
+  if (!options.shellArgs && isCygwin(exe)) {
+    shellArgs = ['--login', '-i'];
+  }
+
+  const needsChere = isCygwin(exe);
+
+
+  const envScript = normalizePathForShell(shellKind, envScriptRaw);
+  const redirect = getShellNullRedirect(shellKind);
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
+  const fullCmd = concatCommands(shellKind, cmdEnv, cmd);
+
+  const shExec = new vscode.ShellExecution(fullCmd, {
+    ...options,
+    executable: exe,
+    shellArgs: shellArgs,
+    env: { ...getProfileEnv(), ...(needsChere ? { CHERE_INVOKING: '1' } : {}),...options.env }
+  });
+
+  const task = new vscode.Task(
+    { label: cmdName, type: 'shell' },
+    vscode.TaskScope.Workspace,
+    cmdName,
+    'Zephyr Workbench',
+    shExec
+  );
+  task.presentationOptions.echo = false;
+
+  const exec = await vscode.tasks.executeTask(task);
+
+  return new Promise<void>(resolve => {
+    const disp = vscode.tasks.onDidEndTask(e => {
+      if (e.execution === exec) {
+        disp.dispose();
+        resolve();
+      }
+    });
+  });
 }
 
 export function getTerminalDefaultProfile(): string | undefined {
   const termCfg = vscode.workspace.getConfiguration('terminal.integrated');
 
   const key =
-    process.platform === 'win32'  ? 'defaultProfile.windows' :
-    process.platform === 'darwin' ? 'defaultProfile.osx'     :
-                                    'defaultProfile.linux';
+    process.platform === 'win32' ? 'defaultProfile.windows' :
+      process.platform === 'darwin' ? 'defaultProfile.osx' :
+        'defaultProfile.linux';
   return termCfg.get<string>(key);
 }
 

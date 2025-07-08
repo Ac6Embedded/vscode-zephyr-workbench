@@ -8,8 +8,12 @@ import { ZephyrProject } from './ZephyrProject';
 import { ZephyrSDK } from './ZephyrSDK';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
-import { concatCommands, execShellCommandWithEnv, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell } from './execUtils';
-import { fileExists, getWestWorkspace, getZephyrSDK, normalizePath } from './utils';
+import { concatCommands, execShellCommandWithEnv, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait } from './execUtils';
+import { fileExists, getWestWorkspace, getZephyrSDK, normalizePath } from './utils'; 
+
+function quote(p: string): string {
+  return /\s/.test(p) ? `"${p}"` : p;
+}
 
 export function registerWestCommands(context: vscode.ExtensionContext): void {
   // TODO use this function to register every west command 
@@ -78,15 +82,15 @@ export async function westPackagesInstallCommand(workspacePath: string): Promise
   };
 
   await execWestCommand(
-    "West – install Python dependencies for current workspace",
+    "West - install Python dependencies for current workspace",
     command,
     options
   );
 }
 
 export async function westBoardsCommand(workspacePath: string): Promise<void> {
-  const shellKind   = classifyShell(getShellExe());
-  const redirect    = getShellNullRedirect(shellKind);
+  const shellKind = classifyShell(getShellExe());
+  const redirect = getShellNullRedirect(shellKind);
 
   const command = `west boards ${redirect}`;
 
@@ -105,34 +109,48 @@ export async function westTmpBuildSystemCommand(
   buildConfig?  : ZephyrProjectBuildConfiguration
 ): Promise<string | undefined> {
 
-  const shellKind = classifyShell(getShellExe());
-  const redirect  = getShellIgnoreErrorCommand(shellKind);
+  if (!buildConfig?.boardIdentifier || !zephyrProject.folderPath) {
+    return undefined;
+  }
+
+  const activeSdk = getZephyrSDK(zephyrProject.sdkPath);
+  if (!activeSdk) {
+    throw new Error('The Zephyr SDK is missing, please install host tools first');
+  }
 
   const tmpPath = normalizePath(path.join(zephyrProject.folderPath, '.tmp'));
-  let command   = `west build -t boards --board 96b_aerocore2 --build-dir ${tmpPath} ${redirect}`;
 
-  if (buildConfig) {
-    if (!buildConfig.boardIdentifier || !zephyrProject.folderPath) {
-      return undefined;
-    }
+  const westArgs = makeWestArgs(buildConfig.westArgs);
+  const command  = [
+    'west build',
+    '-t boards',
+    `--board ${buildConfig.boardIdentifier}`,
+    `--build-dir ${quote(tmpPath)}`,
+    quote(zephyrProject.folderPath),
+    westArgs
+  ].filter(Boolean).join(' ');
 
-    const activeSdk = getZephyrSDK(zephyrProject.sdkPath);
-    if (!activeSdk) {
-      throw new Error('The Zephyr SDK is missing, please install host tools first');
-    }
+  const options: vscode.ShellExecutionOptions = {
+    cwd        : zephyrProject.folderPath,
+    env        : {
+      ...buildConfig.envVars,
+      ...activeSdk.buildEnv,
+      ...westWorkspace.buildEnv
+    },
+    executable : getShellExe(),
+    shellArgs  : getShellArgs(classifyShell(getShellExe()))
+  };
 
-    const options: vscode.ShellExecutionOptions = {
-      env: { ...buildConfig.envVars, ...activeSdk.buildEnv, ...westWorkspace.buildEnv },
-      cwd: zephyrProject.folderPath,
-      executable: getShellExe()
-    };
+  await execShellTaskWithEnvAndWait(
+    'West tmp build system command',
+    command,
+    options
+  );
 
-    await execWestCommand('West tmp build system command', command, options);
-    return tmpPath;
-  }
+  return tmpPath;
 }
 
-export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspace: WestWorkspace): Promise<void> {
+export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspace: WestWorkspace, extraWestArgs = ''): Promise<void> {
   let buildConfig;
   for (let cfg of zephyrProject.configs) {
     if (cfg.active === true) {
@@ -140,9 +158,9 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
       break; // Exit the loop once the active configuration is found
     }
   }
-  if (buildConfig === undefined){
-    buildConfig = zephyrProject.configs[0];  
-  }  
+  if (buildConfig === undefined) {
+    buildConfig = zephyrProject.configs[0];
+  }
 
   if (buildConfig.boardIdentifier === undefined || zephyrProject.folderPath === undefined) {
     return;
@@ -152,8 +170,8 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
   if (!activeSdk) {
     throw new Error('The Zephyr SDK is missing, please install host tools first');
   }
-
-  let buildDir = normalizePath(path.join(zephyrProject.folderPath, 'build', buildConfig.boardIdentifier));
+  let buildDir = normalizePath(path.join(zephyrProject.folderPath, 'build', buildConfig.name));
+  const westArgs = makeWestArgs(extraWestArgs);
 
   const sysbuildEnabled =
     typeof buildConfig.sysbuild === "string"
@@ -162,14 +180,83 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
 
   const sysbuildFlag = sysbuildEnabled ? " --sysbuild" : "";
 
-  let command = `west build -p always --board ${buildConfig.boardIdentifier}` +
-  ` --build-dir ${buildDir}${sysbuildFlag} ${zephyrProject.folderPath}`;
-  let options: vscode.ShellExecutionOptions = {
+  const command =
+  `west build -p always` +
+  ` --board ${buildConfig.boardIdentifier}` +
+  ` --build-dir "${buildDir}"${sysbuildFlag}` +
+  ` "${zephyrProject.folderPath}"` +
+  (westArgs ? ` ${westArgs}` : '');
+
+    const options: vscode.ShellExecutionOptions = {
+      cwd        : westWorkspace.kernelUri.fsPath,
+      env        : { ...activeSdk.buildEnv, ...westWorkspace.buildEnv },
+      executable : getShellExe(),
+      shellArgs  : getShellArgs(classifyShell(getShellExe()))
+    };
+
+    await execShellTaskWithEnvAndWait(
+      `West build for ${zephyrProject.folderName}`,
+      command,
+      options
+    );
+}
+
+function makeWestArgs(raw: string | undefined): string {
+  if (!raw?.trim()) return '';
+  return raw.trim().startsWith('--') ? raw.trim() : `-- ${raw.trim()}`;
+}
+
+/**
+ * Runs `west build -t menuconfig|guiconfig|hardenconfig`
+ * for the active Zephyr configuration.
+ *
+ * @param zephyrProject  The project the user has opened.
+ * @param westWorkspace  The West workspace detected from west.yml.
+ * @param target         "menuconfig" (TUI), "guiconfig" (GUI) or
+ *                       "hardenconfig".
+ */
+export async function westConfigCommand(
+  zephyrProject : ZephyrProject,
+  westWorkspace : WestWorkspace,
+  target: "menuconfig" | "guiconfig" | "hardenconfig" = "menuconfig"
+): Promise<void> {
+
+  const buildConfig =
+    zephyrProject.configs.find(cfg => cfg.active) ?? zephyrProject.configs[0];
+  if (!buildConfig?.boardIdentifier || !zephyrProject.folderPath) {
+    return;                                          // nothing to do
+  }
+
+  const activeSdk = getZephyrSDK(zephyrProject.sdkPath);
+  if (!activeSdk) {
+    throw new Error("The Zephyr SDK is missing, please install host tools first");
+  }
+
+  const buildDir = normalizePath(
+    path.join(zephyrProject.folderPath, "build", buildConfig.name)
+  );
+
+  let command =
+      `west build -t ${target}` +
+      ` --board ${buildConfig.boardIdentifier}` +
+      ` --build-dir "${buildDir}"`;
+
+  if (target !== "hardenconfig") {
+    command += ` ${zephyrProject.folderPath}`;
+  }
+
+  const options: vscode.ShellExecutionOptions = {
     env: { ...activeSdk.buildEnv, ...westWorkspace.buildEnv },
-    cwd: westWorkspace.kernelUri.fsPath
+    cwd: westWorkspace.kernelUri.fsPath,
+    executable: getShellExe(),
+    shellArgs : getShellArgs(classifyShell(getShellExe()))
   };
 
-  await execWestCommand(`West build for ${zephyrProject.folderName}`, command, options);
+  await execShellTaskWithEnvAndWait(
+    `West ${target} for ${zephyrProject.folderName}`,
+    command,
+    options
+  );
 }
 
 export async function westFlashCommand(zephyrProject: ZephyrProject, westWorkspace: WestWorkspace): Promise<void> {
@@ -180,9 +267,9 @@ export async function westFlashCommand(zephyrProject: ZephyrProject, westWorkspa
       break; // Exit the loop once the active configuration is found
     }
   }
-  if (buildConfig === undefined){
-    buildConfig = zephyrProject.configs[0];  
-  } 
+  if (buildConfig === undefined) {
+    buildConfig = zephyrProject.configs[0];
+  }
 
   let buildDir = normalizePath(path.join(zephyrProject.folderPath, 'build', buildConfig.boardIdentifier));
   let command = `west flash --build-dir ${buildDir}`;
@@ -208,9 +295,9 @@ export async function westDebugCommand(zephyrProject: ZephyrProject, westWorkspa
       break; // Exit the loop once the active configuration is found
     }
   }
-  if (buildConfig === undefined){
-    buildConfig = zephyrProject.configs[0];  
-  } 
+  if (buildConfig === undefined) {
+    buildConfig = zephyrProject.configs[0];
+  }
 
   let buildDir = normalizePath(path.join(zephyrProject.folderPath, 'build', buildConfig.boardIdentifier));
   let command = `west debug --build-dir ${buildDir}`;
@@ -367,10 +454,10 @@ export function execWestCommandWithEnv(
   };
 
   if (parent instanceof ZephyrAppProject) {
-    const project       = parent;
-    const activeSdk     = getZephyrSDK(project.sdkPath);
+    const project = parent;
+    const activeSdk = getZephyrSDK(project.sdkPath);
     const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-    const buildEnv      = project.getBuildConfiguration;
+    const buildEnv = project.getBuildConfiguration;
 
     options.cwd = project.folderPath;
     options.env = {
@@ -386,13 +473,86 @@ export function execWestCommandWithEnv(
   }
 
   const shellKind = classifyShell(getShellExe());
-  const redirect  = getShellNullRedirect(shellKind);
-  const envScriptForShell = normalizePathForShell(shellKind, envScript);   
+  const redirect = getShellNullRedirect(shellKind);
+  const envScriptForShell = normalizePathForShell(shellKind, envScript);
 
-  const cmdEnv  = `${getShellSourceCommand(shellKind, envScriptForShell)} ${redirect}`;
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScriptForShell)} ${redirect}`;
   const command = concatCommands(shellKind, cmdEnv, cmd);
 
   options.shell = getShellExe();
 
   return exec(command, options, callback);
+}
+
+export function execWestCommandWithEnvAsync(
+  cmd: string,
+  parent: ZephyrAppProject | WestWorkspace
+): Promise<void> {
+
+  /* settings ------------------------------------------------------------ */
+  const envScript = vscode.workspace
+    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
+    .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+
+  const activatePath = vscode.workspace
+    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
+    .get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+
+  if (!envScript) {
+    throw new Error(
+      'Missing Zephyr environment script.\n' +
+      'Go to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
+      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
+    );
+  }
+  if (activatePath && !fileExists(activatePath)) {
+    throw new Error(
+      'Invalid Python virtual environment.\n' +
+      'Go to File > Preferences > Settings > Extensions > Zephyr Workbench > Venv: Activate Path',
+      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}` }
+    );
+  }
+
+  let options: ExecOptions = {
+    env: {
+      ...process.env,
+      ...(activatePath ? { PYTHON_VENV_ACTIVATE_PATH: activatePath } : {})
+    }
+  };
+
+  if (parent instanceof ZephyrAppProject) {
+    const project = parent;
+    const activeSdk = getZephyrSDK(project.sdkPath);
+    const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+    const buildEnv = project.getBuildConfiguration;
+
+    options.cwd = project.folderPath;
+    options.env = {
+      ...options.env,
+      ...activeSdk.buildEnv,
+      ...westWorkspace.buildEnv,
+      ...buildEnv
+    };
+  } else {
+    const westWorkspace = parent as WestWorkspace;
+    options.cwd = westWorkspace.rootUri.fsPath;
+    options.env = { ...options.env, ...westWorkspace.buildEnv };
+  }
+
+  const shellKind = classifyShell(getShellExe());
+  const redirect = getShellNullRedirect(shellKind);
+  const envScriptForShell = normalizePathForShell(shellKind, envScript);
+
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScriptForShell)}`;
+  const command = concatCommands(shellKind, cmdEnv, cmd);
+
+  options.shell = getShellExe();
+
+
+  return new Promise<void>((resolve, reject) => {
+    const child = exec(command, options, err => err ? reject(err) : resolve());
+
+    child.stdout?.on('data', d => console.log(d.toString()));
+    child.stderr?.on('data', d => console.error(d.toString()));
+  });
 }
