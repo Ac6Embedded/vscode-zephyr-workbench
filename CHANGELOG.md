@@ -4,6 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.26]
+
+- Update custom terminals (add spdx, change board, shields, etc.)
+- Fix build directory name using custom terminals
+
 ## [1.3.25]
 
 - Hotfix for git tags

@@ -39,7 +39,7 @@ export function getEnvVarFormat(shell: string, env: string): string {
     case 'zsh':
     case 'dash':
     case 'fish':
-      return `\\\${${env}}`;
+      return `$\{${env}\}`;
     case 'cmd.exe':
       return `%${env}%`;
     case 'powershell.exe':
@@ -120,6 +120,24 @@ export function normalisePathsInString(kind: string, text: string): string {
   return text.replace(/\\/g, '/');
 }
 
+export type RawEnvVars = { [key: string]: string | string[] };
+
+export function normalizeEnvVarsForShell(
+  rawEnv: RawEnvVars,
+  shellKind: string
+): { [key: string]: string } {
+  const out: { [key: string]: string } = {};
+  for (const [key, val] of Object.entries(rawEnv)) {
+    if (typeof val === 'string') {
+      out[key] = normalizePathForShell(shellKind, val);
+    } else if (Array.isArray(val)) {
+      const normalized = val.map(entry => normalizePathForShell(shellKind, entry));
+      // join with platform‐appropriate delimiter
+      out[key] = normalized.join(path.delimiter);
+    }
+  }
+  return out;
+}
 
 export function getTerminalShell(): string {
   const prof = detectTerminalProfile();
@@ -332,7 +350,7 @@ export async function execShellCommandInteractive(
   return term;
 }
 
-function isCygwin(shellPath: string): boolean {
+export function isCygwin(shellPath: string): boolean {
   return /\\cygwin[^\\]*\\bin\\bash.exe$/i.test(shellPath);
 }
 
@@ -362,12 +380,15 @@ export async function execShellCommandWithEnv(
   cmd: string,
   options: vscode.ShellExecutionOptions
 ) {
-  const envScript = vscode.workspace
+  const rawEnvScript = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  const activatePath = vscode.workspace
+  const rawActivatePath = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+
+  const envScript = normalizePathForShell(classifyShell(getShellExe()), rawEnvScript ?? '');
+  const activatePath = rawActivatePath ? normalizePathForShell(classifyShell(getShellExe()), rawActivatePath) : undefined;
 
   if (!envScript) {
     throw new Error(
@@ -388,7 +409,7 @@ export async function execShellCommandWithEnv(
   const shellKind = classifyShell(getShellExe());
   const exe = getShellExe();
   options.executable = exe;
-  // options.shellArgs = getShellArgs(kind);
+  options.shellArgs = getShellArgs(shellKind);
 
   options.env = {
     ...getProfileEnv(),
@@ -483,12 +504,15 @@ export async function execCommandWithEnv(
   cwd?: string,
   cb?: (e: ExecException | null, so: string, se: string) => void
 ): Promise<ChildProcess> {
-  const envScript = vscode.workspace
+  const rawEnvScript = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  const activatePath = vscode.workspace
+  const rawActivatePath = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+
+  const envScript = normalizePathForShell(classifyShell(getShellExe()), rawEnvScript ?? '');
+  const activatePath = rawActivatePath ? normalizePathForShell(classifyShell(getShellExe()), rawActivatePath) : undefined;
 
   if (!envScript) {
     throw new Error(
@@ -598,10 +622,10 @@ export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): Ch
 export async function execShellTaskWithEnvAndWait(
   cmdName: string,
   cmd: string,
-  options: vscode.ShellExecutionOptions = {}
+  options: vscode.ShellExecutionOptions = {},
+  hideTerminal = false,
 ): Promise<void> {
 
-  /* ── locate the Zephyr env script ──────────────────────────────────── */
   const envScriptRaw = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
@@ -618,8 +642,8 @@ export async function execShellTaskWithEnvAndWait(
 
   let shellArgs = options.shellArgs ?? getShellArgs(shellKind);
 
-  if (!options.shellArgs && isCygwin(exe)) {
-    shellArgs = ['--login', '-i'];
+  if (isCygwin(exe)) {
+    shellArgs = ['--login', '-i', ...shellArgs];
   }
 
   const needsChere = isCygwin(exe);
@@ -634,7 +658,7 @@ export async function execShellTaskWithEnvAndWait(
     ...options,
     executable: exe,
     shellArgs: shellArgs,
-    env: { ...getProfileEnv(), ...(needsChere ? { CHERE_INVOKING: '1' } : {}),...options.env }
+    env: { ...getProfileEnv(), ...(needsChere ? { CHERE_INVOKING: '1' } : {}), ...options.env }
   });
 
   const task = new vscode.Task(
@@ -645,6 +669,12 @@ export async function execShellTaskWithEnvAndWait(
     shExec
   );
   task.presentationOptions.echo = false;
+
+  if (hideTerminal) {
+    task.presentationOptions.reveal = vscode.TaskRevealKind.Never;
+    task.presentationOptions.showReuseMessage = false;
+    task.presentationOptions.clear = false;
+  }
 
   const exec = await vscode.tasks.executeTask(task);
 
