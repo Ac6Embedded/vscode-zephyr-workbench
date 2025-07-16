@@ -16,7 +16,7 @@ import { changeEnvVarQuickStep, toggleSysbuild } from './changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
 import { ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
-import { execShellTaskWithEnvAndWait, executeTask, getTerminalDefaultProfile } from './execUtils';
+import { execShellTaskWithEnvAndWait, executeTask, getTerminalDefaultProfile, normalizeSlashesIfPath } from './execUtils';
 import { importProjectQuickStep } from './importProjectQuickStep';
 import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools } from './installUtils';
 import { generateWestManifest } from './manifestUtils';
@@ -1101,6 +1101,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 				let value = await changeEnvVarQuickStep(context, node.argName, node.argValue);
 				if (value !== undefined) {
+					value = normalizeSlashesIfPath(value);
 					node.argValue = value;
 					let workspaceFolder = getWorkspaceFolder(project.folderPath);
 					if (workspaceFolder) {

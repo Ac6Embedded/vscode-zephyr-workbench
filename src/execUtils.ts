@@ -113,6 +113,16 @@ export function normalizePathForShell(shellType: string, p: string): string {
   return out;
 }
 
+export function normalizeSlashesIfPath(p: string): string {
+  const looksLikePath = /[\\/]/.test(p) || /\.\w+$/.test(p);
+
+  if (looksLikePath) {
+    return p.replace(/\\/g, '/').replace(/\/+/g, '/');
+  }
+
+  return p;
+}
+
 export function normalisePathsInString(kind: string, text: string): string {
   if (!text) { return text; }
   if (kind === 'cmd.exe' || kind === 'powershell.exe') { return text; }

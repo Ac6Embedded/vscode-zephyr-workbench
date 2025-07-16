@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.27]
+
+- Fix path for files on windows
+
 ## [1.3.26]
 
 - Update custom terminals (add spdx, change board, shields, etc.)
