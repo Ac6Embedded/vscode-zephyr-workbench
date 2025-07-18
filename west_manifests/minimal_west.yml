@@ -12,6 +12,7 @@ manifest:
         name-allowlist:
           - cmsis
           - cmsis-dsp
+          - cmsis_6
           - percepio
           - picolibc
           - segger

@@ -36,6 +36,19 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
   manifestYaml.manifest.remotes[0]['url-base'] = remotePath;
   manifestYaml.manifest.projects[0]['revision'] = remoteBranch;
   manifestYaml.manifest.projects[0]['import']['name-allowlist'].push(templateHal);
+  const allowList: string[] =
+    manifestYaml.manifest.projects[0].import["name-allowlist"];
+  const keepCmsis6 = isAtLeast(remoteBranch, '4.1.0');
+
+  if (keepCmsis6) {
+    const already = manifestYaml.manifest.projects.some(
+      (p: any) => p.name === "cmsis_6"
+    );
+  } else {
+    manifestYaml.manifest.projects[0].import["name-allowlist"] = allowList.filter(
+      (n: string) => n !== "cmsis_6"
+    );
+  }
 
   if(!fileExists(workspacePath)) {
     fs.mkdirSync(workspacePath);
@@ -48,4 +61,19 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
   fs.writeFileSync(destFilePath, westManifestContent, 'utf8');
 
   return destFilePath;
+}
+
+function isAtLeast(version: string, floor = '4.1.0'): boolean {
+  const parse = (v: string) =>
+    v.replace(/^v/i, '')
+     .split('-')[0]
+     .split('.')
+     .map(n => parseInt(n, 10) || 0);
+
+  const [aMaj, aMin, aPat] = parse(version);
+  const [bMaj, bMin, bPat] = parse(floor);
+
+  if (aMaj !== bMaj) {return aMaj > bMaj;}
+  if (aMin !== bMin) {return aMin > bMin;}
+  return aPat >= bPat;
 }

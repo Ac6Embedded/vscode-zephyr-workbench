@@ -25,9 +25,11 @@ export async function westInitCommand(srcUrl: string, srcRev: string, workspaceP
   // If init remote repository
   if (srcUrl && srcUrl !== '') {
     workspacePath = normalizePath(workspacePath);
+    workspacePath = normalizePathForShell(classifyShell(getShellExe()), workspacePath);
     command = `west init -m ${srcUrl} --mr ${srcRev} ${workspacePath}`;
     if (manifestPath !== '') {
       manifestPath = normalizePath(manifestPath);
+      manifestPath = normalizePathForShell(classifyShell(getShellExe()), manifestPath);
       command += ` --mf ${manifestPath}`;
     }
   } else {
@@ -49,7 +51,9 @@ export async function westInitCommand(srcUrl: string, srcRev: string, workspaceP
         }
       }
       manifestFile = normalizePath(manifestFile);
+      manifestFile = normalizePathForShell(classifyShell(getShellExe()), manifestFile);
       manifestDir = normalizePath(manifestDir);
+      manifestDir = normalizePathForShell(classifyShell(getShellExe()), manifestDir);
       command = `west init -l --mf ${manifestFile} ${manifestDir}`;
     }
   }

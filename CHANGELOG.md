@@ -4,6 +4,12 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.28]
+
+- Fix for workspace import using bash on windows
+- Fix for west update, west boards etc using Cygwin on windows
+- Add cmsis_6 to west manifest >=4.1.0
+
 ## [1.3.27]
 
 - Fix path for files on windows

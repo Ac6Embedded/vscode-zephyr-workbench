@@ -339,7 +339,7 @@ export async function execShellCommandInteractive(
     throw new Error('Missing command to execute');
   }
 
-  const shellPath = options.executable ?? getShellExe();      // helpers from your utils
+  const shellPath = options.executable ?? getShellExe();
   const shellArgs = options.shellArgs;
   const terminalEnv = { ...process.env, ...options.env };
 
@@ -421,7 +421,14 @@ export async function execShellCommandWithEnv(
   options.executable = exe;
   options.shellArgs = getShellArgs(shellKind);
 
+  if (isCygwin(exe)) {
+    options.shellArgs = ['--login', '-i', ...options.shellArgs];
+  }
+
+  const needsChere = isCygwin(exe);
+
   options.env = {
+    ...(needsChere ? { CHERE_INVOKING: '1' } : {}),
     ...getProfileEnv(),
     ...options.env,
     ...(activatePath ? { PYTHON_VENV_ACTIVATE_PATH: activatePath } : {})
