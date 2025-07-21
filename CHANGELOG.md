@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.29]
+
+- Fix build when no arguments or shields are provided when using custom terminal
+
 ## [1.3.28]
 
 - Fix for workspace import using bash on windows

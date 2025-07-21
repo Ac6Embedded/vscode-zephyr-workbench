@@ -139,11 +139,17 @@ export function normalizeEnvVarsForShell(
   const out: { [key: string]: string } = {};
   for (const [key, val] of Object.entries(rawEnv)) {
     if (typeof val === 'string') {
-      out[key] = normalizePathForShell(shellKind, val);
+      const normalized = normalizePathForShell(shellKind, val);
+      if (normalized) {
+        out[key] = normalized;
+      }
     } else if (Array.isArray(val)) {
-      const normalized = val.map(entry => normalizePathForShell(shellKind, entry));
-      // join with platform‐appropriate delimiter
-      out[key] = normalized.join(path.delimiter);
+      const normalized = val
+        .map(entry => normalizePathForShell(shellKind, entry))
+        .filter(entry => entry); // Remove empty strings
+      if (normalized.length > 0) {
+        out[key] = normalized.join(path.delimiter);
+      }
     }
   }
   return out;
