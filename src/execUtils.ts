@@ -63,6 +63,10 @@ export function getResolvedShell(): { path: string; args?: string[] } {
     return { path: prof.exe, args: prof.args };
   }
 
+  if (process.platform === "darwin"){
+    return { path: '/bin/bash' };
+  }
+
   if (vscode.env.shell) {
     return { path: vscode.env.shell };
   }

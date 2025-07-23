@@ -127,13 +127,17 @@ export async function westTmpBuildSystemCommand(
   const tmpPath = normalizePathForShell(shellKind, path.join(zephyrProject.folderPath, '.tmp'));
 
   const westArgs = makeWestArgs(buildConfig.westArgs);
+
+  const rawEnvVars = buildConfig.envVars as RawEnvVars;
+  const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
+
   const command  = [
     'west build',
     '-t boards',
     `--board 96b_aerocore2`,
     `--build-dir ${quote(tmpPath)}`,
-    quote(zephyrProject.folderPath),
-    westArgs
+    quote(normalizePathForShell(shellKind,zephyrProject.folderPath)),
+    (westArgs ? ` ${westArgs}` : ''),
   ].filter(Boolean).join(' ');
 
   const options: vscode.ShellExecutionOptions = {
@@ -343,6 +347,7 @@ export async function getBoardsDirectories(parent: ZephyrAppProject | WestWorksp
       for (let boardRoot of boardRoots) {
         if (boardRoot.length > 0) {
           let normalizeBoardRoot = normalizePath(boardRoot);
+          normalizeBoardRoot = normalizePathForShell(classifyShell(getShellExe()), normalizeBoardRoot);
           cmd += ` --board-root ${normalizeBoardRoot}`;
         }
       }

@@ -4,6 +4,12 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.30]
+
+- Fix project creation and workspace import on MacOS
+- Fix board detection using EXTRA_ZEPHYR_MODULES
+- Improve debug using custom terminal
+
 ## [1.3.29]
 
 - Fix build when no arguments or shields are provided when using custom terminal
