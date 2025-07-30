@@ -11,11 +11,17 @@ import { path7za } from "7zip-bin";
 import YAML from "yaml";
 import chalk from "chalk";
 
+const VERSION = "1.0";
+
 const streamPipeline = promisify(pipeline);
 
 if (process.platform !== "win32") {
   console.error("This installer targets Windows only.");
   process.exit(1);
+}
+
+function md5(file: string) {
+  return crypto.createHash("md5").update(fs.readFileSync(file)).digest("hex");
 }
 
 export interface InstallOptions {
@@ -43,7 +49,7 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
     path.join(TOOLS, "ninja"),
     path.join(TOOLS, "wget"),
     path.join(TOOLS, "7zip"),
-    path.join(TOOLS, "python", "python-3.11.8.amd64"),
+    path.join(TOOLS, "python", "python"),
     process.env.PATH
   ].join(path.delimiter);
 
@@ -152,7 +158,7 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
     logLineCentered("Check Installed Packages");
 
     const verInfo: Record<string, { exe: string; args: string[]; re: RegExp }> = {
-      python_portable: { exe: "python\\python-3.11.8.amd64\\python.exe", args: ["--version"], re: /Python (\S+)/ },
+      python_portable: { exe: "python\\python\\python.exe", args: ["--version"], re: /Python (\S+)/ },
       cmake: { exe: "cmake\\bin\\cmake.exe", args: ["--version"], re: /version (\S+)/ },
       ninja: { exe: "ninja\\ninja.exe", args: ["--version"], re: /^(\S+)/ },
       git: { exe: "git\\bin\\git.exe", args: ["--version"], re: /git version ([^\s]+)/ },
@@ -217,7 +223,7 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
 
     // locate python.exe that the first full install already placed
     const pyExe = path.join(
-      TOOLS, "python", "python-3.11.8.amd64", "python.exe"
+      TOOLS, "python", "python", "python.exe"
     );
     if (!fs.existsSync(pyExe))
       throw new Error("Python tools not found - run full install once first.");
@@ -243,10 +249,10 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
     for (const f of reqFiles)
       await download(`${baseUrl}/${f}`, path.join(reqDir, f));
 
-    await run(pip, ["install", "-q", "windows-curses", "anytree",
-      "git+https://github.com/HBehrens/puncover"]);
+    await run(pip, ["install", "-q", "windows-curses", "anytree"]);
     await run(pip, ["install", "-q", "-r",
       path.join(reqDir, "requirements.txt")]);
+    await run(pip, ["install", "-q", "puncover"]);
 
     log(chalk.green("\nVENV rebuilt - no other host tools touched"));
     return;
@@ -309,12 +315,11 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
     }
 
     if (name === "zstd") {
-      /* copy zstd.exe one level up so verify finds it */
       const exe = findFile(dstDir, "zstd.exe");
       if (exe) {
         fs.copyFileSync(exe, path.join(dstDir, "zstd.exe"));
       }
-      zstdExe = exe;           // we already use this later for .zst archives
+      zstdExe = exe;
     }
 
     if (name === "python_portable") {
@@ -324,20 +329,20 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
         .find(d => d.toLowerCase().startsWith("wpy64-"));
 
       if (wpy &&
-        fs.existsSync(path.join(dstDir, wpy, "python-3.11.8.amd64", "python.exe"))) {
-        pythonRoot = path.join(dstDir, wpy, "python-3.11.8.amd64");
+        fs.existsSync(path.join(dstDir, wpy, "python", "python.exe"))) {
+        pythonRoot = path.join(dstDir, wpy, "python");
       }
 
       if (!pythonRoot &&
-        fs.existsSync(path.join(dstDir, "python-3.11.8.amd64", "python.exe"))) {
-        pythonRoot = path.join(dstDir, "python-3.11.8.amd64");
+        fs.existsSync(path.join(dstDir, "python", "python.exe"))) {
+        pythonRoot = path.join(dstDir, "python");
       }
 
       if (!pythonRoot) {
         throw new Error("Cannot locate python.exe in WinPython package");
       }
 
-      const finalDir = path.join(dstDir, "python-3.11.8.amd64");
+      const finalDir = path.join(dstDir, "python");
 
       if (!fs.existsSync(finalDir)) {
         fs.mkdirSync(path.dirname(finalDir), { recursive: true });
@@ -371,7 +376,7 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
 
   if (!fs.existsSync(path.join(VENV, "Scripts", "activate.bat"))) {
     await run(
-      path.join(TOOLS, "python", "python-3.11.8.amd64", "python.exe"),
+      path.join(TOOLS, "python", "python", "python.exe"),
       ["-m", "venv", VENV]
     );
     await run(
@@ -392,24 +397,70 @@ export async function installHostTools(opts: InstallOptions): Promise<void> {
 
   // Install the main requirements file (which pulls others)
   const pip = path.join(VENV, "Scripts", "pip.exe");
-  await run(pip, ["install", "-q", "windows-curses", "anytree",
-    "git+https://github.com/HBehrens/puncover"]);
+  await run(pip, ["install", "-q", "windows-curses", "anytree"]);
   await run(pip, ["install", "-q", "-r", path.join(reqDir, "requirements.txt")]);
+  await run (pip, ["install", "-q", "puncover"]);
 
   /* env scripts ---------------------------------------------------*/
   const bat = `
   @echo off
-  @set "PATH=%~dp0tools\\cmake\\bin;%~dp0tools\\dtc\\usr\\bin;%~dp0tools\\gperf\\bin;%~dp0tools\\ninja;%~dp0tools\\wget;%~dp0tools\\git\\bin;%~dp0tools\\7zip;%~dp0tools\\python\\python-3.11.8.amd64;%PATH%"
+  @set "PATH=%~dp0tools\\cmake\\bin;%~dp0tools\\dtc\\usr\\bin;%~dp0tools\\gperf\\bin;%~dp0tools\\ninja;%~dp0tools\\wget;%~dp0tools\\git\\bin;%~dp0tools\\7zip;%~dp0tools\\python\\python;%PATH%"
   @call "%~dp0.venv\\Scripts\\activate.bat"
   `.trim();
 
   fs.writeFileSync(path.join(ROOT, "env.bat"), bat, "ascii");
 
   const ps1 = `
-$env:PATH="$PSScriptRoot\\tools\\cmake\\bin;$PSScriptRoot\\tools\\dtc\\usr\\bin;$PSScriptRoot\\tools\\gperf\\bin;$PSScriptRoot\\tools\\ninja;$PSScriptRoot\\tools\\wget;$PSScriptRoot\\tools\\git\\bin;$PSScriptRoot\\tools\\7zip;$PSScriptRoot\\tools\\python\\python-3.11.8.amd64;$env:PATH"
+$env:PATH="$PSScriptRoot\\tools\\cmake\\bin;$PSScriptRoot\\tools\\dtc\\usr\\bin;$PSScriptRoot\\tools\\gperf\\bin;$PSScriptRoot\\tools\\ninja;$PSScriptRoot\\tools\\wget;$PSScriptRoot\\tools\\git\\bin;$PSScriptRoot\\tools\\7zip;$PSScriptRoot\\tools\\python\\python;$env:PATH"
 . "$PSScriptRoot\\.venv\\Scripts\\Activate.ps1"
 `.trim();
   fs.writeFileSync(path.join(ROOT, "env.ps1"), ps1, "ascii");
+
+  const sh = `#!/usr/bin/env bash
+# Resolve the directory this script lives in
+if [ -n "\${BASH_SOURCE-}" ]; then _src="\${BASH_SOURCE[0]}";
+elif [ -n "\${ZSH_VERSION-}" ]; then _src="\${(%):-%N}";
+else _src="\$0"; fi
+base_dir="$(cd -- "\$(dirname -- "\$_src")" && pwd -P)"
+tools_dir="\$base_dir/tools"
+
+cmake_path="\$tools_dir/cmake/bin"
+dtc_path="\$tools_dir/dtc/usr/bin"
+gperf_path="\$tools_dir/gperf/bin"
+ninja_path="\$tools_dir/ninja"
+wget_path="\$tools_dir/wget"
+git_path="\$tools_dir/git/bin"
+python_path="\$tools_dir/python/python"
+seven_z_path="\$tools_dir/7zip"
+
+[[ -d "\$python_path" ]] || python_path=""
+[[ -d "\$seven_z_path" ]] || seven_z_path=""
+
+export PATH="\$python_path:\$git_path:\$wget_path:\$ninja_path:\$gperf_path:\$dtc_path:\$cmake_path:\$seven_z_path:\$PATH"
+
+default_venv_activate_path="\$base_dir/.venv/Scripts/activate"
+venv_activate_path="\${PYTHON_VENV_ACTIVATE_PATH:-\$default_venv_activate_path}"
+
+if [[ -f "\$venv_activate_path" ]]; then
+  # shellcheck disable=SC1090
+  . "\$venv_activate_path"
+  echo "Activated virtual environment at \$venv_activate_path"
+else
+  echo "Error: Virtual environment activation script not found at \$venv_activate_path."
+fi
+`.trim() + "\n";
+
+  const envShPath = path.join(ROOT, "env.sh");
+  fs.writeFileSync(envShPath, sh, { encoding: "ascii", mode: 0o755 });
+
+  /* version/hash file */
+  const scriptMd5 = md5(__filename);
+  const toolsYmlMd5 = md5(yamlPath);
+  const versionTxt = `Script Version: ${VERSION}
+Script MD5: ${scriptMd5}
+tools.yml MD5: ${toolsYmlMd5}
+`;
+  fs.writeFileSync(path.join(ROOT, "zinstaller_version"), versionTxt, "ascii");
 
   // remove everything under ROOT/tmp
   const tmpDir = path.join(ROOT, "tmp");

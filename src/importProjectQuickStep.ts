@@ -4,7 +4,7 @@ import { ZephyrBoard } from "./ZephyrBoard";
 import { ZephyrProject } from "./ZephyrProject";
 import { ZephyrSDK } from "./ZephyrSDK";
 import { MultiStepInput } from "./utilities/MultiStepQuickPick";
-import { fileExists, getListZephyrSDKs, getListIARs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, normalizePath } from "./utils";
+import { fileExists, getListZephyrSDKs, getListIARs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, validateProjectLocation, getZephyrSDK, getIarToolchainForSdk, normalizePath } from "./utils";
 
 export async function importProjectQuickStep(context: ExtensionContext) {
   const title = 'Import Project';
@@ -241,11 +241,6 @@ export async function importProjectQuickStep(context: ExtensionContext) {
     }
 	}
 
-  async function validateProjectLocation(location: string) {
-    if(!fileExists(location)) {
-      return "Invalid project path.";
-    }
-  }
 
   function shouldResume() {
     // Could show a notification with the option to resume.
@@ -255,6 +250,8 @@ export async function importProjectQuickStep(context: ExtensionContext) {
   }
 
   const state = await collectInputs();
-  vscode.commands.executeCommand("zephyr-workbench-app-explorer.import-app", state.projectLoc,  state.westWorkspace, state.board, state.sdk);
+  const toolchain = (state.sdk && getZephyrSDK(state.sdk.rootUri.fsPath)) || (state.iarPath && getIarToolchainForSdk(state.iarPath));
+  vscode.commands.executeCommand(
+    "zephyr-workbench-app-explorer.import-app", state.projectLoc, state.westWorkspace, state.board, toolchain);
 }
 

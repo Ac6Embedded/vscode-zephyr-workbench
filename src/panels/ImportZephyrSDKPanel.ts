@@ -16,7 +16,6 @@ export class ImportZephyrSDKPanel {
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
   }
 
-  /*────────────────────────────── PUBLIC API ──────────────────────────────*/
   public async createContent() {
     this._panel.webview.html = await this._getWebviewContent(
       this._panel.webview,
@@ -91,7 +90,6 @@ export class ImportZephyrSDKPanel {
     while (this._disposables.length) this._disposables.pop()?.dispose();
   }
 
-  /*──────────────────────── PRIVATE: HTML ────────────────────────────────*/
   private async _getWebviewContent(
     webview: vscode.Webview,
     extensionUri: vscode.Uri,
@@ -101,7 +99,6 @@ export class ImportZephyrSDKPanel {
     const styleUri = getUri(webview, extensionUri, ["out", "style.css"]);
     const nonce = getNonce();
 
-    /* ── SDK versions for the dropdown ─────────────────────────────── */
     const versions = await getSdkVersion();
     let versionItems = "", defaultVersion = "";
     if (versions.length) {
@@ -114,7 +111,6 @@ export class ImportZephyrSDKPanel {
       }
     }
 
-    /* ── toolchain list for “minimal” installs ─────────────────────── */
     let toolsListHTML = "";
     for (const t of listToolchainArch) {
       toolsListHTML += `<div>
@@ -142,7 +138,6 @@ export class ImportZephyrSDKPanel {
         "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_macos-aarch64.tar.xz";
     }
 
-    /* ── Zephyr SDK list for the IAR dropdown ──────────────────────── */
     let sdkHTML = "";
     for (const sdk of await getListZephyrSDKs()) {
       sdkHTML += `
@@ -154,7 +149,6 @@ export class ImportZephyrSDKPanel {
         </div>`;
     }
 
-    /* ── full HTML ─────────────────────────────────────────────────── */
     return /*html*/ `
 <!DOCTYPE html>
 <html lang="en">
@@ -288,7 +282,7 @@ export class ImportZephyrSDKPanel {
 
     <div class="grid-group-div">
       <vscode-text-field id="iarToken" size="50" type="password">
-        Token:
+        IAR LMS BEARER TOKEN:
       </vscode-text-field>
     </div>
   </form>
@@ -321,17 +315,18 @@ export class ImportZephyrSDKPanel {
 `;
   }
 
-  /*────────────────── PRIVATE: Webview → Extension ──────────────────*/
   private _setWebviewMessageListener(webview: vscode.Webview) {
     webview.onDidReceiveMessage(
-      (msg) => {
+      async (msg) => {
         switch (msg.command) {
           case "openLocationDialog":
             this.openLocationDialog(msg.id);
             return;
 
           case "import":
-            if (!checkParameters(msg)) return;
+            if (!(await checkParameters(msg))) {
+              return;
+            }
 
             const { srcType, workspacePath } = msg;
 
@@ -378,8 +373,7 @@ export class ImportZephyrSDKPanel {
   }
 }
 
-/*────────────────────────── helpers ──────────────────────────*/
-function checkParameters(msg: any): boolean {
+export async function checkParameters(msg: any): Promise<boolean> {
   const { srcType, workspacePath } = msg;
 
   if (!workspacePath) {
@@ -411,8 +405,17 @@ function checkParameters(msg: any): boolean {
       return false;
     }
     if (!msg.iarToken) {
-      vscode.window.showErrorMessage("Missing Token, please enter it.");
-      return false;
+      const response = await vscode.window.showWarningMessage(
+      "No IAR LMS BEARER TOKEN was supplied.\n\n" +
+      "Zephyr Workbench will use the IAR toolchain under its perpetual licence.\n\n" +
+      "Do you want to proceed?",
+        { modal: true },
+        "Continue"
+      );
+      if (response !== "Continue") {
+        // User clicked Cancel or closed the dialog
+        return false;
+      }
     }
   }
 

@@ -29,17 +29,14 @@ provideVSCodeDesignSystem().register(
   vsCodePanelView(),
 );
 
-/*──────────────────────── helpers ────────────────────────*/
 function getEl<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) throw new Error(`Missing #${id} in Webview DOM`);
   return el as T;
 }
 
-/* VS Code bridge */
 const vscode = acquireVsCodeApi();
 
-/*──────────────────────── entry point ─────────────────────*/
 window.addEventListener("load", () => {
   setVSCodeMessageListener();
   initVersionsDropdown();
@@ -73,7 +70,6 @@ window.addEventListener("load", () => {
   sourceCat.dispatchEvent(new Event("select"));
 });
 
-/*────────────────── VS Code → Web‑view messages ──────────*/
 function setVSCodeMessageListener(): void {
   window.addEventListener("message", (event) => {
     if (event.data.command !== "folderSelected") return;
@@ -99,7 +95,6 @@ function setVSCodeMessageListener(): void {
   });
 }
 
-/*──────────────────── visibility helpers ─────────────────*/
 function modifyCategoryHandler(): void {
   const cat = (getEl<RadioGroup>("sourceCategory") as unknown as { value: string }).value;
   getEl("zephyrOptions").style.display = cat === "zephyr" ? "block" : "none";
@@ -150,7 +145,6 @@ function modifySdkTypeHandler(): void {
        });
 }
 
-/*──────────────────── IAR‑SDK dropdown ───────────────────*/
 function initIarSdkDropdown(): void {
   const sdkInput    = getEl<HTMLInputElement>("sdkInput");
   const sdkDropdown = getEl("sdkDropdown");
@@ -168,7 +162,6 @@ function initIarSdkDropdown(): void {
   addDropdownItemListeners(sdkDropdown, sdkInput);
 }
 
-/*──────────── IMPORT payload to extension ────────────────*/
 function importHandler(): void {
   const isZephyr = (getEl<RadioGroup>("sourceCategory") as unknown as { value: string }).value === "zephyr";
   const srcType  = isZephyr
@@ -188,7 +181,6 @@ function importHandler(): void {
   });
 }
 
-/*──────────────── dropdown helpers (Version) ─────────────*/
 function initVersionsDropdown(): void {
   const versionInput    = getEl<HTMLInputElement>("versionInput");
   const versionsDropdown = getEl("versionsDropdown");
@@ -214,7 +206,7 @@ function addDropdownItemListeners(dropdown: HTMLElement, input: HTMLInputElement
   dropdown.querySelectorAll<HTMLElement>(".dropdown-item")
     .forEach(item => {
       item.addEventListener("pointerdown", () => {
-        if (item.dataset.value === "browse") return;   // handled elsewhere
+        if (item.dataset.value === "browse") return;
         input.value = item.dataset.label ?? "";
         input.setAttribute("data-value", item.dataset.value ?? "");
         input.dispatchEvent(new Event("input"));
@@ -223,7 +215,6 @@ function addDropdownItemListeners(dropdown: HTMLElement, input: HTMLInputElement
     });
 }
 
-/*──────────── util for “minimal” toolchains ──────────────*/
 function getListSelectedToolchains(): string {
   const cbs = document.getElementsByClassName("toolchain-checkbox") as HTMLCollectionOf<Checkbox>;
   return Array.from(cbs)

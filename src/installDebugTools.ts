@@ -106,7 +106,6 @@ function runExe(exe: string, args: string[] = [], interactive = false) {
 }
 
 
-/* flatten “…\openocd\openocd\*” → “…\openocd\*” */
 function collapseDoubleFolder(dst: string, tool: string) {
     const one = fs.readdirSync(dst);
     if (one.length === 1 && one[0].toLowerCase() === tool.toLowerCase()) {

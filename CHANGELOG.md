@@ -4,10 +4,58 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.30]
+
+- Fix project creation and workspace import on MacOS
+- Fix board detection using EXTRA_ZEPHYR_MODULES
+- Improve debug using custom terminal
+
+## [1.3.29]
+
+- Fix build when no arguments or shields are provided when using custom terminal
+
+## [1.3.28]
+
+- Fix for workspace import using bash on windows
+- Fix for west update, west boards etc using Cygwin on windows
+- Add cmsis_6 to west manifest >=4.1.0
+
+## [1.3.27]
+
+- Fix path for files on windows
+
+## [1.3.26]
+
+- Update custom terminals (add spdx, change board, shields, etc.)
+- Fix build directory name using custom terminals
+
+## [1.3.25]
+
+- Hotfix for git tags
+
+## [1.3.24]
+
+- Add partial support for custom terminals (Git Bash, CygWin, zsh, etc.) — applies to "Open Terminal" and "Build"
+- Support for other features with custom terminals is still in progress
+- Update host tools install script to prevent issues with puncover
+- Fix for importing projects using "Import Zephyr Application"
+- Fix west using powershell
+
+## [1.3.23]
+
+- Update host tools to support newer Zephyr versions
+
+## [1.3.22]
+
+- Add import option in "Create new application" tab
+- Refractor IAR toolchain import messages
+
 ## [1.3.21]
 
-- Refactor Windows host tools installation to use integrated TypeScript implementation
+- Optimize setting to prevent conflicts with CMake Tools
 - Optimize Sysbuild run process
+- Add new open terminal button from explorer
+- Display PyOCD messages
 
 ## [1.3.20]
 

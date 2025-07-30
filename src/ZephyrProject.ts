@@ -5,7 +5,7 @@ import yaml from 'yaml';
 import { fileExists, findTask, getBoardFromIdentifier, getConfigValue, getWestWorkspace, getZephyrSDK, findIarEntry } from './utils';
 import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { ZephyrTaskProvider } from './ZephyrTaskProvider';
-import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalShell } from './execUtils';
+import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalShell, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from './execUtils';
 import { getBuildEnv, loadEnv } from './zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 import { IARToolchain } from './ZephyrSDK';
@@ -138,9 +138,13 @@ export class ZephyrProject {
   }
 
   private static openTerminal(zephyrProject: ZephyrProject): vscode.Terminal {
-    const shell = getTerminalShell();
+    const { path: shellPath, args: shellArgs } = getResolvedShell();
+    const shellType = classifyShell(shellPath);
     const zephyrSdk = getZephyrSDK(zephyrProject.sdkPath);
     const westWorkspace = getWestWorkspace(zephyrProject.westWorkspacePath);
+    const isWinPosix = process.platform === 'win32' &&
+                   (shellType === 'bash' || shellType === 'zsh' ||
+                    shellType === 'dash' || shellType === 'fish');
     let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
     if (!activatePath || activatePath.length === 0) {
       activatePath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.workspaceFolder.uri).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
@@ -148,19 +152,23 @@ export class ZephyrProject {
 
     const opts: vscode.TerminalOptions = {
       name: zephyrProject.folderName + ' Terminal',
-      shellPath: `${shell}`,
-      env: { ...westWorkspace.buildEnv, ...zephyrSdk.buildEnv },
+      shellPath: `${shellPath}`,
+      shellArgs: shellArgs,
+      env: { ...(isWinPosix ? { CHERE_INVOKING: '1' } : {}), ...westWorkspace.buildEnv, ...zephyrSdk.buildEnv },
       cwd: zephyrProject.folderPath
     };
 
     const envVars = opts.env || {};
 
-    const echoCommand = getShellEchoCommand(shell);
-    const clearCommand = getShellClearCommand(shell);
+    const echoCommand = getShellEchoCommand(shellType);
+    const clearCommand = getShellClearCommand(shellType);
     const printEnvCommands = Object.entries(envVars).map(([key, value]) => {
-      return `${echoCommand} ${key}="${value}"`;
+      const v = (shellType === 'bash')
+        ? winToPosixPath(String(value))
+        : String(value);
+      return `${echoCommand} ${key}="${v}"`;
     });
-    const printEnvCommand = concatCommands(shell, ...printEnvCommands);
+    const printEnvCommand = concatCommands(shellType, ...printEnvCommands);
 
     if (activatePath) {
       opts.env = {
@@ -169,7 +177,7 @@ export class ZephyrProject {
       };
     }
 
-    const printHeaderCommand = concatCommands(shell,
+    const printHeaderCommand = concatCommands(shellType,
       `${clearCommand}`,
       `echo "======= Zephyr Workbench Environment ======="`,
       `${printEnvCommand}`,
@@ -196,15 +204,10 @@ export class ZephyrProject {
     }
 
     let terminal = ZephyrProject.openTerminal(zephyrProject);
-    const shell = getTerminalShell();
+    const { path: shellPath, args: shellArgs } = getResolvedShell();
+    const shellType = classifyShell(shellPath);
+    envScript = normalizePathForShell(shellType, envScript);
     let srcEnvCmd = `. ${envScript}`;
-    if (shell === 'powershell.exe') {
-      envScript = envScript.replace(/%([^%]+)%/g, '${env:$1}');
-      envScript = envScript.replace('env.bat', 'env.ps1');
-      srcEnvCmd = `. ${envScript}`;
-    } else if (shell === 'cmd.exe') {
-      srcEnvCmd = `call ${envScript}`;
-    }
     terminal.sendText(srcEnvCmd);
 
     return terminal;

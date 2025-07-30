@@ -190,6 +190,10 @@ export async function setupPyOCDTarget(project: ZephyrProject, buildConfigName?:
       await installPyOCDTarget(target);
     }
   }
+  else {
+    vscode.window.showErrorMessage('Target not compatible with PyOCD. Please select a valid target in the build configuration.');
+    return;
+  }
 }
 
 export async function createLaunchConfiguration(project: ZephyrProject, buildConfigName?: string): Promise<any> {

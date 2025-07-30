@@ -15,7 +15,7 @@ reinstall_venv_bool=false
 portable=false
 INSTALL_DIR=""
 
-zinstaller_version="0.7"
+zinstaller_version="1.0"
 zinstaller_md5=$(md5sum "$BASH_SOURCE")
 tools_yml_md5=$(md5sum "$YAML_FILE")
 
@@ -116,7 +116,6 @@ ENV_FILE="$INSTALL_DIR/env.sh"
 
 # ----------------------------------------
 # get_sources <tool> <os>
-#   extrait toutes les lignes "- https://…" du bloc YAML demandé
 # ----------------------------------------
 get_sources() {
     local tool="$1" os="$2"
@@ -249,9 +248,9 @@ install_python_venv() {
     python3 -m venv "$install_directory/.venv"
     source "$install_directory/.venv/bin/activate"
     python3 -m pip install setuptools wheel west --quiet
-    python3 -m pip install git+https://github.com/HBehrens/puncover --quiet
     python3 -m pip install anytree --quiet
     python3 -m pip install -r "$REQUIREMENTS_DIR/requirements.txt" --quiet
+    python3 -m pip install puncover --quiet
 }
 
 if [[ $root_packages == true ]]; then
@@ -314,11 +313,8 @@ if [[ $non_root_packages == true ]]; then
     pr_title "YQ"
     YQ="yq"
 
-    YQ_SOURCE=$(get_sources yq "$SELECTED_OS")
-    YQ_SHA256=$(awk -v t="tool: yq" -v os="$SELECTED_OS:" '
-      $0 ~ t {f=1; next}
-      f && $0 ~ "^ *"os {getline; while($0 !~ /sha256:/) getline; print $2; exit}
-    ' "$YAML_FILE")
+    YQ_SOURCE=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'source' | awk -F": " '{print $2}')
+    YQ_SHA256=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'sha256' | awk -F": " '{print $2}')
 
     download_and_check_hash "$YQ_SOURCE" "$YQ_SHA256" "$YQ"
 
@@ -381,7 +377,7 @@ if [[ $non_root_packages == true ]]; then
       export PATH="$openssl_path:$PATH"
 
       pr_title "Python"
-      PYTHON_FOLDER_NAME="3.11.9"
+      PYTHON_FOLDER_NAME="3.13.5"
       PYTHON_ARCHIVE_NAME="cpython-${PYTHON_FOLDER_NAME}-linux-x86_64.tar.gz"
       download_and_check_hash "${python_portable[source]}" "${python_portable[sha256]}" "$PYTHON_ARCHIVE_NAME"
       tar xf "$DL_DIR/$PYTHON_ARCHIVE_NAME" -C "$TOOLS_DIR"

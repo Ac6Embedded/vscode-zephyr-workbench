@@ -4,6 +4,7 @@ import { WestRunner } from './debug/runners/WestRunner';
 import { createOpenocdCfg, createWestWrapper } from './debugUtils';
 import { ZephyrProject } from './ZephyrProject';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
+import { getTerminalDefaultProfile } from './execUtils';
 
 export class ZephyrDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
   
@@ -45,7 +46,8 @@ export class ZephyrDebugConfigurationProvider implements vscode.DebugConfigurati
 
   async runPreLaunch(appProject: ZephyrProject, buildConfigName: string): Promise<void> {
     let westBuildTask = await findConfigTask('West Build', appProject, buildConfigName);
-    if(westBuildTask) {
+    const profile = getTerminalDefaultProfile();
+    if (!profile && westBuildTask) {
       await vscode.tasks.executeTask(westBuildTask);
     }
   }
