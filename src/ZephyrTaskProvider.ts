@@ -220,7 +220,6 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
     let config = undefined;
 
-    // Search for configuration
     if (_task.definition.config) {
       config = project.getBuildConfiguration(_task.definition.config);
     }
@@ -247,7 +246,6 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       }
     }
 
-    // Convert the value to lowercase and compare to "true"
     const sysbuildEnabled =
       config && String(config.sysbuild).toLowerCase() === "true";
 
@@ -269,7 +267,6 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       throw new Error('Missing command to execute');
     }
 
-    // Prepend environment script before any command
     let envSourceCmd = `source ${envScript}`;
     if (shell === 'cmd.exe') {
       envSourceCmd = `call ${envScript}`;
@@ -277,7 +274,6 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       envSourceCmd = `. ${envScript}`;
     }
 
-    // Set shell execution options
     let options: vscode.ShellExecutionOptions = {
       executable: shell,
       shellArgs: shellArgs,
@@ -297,8 +293,8 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
       if (iarEntry) {
         const armSubdir = process.platform === "win32"
-          ? path.join(iarEntry.iarPath, "arm")          // uses '\'
-          : path.posix.join(iarEntry.iarPath, "arm");   // uses '/'
+          ? path.join(iarEntry.iarPath, "arm") 
+          : path.posix.join(iarEntry.iarPath, "arm");
 
         options.env = {
           ...options.env,
@@ -348,7 +344,6 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
   }
 }
 
-// Function to check for prj.conf and create tasks.json
 export async function checkAndCreateTasksJson(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
   const prjConfPath = path.join(workspaceFolder.uri.fsPath, 'prj.conf');
   if (fs.existsSync(prjConfPath)) {
@@ -356,12 +351,10 @@ export async function checkAndCreateTasksJson(workspaceFolder: vscode.WorkspaceF
   }
 }
 
-// Function to create tasks.json file
 export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
   const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
   const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
 
-  // Ensure .vscode directory exists
   if (!fs.existsSync(vscodeFolderPath)) {
     fs.mkdirSync(vscodeFolderPath);
   }

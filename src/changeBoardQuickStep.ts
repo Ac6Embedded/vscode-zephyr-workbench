@@ -14,17 +14,15 @@ export async function changeBoardQuickStep(context: ExtensionContext, project: Z
   } else {
     for (let cfg of configs) {
       if (cfg.active === true) {
-        buildConfig = cfg; // Assign the active configuration
-        break; // Exit the loop once the active configuration is found
+        buildConfig = cfg;
+        break;
       }
     }
   
-    // Fallback if no active configuration is found
     if (!buildConfig && configs.length > 0) {
       buildConfig = configs[0];
     }
   }
-  // Handle the case where buildConfig is still undefined
   if (!buildConfig) {
     throw new Error("No valid build configuration found. Please check your project settings.");
   }

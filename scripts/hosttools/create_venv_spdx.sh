@@ -38,7 +38,8 @@ OPTIONS:
   -h, --help                Show this help message and exit.
 
 ARGUMENTS:
-  installDir                The directory where the packages should be installed. 
+  installDir                The directory where the packages should be installed.
+  hostToolsDir              Folder that may contain tools/python/python.
 
 DESCRIPTION:
   This script creates a new Python3 virtual environment for SPDX tools
@@ -49,15 +50,11 @@ EOF
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
   case $1 in
-    -h | --help)
-      usage
-      ;;
+    -h | --help) usage ;;
     *)
-      if [[ -z "$INSTALL_DIR" ]]; then
-        INSTALL_DIR="$1"
-      else
-        echo "Unknown option or multiple installDir values: $1"
-        usage
+      if   [[ -z "$INSTALL_DIR"    ]]; then INSTALL_DIR="$1"
+      elif [[ -z "$HOST_TOOLS_DIR" ]]; then HOST_TOOLS_DIR="$1"
+      else echo "Unknown option or too many values: $1"; usage
       fi
       ;;
   esac
@@ -69,31 +66,63 @@ if [[ -z "$INSTALL_DIR" ]]; then
   usage
 fi
 
-if ! command -v python3 &> /dev/null; then
-  echo "Missing python3, please install host tools first !"
+if [[ -z "$HOST_TOOLS_DIR" ]]; then
+  echo "Missing hostToolsDir value"
+  usage
+fi
+
+if [[ -x "${HOST_TOOLS_DIR}/tools/3.13.5/bin/python" ]]; then
+  PYTHON_BIN="${HOST_TOOLS_DIR}/tools/3.13.5/bin/python"
+  echo found python interpreter in "${HOST_TOOLS_DIR}/tools/3.13.5/bin/python"
+elif [[ -x "${HOST_TOOLS_DIR}/tools/python/python/python.exe" ]]; then
+  PYTHON_BIN="${HOST_TOOLS_DIR}/tools/python/python/python.exe"
+  echo "found python interpreter in ${HOST_TOOLS_DIR}/tools/python/python/python.exe"
+elif command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="$(command -v python3)"
+  echo found python3 interpreter on PATH
+elif command -v python  >/dev/null 2>&1; then
+  PYTHON_BIN="$(command -v python)"
+  echo found python interpreter on PATH
+else
+  echo "ERROR: No Python interpreter found in \"${HOST_TOOLS_DIR}/tools/python\" or on PATH." >&2
   exit 1
 fi
 
+[[ "${PYTHON_BIN##*.}" == "exe" ]] && USE_DIRECT_VENV_PY=1 || USE_DIRECT_VENV_PY=0
 
-function install_python_venv() {
-    local install_directory=$1
+
+install_python_venv() {
+    local install_dir=$1
+    local venv_dir="$install_dir/.venv-spdx"
 
     pr_title "Install SPDX tools"
 
-    python3 -m venv "$install_directory/.venv-spdx"
-
-    if [ -f "$install_directory/.venv-spdx/bin/activate" ]; then
-        source "$install_directory/.venv-spdx/bin/activate"
-    elif [ -f "$install_directory/.venv-spdx/Scripts/activate" ]; then
-        source "$install_directory/.venv-spdx/Scripts/activate"
-    else
-        echo "ERROR: Cannot find activate script in .venv-spdx" >&2
+    "$PYTHON_BIN" -m venv "$venv_dir" || {
+        echo "ERROR: venv creation failed" >&2
         return 1
-    fi
+    }
 
-    python3 -m pip install ntia-conformance-checker \
-                         cve-bin-tool \
-                         sbom2doc
+    if (( USE_DIRECT_VENV_PY )); then
+        local venv_py="$venv_dir/Scripts/python.exe"
+
+        "$venv_py" -m pip install --upgrade pip
+        "$venv_py" -m pip install ntia-conformance-checker \
+                                 cve-bin-tool \
+                                 sbom2doc
+
+    else
+        if   [[ -f "$venv_dir/bin/activate"   ]]; then
+            source "$venv_dir/bin/activate"
+        else
+            echo "ERROR: Cannot find activate script in $venv_dir" >&2
+            return 1
+        fi
+
+        python3 -m pip install --upgrade pip
+        python3 -m pip install ntia-conformance-checker \
+                               cve-bin-tool \
+                               sbom2doc
+    fi
 }
 
 install_python_venv "$INSTALL_DIR"

@@ -1,6 +1,9 @@
 param (
-  [Parameter(Mandatory=$true)]
-  [string]$InstallDir
+    [Parameter(Mandatory = $true,  Position = 0)]
+    [string]$InstallDir,
+
+    [Parameter(Mandatory = $true,  Position = 1)]
+    [string]$HostToolsDir
 )
 $SelectedOperatingSystem = "windows"
 
@@ -65,18 +68,55 @@ if ($args.Count -gt 0 -and ($args[0] -eq "-h" -or $args[0] -eq "--help" -or $arg
   exit
 }
 
+function Get-PythonExecutable {
+    param(
+        [string]$HostToolsDir
+    )
+
+    # portable copy
+    $portable = Join-Path $HostToolsDir 'tools\python\python\python.exe'
+    if (Test-Path $portable) {
+        Write-Host "Using embedded Python: $portable"
+        return $portable
+    }
+
+    # "python" in $env:Path
+    $sysPython = (Get-Command python -CommandType Application -ErrorAction SilentlyContinue).Path
+    if ($sysPython) {
+        Write-Host "Using system Python: $sysPython"
+        return $sysPython
+    }
+
+    # extra fallback
+    $sysPython3 = (Get-Command python3 -CommandType Application -ErrorAction SilentlyContinue).Path
+    if ($sysPython3) {
+        Write-Host "Using system Python 3: $sysPython3"
+        return $sysPython3
+    }
+
+    return $null
+}
+
 function Install-PythonVenv {
   param (
-      [string]$InstallDirectory
+      [string]$InstallDirectory,
+      [string]$HostToolsDir
   )
+
+  $Python = Get-PythonExecutable -HostToolsDir $HostToolsDir
+  if (-not $Python) {
+      Print-Error 99 "Python was not found in: $HostToolsDir\tools\python\python.exe, please install Python or fix HostTools."
+      exit 99
+  }
 
   Print-Title "Install SPDX tools"
 
-  python -m venv "$InstallDirectory\.venv-spdx"
+  & $Python -m venv "$InstallDirectory\.venv-spdx"
   . "$InstallDirectory\.venv-spdx\Scripts\Activate.ps1"
+
   python -m pip install ntia-conformance-checker
   python -m pip install cve-bin-tool
   python -m pip install sbom2doc
 }
 
-Install-PythonVenv -InstallDirectory $InstallDir
+Install-PythonVenv -InstallDirectory $InstallDir -HostToolsDir $HostToolsDir

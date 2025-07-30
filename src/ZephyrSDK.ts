@@ -117,15 +117,13 @@ export class IARToolchain {
   constructor(
     public readonly zephyrSdkPath: string,
     public readonly iarPath: string,
-    public readonly token: string,      // licence / access token
+    public readonly token: string,
   ) {}
 
-  /** “IAR‑<folder‑name>”  – nice for the tree node label */
   get name(): string {
-    return `IAR‑${path.basename(this.iarPath)}`;
+    return `IAR-${path.basename(this.iarPath)}`;
   }
 
-  /** Vars you might inject into build terminals */
   get buildEnv(): Record<string, string> {
     return {
       IAR_TOOLCHAIN_DIR: this.iarPath,
@@ -133,22 +131,20 @@ export class IARToolchain {
     };
   }
 
-  /** Quick validity check: does <iarPath>/bin/iccarm(.exe) exist? */
 
   static isIarPath(p: string): boolean {
     if (!p) return false;
   
     const exe = process.platform === "win32" ? "iccarm.exe" : "iccarm";
     const candidates = [
-      path.join(p, "bin", exe),           // legacy layout
-      path.join(p, "arm", "bin", exe),    // nightly & Linux
-      path.join(p, "common", "bin", exe), // Windows “common/bin”
+      path.join(p, "bin", exe),
+      path.join(p, "arm", "bin", exe),
+      path.join(p, "common", "bin", exe),
     ];
   
     return candidates.some(fs.existsSync);
   }
 
-  /** Return full path to the C compiler */
   get compilerPath(): string {
     const exe = process.platform === "win32" ? "iccarm.exe" : "iccarm";
     const lookup = [
@@ -156,7 +152,7 @@ export class IARToolchain {
       path.join(this.iarPath, "arm", "bin", exe),
       path.join(this.iarPath, "common", "bin", exe),
     ];
-    return lookup.find(fs.existsSync) || lookup[0];  // fallback
+    return lookup.find(fs.existsSync) || lookup[0];
   }
   
 }

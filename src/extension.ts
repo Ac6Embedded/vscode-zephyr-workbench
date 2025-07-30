@@ -1289,6 +1289,18 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.import-official-sdk", async (sdkType, sdkVersion, listToolchains, parentPath) => {
+			if (!parentPath) {
+				vscode.window.showErrorMessage("No folder path was provided.");
+				return;
+			}	
+			try {
+				if (!fs.existsSync(parentPath)) {
+					fs.mkdirSync(parentPath, { recursive: true });
+				}
+			} catch (err: any) {
+				vscode.window.showErrorMessage(`Failed to create folder: ${err.message}`);
+				return;
+			}
 			if (sdkType && sdkVersion && parentPath) {
 				ImportZephyrSDKPanel.currentPanel?.dispose();
 				vscode.window.withProgress({
@@ -1360,6 +1372,18 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.import-remote-sdk", async (remotePath, parentPath) => {
+			if (!parentPath) {
+				vscode.window.showErrorMessage("No folder path was provided.");
+				return;
+			}	
+			try {
+				if (!fs.existsSync(parentPath)) {
+					fs.mkdirSync(parentPath, { recursive: true });
+				}
+			} catch (err: any) {
+				vscode.window.showErrorMessage(`Failed to create folder: ${err.message}`);
+				return;
+			}
 			if (remotePath && parentPath) {
 				ImportZephyrSDKPanel.currentPanel?.dispose();
 				vscode.window.withProgress({

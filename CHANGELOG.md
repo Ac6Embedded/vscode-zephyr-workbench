@@ -4,6 +4,12 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.31]
+
+- Fix SPDX install not using the correct python
+- Fix shield names not displaying correctly
+- Fix SDK import by automatically creating the destination folder if it does not exist
+
 ## [1.3.30]
 
 - Fix project creation and workspace import on MacOS

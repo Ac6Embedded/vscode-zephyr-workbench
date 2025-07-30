@@ -166,8 +166,8 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
   const shellKind = classifyShell(getShellExe());
   for (let cfg of zephyrProject.configs) {
     if (cfg.active === true) {
-      buildConfig = cfg; // Assign the active configuration
-      break; // Exit the loop once the active configuration is found
+      buildConfig = cfg;
+      break;
     }
   }
   if (buildConfig === undefined) {
@@ -280,8 +280,8 @@ export async function westFlashCommand(zephyrProject: ZephyrProject, westWorkspa
   let buildConfig;
   for (let cfg of zephyrProject.configs) {
     if (cfg.active === true) {
-      buildConfig = cfg; // Assign the active configuration
-      break; // Exit the loop once the active configuration is found
+      buildConfig = cfg;
+      break;
     }
   }
   if (buildConfig === undefined) {
@@ -308,8 +308,8 @@ export async function westDebugCommand(zephyrProject: ZephyrProject, westWorkspa
   let buildConfig;
   for (let cfg of zephyrProject.configs) {
     if (cfg.active === true) {
-      buildConfig = cfg; // Assign the active configuration
-      break; // Exit the loop once the active configuration is found
+      buildConfig = cfg;
+      break;
     }
   }
   if (buildConfig === undefined) {
@@ -371,17 +371,28 @@ export async function getBoardsDirectories(parent: ZephyrAppProject | WestWorksp
  * @param parent The ZephyrAppProject or WestWorkspace instance.
  * @returns A promise that resolves with the list of supported shield names.
  */
-export async function getSupportedShields(parent: ZephyrAppProject | WestWorkspace): Promise<string[]> {
+export async function getSupportedShields(
+  parent: ZephyrAppProject | WestWorkspace,
+): Promise<string[]> {
   return new Promise((resolve, reject) => {
-    const cmd = 'west shields';
-    execWestCommandWithEnv(cmd, parent, (error: any, stdout: string, stderr: string) => {
+    execWestCommandWithEnv('west shields', parent, (error, stdout, stderr) => {
       if (error) {
         return reject(`Error: ${stderr}`);
       }
 
-      // Use the appropriate newline separator based on the platform
-      const separator = process.platform === 'win32' ? '\r\n' : '\n';
-      const shieldNames = stdout.trim().split(separator).filter(name => name.length > 0);
+      const lines = stdout.split(/\r?\n/).map(l => l.trim());
+
+      const firstShieldIdx = lines.findIndex(
+        l => /^[A-Za-z0-9_]+$/.test(l) && l.includes('_'),
+      );
+
+      const shieldNames =
+        firstShieldIdx === -1
+          ? []
+          : lines
+              .slice(firstShieldIdx)
+              .filter(l => /^[A-Za-z0-9_]+$/.test(l));
+
       resolve(shieldNames);
     });
   });
@@ -415,7 +426,6 @@ export async function getBoardsDirectoriesFromIdentifier(boardIdentifier: string
         reject(`Error: ${stderr}`);
       }
 
-      // Note, the newline separator is different on Windows
       let separator = '\n';
       if (process.platform === 'win32') {
         separator = '\r\n';
@@ -461,7 +471,7 @@ export function execWestCommandWithEnv(
   // shell + flags
   const shellExe = getShellExe();
   const shellKind = classifyShell(shellExe);
-  const baseArgs = getShellArgs(shellKind);        // normally ['-c']
+  const baseArgs = getShellArgs(shellKind);
   const shellArgs = isCygwin(shellExe)
     ? ['--login', '-i', ...baseArgs]
     : baseArgs;

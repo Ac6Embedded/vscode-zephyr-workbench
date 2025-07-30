@@ -577,13 +577,12 @@ export async function createLocalVenvSPDX(
     return undefined;
   }
 
-  /* ── detect the shell the user is *actually* running ─────────────────── */
-  const shellExe  = getShellExe();          // full path to current shell
-  const shellKind = classifyShell(shellExe);/* bash | zsh | fish | cmd.exe |
-                                              * powershell.exe | dash */
+  const shellExe  = getShellExe();
+  const shellKind = classifyShell(shellExe);
 
-  /* ── pick the right helper script and command line ───────────────────── */
   const destDir = workbenchFolder.uri.fsPath;
+  const hostToolsPath = getInternalDirRealPath();
+  const hostToolsDirEsc = hostToolsPath.replace(/\\/g, '\\\\');
   let installScript: string;
   let installCmd   : string;
   let installArgs  = '';
@@ -594,14 +593,14 @@ export async function createLocalVenvSPDX(
       shellKind,
       vscode.Uri.joinPath(installDirUri, installScript).fsPath);
       const dest     = normalizePathForShell(shellKind, destDir);
-      installCmd  = `bash ${script} ${dest}`;
-  } else { // powershell.exe *or* cmd.exe fallback to PowerShell script
+      const hostToolsPathNorm = normalizePathForShell(shellKind, hostToolsPath);
+      installCmd  = `bash ${script} ${dest} ${hostToolsPathNorm}`;
+  } else {
     installScript = 'create_venv_spdx.ps1';
     installCmd    = `powershell -ExecutionPolicy Bypass -File "${vscode.Uri.joinPath(installDirUri, installScript).fsPath}"`;
-    installArgs   = ` -InstallDir "${destDir}"`;
+    installArgs   = ` -InstallDir "${destDir}" -HostToolsDir "${hostToolsDirEsc}"`;
   }
 
-  /* ── run it via the detected shell, propagating the ENV_FILE variable ── */
   const shellOpts: vscode.ShellExecutionOptions = {
     cwd        : os.homedir(),
     env        : { ENV_FILE: expandEnvVariables(envScript) },
