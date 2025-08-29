@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.32]
+
+- Fix IAR ARM toolchain not being detected when using different terminal
+
 ## [1.3.31]
 
 - Fix SPDX install not using the correct python

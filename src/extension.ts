@@ -1578,9 +1578,9 @@ export function activate(context: vscode.ExtensionContext) {
 						cancellable: false,
 					},
 					async () => {
-						await unregisterIARToolchain(iarPath); // ← helper we wrote earlier
-						deleteFolder(iarPath);                 // your existing util
-						zephyrSdkProvider.refresh();           // same provider as SDKs
+						await unregisterIARToolchain(iarPath);
+						deleteFolder(iarPath);
+						zephyrSdkProvider.refresh();
 					}
 				);
 			}

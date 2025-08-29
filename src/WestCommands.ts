@@ -9,7 +9,7 @@ import { ZephyrSDK } from './ZephyrSDK';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
 import { concatCommands, execShellCommandWithEnv, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from './execUtils';
-import { fileExists, getWestWorkspace, getZephyrSDK, normalizePath } from './utils'; 
+import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from './utils'; 
 
 function quote(p: string): string {
   return /\s/.test(p) ? `"${p}"` : p;
@@ -195,6 +195,34 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
 
   const sysbuildFlag = sysbuildEnabled ? " --sysbuild" : "";
 
+  const folderUri = vscode.Uri.file(zephyrProject.folderPath);
+  const folder = vscode.workspace.getWorkspaceFolder(folderUri);
+  const cfg = vscode.workspace.getConfiguration(
+    ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
+    folder ?? undefined
+  );
+
+  const toolchainKind = (cfg.get<string>('toolchain') ?? 'sdk').toLowerCase();
+  let iarEnv: Record<string, string> = {};
+
+  if (toolchainKind === 'iar') {
+    const selectedIarPath = cfg.get<string>('iar', '');
+    const iarEntry = findIarEntry(selectedIarPath);
+
+    if (iarEntry) {
+      const armSubdir =
+        process.platform === 'win32'
+          ? path.join(iarEntry.iarPath, 'arm')
+          : path.posix.join(iarEntry.iarPath, 'arm');
+
+      iarEnv = {
+        IAR_TOOLCHAIN_PATH: armSubdir,
+        ZEPHYR_TOOLCHAIN_VARIANT: 'iar',
+        IAR_LMS_BEARER_TOKEN: iarEntry.token ?? ''
+      };
+    }
+  }
+
   const command =
   `west build -p always` +
   ` --board ${buildConfig.boardIdentifier}` +
@@ -204,7 +232,7 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
 
     const options: vscode.ShellExecutionOptions = {
       cwd        : westWorkspace.kernelUri.fsPath,
-      env        : { ...normEnvVars, ...activeSdk.buildEnv, ...westWorkspace.buildEnv },
+      env        : { ...normEnvVars, ...activeSdk.buildEnv, ...westWorkspace.buildEnv, ...iarEnv },
       executable : getShellExe(),
       shellArgs  : getShellArgs(classifyShell(getShellExe()))
     };
