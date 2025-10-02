@@ -26,9 +26,10 @@ export function concatCommands(shell: string, ...cmds: string[]): string {
     case 'cmd.exe':
       return cmds.join(' && ');
     case 'powershell.exe':
-      return cmds.join('; ');
+    case 'pwsh.exe':
+      return cmds.join(' ; ');
     default:
-      return cmds.join(' && ');
+      return cmds.join(' ; ');
   }
 }
 
@@ -43,6 +44,7 @@ export function getEnvVarFormat(shell: string, env: string): string {
     case 'cmd.exe':
       return `%${env}%`;
     case 'powershell.exe':
+    case 'pwsh.exe':
       return `$env:${env}`;
     default:
       return `$${env}`;
@@ -63,7 +65,7 @@ export function getResolvedShell(): { path: string; args?: string[] } {
     return { path: prof.exe, args: prof.args };
   }
 
-  if (process.platform === "darwin"){
+  if (process.platform === "darwin") {
     return { path: '/bin/bash' };
   }
 
@@ -79,10 +81,11 @@ export function getResolvedShell(): { path: string; args?: string[] } {
 }
 
 export function classifyShell(shellPath: string):
-  'bash' | 'zsh' | 'fish' | 'dash' | 'cmd.exe' | 'powershell.exe' {
+  'bash' | 'zsh' | 'fish' | 'dash' | 'cmd.exe' | 'powershell.exe' | 'pwsh.exe' {
 
   const exe = path.basename(shellPath).toLowerCase();
 
+  if (exe.includes('pwsh')) { return 'pwsh.exe'; }
   if (exe.includes('zsh')) { return 'zsh'; }
   if (exe.includes('fish')) { return 'fish'; }
   if (exe.includes('dash')) { return 'dash'; }
@@ -102,7 +105,7 @@ export function normalizePathForShell(shellType: string, p: string): string {
     out = out.replace(/\.(bat|ps1)$/i, '.sh')
       .replace(/%(\w+)%/g, '${$1}');
 
-  } else if (shellType === 'powershell.exe') {
+  } else if (shellType === 'powershell.exe' || shellType === 'pwsh.exe') {
 
     out = out.replace(/\.(bat|sh)$/i, '.ps1')
       .replace(/%(\w+)%/g, '$env:$1')
@@ -129,7 +132,7 @@ export function normalizeSlashesIfPath(p: string): string {
 
 export function normalisePathsInString(kind: string, text: string): string {
   if (!text) { return text; }
-  if (kind === 'cmd.exe' || kind === 'powershell.exe') { return text; }
+  if (kind === 'cmd.exe' || kind === 'powershell.exe' || kind === 'pwsh.exe') { return text; }
 
   return text.replace(/\\/g, '/');
 }
@@ -169,7 +172,7 @@ export function getTerminalShell(): string {
 
 function detectTerminalProfile():
   | {
-    kind: 'bash' | 'cmd.exe' | 'powershell.exe';
+    kind: 'bash' | 'cmd.exe' | 'powershell.exe' | 'pwsh.exe';
     exe: string;
     args?: string[];
     env?: Record<string, string>;
@@ -194,7 +197,8 @@ function detectTerminalProfile():
   const kind =
     low.includes('bash') ? 'bash' :
       low.includes('powershell') ? 'powershell.exe' :
-        'cmd.exe';
+        low.includes('pwsh') ? 'pwsh.exe' :
+          'cmd.exe';
 
   return {
     kind,
@@ -234,6 +238,7 @@ export function getShellArgs(shell: string): string[] {
     case 'cmd.exe':
       return ['/d', '/c'];
     case 'powershell.exe':
+    case 'pwsh.exe':
       return ['-Command'];
     default:
       return [];
@@ -250,6 +255,7 @@ export function getShellNullRedirect(shell: string): string {
     case 'cmd.exe':
       return '> NUL 2>&1';
     case 'powershell.exe':
+    case 'pwsh.exe':
       return '> $null 2>&1';
     default:
       return '';
@@ -265,6 +271,7 @@ export function getShellIgnoreErrorCommand(shell: string): string {
     case 'cmd.exe':
       return '> NUL 2>&1 || exit 0';
     case 'powershell.exe':
+    case 'pwsh.exe':
       return '> $null 2>&1; exit 0';
     default:
       return '';
@@ -281,6 +288,7 @@ export function getShellSourceCommand(shell: string, script: string): string {
     case 'cmd.exe':
       return `call ${script}`;
     case 'powershell.exe':
+    case 'pwsh.exe':
       return `. ${script}`;
     default:
       return '';
@@ -293,6 +301,7 @@ export function getShellEchoCommand(shell: string): string {
     case 'cmd.exe':
       return 'echo';
     case 'powershell.exe':
+    case 'pwsh.exe':
       return 'Write-Output';
     default:
       return 'echo';
@@ -306,6 +315,7 @@ export function getShellClearCommand(shell: string): string {
       return 'clear';
     case 'cmd.exe':
     case 'powershell.exe':
+    case 'pwsh.exe':
       return 'cls';
     default:
       return '';
@@ -383,6 +393,8 @@ export async function execShellCommand(
     throw new Error('Missing command to execute');
   }
 
+  const shellPath = options.executable ?? getShellExe();
+  const shellType = classifyShell(shellPath);
   const shExec = new vscode.ShellExecution(cmd, options);
   const task = new vscode.Task(
     { label: cmdName, type: 'shell' },
