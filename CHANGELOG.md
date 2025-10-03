@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.34]
+
+- Make packaging script cross-platform (use cross-env for NODE_ENV) to enable building .vsix on Windows
+
 ## [1.3.33]
 
 - Fix Recognize PowerShell 7 (pwsh) and run commands correctly
