@@ -105,9 +105,10 @@ export class CreateWestWorkspacePanel {
   }
 
   private _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
-    const webviewUri = getUri(webview, extensionUri, ["out", "createwestworkspace.js"]);
-    const styleUri = getUri(webview, extensionUri, ["out", "style.css"]);
-    const nonce = getNonce();
+  const webviewUri = getUri(webview, extensionUri, ["out", "createwestworkspace.js"]);
+  const styleUri = getUri(webview, extensionUri, ["out", "style.css"]);
+  const codiconUri = getUri(webview, extensionUri, ["out", "codicon.css"]);
+  const nonce = getNonce();
     
     let templatesHTML = '';
     for(let hal of listHals) {
@@ -120,8 +121,9 @@ export class CreateWestWorkspacePanel {
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
           <link rel="stylesheet" href="${styleUri}">
+          <link rel="stylesheet" href="${codiconUri}">
           <title>Create west workspace</title>
         </head>
         
@@ -176,6 +178,7 @@ export class CreateWestWorkspacePanel {
                     </svg>
                   </slot>
                 </div>
+                    <button id="branchRefreshButton" class="inline-icon-button codicon codicon-refresh" title="Refresh tags" aria-label="Refresh tags" type="button"></button>
                 <div id="branchDropdown" class="dropdown-content">
                 </div>
               </div>
@@ -201,7 +204,7 @@ export class CreateWestWorkspacePanel {
     `;
   }
 
-  private updateBranches(webview: vscode.Webview, remotePath: string, srcType: string) {
+  private updateBranches(webview: vscode.Webview, remotePath: string, srcType: string, clear?: boolean) {
     let zephyrRepoUrl = remotePath;
     if(srcType === 'template' && !remotePath.endsWith('/zephyr')) {
       zephyrRepoUrl = remotePath.concat('/zephyr');
@@ -213,7 +216,8 @@ export class CreateWestWorkspacePanel {
           for(let tag of tags) {
             newBranchHTML += `<div class="dropdown-item" data-value="${tag}" data-label="${tag}">${tag}</div>`;
           }
-          webview.postMessage({ command: 'updateBranchDropdown', branchHTML: newBranchHTML, branch: tags[0] });
+          const branchValue = clear ? '' : tags[0];
+          webview.postMessage({ command: 'updateBranchDropdown', branchHTML: newBranchHTML, branch: branchValue });
         }        
       })
       .catch(error => {
@@ -246,7 +250,7 @@ export class CreateWestWorkspacePanel {
             this.openManifestDialog();
             break;
           case 'remotePathChanged':
-            this.updateBranches(webview, message.remotePath, message.srcType);
+            this.updateBranches(webview, message.remotePath, message.srcType, !!message.clear);
             break;
           case 'create':
             srcType = message.srcType;

@@ -192,6 +192,37 @@ vscode-button {
   margin-inline-start: 1em;
 }
 
+.inline-icon-button {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.inline-icon-button:hover { opacity: 0.9; }
+
+#listBranch .combo-dropdown-control {
+  padding-right: 48px; 
+}
+
+#listBranch .indicator {
+  right: 28px; 
+}
+
+#listBranch .inline-icon-button {
+  right: 12px;
+}
+
 .dropdown-content {
   display: none;
   position: absolute;

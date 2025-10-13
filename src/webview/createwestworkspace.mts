@@ -37,6 +37,9 @@ function main() {
   const importButton = document.getElementById("importButton") as Button;
   importButton?.addEventListener("click", createHandler);
 
+  const branchRefreshButton = document.getElementById("branchRefreshButton") as Button | null;
+  branchRefreshButton?.addEventListener("click", clearBranchHandler);
+
   // Initialize branch values
   remotePathChanged(remotePathText.value, srcTypeRadioGroup.value);
 }
@@ -213,11 +216,41 @@ function setLocalPath(id: string, path: string) {
   localPath.value = path;
 }
 
+function clearBranchHandler(this: HTMLElement, ev: MouseEvent) {
+  
+  ev.preventDefault();
+  ev.stopPropagation();
+  const branchInput = document.getElementById('branchInput') as HTMLInputElement;
+  const branchDropdown = document.getElementById('branchDropdown') as HTMLElement;
+  const remotePathText = document.getElementById('remotePath') as TextField;
+  const srcTypeRadioGroup = document.getElementById('srcType') as RadioGroup;
+  
+  branchInput.value = '';
+  branchInput.setAttribute('data-value', '');
+  
+  if (branchDropdown) {
+    Array.from(branchDropdown.getElementsByClassName('dropdown-item')).forEach(el => {
+      (el as HTMLElement).style.display = '';
+    });
+  }
+
+  webviewApi.postMessage({
+    command: 'remotePathChanged',
+    remotePath: remotePathText.value,
+    srcType: srcTypeRadioGroup.value,
+    clear: true
+  });
+  return false;
+}
+
 async function updateBranchDropdown(branchHTML: string, branch: string) {
   const branchInput = document.getElementById('branchInput') as HTMLInputElement;
   const branchDropdown = document.getElementById('branchDropdown') as HTMLElement;
 
-  branchInput.value = branch;
+  if (typeof branch === 'string') {
+    branchInput.value = branch || '';
+    branchInput.setAttribute('data-value', branch || '');
+  }
   branchDropdown.innerHTML = branchHTML;
   addDropdownItemEventListeners(branchDropdown, branchInput);
 }
