@@ -35,6 +35,8 @@ function main() {
       const branchInput = document.getElementById('branchInput') as HTMLInputElement;
       branchInput.value = '';
       branchInput.setAttribute('data-value', '');
+      const spinner = document.getElementById('branchLoadingSpinner');
+      if (spinner) spinner.style.display = 'inline-block';
       remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
     }
   });
@@ -46,6 +48,8 @@ function main() {
       const branchInput = document.getElementById('branchInput') as HTMLInputElement;
       branchInput.value = '';
       branchInput.setAttribute('data-value', '');
+      const spinner = document.getElementById('branchLoadingSpinner');
+      if (spinner) spinner.style.display = 'inline-block';
       remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
     }
   });
@@ -61,6 +65,8 @@ function main() {
         const branchInput = document.getElementById('branchInput') as HTMLInputElement;
         branchInput.value = '';
         branchInput.setAttribute('data-value', '');
+        const spinner = document.getElementById('branchLoadingSpinner');
+        if (spinner) spinner.style.display = 'inline-block';
         remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
       }
     }, 1000);
@@ -76,7 +82,11 @@ function main() {
   importButton?.addEventListener("click", createHandler);
 
   const branchRefreshButton = document.getElementById("branchRefreshButton") as Button | null;
-  branchRefreshButton?.addEventListener("click", clearBranchHandler);
+  branchRefreshButton?.addEventListener("click", (ev) => {
+    clearBranchHandler.call(branchRefreshButton as any, ev);
+    const spinner = document.getElementById('branchLoadingSpinner');
+    if (spinner) spinner.style.display = 'inline-block';
+  });
 
   // Initialize branch values
   remotePathChanged(remotePathText.value, srcTypeRadioGroup.value);
@@ -308,6 +318,7 @@ function clearBranchHandler(this: HTMLElement, ev: MouseEvent) {
 async function updateBranchDropdown(branchHTML: string, branch: string) {
   const branchInput = document.getElementById('branchInput') as HTMLInputElement;
   const branchDropdown = document.getElementById('branchDropdown') as HTMLElement;
+  const spinner = document.getElementById('branchLoadingSpinner');
 
   if (typeof branch === 'string') {
     branchInput.value = branch || '';
@@ -315,6 +326,7 @@ async function updateBranchDropdown(branchHTML: string, branch: string) {
   }
   branchDropdown.innerHTML = branchHTML;
   addDropdownItemEventListeners(branchDropdown, branchInput);
+  if (spinner) spinner.style.display = 'none';
 }
 
 
@@ -383,7 +395,7 @@ function modifySrcTypeHandler(this: HTMLElement) {
     manifestGroup.style.display  = "block";
   } else if(srcTypeRadioGroup.value === 'template') {
     srcRemotePath.value = "https://github.com/zephyrproject-rtos/zephyr";
-    lastUrl = srcRemotePath.value; // Update tracked URL
+    lastUrl = srcRemotePath.value; 
     srcRemotePath.setAttribute('disabled', '');
     srcRemoteBranch.removeAttribute('disabled');
     templatesGroup.style.display = "block";

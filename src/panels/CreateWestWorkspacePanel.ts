@@ -178,7 +178,8 @@ export class CreateWestWorkspacePanel {
                     </svg>
                   </slot>
                 </div>
-                    <button id="branchRefreshButton" class="inline-icon-button codicon codicon-refresh" title="Refresh tags" aria-label="Refresh tags" type="button"></button>
+                <button id="branchRefreshButton" class="inline-icon-button codicon codicon-refresh" title="Refresh tags" aria-label="Refresh tags" type="button"></button>
+                <div id="branchLoadingSpinner" class="spinner" aria-label="Loading revisions"></div>
                 <div id="branchDropdown" class="dropdown-content">
                 </div>
               </div>
