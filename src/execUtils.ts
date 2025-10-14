@@ -750,10 +750,37 @@ export async function getGitTags(gitUrl: string): Promise<string[]> {
       const tags = out
         .trim()
         .split('\n')
-        .filter(l => !l.includes('^{}'))
-        .map(l => l.split('\t')[1].replace('refs/tags/', ''))
+        .filter(l => l.trim() !== '' && !l.includes('^{}') && l.includes('\t'))
+        .map(l => {
+          const parts = l.split('\t');
+          return parts[1] ? parts[1].replace('refs/tags/', '') : '';
+        })
+        .filter(tag => tag !== '')
         .sort((a, b) => compareVersions(b, a));
       resolve(tags);
+    });
+  });
+}
+
+export async function getGitBranches(gitUrl: string): Promise<string[]> {
+  const gitCmd = `git ls-remote --heads ${gitUrl}`;
+  return new Promise((resolve, reject) => {
+    execCommandWithEnv(gitCmd, undefined, (err, out, errStr) => {
+      if (err) {
+        reject(`Error: ${errStr}`);
+        return;
+      }
+      const branches = out
+        .trim()
+        .split('\n')
+        .filter(l => l.trim() !== '' && l.includes('\t'))
+        .map(l => {
+          const parts = l.split('\t');
+          return parts[1] ? parts[1].replace('refs/heads/', '') : '';
+        })
+        .filter(branch => branch !== '')
+        .sort();
+      resolve(branches);
     });
   });
 }

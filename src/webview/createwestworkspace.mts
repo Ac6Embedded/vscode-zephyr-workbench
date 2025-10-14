@@ -7,6 +7,9 @@ provideVSCodeDesignSystem().register(
 
 const webviewApi = acquireVsCodeApi();
 
+let lastUrl = '';
+let inputTimeout: NodeJS.Timeout | null = null;
+
 window.addEventListener("load", main);
 
 function main() {
@@ -23,9 +26,44 @@ function main() {
   initTemplatesDropdown();
   initBranchDropdown();
 
+  lastUrl = remotePathText.value;
+
   remotePathText.addEventListener('change', function() {
-    console.log(remotePathText.value);
-    remotePathChanged(remotePathText.value, srcTypeRadioGroup.value);
+    console.log('change event:', remotePathText.value);
+    if (remotePathText.value !== lastUrl) {
+      lastUrl = remotePathText.value;
+      const branchInput = document.getElementById('branchInput') as HTMLInputElement;
+      branchInput.value = '';
+      branchInput.setAttribute('data-value', '');
+      remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
+    }
+  });
+
+  remotePathText.addEventListener('blur', function() {
+    console.log('blur event:', remotePathText.value);
+    if (remotePathText.value !== lastUrl) {
+      lastUrl = remotePathText.value;
+      const branchInput = document.getElementById('branchInput') as HTMLInputElement;
+      branchInput.value = '';
+      branchInput.setAttribute('data-value', '');
+      remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
+    }
+  });
+
+  remotePathText.addEventListener('input', function() {
+    if (inputTimeout) {
+      clearTimeout(inputTimeout);
+    }
+    inputTimeout = setTimeout(() => {
+      console.log('input debounced event:', remotePathText.value);
+      if (remotePathText.value !== lastUrl && remotePathText.value.trim() !== '') {
+        lastUrl = remotePathText.value;
+        const branchInput = document.getElementById('branchInput') as HTMLInputElement;
+        branchInput.value = '';
+        branchInput.setAttribute('data-value', '');
+        remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
+      }
+    }, 1000);
   });
 
   const browseLocationButton = document.getElementById("browseLocationButton") as Button;
@@ -171,6 +209,7 @@ function hexToRgba(hex: string, alpha: number): string {
 function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
   const filter = input.value.toUpperCase();
   const items = dropdown.getElementsByClassName('dropdown-item');
+  const headers = dropdown.getElementsByClassName('dropdown-header');
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i] as HTMLElement;
@@ -180,6 +219,25 @@ function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
     } else {
       item.style.display = "none";
     }
+  }
+
+  for (let i = 0; i < headers.length; i++) {
+    const header = headers[i] as HTMLElement;
+    let nextElement = header.nextElementSibling;
+    let hasVisibleItems = false;
+
+    while (nextElement && !nextElement.classList.contains('dropdown-header')) {
+      if (nextElement.classList.contains('dropdown-item')) {
+        const itemElement = nextElement as HTMLElement;
+        if (itemElement.style.display !== 'none') {
+          hasVisibleItems = true;
+          break;
+        }
+      }
+      nextElement = nextElement.nextElementSibling;
+    }
+
+    header.style.display = hasVisibleItems ? '' : 'none';
   }
 }
 
@@ -201,12 +259,13 @@ function setVSCodeMessageListener() {
   });
 }
 
-async function remotePathChanged(remotePath: string, srcType: string) {
+async function remotePathChanged(remotePath: string, srcType: string, clear?: boolean) {
   webviewApi.postMessage(
     { 
       command: 'remotePathChanged',
       remotePath: remotePath,
-      srcType: srcType
+      srcType: srcType,
+      clear: clear
     }
   );
 }
@@ -230,6 +289,9 @@ function clearBranchHandler(this: HTMLElement, ev: MouseEvent) {
   
   if (branchDropdown) {
     Array.from(branchDropdown.getElementsByClassName('dropdown-item')).forEach(el => {
+      (el as HTMLElement).style.display = '';
+    });
+    Array.from(branchDropdown.getElementsByClassName('dropdown-header')).forEach(el => {
       (el as HTMLElement).style.display = '';
     });
   }
@@ -286,6 +348,7 @@ function modifySrcTypeHandler(this: HTMLElement) {
   if(srcTypeRadioGroup.value === 'remote') {
     srcRemotePath.removeAttribute('disabled');
     srcRemotePath.value = "https://github.com/zephyrproject-rtos/zephyr";
+    lastUrl = srcRemotePath.value; 
     srcRemoteBranch.removeAttribute('disabled');
     manifestPath.removeAttribute('disabled');
     manifestPath.setAttribute('placeholder', '(Optional)'),
@@ -295,6 +358,8 @@ function modifySrcTypeHandler(this: HTMLElement) {
     srcRemotePath.style.display = "block";
     srcRemoteBranchGroup.style.display = "block";
     manifestGroup.style.display = "block";
+    
+    remotePathChanged(srcRemotePath.value, srcTypeRadioGroup.value, false);
   } else if(srcTypeRadioGroup.value === 'local') {
     srcRemotePath.setAttribute('disabled', '');
     srcRemoteBranch.setAttribute('disabled', '');
@@ -317,13 +382,16 @@ function modifySrcTypeHandler(this: HTMLElement) {
     srcRemoteBranchGroup.style.display = "none";
     manifestGroup.style.display  = "block";
   } else if(srcTypeRadioGroup.value === 'template') {
-    srcRemotePath.value = "https://github.com/zephyrproject-rtos";
-    srcRemotePath.removeAttribute('disabled');
+    srcRemotePath.value = "https://github.com/zephyrproject-rtos/zephyr";
+    lastUrl = srcRemotePath.value; // Update tracked URL
+    srcRemotePath.setAttribute('disabled', '');
     srcRemoteBranch.removeAttribute('disabled');
     templatesGroup.style.display = "block";
     srcRemotePath.style.display = "block";
     srcRemoteBranchGroup.style.display = "block";
     manifestGroup.style.display  = "none";
+    
+    remotePathChanged(srcRemotePath.value, srcTypeRadioGroup.value, false);
   }
 }
 

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { execCommandWithEnv, getGitTags } from "../execUtils";
+import { execCommandWithEnv, getGitTags, getGitBranches } from "../execUtils";
 import { listHals } from "../manifestUtils";
 
 export class CreateWestWorkspacePanel {
@@ -167,10 +167,10 @@ export class CreateWestWorkspacePanel {
 
             <div class="grid-group-div" id="branchGroup">
               <div class="grid-header-div">
-                <label for="listBranch">Tag:</label>
+                <label for="listBranch">Revision:</label>
               </div>
               <div id="listBranch" class="combo-dropdown grid-value-div">
-                <input type="text" id="branchInput" class="combo-dropdown-control" placeholder="Choose the working tag..." data-value="">
+                <input type="text" id="branchInput" class="combo-dropdown-control" placeholder="Choose the working revision..." data-value="">
                 <div aria-hidden="true" class="indicator" part="indicator">
                   <slot name="indicator">  
                     <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
@@ -206,22 +206,42 @@ export class CreateWestWorkspacePanel {
 
   private updateBranches(webview: vscode.Webview, remotePath: string, srcType: string, clear?: boolean) {
     let zephyrRepoUrl = remotePath;
-    if(srcType === 'template' && !remotePath.endsWith('/zephyr')) {
-      zephyrRepoUrl = remotePath.concat('/zephyr');
+    
+    if(srcType === 'template' && !remotePath.endsWith('/zephyr') && !remotePath.endsWith('/zephyr/')) {
+      zephyrRepoUrl = remotePath.concat('');
     }
-    getGitTags(zephyrRepoUrl)
-      .then(tags => {
+    
+    Promise.all([
+      getGitTags(zephyrRepoUrl),
+      getGitBranches(zephyrRepoUrl)
+    ])
+      .then(([tags, branches]) => {
+        console.log('Got tags:', tags.length, 'branches:', branches.length);
         let newBranchHTML = '';
+        
+        // Add tags section 
         if(tags && tags.length > 0) {
+          newBranchHTML += '<div class="dropdown-header">TAGS</div>';
           for(let tag of tags) {
             newBranchHTML += `<div class="dropdown-item" data-value="${tag}" data-label="${tag}">${tag}</div>`;
           }
-          const branchValue = clear ? '' : tags[0];
-          webview.postMessage({ command: 'updateBranchDropdown', branchHTML: newBranchHTML, branch: branchValue });
-        }        
+        }
+        
+        // Add branches section 
+        if(branches && branches.length > 0) {
+          newBranchHTML += '<div class="dropdown-header">BRANCHES</div>';
+          for(let branch of branches) {
+            newBranchHTML += `<div class="dropdown-item" data-value="${branch}" data-label="${branch}">${branch}</div>`;
+          }
+        }
+        
+        // If clear is true, don't set a default value
+        const branchValue = clear ? '' : (tags && tags.length > 0 ? tags[0] : (branches && branches.length > 0 ? branches[0] : ''));
+        webview.postMessage({ command: 'updateBranchDropdown', branchHTML: newBranchHTML, branch: branchValue });
       })
       .catch(error => {
-        webview.postMessage({ command: 'updateBranchDropdown', branchHTML: '' });
+        console.error('Error fetching tags/branches:', error);
+        webview.postMessage({ command: 'updateBranchDropdown', branchHTML: '<div class="dropdown-header" style="color: var(--vscode-errorForeground);">Error: Repository not found or not accessible</div>', branch: '' });
       });
   }
 

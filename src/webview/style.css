@@ -193,34 +193,47 @@ vscode-button {
 }
 
 .inline-icon-button {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  transform: translateY(-50%);
+  position: relative; 
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: none;
-  background: transparent;
-  color: var(--vscode-foreground);
+  width: calc(var(--input-height)* 1px); 
+  height: calc(var(--input-height)* 1px);
+  margin-left: 4px; 
+  padding: 0;
+  border: 1px solid var(--dropdown-border);
+  border-radius: calc(var(--corner-radius-round)* 1px);
+  background: var(--input-background);
+  color: var(--vscode-icon-foreground);
   cursor: pointer;
-  z-index: 2;
+  font-size: 14px;
+  flex: 0 0 auto;
 }
 
-.inline-icon-button:hover { opacity: 0.9; }
+.inline-icon-button.codicon:before {
+  line-height: 1;
+}
+
+.inline-icon-button:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+  border-color: var(--focus-border);
+}
+
+.inline-icon-button:active {
+  background-color: var(--vscode-toolbar-activeBackground);
+}
+
+#listBranch {
+  display: flex;
+  align-items: center;
+}
 
 #listBranch .combo-dropdown-control {
-  padding-right: 48px; 
+  padding-right: 28px; 
 }
 
 #listBranch .indicator {
-  right: 28px; 
-}
-
-#listBranch .inline-icon-button {
-  right: 12px;
+  right: calc(var(--input-height)* 1px + 4px + 10px);
 }
 
 .dropdown-content {
@@ -229,11 +242,35 @@ vscode-button {
   box-sizing: border-box;
   background: var(--input-background);
   border: calc(var(--border-width)* 1px) solid var(--focus-border);
-  border-radius: calc(var(--corner-radius-round)* 1px);
+  border-radius: 0 0 calc(var(--corner-radius-round)* 1px) calc(var(--corner-radius-round)* 1px);
   min-width: 100%;
   max-height: var(--dropdown-list-max-height);
   overflow-y: auto;
-  z-index: 1;
+  z-index: 10;
+  top: calc(100% + 2px);
+  left: 0;
+}
+
+#listBranch .dropdown-content {
+  left: 0;
+  right: calc(var(--input-height)*1px + 12px);
+  width: auto;
+}
+
+.dropdown-header {
+  color: var(--vscode-descriptionForeground);
+  font-family: inherit;
+  font-size: calc(var(--type-ramp-base-font-size) - 1px);
+  font-weight: bold;
+  padding: 6px 4px 2px 4px;
+  margin-top: 4px;
+  text-transform: uppercase;
+  pointer-events: none;
+  border-bottom: 1px solid var(--vscode-tab-border);
+}
+
+.dropdown-header:first-child {
+  margin-top: 0;
 }
 
 .dropdown-item {
@@ -330,11 +367,6 @@ vscode-button {
     right: auto;
     transform: translateX(10%);
   }
-}
-
-
-.no-icon-tooltip {
-  
 }
 
 .no-icon-tooltip::after {
