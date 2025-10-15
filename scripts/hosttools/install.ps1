@@ -720,6 +720,101 @@ tools.yml MD5: $ToolsYmlMd5
     Write-Output "using cmd: $InstallDirectory\env.bat"
     Write-Output "using powershell: $InstallDirectory\env.ps1"
 
+# --------------------------------------------------------------------------
+# Create environment manifest (env.yml)
+# --------------------------------------------------------------------------
+
+$EnvYamlPath = "$InstallDirectory\env.yml"
+
+$envYaml = @"
+# env.yaml
+# ZInstaller Workspace Environment Manifest
+# Defines workspace tools, runners, and Zephyr compatibility metadata
+
+global:
+  version: "1.0"
+  description: "Host tools configuration for Zephyr Workbench"
+
+# Any variable here will be added as environment variables
+env:
+  zi_base_dir: "${InstallDirectory}"
+  zi_tools_dir: "${InstallDirectory}/tools"
+
+tools:
+  cmake:
+    path: "`${zi_tools_dir}/cmake/bin"
+    version: "3.28.1"
+    z_min_version: ""
+    z_max_version: ""
+    do_not_use: false
+    args: []
+
+  dtc:
+    path: "`${zi_tools_dir}/dtc/usr/bin"
+    version: "1.7.0"
+    z_min_version: ""
+    z_max_version: ""
+    do_not_use: false
+    args: []
+
+  gperf:
+    path: "`${zi_tools_dir}/gperf/bin"
+    version: "3.0.1"
+    z_min_version: ""
+    z_max_version: ""
+    do_not_use: false
+    args: []
+
+  ninja:
+    path: "`${zi_tools_dir}/ninja"
+    version: "1.11.1"
+    z_min_version: ""
+    z_max_version: ""
+    do_not_use: false
+    args: []
+
+  git:
+    path: "`${zi_tools_dir}/git/bin"
+    version: "2.45.2.windows.1"
+    z_min_version: ""
+    z_max_version: ""
+    do_not_use: false
+    args: []
+
+  seven_zip:
+    path: "$SevenZPath"
+    version: "24.08"
+    z_min_version: ""
+    z_max_version: ""
+    do_not_use: false
+    args: []
+
+  python:
+    path:
+      - "$ToolsDirectory/python/python"
+      - "$ToolsDirectory/python/python/Scripts"
+    version: ""
+    z_min_version: ""
+    z_max_version: ""
+    do_not_use: false
+    args: []
+
+  wget:
+    path: "`${zi_tools_dir}/wget"
+    version: "1.21.4"
+    z_min_version: ""
+    z_max_version: ""
+    do_not_use: false
+    args: []
+
+python:
+  global_venv_activate: "`${zi_base_dir}/.venv/Scripts/Activate.ps1"
+"@
+
+	$envYaml | Out-File -FilePath $EnvYamlPath -Encoding UTF8
+
+	Write-Output "Created environment manifest: $EnvYamlPath"
+
     Print-Title "Clean up"
     Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
 }

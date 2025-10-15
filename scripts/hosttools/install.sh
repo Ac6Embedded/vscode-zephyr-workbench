@@ -330,7 +330,7 @@ if [[ $non_root_packages == true ]]; then
       exit 0
     fi
 
-	  if [ $portable = true ]; then
+	if [ $portable = true ]; then
       pr_title "OpenSSL"
       OPENSSL_FOLDER_NAME="openssl-1.1.1t"
       OPENSSL_ARCHIVE_NAME="${OPENSSL_FOLDER_NAME}.tar.bz2"
@@ -458,6 +458,82 @@ EOF
     }
 
     env_script > $ENV_FILE
+	
+	# --------------------------------------------------------------------------
+	# Create environment manifest (env.yml)
+	# --------------------------------------------------------------------------
+
+	ENV_YAML_PATH="$INSTALL_DIR/env.yml"
+	
+	cat << EOF > "$ENV_YAML_PATH"
+# env.yaml
+# ZInstaller Workspace Environment Manifest
+# Defines workspace tools and Python environment metadata for Zephyr Workbench
+
+global:
+  version: "$zinstaller_version"
+  description: "Host tools configuration for Zephyr Workbench (Linux)"
+
+# Any variable here will be added as environment variables
+env:
+  zi_base_dir: "$INSTALL_DIR"
+  zi_tools_dir: "\${zi_base_dir}/tools"
+
+tools:
+  cmake:
+    path: "\${zi_tools_dir}/$CMAKE_FOLDER_NAME/bin"
+    version: "3.29.2"
+    z_min_version: ""
+    z_max_version: ""
+    do_not_use: false
+    args: []
+
+  ninja:
+    path: "\${zi_tools_dir}/ninja"
+    version: "1.12.1"
+    z_min_version: ""
+    z_max_version: ""
+    do_not_use: false
+    args: []
+EOF
+
+if [ "$portable" = true ]; then
+	# Detect the installed Python version (from system or portable)
+	if command -v python3 >/dev/null 2>&1; then
+		PYTHON_VERSION=$(python3 --version 2>&1 | grep -oP 'Python \K[^\s]+')
+	else
+		PYTHON_VERSION=""
+	fi
+	
+	cat << EOF >> "$ENV_YAML_PATH"
+
+  python:
+    path:
+      - "\${zi_tools_dir}/$PYTHON_FOLDER_NAME/bin"
+    version: "$PYTHON_VERSION"
+    z_min_version: ""
+    z_max_version: ""
+    do_not_use: false
+    args: []
+EOF
+fi
+
+	cat << EOF >> "$ENV_YAML_PATH"
+
+  openssl:
+    path: "\${zi_tools_dir}/$OPENSSL_FOLDER_NAME/usr/local/bin"
+    version: "1.1.1t"
+    z_min_version: ""
+    z_max_version: ""
+    do_not_use: false
+    args: []
+
+python:
+  global_venv_activate: "\${zi_base_dir}/.venv/bin/activate"
+EOF
+
+echo "Created environment manifest: $ENV_YAML_PATH"
+
     cat <<EOF > "$INSTALL_DIR/zinstaller_version"
 Script Version: $zinstaller_version
 Script MD5: $zinstaller_md5
