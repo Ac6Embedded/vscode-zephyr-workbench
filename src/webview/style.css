@@ -272,6 +272,14 @@ vscode-button {
   width: auto;
 }
 
+#listBranch .dropdown-content {
+  left: 0;
+  right: calc(var(--input-height)*1px + 33px);
+  width: auto;
+  min-width: 300px; 
+  box-sizing: border-box;
+}
+
 .dropdown-header {
   color: var(--vscode-descriptionForeground);
   font-family: inherit;
