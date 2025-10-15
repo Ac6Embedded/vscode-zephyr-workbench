@@ -4,6 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.35]
+
+- Update revision field (former tag field) to list both branches and tags
+- Load revisions only when clicking the refresh button
+
 ## [1.3.34]
 
 - Make packaging script cross-platform (use cross-env for NODE_ENV) to enable building .vsix on Windows
