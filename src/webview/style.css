@@ -226,14 +226,29 @@ vscode-button {
 #listBranch {
   display: flex;
   align-items: center;
+  width: calc(var(--design-unit) * 135px + 22px);
+}
+
+#listBranch .combo-dropdown-input {
+  position: relative;
+  flex: 1 1 auto;
 }
 
 #listBranch .combo-dropdown-control {
+  flex-grow: 1;
   padding-right: 28px; 
 }
 
 #listBranch .indicator {
-  right: calc(var(--input-height)* 1px + 4px + 10px);
+  right: 7px;
+}
+
+#listBranch .combo-dropdown-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-left: 4px;
 }
 
 .dropdown-content {
@@ -297,13 +312,14 @@ vscode-button {
 }
 
 .spinner {
+  display: inline-block;
+  visibility: hidden;
   width: 12px;
   height: 12px;
   border: 3px solid rgba(0, 0, 0, 0.3);
   border-top-color: var(--vscode-statusBar-focusBorder);
   border-radius: 50%;
   animation: spinner 0.6s linear infinite;
-  margin-left: 10px;
 }
 
 .tooltip {
@@ -414,4 +430,10 @@ vscode-button {
     right: auto;
     transform: translateX(10%);
   }
+}
+
+.combo-dropdown-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

@@ -170,16 +170,20 @@ export class CreateWestWorkspacePanel {
                 <label for="listBranch">Revision:</label>
               </div>
               <div id="listBranch" class="combo-dropdown grid-value-div">
-                <input type="text" id="branchInput" class="combo-dropdown-control" placeholder="Choose the working revision..." data-value="">
-                <div aria-hidden="true" class="indicator" part="indicator">
-                  <slot name="indicator">  
-                    <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                      <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
-                    </svg>
-                  </slot>
+                <div class="combo-dropdown-input">
+                  <input type="text" id="branchInput" class="combo-dropdown-control" placeholder="Choose the working revision..." data-value="">
+                  <div aria-hidden="true" class="indicator" part="indicator">
+                    <slot name="indicator">  
+                      <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                        <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                      </svg>
+                    </slot>
+                  </div>
                 </div>
-                <button id="branchRefreshButton" class="inline-icon-button codicon codicon-refresh" title="Refresh tags" aria-label="Refresh tags" type="button"></button>
-                <div id="branchLoadingSpinner" class="spinner" aria-label="Loading revisions"></div>
+                <div class="combo-dropdown-controls">
+                  <button id="branchRefreshButton" class="inline-icon-button codicon codicon-refresh" title="Refresh tags" aria-label="Refresh tags" type="button"></button>
+                  <div id="branchLoadingSpinner" class="spinner" aria-label="Loading revisions"></div>
+                </div>
                 <div id="branchDropdown" class="dropdown-content">
                 </div>
               </div>

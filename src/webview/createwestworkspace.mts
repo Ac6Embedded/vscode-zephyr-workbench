@@ -36,7 +36,7 @@ function main() {
       branchInput.value = '';
       branchInput.setAttribute('data-value', '');
       const spinner = document.getElementById('branchLoadingSpinner');
-      if (spinner) spinner.style.display = 'inline-block';
+      if (spinner) spinner.style.visibility = 'visible';
       remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
     }
   });
@@ -49,7 +49,7 @@ function main() {
       branchInput.value = '';
       branchInput.setAttribute('data-value', '');
       const spinner = document.getElementById('branchLoadingSpinner');
-      if (spinner) spinner.style.display = 'inline-block';
+      if (spinner) spinner.style.visibility = 'visible';
       remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
     }
   });
@@ -66,7 +66,7 @@ function main() {
         branchInput.value = '';
         branchInput.setAttribute('data-value', '');
         const spinner = document.getElementById('branchLoadingSpinner');
-        if (spinner) spinner.style.display = 'inline-block';
+        if (spinner) spinner.style.visibility = 'visible';
         remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
       }
     }, 1000);
@@ -85,7 +85,7 @@ function main() {
   branchRefreshButton?.addEventListener("click", (ev) => {
     clearBranchHandler.call(branchRefreshButton as any, ev);
     const spinner = document.getElementById('branchLoadingSpinner');
-    if (spinner) spinner.style.display = 'inline-block';
+    if (spinner) spinner.style.visibility = 'visible';
   });
 
   // Initialize branch values
@@ -326,7 +326,7 @@ async function updateBranchDropdown(branchHTML: string, branch: string) {
   }
   branchDropdown.innerHTML = branchHTML;
   addDropdownItemEventListeners(branchDropdown, branchInput);
-  if (spinner) spinner.style.display = 'none';
+  if (spinner) spinner.style.visibility = 'hidden';
 }
 
 
