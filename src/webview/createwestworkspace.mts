@@ -36,8 +36,8 @@ function main() {
       branchInput.value = '';
       branchInput.setAttribute('data-value', '');
       const spinner = document.getElementById('branchLoadingSpinner');
-      if (spinner) spinner.style.visibility = 'visible';
-      remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
+      if (spinner) spinner.style.visibility = 'hidden';
+      //remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
     }
   });
 
@@ -49,8 +49,8 @@ function main() {
       branchInput.value = '';
       branchInput.setAttribute('data-value', '');
       const spinner = document.getElementById('branchLoadingSpinner');
-      if (spinner) spinner.style.visibility = 'visible';
-      remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
+      if (spinner) spinner.style.visibility = 'hidden';
+      //remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
     }
   });
 
@@ -66,7 +66,7 @@ function main() {
         branchInput.value = '';
         branchInput.setAttribute('data-value', '');
         const spinner = document.getElementById('branchLoadingSpinner');
-        if (spinner) spinner.style.visibility = 'visible';
+        if (spinner) spinner.style.visibility = 'hidden';
         remotePathChanged(remotePathText.value, srcTypeRadioGroup.value, true);
       }
     }, 1000);
@@ -371,7 +371,7 @@ function modifySrcTypeHandler(this: HTMLElement) {
     srcRemoteBranchGroup.style.display = "block";
     manifestGroup.style.display = "block";
     
-    remotePathChanged(srcRemotePath.value, srcTypeRadioGroup.value, false);
+    //remotePathChanged(srcRemotePath.value, srcTypeRadioGroup.value, false);
   } else if(srcTypeRadioGroup.value === 'local') {
     srcRemotePath.setAttribute('disabled', '');
     srcRemoteBranch.setAttribute('disabled', '');
@@ -403,7 +403,7 @@ function modifySrcTypeHandler(this: HTMLElement) {
     srcRemoteBranchGroup.style.display = "block";
     manifestGroup.style.display  = "none";
     
-    remotePathChanged(srcRemotePath.value, srcTypeRadioGroup.value, false);
+    //remotePathChanged(srcRemotePath.value, srcTypeRadioGroup.value, false);
   }
 }
 
