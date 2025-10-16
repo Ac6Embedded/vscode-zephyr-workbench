@@ -84,10 +84,10 @@ debug_tools:
   root: false
   os:
     windows:
-      source: https://cloud.ac6.fr/index.php/s/wppn2BAgQAyJ3xX/download/en.stm32cubeprg-win64-v2-17-0.zip
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/win32/en.stm32cubeprg-win64-v2-17-0.zip
       sha256: 9f36a8dd7ecca3eb89e49fb27a4cc7368ace2fa546662bcfab190ee51abd86fa
     linux:
-      source: https://cloud.ac6.fr/index.php/s/PNj5XNonox4aBf9/download/en.stm32cubeprg-lin-v2-17-0.zip
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/en.stm32cubeprg-lin-v2-17-0.zip
       sha256: 44956b76aa2fcff0d899c5c43e353a83a9ea36afc6ad2f6e7b89c5141ccbfde4
 - tool: jlink
   name: J-Link Software
