@@ -195,15 +195,45 @@ function Install {
         [string]$File,
         [string]$DestFolder
     )
-    if (Has-InstallScript $Tool) {
-        Run-InstallScript $Tool $File
-    } elseif (Is-ArchiveFile $File) {
-        Extract-ArchiveFile $File $DestFolder
-    } else {
-        Write-Error "'$File' has an unsupported format."
-        exit 2
+
+    $InstallScript = Join-Path -Path "$ScriptDirectory\debug" -ChildPath "$Tool.ps1"
+
+    # 1️ Case: a tool-specific PowerShell script exists → run it
+    if (Test-Path $InstallScript) {
+        Write-Host "Running install script: $InstallScript"
+        & $InstallScript $File $DestFolder $TemporaryDirectory
+        if ($LastExitCode -ne 0) {
+            Print-Error $LastExitCode "Installer script for $Tool failed."
+            exit $LastExitCode
+        }
+        return
     }
+
+    # 2️ Case: archive file → extract
+    if ($File -match '\.(zip|7z|rar)$') {
+        Write-Host "Extracting archive: $File"
+        Extract-ArchiveFile $File $DestFolder
+        return
+    }
+
+    # 3️ Case: directly executable file (.exe, .msi, .bat)
+    if ($File -match '\.(exe|msi|bat)$') {
+        Write-Host "Running executable installer: $File /S"
+        & $File
+        if ($LastExitCode -eq 0) {
+            Write-Host "$Tool installed successfully (silent mode)."
+        } else {
+            Print-Error $LastExitCode "Executable installer for $Tool failed."
+            exit $LastExitCode
+        }
+        return
+    }
+
+    # 4️ Anything else → unsupported
+    Print-Error 2 "'$File' has an unsupported format."
+    exit 2
 }
+
 
 function Get-FilenameFromUrl {
     param (

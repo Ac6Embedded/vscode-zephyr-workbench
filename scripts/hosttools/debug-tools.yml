@@ -106,6 +106,40 @@ debug_tools:
   version: 0.36.0
   website: https://pyocd.io/
   group: debug_server
+- tool: nrfjprog
+  name: nRF Command Line Tools
+  version: 10.24.2
+  website: https://www.nordicsemi.com/Products/Development-tools/nRF-Command-Line-Tools/Download
+  vendor: Nordic Semiconductor
+  group: flasher
+  root: false
+  os:
+    windows:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/nordic/nrfjprog/win32/nrf-command-line-tools-10.24.2-x64.exe
+      sha256: f3bcd0d7209fbd758a5828a8e5b9afcebfd1281554ea0baaa0c60b8c9aa50ea9
+    linux:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/nordic/nrfjprog/linux/nrf-command-line-tools-10.24.2_linux-amd64.tar.gz
+      sha256: 9d65b0d80fccb567668fa41585c9261947b1740f52eba8d3a368cf6f8fd7b793
+    darwin:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/nordic/nrfjprog/darwin/nrf-command-line-tools-10.24.2-darwin.dmg
+      sha256: c7f24bb4234e3e99e408a3f7cca568898a51779f2f337604c2e8d60466939c2e
+- tool: nrfutil
+  name: nRF Util
+  version: 8.1.1
+  website: https://www.nordicsemi.com/Products/Development-tools/nRF-Util
+  vendor: Nordic Semiconductor
+  group: flasher
+  root: false
+  os:
+    windows:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/nordic/nrfutil/win32/8.1.1/nrfutil.exe
+      sha256: d89c3a2bfc2367a8f8669e07502f83ecdfadf428cf538f9e35e942c198c49d1e
+    linux:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/nordic/nrfutil/linux/8.1.1/nrfutil
+      sha256: ccd67d0c6026ec472d091eb08d008c6b3a6302c84b79da3c3ee62cd30d0bff26
+    darwin:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/nordic/nrfutil/darwin/8.1.1/nrfutil
+      sha256: 726c8e6e4cb5e0811f342620f88472351b1203f2af8e27b744e653f34a08deb4
 packs:
 - pack: stm32
   name: STM32 Debug Pack
@@ -113,3 +147,6 @@ packs:
 - pack: esp32
   name: ESP32 Debug Pack
   tools: [cp210x-win-driver]
+- pack: nordic
+  name: Nordic Debug Pack
+  tools: [nrfjprog, nrfutil]
