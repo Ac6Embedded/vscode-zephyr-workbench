@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.36]
+
+- Fix duplicate "/zephyr" suffix in minimal template URL 
+
 ## [1.3.35]
 
 - Update revision field (former tag field) to list both branches and tags

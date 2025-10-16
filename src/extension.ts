@@ -1799,7 +1799,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal) => {
 			if (remotePath && remoteBranch && workspacePath && templateHal) {
 				// Generate west.xml from template
-				let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal);
+				let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal, true);
 				// Run west init to the newly create manifest
 				vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestFile);
 			}

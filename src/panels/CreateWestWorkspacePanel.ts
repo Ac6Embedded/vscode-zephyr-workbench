@@ -212,10 +212,6 @@ export class CreateWestWorkspacePanel {
   private updateBranches(webview: vscode.Webview, remotePath: string, srcType: string, clear?: boolean) {
     let zephyrRepoUrl = remotePath;
     
-    if(srcType === 'template' && !remotePath.endsWith('/zephyr') && !remotePath.endsWith('/zephyr/')) {
-      zephyrRepoUrl = remotePath.concat('');
-    }
-    
     Promise.all([
       getGitTags(zephyrRepoUrl),
       getGitBranches(zephyrRepoUrl)

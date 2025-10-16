@@ -29,16 +29,24 @@ export const listHals: any[] = [
   { label: "xtensa", name: "hal_xtensa" }
 ];
 
-export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string) {
+export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isMinimal: boolean = false) {
   let templateManifestUri = vscode.Uri.joinPath(context.extensionUri, 'west_manifests', 'minimal_west.yml');
   const templateFile = fs.readFileSync(templateManifestUri.fsPath, 'utf8');
   const manifestYaml = yaml.parse(templateFile);
+  // If caller indicates minimal template, force the remote base URL to ZephyrProject RTOS
+  if (isMinimal === true) {
+    remotePath = 'https://github.com/zephyrproject-rtos';
+  }
   manifestYaml.manifest.remotes[0]['url-base'] = remotePath;
   manifestYaml.manifest.projects[0]['revision'] = remoteBranch;
   manifestYaml.manifest.projects[0]['import']['name-allowlist'].push(templateHal);
   const allowList: string[] =
     manifestYaml.manifest.projects[0].import["name-allowlist"];
   const keepCmsis6 = isAtLeast(remoteBranch, '4.1.0');
+
+  if (isMinimal == true) {
+    remotePath = "https://github.com/zephyrproject-rtos";
+  }
 
   if (keepCmsis6) {
     const already = manifestYaml.manifest.projects.some(
