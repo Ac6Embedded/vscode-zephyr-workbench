@@ -9,7 +9,7 @@ export class JLink extends WestRunner {
   get executable(): string | undefined {
     const exec = super.executable;
     if(!exec) {
-      return 'JLinkGDBServer';
+      return 'JLinkGDBServerCL';
     }
   }
 
