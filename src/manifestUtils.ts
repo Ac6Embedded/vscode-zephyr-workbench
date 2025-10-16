@@ -44,10 +44,6 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
     manifestYaml.manifest.projects[0].import["name-allowlist"];
   const keepCmsis6 = isAtLeast(remoteBranch, '4.1.0');
 
-  if (isMinimal == true) {
-    remotePath = "https://github.com/zephyrproject-rtos";
-  }
-
   if (keepCmsis6) {
     const already = manifestYaml.manifest.projects.some(
       (p: any) => p.name === "cmsis_6"
