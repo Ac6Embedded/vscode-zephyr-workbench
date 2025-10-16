@@ -419,7 +419,12 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
             "--runner teensy",
             "--runner trace32",
             "--runner uf2",
-            "--runner xtensa"
+            "--runner xtensa",
+            "--runner ecpprog",
+            "--runner minichlink",
+            "--runner probe_rs",
+            "--runner native",
+            "--runner xsdb"
           ],
           default: ""
         }
