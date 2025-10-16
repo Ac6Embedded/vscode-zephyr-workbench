@@ -13,6 +13,7 @@ import { JLink } from './debug/runners/JLink';
 import { PyOCD } from './debug/runners/PyOCD';
 import { ZephyrBoard } from './ZephyrBoard';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
+import { Xsdb } from './debug/runners/Xsdb';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 
@@ -21,7 +22,8 @@ export function getDebugRunners(): WestRunner[] {
     new Openocd(), 
     new Linkserver(),
     new JLink(),
-    new PyOCD()
+    new PyOCD(),
+    new Xsdb()
   ];
 }
 
@@ -31,7 +33,8 @@ export function getRunRunners(): WestRunner[] {
     new Linkserver(),
     new STM32CubeProgrammer(),
     new JLink(),
-    new PyOCD()
+    new PyOCD(),
+    new Xsdb()
   ];
 }
 
@@ -47,6 +50,8 @@ export function getRunner(runnerName: string): WestRunner | undefined {
       return new PyOCD();
     case 'stm32cubeprogrammer':
       return new STM32CubeProgrammer();
+    case 'xsdb':
+      return new Xsdb();
     default: 
       return undefined;
   }
