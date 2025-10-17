@@ -4,6 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.37]
+
+- Fix west_wrapper generation
+- Fix missing runners
+
 ## [1.3.36]
 
 - Fix duplicate "/zephyr" suffix in minimal template URL 
