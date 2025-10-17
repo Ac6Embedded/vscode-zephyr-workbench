@@ -106,6 +106,10 @@ export function createWestWrapper(project: ZephyrProject, buildConfigName?: stri
 
   let envVarsCommands = '';
   for (const [key, value] of Object.entries(envVars)) {
+    if(key === null || key === undefined || value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) 
+    {
+      continue;
+    }
     switch (shell) {
       case 'bash': 
         envVarsCommands += `export ${key}="${value}"\n`;
