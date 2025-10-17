@@ -105,7 +105,15 @@ function Download-FileWithHashCheck {
         # Using Invoke-WebRequest for downloading, make it silent, if not it will be very slow
         & {
             $ProgressPreference = 'SilentlyContinue'
-            Invoke-WebRequest -Uri $SourceUrl -OutFile $FilePath -ErrorAction Stop
+			if ($Tool -eq "jlink") {
+				$postParams = @{
+					accept_license_agreement = 'accepted'
+					submit = 'Download software'
+				}
+				Invoke-WebRequest -Uri $SourceUrl -Method POST -Body $postParams -OutFile $FilePath -ErrorAction Stop
+			} else {
+				Invoke-WebRequest -Uri $SourceUrl -OutFile $FilePath -ErrorAction Stop
+			}
         }
     }
     # Check if the download was successful
@@ -218,10 +226,10 @@ function Install {
 
     # 3️ Case: directly executable file (.exe, .msi, .bat)
     if ($File -match '\.(exe|msi|bat)$') {
-        Write-Host "Running executable installer: $File /S"
+        Write-Host "Running executable installer: $File"
         & $File
         if ($LastExitCode -eq 0) {
-            Write-Host "$Tool installed successfully (silent mode)."
+            Write-Host "$Tool installed successfully."
         } else {
             Print-Error $LastExitCode "Executable installer for $Tool failed."
             exit $LastExitCode

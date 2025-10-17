@@ -91,10 +91,22 @@ debug_tools:
       sha256: 44956b76aa2fcff0d899c5c43e353a83a9ea36afc6ad2f6e7b89c5141ccbfde4
 - tool: jlink
   name: J-Link Software
-  version: 7.98a
+  version: 8.78
   website: https://www.segger.com/downloads/jlink/
   vendor: Segger
   group: debug_server
+  root: false
+  os:
+    windows:
+      source: https://www.segger.com/downloads/jlink/JLink_Windows_V878_x86_64.exe
+      sha256: cf101dc4073ff8a362a193e6a8f1efbdf5ac738e8723e4ebc0654fc9417494f9
+    linux:
+      source: https://www.segger.com/downloads/jlink/JLink_Linux_V878_x86_64.tgz
+      sha256: d480f4d157393cc12510271f8dd46646e2722e5dd83a58d6f15836886f8c2664
+    darwin:
+      source: https://www.segger.com/downloads/jlink/JLink_MacOSX_V878_universal.pkg
+      sha256: 0a0ba4c0fe321b7fa2685d7c14edbb7e8d8a811e09b13bb4d7e493bb6fd8e666
+  
 - tool: linkserver
   name: LinkServer for Microcontrollers
   version: 24.9.75
@@ -143,10 +155,10 @@ debug_tools:
 packs:
 - pack: stm32
   name: STM32 Debug Pack
-  tools: [openocd, stm32cubeprogrammer, udev-rules]
+  tools: [openocd, stm32cubeprogrammer, jlink, udev-rules]
 - pack: esp32
   name: ESP32 Debug Pack
   tools: [cp210x-win-driver]
 - pack: nordic
   name: Nordic Debug Pack
-  tools: [nrfjprog, nrfutil]
+  tools: [nrfjprog, nrfutil, jlink]
