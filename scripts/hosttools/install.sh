@@ -280,12 +280,20 @@ if [[ $non_root_packages == true ]]; then
     mkdir -p "$TOOLS_DIR"
 
     pr_title "YQ"
-    YQ="yq"
+    YQ_FILENAME="yq"
     YQ_SOURCE=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'source' | awk -F": " '{print $2}')
     YQ_SHA256=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'sha256' | awk -F": " '{print $2}')
-    download_and_check_hash "$YQ_SOURCE" "$YQ_SHA256" "$YQ"
-    YQ="$DL_DIR/$YQ"
-    chmod +x $YQ
+
+    # Download and verify
+    download_and_check_hash "$YQ_SOURCE" "$YQ_SHA256" "$YQ_FILENAME"
+
+    # Install it permanently in tools/yq/
+    mkdir -p "$TOOLS_DIR/yq"
+    mv "$DL_DIR/$YQ_FILENAME" "$TOOLS_DIR/yq/yq"
+    chmod +x "$TOOLS_DIR/yq/yq"
+
+    # Update variable for later usage
+    YQ="$TOOLS_DIR/yq/yq"
 
     # Start generating the manifest file
     echo "#!/bin/bash" > $MANIFEST_FILE
@@ -540,7 +548,7 @@ EOF
 
 if [ $openssl_lib_bool = true ]; then
 	cat << EOF >> "$ENV_YAML_PATH"
-  LD_LIBRARY_PATH: "$openssl_path/usr/local/lib:\$LD_LIBRARY_PATH
+  LD_LIBRARY_PATH: "$openssl_path/usr/local/lib:\$LD_LIBRARY_PATH"
 EOF
 
 fi

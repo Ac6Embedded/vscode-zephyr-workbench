@@ -54,5 +54,28 @@ fi
 # Cleanup
 rm -rf "$TMP_DIR/jlink_extract"
 
+# --- Source env-utils.sh ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PARENT_DIR="$(dirname "$SCRIPT_DIR")"
+ENV_UTILS="$PARENT_DIR/env-utils.sh"
+
+if [[ -f "$ENV_UTILS" ]]; then
+    source "$ENV_UTILS"
+    echo "Loaded environment utilities from $ENV_UTILS"
+else
+    echo "ERROR: env-utils.sh not found at $ENV_UTILS"
+    exit 1
+fi
+
+YQ="yq"
+ZINSTALLER_BASE="$(dirname "$DEST_DIR")"
+ENV_YAML="$ZINSTALLER_BASE/env.yml"
+
+VERSION="$(basename "$EXTRACTED_DIR" | sed -E 's/.*_(V[0-9]+)_.*$/\1/')"
+PATH_FOR_YAML="${INSTALL_DIR}"
+
+update_env_yaml_block "jlink" "$YQ" "$ENV_YAML" "$PATH_FOR_YAML" "$VERSION"
+
+
 echo "$TOOL_NAME installed successfully to $INSTALL_DIR"
 exit 0

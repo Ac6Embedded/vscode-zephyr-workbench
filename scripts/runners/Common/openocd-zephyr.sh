@@ -6,7 +6,9 @@ FILE="$1"       # Path to the downloaded archive
 DEST_DIR="$2"   # The main tools directory (.zinstaller/tools)
 TMP_DIR="$3"    # Temporary directory (not needed but kept for consistency)
 
-TOOL_NAME="nrf-command-line-tools"
+SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+TOOL_NAME="${SCRIPT_NAME%.*}"                # Remove extension (.sh)
+TOOL_NAME="${TOOL_NAME#install_}"            # Remove "install_" prefix if present
 TOOL_DIR="${DEST_DIR}/${TOOL_NAME}"
 
 echo "Installing ${TOOL_NAME} from ${FILE}..."
@@ -17,12 +19,13 @@ mkdir -p "$DEST_DIR"
 # Create a temporary extraction directory
 WORK_DIR="$(mktemp -d)"
 echo "Extracting into temporary directory: $WORK_DIR"
+echo "tar -xf $FILE -C $WORK_DIR"
 
 # Extract the archive silently
-tar -xzf "$FILE" -C "$WORK_DIR"
+tar -xf "$FILE" -C "$WORK_DIR"
 
 # Find the extracted folder (handles versioned names)
-EXTRACTED_DIR=$(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d -name "nrf-command-line-tools*" | head -n 1)
+EXTRACTED_DIR=$(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d -name "openocd" | head -n 1)
 
 if [[ -z "$EXTRACTED_DIR" ]]; then
     echo "ERROR: Could not find extracted folder for ${TOOL_NAME}"
@@ -52,12 +55,6 @@ else
     echo "ERROR: env-utils.sh not found at $ENV_UTILS"
     exit 1
 fi
-
-# --- Determine tool name automatically ---
-# Extract the script name without path or extension, e.g. install_jlink.sh → install_jlink
-SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-TOOL_NAME="${SCRIPT_NAME%.*}"                # Remove extension (.sh)
-TOOL_NAME="${TOOL_NAME#install_}"            # Remove "install_" prefix if present
 
 # --- Set up variables ---
 YQ="yq"

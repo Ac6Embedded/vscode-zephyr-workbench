@@ -209,9 +209,26 @@ install_package() {
     fi
 }
 
+# Function to get the group name for a given tool from the YAML file
+get_tool_group() {
+    local tool="$1"
+    local group
+    group=$($YQ eval ".debug_tools[] | select(.tool == \"$tool\") | .group" "$YAML_FILE")
+
+    if [[ -z "$group" || "$group" == "null" ]]; then
+        group="Common"  # default fallback
+    fi
+
+    echo "$group"
+}
+
 has_install_script() {
     local tool="$1"
-    if [ -f "$SCRIPT_DIR/debug/${tool}.sh" ]; then
+    local group
+    group=$(get_tool_group "$tool")
+    local script_path="$SCRIPT_DIR/$group/$tool.sh"
+
+    if [[ -f "$script_path" ]]; then
         return 0
     fi
     return 1
@@ -220,7 +237,16 @@ has_install_script() {
 run_install_script() {
     local tool="$1"
     local file="$2"
-    bash "$SCRIPT_DIR/debug/$tool.sh" $file $TOOLS_DIR $TMP_DIR
+    local group
+    group=$(get_tool_group "$tool")
+    local script_path="$SCRIPT_DIR/$group/$tool.sh"
+
+    if [[ -f "$script_path" ]]; then
+        pr_info "Running install script: $script_path"
+        bash "$script_path" "$file" "$TOOLS_DIR" "$TMP_DIR"
+    else
+        pr_warn "No install script found for $tool in group $group"
+    fi
 }
 
 is_archive() {
@@ -287,12 +313,35 @@ mkdir -p "$TMP_DIR"
 mkdir -p "$DL_DIR"
 mkdir -p "$TOOLS_DIR"
 
-YQ="yq"
-YQ_SOURCE=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'source' | awk -F": " '{print $2}')
-YQ_SHA256=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'sha256' | awk -F": " '{print $2}')
-download_and_check_hash "$YQ_SOURCE" "$YQ_SHA256" "$YQ"
-YQ="$DL_DIR/$YQ"
-chmod +x $YQ
+# --- Check for existing yq first ---
+YQ_DIR="$TOOLS_DIR/yq"
+YQ_BIN="$YQ_DIR/yq"
+
+if [[ -x "$YQ_BIN" ]]; then
+    pr_info "Found existing yq binary at $YQ_BIN"
+    YQ="$YQ_BIN"
+else
+    pr_info "yq not found in $YQ_DIR, downloading..."
+
+    mkdir -p "$YQ_DIR"
+
+    # Extract yq source and sha256 from YAML
+    YQ_SOURCE=$(grep -A 10 'tool: yq' "$YAML_FILE" | grep -A 2 "$SELECTED_OS:" | grep 'source' | awk -F": " '{print $2}')
+    YQ_SHA256=$(grep -A 10 'tool: yq' "$YAML_FILE" | grep -A 2 "$SELECTED_OS:" | grep 'sha256' | awk -F": " '{print $2}')
+
+    YQ_FILENAME=$(basename "$YQ_SOURCE")
+    download_and_check_hash "$YQ_SOURCE" "$YQ_SHA256" "$YQ_FILENAME"
+
+    # Move downloaded yq to tools directory
+    mv "$DL_DIR/$YQ_FILENAME" "$YQ_BIN"
+    chmod +x "$YQ_BIN"
+    pr_info "yq installed to $YQ_BIN"
+    YQ="$YQ_BIN"
+fi
+
+# Add yq directory to PATH
+export PATH="$YQ_DIR:$PATH"
+pr_info "Added $YQ_DIR to PATH"
 
 # Start generating the manifest file
 pr_title "Parse tools definitions and generate manifest"
