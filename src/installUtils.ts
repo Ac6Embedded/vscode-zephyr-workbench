@@ -434,7 +434,7 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
 }
 
 export async function installHostDebugTools(context: vscode.ExtensionContext, listTools: any[]) {
-  let scriptsDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
+  let scriptsDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'runners');
   if(scriptsDirUri) {
     let installScript: string = "";
     let installCmd: string = "";

@@ -17,7 +17,7 @@ export class DebugToolsPanel {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
-    const yamlFile = fs.readFileSync(vscode.Uri.joinPath(this._extensionUri, 'scripts', 'hosttools', 'debug-tools.yml').fsPath, 'utf8');
+    const yamlFile = fs.readFileSync(vscode.Uri.joinPath(this._extensionUri, 'scripts', 'runners', 'debug-tools.yml').fsPath, 'utf8');
     this.data = yaml.parse(yamlFile);
   }
 
