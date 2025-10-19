@@ -307,40 +307,166 @@ if [[ $non_root_packages == true ]]; then
     fi
 
     env_script() {
-    cat << EOF
+    cat << 'EOF'
 #!/bin/bash
 
-base_dir="\$(dirname "\$(realpath "\${BASH_SOURCE[0]}")")"
-
-# Default virtual environment activation script path
-default_venv_activate_path="\$base_dir/.venv/bin/activate"
-
-# Use the provided PYTHON_VENV_ACTIVATE_PATH if set and not empty, otherwise use the default path
-if [[ -n "\$PYTHON_VENV_ACTIVATE_PATH" ]]; then
-    venv_activate_path="\$PYTHON_VENV_ACTIVATE_PATH"
+# --- Resolve script directory ---
+if [ -n "${BASH_SOURCE-}" ]; then
+    _src="${BASH_SOURCE[0]}"
+elif [ -n "${ZSH_VERSION-}" ]; then
+    _src="${(%):-%N}"
 else
-    venv_activate_path="\$default_venv_activate_path"
+    _src="$0"
+fi
+base_dir="$(cd -- "$(dirname -- "${_src}")" && pwd -P)"
+YAML_FILE="$base_dir/env.yml"
+
+[[ ! -f "$YAML_FILE" ]] && { echo "[ERROR] File not found: $YAML_FILE" >&2; exit 1; }
+
+declare -A ENV_VARS
+PATHS=()
+GLOBAL_VENV_PATH=""
+
+# --- Helper: trim spaces ---
+trim() {
+    local var="$1"
+    var="${var#"${var%%[![:space:]]*}"}"
+    var="${var%"${var##*[![:space:]]}"}"
+    echo "$var"
+}
+
+# --- Parse env.yml (only env: and python:global_venv_activate) ---
+in_env=0
+while IFS= read -r line || [[ -n "$line" ]]; do
+    line="$(trim "$line")"
+    [[ -z "$line" || "$line" =~ ^# ]] && continue
+
+    if [[ "$line" == "env:" ]]; then in_env=1; continue; fi
+    [[ "$line" =~ ^tools: ]] && in_env=0
+
+    if (( in_env )); then
+        if [[ "$line" =~ : ]]; then
+            key="${line%%:*}"
+            val="${line#*:}"
+            val="${val//\"/}"
+            val="$(trim "$val")"
+            ENV_VARS["$key"]="$val"
+        fi
+        continue
+    fi
+
+    if [[ "$line" =~ global_venv_activate: ]]; then
+        venv="${line#*:}"
+        venv="${venv//\"/}"
+        GLOBAL_VENV_PATH="$(trim "$venv")"
+    fi
+done < "$YAML_FILE"
+
+# --- Expand ${var} and $VAR from both YAML vars and system env ---
+expand_vars() {
+    local s="$1"
+    for k in "${!ENV_VARS[@]}"; do
+        s="${s//\$\{$k\}/${ENV_VARS[$k]}}"
+        s="${s//\$$k/${ENV_VARS[$k]}}"
+    done
+    eval "echo \"$s\""  # expands existing environment vars like $PATH, $LD_LIBRARY_PATH
+}
+
+# --- Export env vars ---
+for key in "${!ENV_VARS[@]}"; do
+    val="$(expand_vars "${ENV_VARS[$key]}")"
+    export "$key"="$val"
+done
+
+# --- Expand and export venv path ---
+GLOBAL_VENV_PATH="$(expand_vars "$GLOBAL_VENV_PATH")"
+export global_venv_path="$GLOBAL_VENV_PATH"
+
+# --- Add venv/bin to PATH if exists ---
+if [[ -d "$global_venv_path/bin" ]]; then
+    PATH="$global_venv_path/bin:$PATH"
 fi
 
-# Check if the activation script exists at the specified path
-if [[ -f "\$venv_activate_path" ]]; then
-    # Source the virtual environment activation script
-    source "\$venv_activate_path"
-    echo "Activated virtual environment at \$venv_activate_path"
-else
-    echo "Error: Virtual environment activation script not found at \$venv_activate_path."
-fi
+export PATH
 
-if ! command -v west &> /dev/null; then
-   echo "West is not available. Something is wrong !!"
-else
-   echo "West is available."
-fi
+# --- Activate Python virtual environment if available ---
+default_venv_activate_path="$global_venv_path/bin/activate"
+[[ -n "$PYTHON_VENV_ACTIVATE_PATH" ]] && venv_activate_path="$PYTHON_VENV_ACTIVATE_PATH" || venv_activate_path="$default_venv_activate_path"
 
+if [[ -f "$venv_activate_path" ]]; then
+    source "$venv_activate_path" >/dev/null 2>&1
+    echo "[INFO] Activated Python venv at: $venv_activate_path"
+else
+    echo "[WARNING] Virtual environment activation script not found: $venv_activate_path" >&2
+fi
 EOF
-    }
+}
 
     env_script > $ENV_FILE
+
+	# --------------------------------------------------------------------------
+	# Create environment manifest (env.yml)
+	# --------------------------------------------------------------------------
+
+	ENV_YAML_PATH="$INSTALL_DIR/env.yml"
+	
+	cat << EOF > "$ENV_YAML_PATH"
+# env.yaml
+# ZInstaller Workspace Environment Manifest
+# Defines workspace tools and Python environment metadata for Zephyr Workbench
+
+global:
+  version: "$zinstaller_version"
+  description: "Host tools configuration for Zephyr Workbench (Linux)"
+
+# Any variable here will be added as environment variables
+env:
+  zi_base_dir: "$INSTALL_DIR"
+  zi_tools_dir: "\${zi_base_dir}/tools"
+
+tools:
+  cmake:
+    path: "\${zi_tools_dir}/$CMAKE_FOLDER_NAME/bin"
+    version: "3.29.2"
+    do_not_use: false
+
+  ninja:
+    path: "\${zi_tools_dir}/ninja"
+    version: "1.12.1"
+    do_not_use: false
+EOF
+
+if [ "$portable" = true ]; then
+	# Detect the installed Python version (from system or portable)
+	if command -v python3 >/dev/null 2>&1; then
+		PYTHON_VERSION=$(python3 --version 2>&1 | grep -oP 'Python \K[^\s]+')
+	else
+		PYTHON_VERSION=""
+	fi
+	
+	cat << EOF >> "$ENV_YAML_PATH"
+
+  python:
+    path:
+      - "\${zi_tools_dir}/$PYTHON_FOLDER_NAME/bin"
+    version: "$PYTHON_VERSION"
+    do_not_use: false
+EOF
+fi
+
+	cat << EOF >> "$ENV_YAML_PATH"
+
+  openssl:
+    path: "\${zi_tools_dir}/$OPENSSL_FOLDER_NAME/usr/local/bin"
+    version: "1.1.1t"
+    do_not_use: false
+
+python:
+  global_venv_activate: "\${zi_base_dir}/.venv"
+EOF
+
+echo "Created environment manifest: $ENV_YAML_PATH"
+
     cat <<EOF > "$INSTALL_DIR/zinstaller_version"
 Script Version: $zinstaller_version
 Script MD5: $zinstaller_md5
