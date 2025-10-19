@@ -234,7 +234,7 @@ function Install {
 
     $Group = Get-ToolGroup $Tool
     $InstallScript = Join-Path -Path $ScriptDirectory -ChildPath "$Group\$Tool.ps1"
-Write-Host "install script: $InstallScript"
+
     # 1️ Case: a tool-specific PowerShell script exists → run it
     if (Test-Path $InstallScript) {
         Write-Host "Running install script: $InstallScript"
