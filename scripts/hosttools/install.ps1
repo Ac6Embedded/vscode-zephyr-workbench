@@ -15,7 +15,8 @@ $ScriptPath = $MyInvocation.MyCommand.Path
 $ScriptDirectory = Split-Path -Parent $ScriptPath
 $YamlFilePath = "$ScriptDirectory\tools.yml"
 
-$ZinstallerVersion="1.0"
+$ZinstallerVersion="2
++.0"
 $ZinstallerMd5 = Get-FileHash -Path $ScriptPath -Algorithm MD5 | Select-Object -ExpandProperty Hash
 $ToolsYmlMd5 = Get-FileHash -Path $YamlFilePath -Algorithm MD5 | Select-Object -ExpandProperty Hash
 

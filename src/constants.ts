@@ -23,4 +23,4 @@ export const ZEPHYR_ENV_SETTING_PREFIX_KEY = 'env';
 export const ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY = 'west-args';
 export const ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY = 'sysbuild';
 
-export const ZINSTALLER_MINIMUM_VERSION = '1.0';
+export const ZINSTALLER_MINIMUM_VERSION = '2.0';

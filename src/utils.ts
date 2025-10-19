@@ -844,7 +844,7 @@ export async function checkZinstallerVersion(
 
 
   const answer = await vscode.window.showWarningMessage(
-    "Your host tools are outdated.",
+    "Your host tools are outdated.⚠️The build system might not work properly.⚠️",
     "Reinstall Host Tools"
   );
 
