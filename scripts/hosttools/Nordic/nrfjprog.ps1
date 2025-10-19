@@ -1,7 +1,7 @@
 param (
     [string]$File,
-    [string]$DestDir,
-    [string]$ToolsDir
+    [string]$ToolsDir,   # Base tools directory (e.g., .zinstaller\tools)
+    [string]$TmpDir     # Base temporary directory (e.g., .zinstaller\tmp)
 )
 
 function Extract-ArchiveFile {
@@ -24,7 +24,7 @@ function Extract-ArchiveFile {
 }
 
 # Determine working directory for extraction if needed
-$ExtractDir = Join-Path -Path $DestDir -ChildPath "nrfjprog_tmp"
+$ExtractDir = Join-Path -Path $ToolsDir -ChildPath "nrfjprog_tmp"
 New-Item -Path $ExtractDir -ItemType Directory -Force > $null 2>&1
 
 # Determine if the downloaded file is an archive or a direct executable
@@ -58,3 +58,55 @@ if ($process.ExitCode -eq 0) {
 
 # Cleanup temporary extraction directory
 Remove-Item -Path $ExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+
+# --- Source env-utils.ps1 &  debug-tools.yml and get yq & version ---
+$ScriptDir = Split-Path -Parent $PSCommandPath
+$ParentDir = Split-Path -Parent $ScriptDir
+$EnvUtils = Join-Path $ParentDir "env-utils.ps1"
+$YamlFile = Join-Path $ParentDir "debug-tools.yml"
+$ZInstallerBase = Split-Path -Parent $ToolsDir
+$EnvYaml = Join-Path -Path $ZInstallerBase -ChildPath "env.yml"
+
+if (Test-Path $EnvUtils) {
+    . $EnvUtils
+    Write-Output "Loaded environment utilities from $EnvUtils"
+} else {
+    Write-Output "ERROR: env-utils.ps1 not found at $EnvUtils"
+    exit 1
+}
+
+if (-not (Test-Path $YamlFile)) {
+    Write-Output "ERROR: debug-tools.yml not found at $YamlFile"
+    exit 1
+}
+
+$Yq = "yq.exe"
+if (-not (Get-Command $Yq -ErrorAction SilentlyContinue)) {
+    $YqPath = Join-Path $ToolsDir "yq\yq.exe"
+    if (Test-Path $YqPath) {
+        $Yq = $YqPath
+    } else {
+        Write-Output "ERROR: yq not found in PATH or tools directory."
+        exit 1
+    }
+}
+
+# Extract version using yq and normalize
+$ToolName = [System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)
+
+$env:TOOL = $ToolName
+$Version = & $Yq eval -r '.debug_tools[] | select(.tool == strenv(TOOL)) | .version // "000"' $YamlFile
+$Version = ($Version | Select-Object -First 1).ToString().Trim()
+
+if (-not $Version -or $Version -eq "") {
+    $Version = "000"
+}
+
+Write-Output "Detected version for ${ToolName}: $Version"
+
+$PathForYaml = "C:/Program Files/Nordic Semiconductor/nrf-command-line-tools/bin"
+$PathForYaml = $PathForYaml -replace '\\', '/'
+
+Update-EnvYamlBlock -ToolName "nrfjprog" -YqPath $Yq -EnvYamlPath $EnvYaml -ToolPath "$PathForYaml" -Version $Version
+
+exit 0

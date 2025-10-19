@@ -1,7 +1,7 @@
 param (
     [string]$File,
     [string]$DestDir,
-    [string]$ToolsDir
+    [string]$TmpDir     # Base temporary directory (e.g., .zinstaller\tmp)
 )
 
 function Extract-ArchiveFile {
@@ -24,7 +24,7 @@ function Extract-ArchiveFile {
     }
 }
 
-$TemporaryExtractedDirectory = Join-Path -Path $ToolsDir -ChildPath "cp210x-win-driver"
+$TemporaryExtractedDirectory = Join-Path -Path $TmpDir -ChildPath "cp210x"
 
 New-Item -Path $TemporaryExtractedDirectory -ItemType Directory -Force > $null 2>&1
 Write-Output "Extracting $File... into $TemporaryExtractedDirectory"

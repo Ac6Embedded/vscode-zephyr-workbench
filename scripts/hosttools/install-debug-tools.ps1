@@ -102,24 +102,31 @@ function Download-FileWithHashCheck {
         # Using wget for downloading
         & $Wget -q $SourceUrl -O $FilePath
     } else {
-        # Using Invoke-WebRequest for downloading, make it silent, if not it will be very slow
+        # Using Invoke-WebRequest for downloading
         & {
             $ProgressPreference = 'SilentlyContinue'
-			if ($Tool -eq "jlink") {
-				$postParams = @{
-					accept_license_agreement = 'accepted'
-					submit = 'Download software'
-				}
-				Invoke-WebRequest -Uri $SourceUrl -Method POST -Body $postParams -OutFile $FilePath -ErrorAction Stop
-			} else {
-				Invoke-WebRequest -Uri $SourceUrl -OutFile $FilePath -ErrorAction Stop
-			}
+            if ($Tool -eq "jlink") {
+                $postParams = @{
+                    accept_license_agreement = 'accepted'
+                    submit = 'Download software'
+                }
+                Invoke-WebRequest -Uri $SourceUrl -Method POST -Body $postParams -OutFile $FilePath -ErrorAction Stop
+            } else {
+                Invoke-WebRequest -Uri $SourceUrl -OutFile $FilePath -ErrorAction Stop
+            }
         }
     }
+
     # Check if the download was successful
     if (-Not (Test-Path -Path $FilePath)) {
         Print-Error 1 "Error: Failed to download the file."
         exit 1
+    }
+
+    # If hash checking is skipped
+    if ($ExpectedHash -eq "SKIP") {
+        Write-Output "Hash check skipped for: $Filename"
+        return
     }
 
     # Compute the SHA-256 hash of the downloaded file
@@ -127,7 +134,7 @@ function Download-FileWithHashCheck {
 
     # Compare the computed hash with the expected hash
     if ($ComputedHash -eq $ExpectedHash) {
-        Write-Output "DL: $Filename downloaded successfully"
+        Write-Output "DL: $Filename downloaded successfully (hash verified)"
     } else {
         Print-Error 2 "Error: Hash mismatch."
         Print-Error 2 "Expected: $ExpectedHash"
@@ -170,11 +177,25 @@ function New-ManifestEntry {
     }
 }
 
+function Get-ToolGroup {
+    param (
+        [string]$Tool
+    )
+    
+    $Group = & $Yq eval ".debug_tools[] | select(.tool == `"`"`"$Tool`"`"`") | .group" $YamlFilePath
+    if (-not $Group -or $Group -eq "null") {
+        $Group = "Common"  # fallback default
+    }
+    return $Group
+}
+
 function Has-InstallScript {
     param (
         [string]$Tool
     )
-    return Test-Path "$ScriptDirectory\debug\$Tool.ps1"
+    $Group = Get-ToolGroup $Tool
+    $ScriptPath = Join-Path -Path $ScriptDirectory -ChildPath "$Group\$Tool.ps1"
+    return Test-Path $ScriptPath
 }
 
 function Run-InstallScript {
@@ -182,7 +203,14 @@ function Run-InstallScript {
         [string]$Tool,
         [string]$File
     )
-    & "$ScriptDirectory\debug\$Tool.ps1" $File $ToolsDirectory $TemporaryDirectory
+    $Group = Get-ToolGroup $Tool
+    $ScriptPath = Join-Path -Path $ScriptDirectory -ChildPath "$Group\$Tool.ps1"
+    if (Test-Path $ScriptPath) {
+        Write-Host "Running install script: $ScriptPath"
+        & $ScriptPath $File $ToolsDirectory $TemporaryDirectory
+    } else {
+        Print-Warning "No install script found for $Tool in group $Group"
+    }
 }
 
 function Is-ArchiveFile {
@@ -204,8 +232,9 @@ function Install {
         [string]$DestFolder
     )
 
-    $InstallScript = Join-Path -Path "$ScriptDirectory\debug" -ChildPath "$Tool.ps1"
-
+    $Group = Get-ToolGroup $Tool
+    $InstallScript = Join-Path -Path $ScriptDirectory -ChildPath "$Group\$Tool.ps1"
+Write-Host "install script: $InstallScript"
     # 1️ Case: a tool-specific PowerShell script exists → run it
     if (Test-Path $InstallScript) {
         Write-Host "Running install script: $InstallScript"
@@ -271,7 +300,28 @@ function Extract-ArchiveFile {
 }
 
 
+# --- YQ section ---
+Print-Title "YQ"
 $YqExecutable = "yq.exe"
+
+# Ensure InstallDirectory and ToolsDirectory are valid
+if (-not $D -or [string]::IsNullOrWhiteSpace($D)) {
+    $D = $env:USERPROFILE
+}
+if (-not $InstallDirectory -or [string]::IsNullOrWhiteSpace($InstallDirectory)) {
+    $InstallDirectory = Join-Path -Path $D -ChildPath ".zinstaller"
+}
+if (-not $ToolsDirectory -or [string]::IsNullOrWhiteSpace($ToolsDirectory)) {
+    $ToolsDirectory = Join-Path -Path $InstallDirectory -ChildPath "tools"
+}
+
+# Ensure these directories exist
+New-Item -Path $InstallDirectory -ItemType Directory -Force > $null 2>&1
+New-Item -Path $ToolsDirectory -ItemType Directory -Force > $null 2>&1
+
+$YqFolder = Join-Path -Path $ToolsDirectory -ChildPath "yq"
+$YqPath = Join-Path -Path $YqFolder -ChildPath $YqExecutable
+
 # Read the content of the YAML file
 $YamlContent = Get-Content -Path $YamlFilePath
 
@@ -297,9 +347,29 @@ foreach ($Line in $YamlContent) {
     }
 }
 
-Download-FileWithHashCheck $YqSource $YqSha256 $YqExecutable
-$Yq = Join-Path -Path $DownloadDirectory -ChildPath $YqExecutable
-Test-FileExistence -FilePath $Yq
+# Create yq folder if missing
+New-Item -Path $YqFolder -ItemType Directory -Force > $null 2>&1
+
+if (Test-Path -Path $YqPath) {
+    Write-Host "Found existing yq in tools folder: $YqPath"
+    $Yq = $YqPath
+} else {
+    Write-Host "yq not found in tools folder. Downloading..."
+    Download-FileWithHashCheck $YqSource $YqSha256 $YqExecutable
+    Move-Item -Path (Join-Path $DownloadDirectory $YqExecutable) -Destination $YqPath -Force
+    Test-FileExistence -FilePath $YqPath
+    $Yq = $YqPath
+}
+
+Write-Host "Using yq: $Yq"
+
+# --- Add yq to PATH so it can be found automatically ---
+if ($env:PATH -notlike "*$YqFolder*") {
+    Write-Host "Adding yq folder to PATH: $YqFolder"
+    $env:PATH = "$YqFolder;" + $env:PATH
+} else {
+    Write-Host "yq folder already in PATH."
+}
 
 Print-Title "Parse YAML and generate manifest"
 "# Automatically generated by Zinstaller on Powershell" | Out-File -FilePath $ManifestFilePath
