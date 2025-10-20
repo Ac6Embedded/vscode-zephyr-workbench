@@ -595,10 +595,10 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 # bat script  
 @"
 @echo off
-setlocal EnableDelayedExpansion EnableExtensions
 
 set "SCRIPT_DIR=%~dp0"
 set "YAML_FILE=%SCRIPT_DIR%env.yml"
+set "PY_FILE=%SCRIPT_DIR%env.py"
 
 if not exist "%YAML_FILE%" (
     echo [ERROR] File not found: %YAML_FILE%
@@ -608,61 +608,20 @@ if not exist "%YAML_FILE%" (
 set "in_env=false"
 set "ADDITIONAL_PATHS="
 
-for /f "usebackq tokens=* delims=" %%A in ("%YAML_FILE%") do (
-    set "line=%%A"
-    for /f "tokens=* delims= " %%B in ("!line!") do set "line=%%B"
-
-    rem --- Parse env section ---
-    if /I "!line!"=="env:" set "in_env=true"
-    if /I "!line:~0,6!"=="tools:" set "in_env=false"
-
-    if "!in_env!"=="true" (
-        if not "!line!"=="" if "!line:~0,1!" NEQ "#" (
-            for /f "tokens=1* delims=:" %%K in ("!line!") do (
-                set "key=%%K"
-                set "val=%%L"
-                for /f "tokens=* delims= " %%V in ("!val!") do set "val=%%~V"
-                set "val=!val:"=!"
-                set !key!=!val!
-            )
-        )
-    )
-
-    rem --- Parse path entries ---
-    if /I "!line:~0,5!"=="path:" (
-        set "value=!line:*path:=!"
-        if not "!value!"=="" (
-            for /f "tokens=* delims= " %%B in ("!value!") do set "value=%%~B"
-            set "value=!value:"=!"
-            set "p=!value:`${=%%!"
-            set "p=!p:}=%%!"
-            call set "expanded=!p!"
-            set "ADDITIONAL_PATHS=!ADDITIONAL_PATHS!;!expanded!"
-        )
-    )
-
-    if "!line:~0,1!"=="-" (
-        set "item=!line:*-=!"
-        for /f "tokens=* delims= " %%C in ("!item!") do set "item=%%~C"
-        set "item=!item:"=!"
-        set "p=!item:`${=%%!"
-        set "p=!p:}=%%!"
-        call set "expanded=!p!"
-        set "ADDITIONAL_PATHS=!ADDITIONAL_PATHS!;!expanded!"
-    )
-
-    if /I "!line:~0,17!"=="global_venv_path:" (
-        set "venv_line=!line:*global_venv_path:=!"
-        for /f "tokens=* delims= " %%D in ("!venv_line!") do set "venv_line=%%~D"
-        set "venv_line=!venv_line:"=!"
-        set "p=!venv_line:`${=%%!"
-        set "p=!p:}=%%!"
-        call set "expanded=!p!"
-        set "global_venv_path=!expanded!"
-    )
+REM Extract global_venv_path from env.yml
+for /f "tokens=1* delims=:" %%A in ('findstr /c:"global_venv_path" "%YAML_FILE%"') do (
+    set "global_venv_path=%%B"
 )
 
-set "PATH=%ADDITIONAL_PATHS%;%PATH%"
+REM Check if global_venv_path was set
+if not defined global_venv_path (
+    echo [ERROR] Failed to extract global_venv_path from %YAML_FILE%
+    exit /b 1
+)
+
+REM Remove leading/trailing spaces and quotes
+set "global_venv_path=%global_venv_path: =%"
+set "global_venv_path=%global_venv_path:"=%"
 
 set "DEFAULT_VENV_ACTIVATE_PATH=%global_venv_path%\Scripts\activate.bat"
 
@@ -678,8 +637,10 @@ if exist "%VENV_ACTIVATE_PATH%" (
     rem no output for missing venv
 )
 
-endlocal
-    
+:: === Run env.py and apply its output ===
+for /f "usebackq delims=" %%L in (``python "%PY_FILE%" --shell=cmd``) do (
+    if not "%%L"=="" call %%L
+)
 "@ | Out-File -FilePath "$InstallDirectory\env.bat" -Encoding ASCII
 
 #bash script
@@ -697,14 +658,11 @@ fi
 base_dir="`$(cd -- "`$(dirname -- "`${_src}")" && pwd -P)"
 tools_dir="`$base_dir/tools"
 YAML_FILE="`$base_dir/env.yml"
+PY_FILE="`$base_dir/env.py"
 
 [[ ! -f "`$YAML_FILE" ]] && { echo "[ERROR] File not found: `$YAML_FILE" >&2; exit 1; }
 
-declare -A ENV_VARS
-PATHS=()
 GLOBAL_VENV_PATH=""
-in_env=0
-in_path=0
 
 # --- Detect shell environment once (Git Bash / WSL / etc.) ---
 detect_shell_env() {
@@ -766,45 +724,6 @@ while IFS= read -r line || [[ -n "`$line" ]]; do
   line="`${line#"`${line%%[![:space:]]*}"}"
   line="`${line%"`${line##*[![:space:]]}"}"
   [[ -z "`$line" || "`$line" =~ ^# ]] && continue
-
-  if [[ "`$line" == "env:" ]]; then in_env=1; continue; fi
-  [[ "`$line" =~ ^tools: ]] && in_env=0
-
-  if (( in_env )); then
-    if [[ "`$line" =~ : ]]; then
-      key="`${line%%:*}"
-      val="`${line#*:}"
-      val="`${val//\"/}"
-      val="`$(trim "`$val")"
-      [[ -n "`$key" && -n "`$val" ]] && ENV_VARS["`$key"]="`$val" && export "`$key"="`$val"
-    fi
-    continue
-  fi
-
-  if [[ "`$line" =~ ^path: ]]; then
-    value="`${line#path:}"
-    value="`${value//\"/}"
-    value="`$(trim "`$value")"
-    if [[ -n "`$value" ]]; then
-      PATHS+=("`$value")
-      in_path=0
-    else
-      in_path=1
-    fi
-    continue
-  fi
-
-  if (( in_path )); then
-    if [[ "`$line" =~ ^- ]]; then
-      item="`${line#-}"
-      item="`${item//\"/}"
-      item="`$(trim "`$item")"
-      PATHS+=("`$item")
-    else
-      in_path=0
-    fi
-  fi
-
   if [[ "`$line" =~ ^global_venv_path: ]]; then
     venv="`${line#global_venv_path:}"
     venv="`${venv//\"/}"
@@ -813,34 +732,11 @@ while IFS= read -r line || [[ -n "`$line" ]]; do
   fi
 done < "`$YAML_FILE"
 
-# --- Expand `${var} placeholders ---
-expand_vars() {
-  local s="`$1"
-  for k in "`${!ENV_VARS[@]}"; do
-    s="`${s//\`$\{`$k\}/`${ENV_VARS[`$k]}}"
-  done
-  echo "`$s"
-}
-
-# --- Build final PATH ---
-for p in "`${PATHS[@]}"; do
-  expanded="`$(expand_vars "`$p")"
-  unix_path="`$(to_unix_path "`$expanded")"
-  PATH="`$unix_path:`$PATH"
-done
-
 # --- Expand and normalize GLOBAL_VENV_PATH ---
 if [[ -n "`$GLOBAL_VENV_PATH" ]]; then
-  expanded_venv="`$(expand_vars "`$GLOBAL_VENV_PATH")"
-  unix_venv="`$(to_unix_path "`$expanded_venv")"
+  unix_venv="`$(to_unix_path "`$GLOBAL_VENV_PATH")"
   export global_venv_path="`$unix_venv"
-
-  if [[ -d "`$unix_venv/Scripts" ]]; then
-    PATH="`$unix_venv/Scripts:`$PATH"
-  fi
 fi
-
-export PATH
 
 # --- Activate Python virtual environment if available ---
 default_venv_activate_path="`$global_venv_path/Scripts/activate"
@@ -851,165 +747,73 @@ if [[ -f "`$venv_activate_path" ]]; then
 else
     echo "[ERROR] Virtual environment activation script not found: `$venv_activate_path" >&2
 fi
+
+# --- Run env.py to load environment variables and paths ---
+if [[ -f "`$PY_FILE" ]]; then
+    # We tell env.py to output in POSIX shell mode
+    eval "`$(python "`$PY_FILE" --shell=sh)"
+else
+    echo "[ERROR] Python environment loader not found: `$PY_FILE" >&2
+fi
+
 "@ | Out-File -FilePath "$InstallDirectory\env.sh" -Encoding ASCII
 
 # (optional) make it executable for WSL, Git-Bash, etc.
 try { & chmod +x "$InstallDirectory\env.sh" } catch { }
 # Powershell script  
 @"
-# Parse env.yaml, expand `${vars}, PREPEND all path entries to `$Env:Path,
-# and define `$global_venv_path (if present).
-# Fast, silent, pure PowerShell - no external tools.
-
+# --- Paths ---
 `$BaseDir = "`$PSScriptRoot"
-`$EnvYamlPath = "`$BaseDir\env.yml"
+`$EnvYamlPath = Join-Path `$BaseDir "env.yml"
+`$EnvPyPath = Join-Path `$BaseDir "env.py"
 
 if (-not (Test-Path `$EnvYamlPath)) {
     Write-Error "YAML file not found at: `$EnvYamlPath"
     exit 1
 }
 
-# --- Stage 1: Parse top-level env variables ---
-`$inEnvBlock = `$false
-`$envIndent = 0
+# --- Parse YAML manually using PowerShell ---
+# Simple YAML parser for basic key/value and nested sections
+`$Yaml = @{}
+`$CurrentSection = `$null
 
 Get-Content `$EnvYamlPath | ForEach-Object {
-    `$line = `$_
-    `$trimmed = `$line.TrimEnd()
-    if (`$trimmed -match '^\s*(#|$)') { return }
+    `$Line = `$_.Trim()
 
-    if (-not `$inEnvBlock -and `$trimmed -match '^\s*env\s*:\s*$') {
-        `$inEnvBlock = `$true
-        `$envIndent = (`$line.Length - `$line.TrimStart().Length)
+    # Skip comments and empty lines
+    if (`$Line -match '^(#|$)') { return }
+
+    # Section header (e.g. "python:")
+    if (`$Line -match '^([A-Za-z0-9_]+):\s*$') {
+        `$CurrentSection = `$matches[1]
+        if (-not `$Yaml.ContainsKey(`$CurrentSection)) {
+            `$Yaml[`$CurrentSection] = @{}
+        }
         return
     }
 
-    if (`$inEnvBlock) {
-        `$indent = (`$line.Length - `$line.TrimStart().Length)
-        if (`$indent -le `$envIndent) {
-            `$inEnvBlock = `$false
-            return
-        }
-
-        if (`$trimmed -match '^\s*([A-Za-z0-9_]+)\s*:\s*"?([^"#]+?)"?\s*$') {
-            `$varName = `$Matches[1].Trim()
-            `$varValue = `$Matches[2].Trim()
-            Set-Variable -Name `$varName -Value `$varValue -Scope Script
+    # Key-value pairs (e.g. "global_venv_path: "C:/path"")
+    if (`$Line -match '^\s*([A-Za-z0-9_]+):\s*"?([^"#]+?)"?\s*$') {
+        `$Key = `$matches[1]
+        `$Value = `$matches[2].Trim()
+        if (`$CurrentSection) {
+            `$Yaml[`$CurrentSection][`$Key] = `$Value
+        } else {
+            `$Yaml[`$Key] = `$Value
         }
     }
 }
 
-# --- Stage 2: Parse all path entries ---
-`$inPathBlock = `$false
-`$pathIndent = 0
-`$collectedPaths = @()
+# --- Extract the venv path ---
+`$global_venv_path = `$Yaml["python"]["global_venv_path"]
 
-Get-Content `$EnvYamlPath | ForEach-Object {
-    `$line = `$_
-    `$trimmed = `$line.TrimEnd()
-    if (`$trimmed -match '^\s*(#|$)') { return }
-
-    if (-not `$inPathBlock) {
-        # Single-line path
-        if (`$trimmed -match '^\s*path\s*:\s*"?([^"#]+?)"?\s*$') {
-            `$val = `$Matches[1].Trim()
-            if (`$val) {
-                `$expanded = [regex]::Replace(`$val, '\$\{([^}]+)\}', {
-                    param(`$m)
-                    `$name = `$m.Groups[1].Value
-                    if (Get-Variable -Name `$name -Scope Script -ErrorAction SilentlyContinue) {
-                        (Get-Variable -Name `$name -Scope Script).Value
-                    } else {
-                        `$m.Value
-                    }
-                })
-                `$collectedPaths += `$expanded
-            }
-        }
-        # Start of a block list
-        elseif (`$trimmed -match '^\s*path\s*:\s*$') {
-            `$inPathBlock = `$true
-            `$pathIndent = (`$line.Length - `$line.TrimStart().Length)
-        }
-    }
-    else {
-        `$indent = (`$line.Length - `$line.TrimStart().Length)
-        if (`$indent -le `$pathIndent -or `$trimmed -notmatch '^\s*-\s*') {
-            `$inPathBlock = `$false
-            return
-        }
-
-        if (`$trimmed -match '^\s*-\s*"?([^"#]+?)"?\s*$') {
-            `$val = `$Matches[1].Trim()
-            if (`$val) {
-                `$expanded = [regex]::Replace(`$val, '\$\{([^}]+)\}', {
-                    param(`$m)
-                    `$name = `$m.Groups[1].Value
-                    if (Get-Variable -Name `$name -Scope Script -ErrorAction SilentlyContinue) {
-                        (Get-Variable -Name `$name -Scope Script).Value
-                    } else {
-                        `$m.Value
-                    }
-                })
-                `$collectedPaths += `$expanded
-            }
-        }
-    }
+if (-not `$global_venv_path) {
+    Write-Error "global_venv_path not found in YAML file."
+    exit 1
 }
 
-# --- Stage 3: Update `$Env:Path (prepend unique paths) ---
-`$existing = `$Env:Path -split ';'
-`$filtered = @()
-
-foreach (`$p in `$collectedPaths) {
-    if (-not [string]::IsNullOrWhiteSpace(`$p) -and -not (`$existing -contains `$p)) {
-        `$filtered += `$p
-    }
-}
-
-if (`$filtered.Count -gt 0) {
-    `$Env:Path = (`$filtered -join ';') + ';' + `$Env:Path
-}
-
-# --- Stage 4: Extract and expand python.global_venv_path ---
-`$inPythonBlock = `$false
-`$pythonIndent = 0
-
-Get-Content `$EnvYamlPath | ForEach-Object {
-    `$line = `$_
-    `$trimmed = `$line.TrimEnd()
-    if (`$trimmed -match '^\s*(#|$)') { return }
-
-    if (-not `$inPythonBlock -and `$trimmed -match '^\s*python\s*:\s*$') {
-        `$inPythonBlock = `$true
-        `$pythonIndent = (`$line.Length - `$line.TrimStart().Length)
-        return
-    }
-
-    if (`$inPythonBlock) {
-        `$indent = (`$line.Length - `$line.TrimStart().Length)
-        if (`$indent -le `$pythonIndent) {
-            `$inPythonBlock = `$false
-            return
-        }
-
-        if (`$trimmed -match '^\s*global_venv_path\s*:\s*"?([^"#]+?)"?\s*$') {
-            `$val = `$Matches[1].Trim()
-            `$expanded = [regex]::Replace(`$val, '\$\{([^}]+)\}', {
-                param(`$m)
-                `$name = `$m.Groups[1].Value
-                if (Get-Variable -Name `$name -Scope Script -ErrorAction SilentlyContinue) {
-                    (Get-Variable -Name `$name -Scope Script).Value
-                } else {
-                    `$m.Value
-                }
-            })
-            Set-Variable -Name "global_venv_path" -Value `$expanded -Scope Script
-        }
-    }
-}
-
-`$DefaultVenvActivatePath = "`${global_venv_path}\Scripts\Activate.ps1"
+# --- Determine venv activation path ---
+`$DefaultVenvActivatePath = Join-Path `$global_venv_path "Scripts\Activate.ps1"
 
 if (`$env:PYTHON_VENV_ACTIVATE_PATH -and `$env:PYTHON_VENV_ACTIVATE_PATH.Trim() -ne "") {
     `$VenvActivatePath = `$env:PYTHON_VENV_ACTIVATE_PATH
@@ -1017,14 +821,15 @@ if (`$env:PYTHON_VENV_ACTIVATE_PATH -and `$env:PYTHON_VENV_ACTIVATE_PATH.Trim() 
     `$VenvActivatePath = `$DefaultVenvActivatePath
 }
 
-# Check if the activation script exists at the specified path
+# --- Activate venv ---
 if (Test-Path `$VenvActivatePath) {
-    # Source the virtual environment activation script
     . "`$VenvActivatePath"
     Write-Output "Activated virtual environment at `$VenvActivatePath"
 } else {
     Write-Output "Error: Virtual environment activation script not found at `$VenvActivatePath."
 }
+
+python `$EnvPyPath --shell=powershell | Out-String | Invoke-Expression
 "@ | Out-File -FilePath "$InstallDirectory\env.ps1" -Encoding ASCII
 
 @"
@@ -1103,9 +908,9 @@ tools:
     do_not_use: false
 
 python:
-  global_venv_path: "`${zi_base_dir}/.venv"
+  global_venv_path: "${InstallDirectorySlashFormat}/.venv"
 
-# If you reinstall host tools, you may need set this manually
+# It may be overwritten when you reinstall host tools
 #other:
 #  EXTRA_PATH:
 #    path:
@@ -1117,6 +922,239 @@ python:
 	$envYaml | Out-File -FilePath $EnvYamlPath -Encoding UTF8
 
 	Write-Output "Created environment manifest: $EnvYamlPath"
+
+# --------------------------------------------------------------------------
+# Create python script to parse environement yml (env.py)
+# --------------------------------------------------------------------------
+
+$EnvPyPath = "$InstallDirectory\env.py"
+
+$envPy = @"
+#!/usr/bin/env python3
+"""
+env.py - Parse env.yaml and output environment setup commands
+for PowerShell, CMD (.bat), or POSIX shells (Bash, Zsh, etc.)
+
+Features:
+  - Cross-platform: Windows, Linux, macOS, WSL, MSYS2, Cygwin
+  - Converts Windows paths to Unix-style under WSL/MSYS2/Cygwin
+  - Fast (no per-path subprocess calls)
+  - Expands `${VAR} references
+  - Sets both `$env:VAR and `$VAR in PowerShell
+  - Safely appends to PATH instead of overwriting it
+"""
+
+import os
+import sys
+import yaml
+import re
+import platform
+
+
+# -----------------------------
+# YAML parsing helpers
+# -----------------------------
+def load_yaml(path):
+    """Load YAML safely."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        sys.stderr.write(f"Error reading {path}: {e}\n")
+        sys.exit(1)
+
+
+def expand_vars(value, env_vars):
+    """Expand `${var} using YAML env vars or system env."""
+    if not isinstance(value, str):
+        return value
+    pattern = re.compile(r"\$\{([^}]+)\}")
+    return pattern.sub(lambda m: env_vars.get(m.group(1), os.environ.get(m.group(1), m.group(0))), value)
+
+
+# -----------------------------
+# Environment detection and path conversion
+# -----------------------------
+def detect_env_type():
+    """Detect whether running under MSYS2, Cygwin, or WSL (quiet and safe)."""
+    # Check environment hints first (fast and silent)
+    env = os.environ
+    if "MSYSTEM" in env:
+        return "MSYS2"
+    if "CYGWIN" in env.get("OSTYPE", "").upper() or "CYGWIN" in env.get("TERM", "").upper():
+        return "CYGWIN"
+    if "WSL_DISTRO_NAME" in env or "WSL_INTEROP" in env:
+        return "WSL"
+    if platform.system() != "Windows":
+        return "POSIX"
+
+    # Fallback: safe uname call with suppressed errors
+    try:
+        with os.popen("uname -s 2>/dev/null") as proc:
+            uname = proc.read().strip().upper()
+        if "CYGWIN" in uname:
+            return "CYGWIN"
+        if "MINGW" in uname or "MSYS" in uname:
+            return "MSYS2"
+        if "LINUX" in uname:
+            with open("/proc/version", "r", encoding="utf-8") as f:
+                if "MICROSOFT" in f.read().upper():
+                    return "WSL"
+    except Exception:
+        pass
+
+    return "WINDOWS"
+
+def to_unix_path(path: str, env_type: str = None) -> str:
+    """Convert Windows paths to Unix-style; keep POSIX unchanged."""
+    if not path:
+        return path
+    if platform.system() != "Windows":
+        return path.replace("\\", "/")
+
+    env_type = env_type or detect_env_type()
+    norm = path.replace("\\", "/")
+
+    # Drive letter conversion
+    if len(norm) >= 2 and norm[1] == ":":
+        drive = norm[0].lower()
+        rest = norm[2:]
+        if env_type == "WSL":
+            norm = f"/mnt/{drive}{rest}"
+        else:  # MSYS2 / Cygwin
+            norm = f"/{drive}{rest}"
+
+    return norm
+
+
+# -----------------------------
+# Data collection from YAML
+# -----------------------------
+def collect_paths(data, env_vars):
+    """Collect active paths from tools, runners, and other."""
+    paths = []
+
+    def add_path(val):
+        if isinstance(val, list):
+            for p in val:
+                paths.append(expand_vars(p, env_vars))
+        elif isinstance(val, str):
+            paths.append(expand_vars(val, env_vars))
+
+    # Tools
+    for t in data.get("tools", {}).values():
+        if isinstance(t, dict) and not t.get("do_not_use", False):
+            add_path(t.get("path"))
+
+    # Runners
+    for r in data.get("runners", {}).values():
+        if isinstance(r, dict) and not r.get("do_not_use", False):
+            add_path(r.get("path"))
+
+    # Other
+    for o in data.get("other", {}).values():
+        if isinstance(o, dict):
+            add_path(o.get("path"))
+
+    return paths
+
+
+# -----------------------------
+# Shell detection and output emitters
+# -----------------------------
+def detect_shell():
+    """Detect or override the target shell."""
+    for arg in sys.argv:
+        if arg.startswith("--shell="):
+            return arg.split("=", 1)[1].lower()
+
+    if platform.system() != "Windows":
+        return "sh"
+
+    parent_proc = os.environ.get("ComSpec", "").lower()
+    if "cmd.exe" in parent_proc:
+        return "cmd"
+
+    if os.environ.get("PSExecutionPolicyPreference") or os.environ.get("PSModulePath"):
+        return "powershell"
+
+    return "powershell"
+
+
+def output_powershell(env_vars, paths):
+    """Emit PowerShell commands (sets both `$env:VAR and `$VAR)."""
+    for k, v in env_vars.items():
+        expanded = expand_vars(v, env_vars)
+        print(f"`$env:{k} = \"{expanded}\"")
+        print(f"`${k} = \"{expanded}\"")
+
+    for p in paths:
+        norm = os.path.normpath(p)
+        print(f"`$env:PATH = \"{norm};`$env:PATH\"")
+
+    print("Write-Output 'Environment variables and paths loaded from env.yml.'")
+
+
+def output_cmd(env_vars, paths):
+    """Emit CMD-compatible commands."""
+    for k, v in env_vars.items():
+        expanded = expand_vars(v, env_vars)
+        print(f"set \"{k}={expanded}\"")
+    for p in paths:
+        norm = os.path.normpath(p)
+        print(f"set \"PATH={norm};%PATH%\"")
+    print("echo Environment variables and paths loaded from env.yml.")
+
+
+def output_sh(env_vars, paths):
+    """Emit Bash/Zsh-compatible exports with Unix-style paths (fast)."""
+    env_type = detect_env_type()
+
+    for k, v in env_vars.items():
+        expanded = expand_vars(v, env_vars)
+        expanded = to_unix_path(expanded, env_type)
+        print(f"export {k}='{expanded}'")
+
+    for p in paths:
+        norm = to_unix_path(os.path.normpath(p), env_type)
+        # Append safely without overwriting
+        print(f"export PATH=\"{norm}:`${{PATH:+`$PATH:}}\"")
+
+    print("echo Environment variables and paths loaded from env.yml.")
+
+
+# -----------------------------
+# Main entry point
+# -----------------------------
+def main():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    yaml_path = os.path.join(base_dir, "env.yaml")
+    if not os.path.exists(yaml_path):
+        yaml_path = os.path.join(base_dir, "env.yml")
+    if not os.path.exists(yaml_path):
+        sys.stderr.write("Error: env.yaml or env.yml not found.\n")
+        sys.exit(1)
+
+    data = load_yaml(yaml_path)
+    env_vars = data.get("env", {})
+    paths = collect_paths(data, env_vars)
+
+    shell = detect_shell()
+    if shell == "powershell":
+        output_powershell(env_vars, paths)
+    elif shell == "cmd":
+        output_cmd(env_vars, paths)
+    else:
+        output_sh(env_vars, paths)
+
+
+if __name__ == "__main__":
+    main()
+"@
+
+	$envPy | Out-File -FilePath $EnvPyPath -Encoding ASCII
+
+	Write-Output "Created py script to parse yml: $EnvPyPath"
 
     Print-Title "Clean up"
     Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
