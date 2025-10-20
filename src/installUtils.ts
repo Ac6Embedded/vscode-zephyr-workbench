@@ -216,8 +216,9 @@ export async function getInstallHostToolsArgs(option: string, listSdks: string[]
   if(option === 'skip') {
     switch(process.platform) {
       case 'linux': 
-      case 'darwin':
         return '--skip-sdk';
+      case 'darwin':
+        return '';
       case 'win32':
         return '-SkipSdk ';
     }
@@ -277,7 +278,7 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
         installScript = 'install-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         if(skipSdk) {
-          installArgs += ' --skip-sdk';
+          installArgs += ' ';
         } else if(listTools.length > 0) {
           installArgs += ` --select-sdk="${listTools}"`;
         }
