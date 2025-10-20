@@ -430,8 +430,7 @@ if [[ $non_root_packages == true ]]; then
     env_script() {
     cat << 'EOF'
 #!/bin/bash
-
-# --- Resolve script directory ---
+# --- Resolve the directory this script lives in ---
 if [ -n "${BASH_SOURCE-}" ]; then
     _src="${BASH_SOURCE[0]}"
 elif [ -n "${ZSH_VERSION-}" ]; then
@@ -440,15 +439,15 @@ else
     _src="$0"
 fi
 base_dir="$(cd -- "$(dirname -- "${_src}")" && pwd -P)"
+tools_dir="$base_dir/tools"
 YAML_FILE="$base_dir/env.yml"
+PY_FILE="$base_dir/env.py"
 
 [[ ! -f "$YAML_FILE" ]] && { echo "[ERROR] File not found: $YAML_FILE" >&2; exit 1; }
 
-declare -A ENV_VARS
-PATHS=()
 GLOBAL_VENV_PATH=""
 
-# --- Helper: trim spaces ---
+# --- Helper: Trim spaces without xargs ---
 trim() {
     local var="$1"
     var="${var#"${var%%[![:space:]]*}"}"
@@ -456,70 +455,37 @@ trim() {
     echo "$var"
 }
 
-# --- Parse env.yml (only env: and python:global_venv_activate) ---
-in_env=0
+# --- Parse env.yml ---
 while IFS= read -r line || [[ -n "$line" ]]; do
-    line="$(trim "$line")"
-    [[ -z "$line" || "$line" =~ ^# ]] && continue
-
-    if [[ "$line" == "env:" ]]; then in_env=1; continue; fi
-    [[ "$line" =~ ^tools: ]] && in_env=0
-
-    if (( in_env )); then
-        if [[ "$line" =~ : ]]; then
-            key="${line%%:*}"
-            val="${line#*:}"
-            val="${val//\"/}"
-            val="$(trim "$val")"
-            ENV_VARS["$key"]="$val"
-        fi
-        continue
-    fi
-
-    if [[ "$line" =~ global_venv_activate: ]]; then
-        venv="${line#*:}"
-        venv="${venv//\"/}"
-        GLOBAL_VENV_PATH="$(trim "$venv")"
-    fi
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+  [[ -z "$line" || "$line" =~ ^# ]] && continue
+  if [[ "$line" =~ ^global_venv_path: ]]; then
+    venv="${line#global_venv_path:}"
+    venv="${venv//\"/}"
+    venv="$(trim "$venv")"
+    GLOBAL_VENV_PATH="$venv"
+  fi
 done < "$YAML_FILE"
 
-# --- Expand ${var} and $VAR from both YAML vars and system env ---
-expand_vars() {
-    local s="$1"
-    for k in "${!ENV_VARS[@]}"; do
-        s="${s//\$\{$k\}/${ENV_VARS[$k]}}"
-        s="${s//\$$k/${ENV_VARS[$k]}}"
-    done
-    eval "echo \"$s\""  # expands existing environment vars like $PATH, $LD_LIBRARY_PATH
-}
-
-# --- Export env vars ---
-for key in "${!ENV_VARS[@]}"; do
-    val="$(expand_vars "${ENV_VARS[$key]}")"
-    export "$key"="$val"
-done
-
-# --- Expand and export venv path ---
-GLOBAL_VENV_PATH="$(expand_vars "$GLOBAL_VENV_PATH")"
-export global_venv_path="$GLOBAL_VENV_PATH"
-
-# --- Add venv/bin to PATH if exists ---
-if [[ -d "$global_venv_path/bin" ]]; then
-    PATH="$global_venv_path/bin:$PATH"
-fi
-
-export PATH
-
 # --- Activate Python virtual environment if available ---
-default_venv_activate_path="$global_venv_path/bin/activate"
+default_venv_activate_path="$GLOBAL_VENV_PATH/bin/activate"
 [[ -n "$PYTHON_VENV_ACTIVATE_PATH" ]] && venv_activate_path="$PYTHON_VENV_ACTIVATE_PATH" || venv_activate_path="$default_venv_activate_path"
 
 if [[ -f "$venv_activate_path" ]]; then
     source "$venv_activate_path" >/dev/null 2>&1
-    echo "[INFO] Activated Python venv at: $venv_activate_path"
 else
-    echo "[WARNING] Virtual environment activation script not found: $venv_activate_path" >&2
+    echo "[ERROR] Virtual environment activation script not found: $venv_activate_path" >&2
 fi
+
+# --- Run env.py to load environment variables and paths ---
+if [[ -f "$PY_FILE" ]]; then
+    # We tell env.py to output in POSIX shell mode
+    eval "$(python "$PY_FILE" --shell=sh)"
+else
+    echo "[ERROR] Python environment loader not found: $PY_FILE" >&2
+fi
+
 EOF
 }
 
@@ -577,7 +543,7 @@ if [ "$portable" = true ]; then
 
   python:
     path:
-      - "\${zi_tools_dir}/$PYTHON_FOLDER_NAME/bin"
+      - "$INSTALL_DIR/$PYTHON_FOLDER_NAME/bin"
     version: "$PYTHON_VERSION"
     do_not_use: false
 EOF
@@ -591,10 +557,250 @@ fi
     do_not_use: false
 
 python:
-  global_venv_activate: "\${zi_base_dir}/.venv"
+  global_venv_path: "\${zi_base_dir}/.venv"
+
+# It may be overwritten when you reinstall host tools
+#other:
+#  EXTRA_PATH:
+#    path:
+#      - "path/to/custom/tool1"
+#      - "path/to/custom/tool2"
+
 EOF
 
 echo "Created environment manifest: $ENV_YAML_PATH"
+
+	# --------------------------------------------------------------------------
+	# Create python script to parse environement yml (env.py)
+	# --------------------------------------------------------------------------
+
+	ENV_PY_PATH="$INSTALL_DIR/env.py"
+	
+	cat << 'EOF' > "$ENV_PY_PATH"
+#!/usr/bin/env python3
+"""
+env.py - Parse env.yaml and output environment setup commands
+for PowerShell, CMD (.bat), or POSIX shells (Bash, Zsh, etc.)
+
+Features:
+  - Cross-platform: Windows, Linux, macOS, WSL, MSYS2, Cygwin
+  - Converts Windows paths to Unix-style under WSL/MSYS2/Cygwin
+  - Fast (no per-path subprocess calls)
+  - Expands ${VAR} references
+  - Sets both $env:VAR and $VAR in PowerShell
+  - Safely appends to PATH instead of overwriting it
+"""
+
+import os
+import sys
+import yaml
+import re
+import platform
+
+
+# -----------------------------
+# YAML parsing helpers
+# -----------------------------
+def load_yaml(path):
+    """Load YAML safely."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        sys.stderr.write(f"Error reading {path}: {e}\n")
+        sys.exit(1)
+
+
+def expand_vars(value, env_vars):
+    """Expand ${var} using YAML env vars or system env."""
+    if not isinstance(value, str):
+        return value
+    pattern = re.compile(r"\$\{([^}]+)\}")
+    return pattern.sub(lambda m: env_vars.get(m.group(1), os.environ.get(m.group(1), m.group(0))), value)
+
+
+# -----------------------------
+# Environment detection and path conversion
+# -----------------------------
+def detect_env_type():
+    """Detect whether running under MSYS2, Cygwin, or WSL (quiet and safe)."""
+    # Check environment hints first (fast and silent)
+    env = os.environ
+    if "MSYSTEM" in env:
+        return "MSYS2"
+    if "CYGWIN" in env.get("OSTYPE", "").upper() or "CYGWIN" in env.get("TERM", "").upper():
+        return "CYGWIN"
+    if "WSL_DISTRO_NAME" in env or "WSL_INTEROP" in env:
+        return "WSL"
+    if platform.system() != "Windows":
+        return "POSIX"
+
+    # Fallback: safe uname call with suppressed errors
+    try:
+        with os.popen("uname -s 2>/dev/null") as proc:
+            uname = proc.read().strip().upper()
+        if "CYGWIN" in uname:
+            return "CYGWIN"
+        if "MINGW" in uname or "MSYS" in uname:
+            return "MSYS2"
+        if "LINUX" in uname:
+            with open("/proc/version", "r", encoding="utf-8") as f:
+                if "MICROSOFT" in f.read().upper():
+                    return "WSL"
+    except Exception:
+        pass
+
+    return "WINDOWS"
+
+def to_unix_path(path: str, env_type: str = None) -> str:
+    """Convert Windows paths to Unix-style; keep POSIX unchanged."""
+    if not path:
+        return path
+    if platform.system() != "Windows":
+        return path.replace("\\", "/")
+
+    env_type = env_type or detect_env_type()
+    norm = path.replace("\\", "/")
+
+    # Drive letter conversion
+    if len(norm) >= 2 and norm[1] == ":":
+        drive = norm[0].lower()
+        rest = norm[2:]
+        if env_type == "WSL":
+            norm = f"/mnt/{drive}{rest}"
+        else:  # MSYS2 / Cygwin
+            norm = f"/{drive}{rest}"
+
+    return norm
+
+
+# -----------------------------
+# Data collection from YAML
+# -----------------------------
+def collect_paths(data, env_vars):
+    """Collect active paths from tools, runners, and other."""
+    paths = []
+
+    def add_path(val):
+        if isinstance(val, list):
+            for p in val:
+                paths.append(expand_vars(p, env_vars))
+        elif isinstance(val, str):
+            paths.append(expand_vars(val, env_vars))
+
+    # Tools
+    for t in data.get("tools", {}).values():
+        if isinstance(t, dict) and not t.get("do_not_use", False):
+            add_path(t.get("path"))
+
+    # Runners
+    for r in data.get("runners", {}).values():
+        if isinstance(r, dict) and not r.get("do_not_use", False):
+            add_path(r.get("path"))
+
+    # Other
+    for o in data.get("other", {}).values():
+        if isinstance(o, dict):
+            add_path(o.get("path"))
+
+    return paths
+
+
+# -----------------------------
+# Shell detection and output emitters
+# -----------------------------
+def detect_shell():
+    """Detect or override the target shell."""
+    for arg in sys.argv:
+        if arg.startswith("--shell="):
+            return arg.split("=", 1)[1].lower()
+
+    if platform.system() != "Windows":
+        return "sh"
+
+    parent_proc = os.environ.get("ComSpec", "").lower()
+    if "cmd.exe" in parent_proc:
+        return "cmd"
+
+    if os.environ.get("PSExecutionPolicyPreference") or os.environ.get("PSModulePath"):
+        return "powershell"
+
+    return "powershell"
+
+
+def output_powershell(env_vars, paths):
+    """Emit PowerShell commands (sets both $env:VAR and $VAR)."""
+    for k, v in env_vars.items():
+        expanded = expand_vars(v, env_vars)
+        print(f"$env:{k} = \"{expanded}\"")
+        print(f"${k} = \"{expanded}\"")
+
+    for p in paths:
+        norm = os.path.normpath(p)
+        print(f"$env:PATH = \"{norm};$env:PATH\"")
+
+    print("Write-Output 'Environment variables and paths loaded from env.yml.'")
+
+
+def output_cmd(env_vars, paths):
+    """Emit CMD-compatible commands."""
+    for k, v in env_vars.items():
+        expanded = expand_vars(v, env_vars)
+        print(f"set \"{k}={expanded}\"")
+    for p in paths:
+        norm = os.path.normpath(p)
+        print(f"set \"PATH={norm};%PATH%\"")
+    print("echo Environment variables and paths loaded from env.yml.")
+
+
+def output_sh(env_vars, paths):
+    """Emit Bash/Zsh-compatible exports with Unix-style paths (fast)."""
+    env_type = detect_env_type()
+
+    for k, v in env_vars.items():
+        expanded = expand_vars(v, env_vars)
+        expanded = to_unix_path(expanded, env_type)
+        print(f"export {k}='{expanded}'")
+
+    for p in paths:
+        norm = to_unix_path(os.path.normpath(p), env_type)
+        # Append safely without overwriting
+        print(f"export PATH=\"{norm}:${{PATH:+$PATH:}}\"")
+
+    print("echo Environment variables and paths loaded from env.yml.")
+
+
+# -----------------------------
+# Main entry point
+# -----------------------------
+def main():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    yaml_path = os.path.join(base_dir, "env.yaml")
+    if not os.path.exists(yaml_path):
+        yaml_path = os.path.join(base_dir, "env.yml")
+    if not os.path.exists(yaml_path):
+        sys.stderr.write("Error: env.yaml or env.yml not found.\n")
+        sys.exit(1)
+
+    data = load_yaml(yaml_path)
+    env_vars = data.get("env", {})
+    paths = collect_paths(data, env_vars)
+
+    shell = detect_shell()
+    if shell == "powershell":
+        output_powershell(env_vars, paths)
+    elif shell == "cmd":
+        output_cmd(env_vars, paths)
+    else:
+        output_sh(env_vars, paths)
+
+
+if __name__ == "__main__":
+    main()
+
+EOF
+
+    echo "Created py script to parse yml: $ENV_PY_PATH"
 
     cat <<EOF > "$INSTALL_DIR/zinstaller_version"
 Script Version: $zinstaller_version
