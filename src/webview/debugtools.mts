@@ -62,6 +62,34 @@ function main() {
   progressWheel.forEach(pw => {
     pw.style.display = 'none';
   });
+
+  // Expand or collapse details row under the application name
+  const expandButtons = document.querySelectorAll('.expand-button');
+  expandButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const tool = button.getAttribute('data-tool');
+      if(!tool) return;
+      const row = document.getElementById(`details-${tool}`) as HTMLElement | null;
+      if(!row) return;
+      const isHidden = row.classList.contains('hidden');
+      // toggle chevron
+      button.classList.toggle('codicon-chevron-right', !isHidden);
+      button.classList.toggle('codicon-chevron-down', isHidden);
+      // lazy fill placeholder content if empty
+      const container = document.getElementById(`details-content-${tool}`) as HTMLElement | null;
+      if(container && container.childElementCount === 0) {
+        container.innerHTML = `<div class=\"details-line\">No extra options yet for <strong>${tool}</strong>.</div>`;
+      }
+      if(isHidden) {
+        row.classList.remove('hidden');
+      } else {
+        row.classList.add('hidden');
+      }
+    });
+    // ensure chevron reflects initial state (hidden by default)
+    button.classList.add('codicon-chevron-right');
+    button.classList.remove('codicon-chevron-down');
+  });
 }
 
 function setVSCodeMessageListener() {

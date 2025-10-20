@@ -119,7 +119,7 @@ export class DebugToolsPanel {
       }
 
       toolHTML += `<tr id="row-${tool.tool}">
-        <td><!--input type="checkbox"--></td>
+        <td><button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right" data-tool="${tool.tool}" aria-label="Expand/Collapse"></button></td>
         <td id="name-${tool.tool}">${tool.name}</td>
         <td id="version-${tool.tool}">${tool.version}</td>
         <td id="detect-${tool.tool}">${tool.found}</td>
@@ -162,6 +162,15 @@ export class DebugToolsPanel {
           toolHTML +=`<div class="progress-wheel" id="progress-${tool.tool}"><vscode-progress-ring></vscode-progress-ring></div>`;
         }
         `</td>
+      </tr>`;
+
+      // Hidden details row. It can be opened just below the main row
+      toolHTML += `<tr id="details-${tool.tool}" class="details-row hidden">
+        <td></td>
+        <td colspan="4">
+          <div id="details-content-${tool.tool}" class="details-content"></div>
+        </td>
+        <td></td>
       </tr>`;
 
       if(tool.website || hasSource) {
