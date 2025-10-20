@@ -1,9 +1,12 @@
 import * as vscode from "vscode";
 import fs from "fs";
 import yaml from 'yaml';
+import path from "path";
+import { execSync } from "child_process";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getRunner } from "../debugUtils";
+import { getInternalDirRealPath } from "../utils";
 
 export class DebugToolsPanel {
 	
@@ -12,6 +15,7 @@ export class DebugToolsPanel {
   private readonly _extensionUri: vscode.Uri;
   private _disposables: vscode.Disposable[] = [];
   private data: any;
+  private envData: any | undefined;
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -19,6 +23,18 @@ export class DebugToolsPanel {
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     const yamlFile = fs.readFileSync(vscode.Uri.joinPath(this._extensionUri, 'scripts', 'runners', 'debug-tools.yml').fsPath, 'utf8');
     this.data = yaml.parse(yamlFile);
+
+    // Load env.yml to retrieve installed paths for runners (if present)
+    try {
+      const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+      if (fs.existsSync(envYamlPath)) {
+        const envYaml = fs.readFileSync(envYamlPath, 'utf8');
+        this.envData = yaml.parse(envYaml);
+      }
+    } catch (e) {
+      // Ignore if not found or invalid; details will show fallback
+      this.envData = undefined;
+    }
   }
 
   public async createContent() {
@@ -164,12 +180,29 @@ export class DebugToolsPanel {
         `</td>
       </tr>`;
 
-      // Hidden details row. It can be opened just below the main row
-      toolHTML += `<tr id="details-${tool.tool}" class="details-row hidden">
-        <td></td>
-        <td colspan="4">
-          <div id="details-content-${tool.tool}" class="details-content"></div>
+  // Hidden details. It can be opened just below the main row
+  const pathValue = this.getRunnerPath(tool.tool) ?? '';
+      const pathHtml = `
+        <div class="details-line">
+          <span style="margin-right:8px">Path:</span>
+          <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" placeholder="empty, or read the value in env.yml" value="${pathValue}"></vscode-text-field>
+        </div>`;
+      // Checkbox default: checked unless env.yml explicitly sets do_not_use=true
+      const addToPathChecked = (this.envData?.runners?.[tool.tool]?.do_not_use !== true) ? 'checked' : '';
+      // Keep the button label as "Edit" by default and do not disable it
+      const saveBtnLabel = 'Edit';
+      const saveBtnDisabled = '';
+
+        toolHTML += `<tr id="details-${tool.tool}" class="details-row hidden">
+          <td></td>
+          <td><div id="details-content-${tool.tool}" class="details-content">${pathHtml}</div></td>
+        <td>
+          <vscode-button appearance="secondary" class="save-path-button" data-tool="${tool.tool}" ${saveBtnDisabled}>${saveBtnLabel}</vscode-button>
         </td>
+        <td>
+            <label class="details-line"><input type="checkbox" class="add-to-path-checkbox" data-tool="${tool.tool}" ${addToPathChecked}/> Add to PATH</label>
+        </td>
+        <td></td>
         <td></td>
       </tr>`;
 
@@ -274,6 +307,51 @@ export class DebugToolsPanel {
             let selectedTool = this.data.debug_tools.find((tool: { tool: string; }) => tool.tool === message.tool);
             vscode.commands.executeCommand("zephyr-workbench.run-install-debug-tools", this._panel, [ selectedTool ]);
             break;
+          case 'update-path': {
+            // Persist new path to env.yml and send back confirmation
+            const { tool, newPath } = message;
+            const saved = await this.saveRunnerPath(tool, newPath);
+            webview.postMessage({ command: 'path-updated', tool, path: newPath, success: saved });
+            if (saved) {
+              // Re-detect installation/version right after saving the path
+              const runner = getRunner(tool);
+              if (runner) {
+                runner.loadArgs(undefined);
+                const version = await runner.detectVersion();
+                webview.postMessage({ command: 'detect-done', tool, version: version ? version : '' });
+              }
+            } else {
+              vscode.window.showErrorMessage(`Failed to update path for ${tool}`);
+            }
+            break;
+          }
+          case 'browse-path': {
+            const { tool } = message;
+            const pick = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: `Select folder for ${tool}` });
+            if (pick && pick[0]) {
+              const chosen = pick[0].fsPath;
+              const ok = await this.saveRunnerPath(tool, chosen);
+              webview.postMessage({ command: 'path-updated', tool, path: chosen, success: ok });
+              if (ok) {
+                // Re-detect installation/version with the newly saved path
+                const runner = getRunner(tool);
+                if (runner) {
+                  runner.loadArgs(undefined);
+                  const version = await runner.detectVersion();
+                  webview.postMessage({ command: 'detect-done', tool, version: version ? version : '' });
+                }
+              }
+            }
+            break;
+          }
+          case 'toggle-add-to-path': {
+            // webview sends addToPath=true when checkbox is not checked. We store do_not_use = !addToPath
+            const { tool, addToPath } = message;
+            const doNotUse = !addToPath;
+            const ok = await this.saveDoNotUse(tool, !!doNotUse);
+            if (ok) { webview.postMessage({ command: 'add-to-path-updated', tool, doNotUse: !!doNotUse }); }
+            break;
+          }
           case 'remove':
             vscode.window.showErrorMessage(`Remove ${message.tool} is not implemented yet`);
             break;
@@ -296,6 +374,48 @@ export class DebugToolsPanel {
       }
     }
     return false;
+  }
+
+  private getRunnerPath(toolId: string): string | undefined {
+    // Get path from env.yml 
+    try {
+      const p: string | undefined = (this.envData as any)?.runners?.[toolId]?.path;
+      if (p && typeof p === 'string' && p.length > 0) { return p; }
+    } catch { console.log('Error reading runner path from env.yml'); }
+
+    return undefined;
+  }
+
+  private async saveRunnerPath(toolId: string, newPath: string): Promise<boolean> {
+    try {
+      const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+      let envObj: any = this.envData ?? {};
+      if (!envObj.runners) { envObj.runners = {}; }
+      if (!envObj.runners[toolId]) { envObj.runners[toolId] = {}; }
+      envObj.runners[toolId].path = newPath;
+      this.envData = envObj;
+      fs.mkdirSync(path.dirname(envYamlPath), { recursive: true });
+      fs.writeFileSync(envYamlPath, yaml.stringify(envObj));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  private async saveDoNotUse(toolId: string, doNotUse: boolean): Promise<boolean> {
+    try {
+      const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+      let envObj: any = this.envData ?? {};
+      if (!envObj.runners) { envObj.runners = {}; }
+      if (!envObj.runners[toolId]) { envObj.runners[toolId] = {}; }
+      envObj.runners[toolId].do_not_use = doNotUse;
+      this.envData = envObj;
+      fs.mkdirSync(path.dirname(envYamlPath), { recursive: true });
+      fs.writeFileSync(envYamlPath, yaml.stringify(envObj));
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
   

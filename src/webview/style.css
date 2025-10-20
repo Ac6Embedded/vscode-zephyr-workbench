@@ -78,12 +78,28 @@ form {
 .debug-tools-table .details-row td {
   background-color: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent);
   padding: 6px 8px;
+  vertical-align: middle;
 }
 .details-content {
   color: var(--vscode-descriptionForeground);
 }
 .details-line {
   font-size: calc(var(--type-ramp-base-font-size) - 1px);
+}
+
+.details-path-field {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.debug-tools-table tr.details-row td:nth-child(2) { 
+  width: 60%;
+}
+.debug-tools-table tr.details-row td:nth-child(3) {
+  width: 12%;
+}
+.debug-tools-table tr.details-row td:nth-child(4) { 
+  width: 18%;
 }
 
 fieldset {
