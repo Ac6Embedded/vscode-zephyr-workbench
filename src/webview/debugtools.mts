@@ -62,6 +62,73 @@ function main() {
   progressWheel.forEach(pw => {
     pw.style.display = 'none';
   });
+
+  // Expand or collapse details row under the application name
+  const expandButtons = document.querySelectorAll('.expand-button');
+  expandButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const tool = button.getAttribute('data-tool');
+      if(!tool) return;
+      const row = document.getElementById(`details-${tool}`) as HTMLElement | null;
+      if(!row) return;
+      const isHidden = row.classList.contains('hidden');
+      // toggle chevron
+      button.classList.toggle('codicon-chevron-right', !isHidden);
+      button.classList.toggle('codicon-chevron-down', isHidden);
+      // lazy fill placeholder content if empty
+      const container = document.getElementById(`details-content-${tool}`) as HTMLElement | null;
+      if(container && container.childElementCount === 0) {
+        container.innerHTML = `<div class=\"details-line\">No path detected for <strong>${tool}</strong>.</div>`;
+      }
+      if(isHidden) {
+        row.classList.remove('hidden');
+      } else {
+        row.classList.add('hidden');
+      }
+    });
+    // ensure chevron reflects initial state (hidden by default)
+    button.classList.add('codicon-chevron-right');
+    button.classList.remove('codicon-chevron-down');
+  });
+
+  // Save path button: send the input value to backend
+  document.querySelectorAll('.save-path-button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tool = btn.getAttribute('data-tool');
+      if (!tool) return;
+      const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
+      if (!input) return;
+      webviewApi.postMessage({ command: 'update-path', tool, newPath: input.value });
+    });
+  });
+
+  // Clicking the path field opens the folder picker
+  document.querySelectorAll('.details-path-field').forEach(inputEl => {
+    inputEl.addEventListener('focus', () => {
+      const id = (inputEl as HTMLElement).id; // details-path-input-<tool>
+      const tool = id.replace('details-path-input-','');
+      if (!tool) return;
+      webviewApi.postMessage({ command: 'browse-path', tool });
+    });
+    inputEl.addEventListener('click', () => {
+      const id = (inputEl as HTMLElement).id;
+      const tool = id.replace('details-path-input-','');
+      if (!tool) return;
+      webviewApi.postMessage({ command: 'browse-path', tool });
+    });
+  });
+
+  // Toggle Add to PATH: use event delegation so dynamically-updated rows still work
+  document.addEventListener('change', (ev) => {
+    const target = ev.target as HTMLElement | null;
+    if (!target) return;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (!target.classList.contains('add-to-path-checkbox')) return;
+    const tool = target.getAttribute('data-tool');
+    if (!tool) return;
+    const addToPath = target.checked;
+    webviewApi.postMessage({ command: 'toggle-add-to-path', tool, addToPath });
+  });
 }
 
 function setVSCodeMessageListener() {
@@ -88,6 +155,33 @@ function setVSCodeMessageListener() {
         } else {
           statusCell.textContent = 'Not installed';
         }
+        break;
+      }
+      case 'path-updated': {
+        const { tool, path, saved } = event.data;
+        const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
+        if (input) {
+          input.value = path ?? '';
+        }
+        const btn = document.querySelector(`.save-path-button[data-tool="${tool}"]`) as HTMLButtonElement | null;
+        if (btn) {
+          if (saved && path && path.length > 0) {
+            // After changing the path, show Done and disable the button
+            btn.textContent = 'Done';
+            btn.setAttribute('disabled', '');
+          } else {
+            btn.textContent = 'Edit';
+            btn.removeAttribute('disabled');
+          }
+        }
+        break;
+      }
+      case 'add-to-path-updated': {
+        const { tool, doNotUse } = event.data;
+        const cb = document.querySelector(`.add-to-path-checkbox[data-tool="${tool}"]`) as HTMLInputElement | null;
+        // doNotUse true => checkbox unchecked (do_not_use=true means do NOT add to PATH)
+        if (cb) { cb.checked = !doNotUse; }
+        break;
       }
     }
   });
