@@ -16,6 +16,8 @@ export class DebugToolsPanel {
   private _disposables: vscode.Disposable[] = [];
   private data: any;
   private envData: any | undefined;
+  // store parsed YAML Document to preserve comments/structure when updating
+  private envYamlDoc: any | undefined;
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -30,10 +32,13 @@ export class DebugToolsPanel {
       if (fs.existsSync(envYamlPath)) {
         const envYaml = fs.readFileSync(envYamlPath, 'utf8');
         this.envData = yaml.parse(envYaml);
+        // Preserve the parsed Document so we can update only specific nodes later
+        this.envYamlDoc = yaml.parseDocument(envYaml);
       }
     } catch (e) {
       // Ignore if not found or invalid; details will show fallback
       this.envData = undefined;
+      this.envYamlDoc = undefined;
     }
   }
 
@@ -389,13 +394,31 @@ export class DebugToolsPanel {
   private async saveRunnerPath(toolId: string, newPath: string): Promise<boolean> {
     try {
       const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-      let envObj: any = this.envData ?? {};
-      if (!envObj.runners) { envObj.runners = {}; }
-      if (!envObj.runners[toolId]) { envObj.runners[toolId] = {}; }
-      envObj.runners[toolId].path = newPath;
-      this.envData = envObj;
+
+      // Load existing Document if present, otherwise start from empty document
+      let doc: any;
+      if (fs.existsSync(envYamlPath)) {
+        const text = fs.readFileSync(envYamlPath, 'utf8');
+        doc = yaml.parseDocument(text);
+      } else if (this.envYamlDoc) {
+        // use in-memory doc if we have it
+        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
+      } else {
+        doc = yaml.parseDocument('{}');
+      }
+
+      // Ensure the runners mapping exists and set the specific path key
+      // use setIn to update nested path while preserving other content/comments
+      doc.setIn(['runners', toolId, 'path'], newPath);
+
+      // Persist
       fs.mkdirSync(path.dirname(envYamlPath), { recursive: true });
-      fs.writeFileSync(envYamlPath, yaml.stringify(envObj));
+      fs.writeFileSync(envYamlPath, String(doc));
+
+      // Update in-memory representations
+      this.envYamlDoc = doc;
+      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
+
       return true;
     } catch (e) {
       return false;
@@ -405,13 +428,29 @@ export class DebugToolsPanel {
   private async saveDoNotUse(toolId: string, doNotUse: boolean): Promise<boolean> {
     try {
       const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-      let envObj: any = this.envData ?? {};
-      if (!envObj.runners) { envObj.runners = {}; }
-      if (!envObj.runners[toolId]) { envObj.runners[toolId] = {}; }
-      envObj.runners[toolId].do_not_use = doNotUse;
-      this.envData = envObj;
+
+      // Load existing Document if present, otherwise start from empty document
+      let doc: any;
+      if (fs.existsSync(envYamlPath)) {
+        const text = fs.readFileSync(envYamlPath, 'utf8');
+        doc = yaml.parseDocument(text);
+      } else if (this.envYamlDoc) {
+        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
+      } else {
+        doc = yaml.parseDocument('{}');
+      }
+
+      // Set do_not_use under the specific runner, using setIn to preserve others
+      doc.setIn(['runners', toolId, 'do_not_use'], doNotUse);
+
+      // Persist
       fs.mkdirSync(path.dirname(envYamlPath), { recursive: true });
-      fs.writeFileSync(envYamlPath, yaml.stringify(envObj));
+      fs.writeFileSync(envYamlPath, String(doc));
+
+      // Update in-memory representations
+      this.envYamlDoc = doc;
+      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
+
       return true;
     } catch {
       return false;
