@@ -45,6 +45,34 @@ export class DebugToolsPanel {
   public async createContent() {
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
     this._setWebviewMessageListener(this._panel.webview);
+    // Load versions after panel is shown
+    this.loadVersions();
+  }
+
+  private async loadVersions() {
+    for(let tool of this.data.debug_tools) {
+        let runner = getRunner(tool.tool);
+        if(runner) {
+            runner.loadArgs(undefined);
+            let installedVersion = await runner.detectVersion();
+            let actualVersion = tool.version;
+
+            if(installedVersion) {
+                tool.version = installedVersion;
+                tool.found = "Installed";
+                if(tool.os && (actualVersion !== installedVersion)) {
+                    tool.found = "New Version Available";
+                }
+            }
+
+            // Update the webview with the new version info
+            this._panel.webview.postMessage({ 
+                command: 'detect-done', 
+                tool: tool.tool,
+                version: installedVersion || '',
+            });
+        }
+    }
   }
 
   public static render(extensionUri: vscode.Uri) {
@@ -119,25 +147,10 @@ export class DebugToolsPanel {
     for(let tool of this.data.debug_tools) {
       let toolHTML = '';
       let hasSource = false;
-      let runner = getRunner(tool.tool);
-      if(runner) {
-        runner.loadArgs(undefined);
-        let installedVersion = await runner.detectVersion();
-        let actualVersion = tool.version;
 
-        if(installedVersion) {
-          tool.version = installedVersion;
-          tool.found = "Installed";
-          if(tool.os && (actualVersion !== installedVersion)) {
-            tool.found = "New Version Available";
-          }
-        } else {
-          tool.version = "";
-          tool.found = "Not installed";
-        }
-      } else {
-        tool.found = "";
-      }
+      // Initially set empty version and status
+      tool.version = "";
+      tool.found = "";
 
       toolHTML += `<tr id="row-${tool.tool}">
         <td><button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right" data-tool="${tool.tool}" aria-label="Expand/Collapse"></button></td>
@@ -457,4 +470,3 @@ export class DebugToolsPanel {
     }
   }
 }
-  
