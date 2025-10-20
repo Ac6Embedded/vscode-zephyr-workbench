@@ -543,7 +543,7 @@ if [ "$portable" = true ]; then
 
   python:
     path:
-      - "$INSTALL_DIR/$PYTHON_FOLDER_NAME/bin"
+      - "\${zi_base_dir}/$PYTHON_FOLDER_NAME/bin"
     version: "$PYTHON_VERSION"
     do_not_use: false
 EOF
@@ -557,7 +557,7 @@ fi
     do_not_use: false
 
 python:
-  global_venv_path: "\${zi_base_dir}/.venv"
+  global_venv_path: "$INSTALL_DIR/.venv"
 
 # It may be overwritten when you reinstall host tools
 #other:
