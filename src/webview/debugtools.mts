@@ -120,13 +120,12 @@ function main() {
 
   // Toggle Add to PATH: use event delegation so dynamically-updated rows still work
   document.addEventListener('change', (ev) => {
-    const target = ev.target as HTMLElement | null;
+    const target = ev.target as any;
     if (!target) return;
-    if (!(target instanceof HTMLInputElement)) return;
-    if (!target.classList.contains('add-to-path-checkbox')) return;
+    if (!target.classList.contains('add-to-path')) return;
     const tool = target.getAttribute('data-tool');
     if (!tool) return;
-    const addToPath = target.checked;
+    const addToPath = target.checked; 
     webviewApi.postMessage({ command: 'toggle-add-to-path', tool, addToPath });
   });
 }
