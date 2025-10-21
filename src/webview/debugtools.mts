@@ -91,15 +91,43 @@ function main() {
     button.classList.remove('codicon-chevron-down');
   });
 
-  // Save path button: send the input value to backend
-  document.querySelectorAll('.save-path-button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tool = btn.getAttribute('data-tool');
-      if (!tool) return;
-      const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
-      if (!input) return;
+  // Save path by text input or browse button: send the value to backend
+  document.addEventListener('click', async (e) => {
+    if (!e.target) return;
+    const btn = (e.target as HTMLElement).closest('.save-path-button');
+    if (!btn) return;
+    const tool = btn.getAttribute('data-tool');
+    const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
+    const browseBtn = document.getElementById(`browse-path-button-${tool}`) as HTMLButtonElement | null;
+
+    if (!input || !browseBtn) return;
+
+    if (btn.textContent === 'Edit') {
+      input.disabled = false;
+      browseBtn.disabled = false;
+      input.focus();
+      btn.textContent = 'Done';
+    } else if (btn.textContent === 'Done') {
+      input.disabled = true;
+      browseBtn.disabled = true;
+      btn.textContent = 'Edit';
+      // Save the new path
       webviewApi.postMessage({ command: 'update-path', tool, newPath: input.value });
-    });
+    }
+  });
+
+  // Save the new path when Enter is pressed in the text field  
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const active = document.activeElement as HTMLInputElement | null;
+      if (active && active.classList.contains('details-path-field') && !active.disabled) {
+        const tool = active.id.replace('details-path-input-', '');
+        const btn = document.querySelector(`.save-path-button[data-tool="${tool}"]`) as HTMLElement | null;
+        if (btn && btn.textContent === 'Done') {
+          btn.click();
+        }
+      }
+    }
   });
 
   // Browse path button: open folder picker

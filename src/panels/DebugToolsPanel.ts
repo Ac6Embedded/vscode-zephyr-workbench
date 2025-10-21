@@ -202,8 +202,8 @@ export class DebugToolsPanel {
   const pathValue = this.getRunnerPath(tool.tool) ?? '';
       const pathHtml = `
         <div class="grid-group-div">
-        <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" placeholder="empty, or read the value in env.yml" value="${pathValue}" size="50">Path:</vscode-text-field>
-        <vscode-button id="browse-path-button-${tool.tool}" class="browse-input-button" appearance="secondary">Browse…</vscode-button>
+        <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" placeholder="empty" value="${pathValue}" size="50" disabled>Path:</vscode-text-field>
+        <vscode-button id="browse-path-button-${tool.tool}" class="browse-input-button" appearance="secondary" disabled>Browse…</vscode-button>
         </div>`;
       // Checkbox default: checked unless env.yml explicitly sets do_not_use=true
       const addToPathChecked = (this.envData?.runners?.[tool.tool]?.do_not_use !== true) ? 'checked' : '';
