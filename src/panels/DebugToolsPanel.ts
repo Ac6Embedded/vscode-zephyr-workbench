@@ -47,6 +47,16 @@ export class DebugToolsPanel {
     this._setWebviewMessageListener(this._panel.webview);
     // Load versions after panel is shown
     this.loadVersions();
+
+    // when panel becomes visible again, re-generate HTML so env.yml is re-read
+    this._panel.onDidChangeViewState(async () => {
+      if (this._panel.visible) {
+        this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
+        // reload versions / re-run any detection
+        this.loadVersions();
+        //we do NOT call _setWebviewMessageListener again (already registered)
+      }
+    }, null, this._disposables);
   }
 
   private async loadVersions() {
