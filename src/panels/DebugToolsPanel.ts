@@ -201,9 +201,9 @@ export class DebugToolsPanel {
   // Hidden details. It can be opened just below the main row
   const pathValue = this.getRunnerPath(tool.tool) ?? '';
       const pathHtml = `
-        <div class="details-line">
-          <span style="margin-right:8px">Path:</span>
-          <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" placeholder="empty, or read the value in env.yml" value="${pathValue}"></vscode-text-field>
+        <div class="grid-group-div">
+        <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" placeholder="empty, or read the value in env.yml" value="${pathValue}" size="50">Path:</vscode-text-field>
+        <vscode-button id="browse-path-button-${tool.tool}" class="browse-input-button" appearance="secondary">Browse…</vscode-button>
         </div>`;
       // Checkbox default: checked unless env.yml explicitly sets do_not_use=true
       const addToPathChecked = (this.envData?.runners?.[tool.tool]?.do_not_use !== true) ? 'checked' : '';

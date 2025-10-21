@@ -102,17 +102,11 @@ function main() {
     });
   });
 
-  // Clicking the path field opens the folder picker
-  document.querySelectorAll('.details-path-field').forEach(inputEl => {
-    inputEl.addEventListener('focus', () => {
-      const id = (inputEl as HTMLElement).id; // details-path-input-<tool>
-      const tool = id.replace('details-path-input-','');
-      if (!tool) return;
-      webviewApi.postMessage({ command: 'browse-path', tool });
-    });
-    inputEl.addEventListener('click', () => {
-      const id = (inputEl as HTMLElement).id;
-      const tool = id.replace('details-path-input-','');
+  // Browse path button: open folder picker
+  document.querySelectorAll('.browse-input-button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = (btn as HTMLElement).id; 
+      const tool = id.replace('browse-path-button-', '');
       if (!tool) return;
       webviewApi.postMessage({ command: 'browse-path', tool });
     });

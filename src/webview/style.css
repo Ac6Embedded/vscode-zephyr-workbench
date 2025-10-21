@@ -78,7 +78,7 @@ form {
 .debug-tools-table .details-row td {
   background-color: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent);
   padding: 6px 8px;
-  vertical-align: middle;
+  vertical-align: top;
 }
 .details-content {
   color: var(--vscode-descriptionForeground);
@@ -97,9 +97,11 @@ form {
 }
 .debug-tools-table tr.details-row td:nth-child(3) {
   width: 12%;
+  padding-top: 24px;
 }
 .debug-tools-table tr.details-row td:nth-child(4) { 
   width: 18%;
+  padding-top: 24px;
 }
 
 fieldset {
@@ -468,4 +470,26 @@ vscode-button {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.debug-tools-table .grid-group-div {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+.debug-tools-table .grid-group-div vscode-text-field {
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+.debug-tools-table .grid-group-div vscode-button {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.debug-tools-table .grid-group-div vscode-checkbox {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
