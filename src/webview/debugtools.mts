@@ -187,10 +187,21 @@ function setVSCodeMessageListener() {
       }
       case 'path-updated': {
         const { tool, path, saved } = event.data;
+        
+        // Get input field for path
         const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
+        // Get browse button for path
+        const browseBtn = document.getElementById(`browse-path-button-${tool}`) as HTMLButtonElement | null;
+
         if (input) {
-          input.value = path ?? '';
+          input.value = path ?? ''; // Update input value with new path
+          input.disabled = true; // Disable input after update
         }
+        if (browseBtn) {
+        browseBtn.disabled = true; // Disable browse button after update
+        }
+
+        // Get save/edit button
         const btn = document.querySelector(`.save-path-button[data-tool="${tool}"]`) as HTMLButtonElement | null;
         if (btn) {
           if (saved && path && path.length > 0) {
