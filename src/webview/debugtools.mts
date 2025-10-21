@@ -78,7 +78,14 @@ function main() {
       // lazy fill placeholder content if empty
       const container = document.getElementById(`details-content-${tool}`) as HTMLElement | null;
       if(container && container.childElementCount === 0) {
-        container.innerHTML = `<div class=\"details-line\">No path detected for <strong>${tool}</strong>.</div>`;
+      // Check if the input field is empty or not for the path
+        const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
+        const path = input?.value ?? '';
+        if (path && path !== 'empty') {
+          container.innerHTML = `<div class="details-line">Path detected: <strong>${path}</strong></div>`;
+        } else {
+          container.innerHTML = `<div class="details-line">No path detected for <strong>${tool}</strong>.</div>`;
+        }
       }
       if(isHidden) {
         row.classList.remove('hidden');
