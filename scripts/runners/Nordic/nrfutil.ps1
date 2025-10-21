@@ -26,6 +26,9 @@ try {
     Write-Output "Warning: Could not set permissions on $DestFile (non-fatal)."
 }
 
+# Install nrfutil device dependencies
+& $DestFile install device --force
+
 # --- Source env-utils.ps1 &  debug-tools.yml and get yq & version ---
 $ScriptDir = Split-Path -Parent $PSCommandPath
 $ParentDir = Split-Path -Parent $ScriptDir

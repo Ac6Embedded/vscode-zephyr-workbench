@@ -30,6 +30,11 @@ chmod +x "${DEST_FILE}" || {
     echo "WARNING: Could not make ${DEST_FILE} executable (non-fatal)."
 }
 
+# Install nrfutil device dependencies
+$DEST_FILE install device --force || {
+    echo "WARNING: Could not install device dependencies (non-fatal)."
+}
+
 # --- Resolve directories ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PARENT_DIR="$(dirname "$SCRIPT_DIR")"
