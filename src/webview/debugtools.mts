@@ -78,7 +78,14 @@ function main() {
       // lazy fill placeholder content if empty
       const container = document.getElementById(`details-content-${tool}`) as HTMLElement | null;
       if(container && container.childElementCount === 0) {
-        container.innerHTML = `<div class=\"details-line\">No path detected for <strong>${tool}</strong>.</div>`;
+      // Check if the input field is empty or not for the path
+        const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
+        const path = input?.value ?? '';
+        if (path && path !== 'empty') {
+          container.innerHTML = `<div class="details-line">Path detected: <strong>${path}</strong></div>`;
+        } else {
+          container.innerHTML = `<div class="details-line">No path detected for <strong>${tool}</strong>.</div>`;
+        }
       }
       if(isHidden) {
         row.classList.remove('hidden');
@@ -91,28 +98,50 @@ function main() {
     button.classList.remove('codicon-chevron-down');
   });
 
-  // Save path button: send the input value to backend
-  document.querySelectorAll('.save-path-button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tool = btn.getAttribute('data-tool');
-      if (!tool) return;
-      const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
-      if (!input) return;
+  // Save path by text input or browse button: send the value to backend
+  document.addEventListener('click', async (e) => {
+    if (!e.target) return;
+    const btn = (e.target as HTMLElement).closest('.save-path-button');
+    if (!btn) return;
+    const tool = btn.getAttribute('data-tool');
+    const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
+    const browseBtn = document.getElementById(`browse-path-button-${tool}`) as HTMLButtonElement | null;
+
+    if (!input || !browseBtn) return;
+
+    if (btn.textContent === 'Edit') {
+      input.disabled = false;
+      browseBtn.disabled = false;
+      input.focus();
+      btn.textContent = 'Done';
+    } else if (btn.textContent === 'Done') {
+      input.disabled = true;
+      browseBtn.disabled = true;
+      btn.textContent = 'Edit';
+      // Save the new path
       webviewApi.postMessage({ command: 'update-path', tool, newPath: input.value });
-    });
+    }
   });
 
-  // Clicking the path field opens the folder picker
-  document.querySelectorAll('.details-path-field').forEach(inputEl => {
-    inputEl.addEventListener('focus', () => {
-      const id = (inputEl as HTMLElement).id; // details-path-input-<tool>
-      const tool = id.replace('details-path-input-','');
-      if (!tool) return;
-      webviewApi.postMessage({ command: 'browse-path', tool });
-    });
-    inputEl.addEventListener('click', () => {
-      const id = (inputEl as HTMLElement).id;
-      const tool = id.replace('details-path-input-','');
+  // Save the new path when Enter is pressed in the text field  
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const active = document.activeElement as HTMLInputElement | null;
+      if (active && active.classList.contains('details-path-field') && !active.disabled) {
+        const tool = active.id.replace('details-path-input-', '');
+        const btn = document.querySelector(`.save-path-button[data-tool="${tool}"]`) as HTMLElement | null;
+        if (btn && btn.textContent === 'Done') {
+          btn.click();
+        }
+      }
+    }
+  });
+
+  // Browse path button: open folder picker
+  document.querySelectorAll('.browse-input-button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = (btn as HTMLElement).id; 
+      const tool = id.replace('browse-path-button-', '');
       if (!tool) return;
       webviewApi.postMessage({ command: 'browse-path', tool });
     });
@@ -120,13 +149,12 @@ function main() {
 
   // Toggle Add to PATH: use event delegation so dynamically-updated rows still work
   document.addEventListener('change', (ev) => {
-    const target = ev.target as HTMLElement | null;
+    const target = ev.target as any;
     if (!target) return;
-    if (!(target instanceof HTMLInputElement)) return;
-    if (!target.classList.contains('add-to-path-checkbox')) return;
+    if (!target.classList.contains('add-to-path')) return;
     const tool = target.getAttribute('data-tool');
     if (!tool) return;
-    const addToPath = target.checked;
+    const addToPath = target.checked; 
     webviewApi.postMessage({ command: 'toggle-add-to-path', tool, addToPath });
   });
 }
@@ -159,10 +187,21 @@ function setVSCodeMessageListener() {
       }
       case 'path-updated': {
         const { tool, path, saved } = event.data;
+        
+        // Get input field for path
         const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
+        // Get browse button for path
+        const browseBtn = document.getElementById(`browse-path-button-${tool}`) as HTMLButtonElement | null;
+
         if (input) {
-          input.value = path ?? '';
+          input.value = path ?? ''; // Update input value with new path
+          input.disabled = true; // Disable input after update
         }
+        if (browseBtn) {
+        browseBtn.disabled = true; // Disable browse button after update
+        }
+
+        // Get save/edit button
         const btn = document.querySelector(`.save-path-button[data-tool="${tool}"]`) as HTMLButtonElement | null;
         if (btn) {
           if (saved && path && path.length > 0) {

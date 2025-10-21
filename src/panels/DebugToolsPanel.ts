@@ -201,9 +201,10 @@ export class DebugToolsPanel {
   // Hidden details. It can be opened just below the main row
   const pathValue = this.getRunnerPath(tool.tool) ?? '';
       const pathHtml = `
-        <div class="details-line">
-          <span style="margin-right:8px">Path:</span>
-          <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" placeholder="empty, or read the value in env.yml" value="${pathValue}"></vscode-text-field>
+        <div class="grid-group-div">
+          <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" 
+            placeholder="empty" value="${pathValue || 'empty'}" size="50" disabled>Path:</vscode-text-field>
+          <vscode-button id="browse-path-button-${tool.tool}" class="browse-input-button" appearance="secondary" disabled>Browse…</vscode-button>
         </div>`;
       // Checkbox default: checked unless env.yml explicitly sets do_not_use=true
       const addToPathChecked = (this.envData?.runners?.[tool.tool]?.do_not_use !== true) ? 'checked' : '';
@@ -218,7 +219,7 @@ export class DebugToolsPanel {
           <vscode-button appearance="secondary" class="save-path-button" data-tool="${tool.tool}" ${saveBtnDisabled}>${saveBtnLabel}</vscode-button>
         </td>
         <td>
-            <label class="details-line"><input type="checkbox" class="add-to-path-checkbox" data-tool="${tool.tool}" ${addToPathChecked}/> Add to PATH</label>
+            <vscode-checkbox class="add-to-path" data-tool="${tool.tool}" ${addToPathChecked}/> Add to PATH</vscode-checkbox>
         </td>
         <td></td>
         <td></td>
@@ -407,6 +408,9 @@ export class DebugToolsPanel {
   private async saveRunnerPath(toolId: string, newPath: string): Promise<boolean> {
     try {
       const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+      
+      // Normalizes to always use a slash "/" in the definitive path
+      const defPath = newPath.replace(/\\/g, '/');
 
       // Load existing Document if present, otherwise start from empty document
       let doc: any;
@@ -422,7 +426,7 @@ export class DebugToolsPanel {
 
       // Ensure the runners mapping exists and set the specific path key
       // use setIn to update nested path while preserving other content/comments
-      doc.setIn(['runners', toolId, 'path'], newPath);
+      doc.setIn(['runners', toolId, 'path'], defPath);
 
       // Persist
       fs.mkdirSync(path.dirname(envYamlPath), { recursive: true });
