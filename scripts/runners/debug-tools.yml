@@ -100,6 +100,7 @@ debug_tools:
   website: https://pyocd.io/
   type: debug_server
   group: Common
+  no_edit: true
 - tool: nrfjprog
   name: nRF Command Line Tools
   version: 10.24.2
@@ -144,6 +145,7 @@ debug_tools:
   type: driver
   group: STM32
   root: true
+  no_edit: true
   os:
     linux:
       source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/zw-udev-rules-1.0.0.tar.xz
@@ -156,6 +158,7 @@ debug_tools:
   type: driver
   group: Silabs
   root: true
+  no_edit: true
   os:
     windows:
       source: https://www.silabs.com/documents/public/software/CP210x_Universal_Windows_Driver.zip
