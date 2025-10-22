@@ -223,18 +223,20 @@ export class DebugToolsPanel {
         </div>`;
       // Checkbox default: checked unless env.yml explicitly sets do_not_use=true
       const addToPathChecked = (this.envData?.runners?.[tool.tool]?.do_not_use !== true) ? 'checked' : '';
+      //Checkbox default: always disabled 
+      const addToPathState = 'disabled'; 
       // Keep the button label as "Edit" by default and do not disable it
       const saveBtnLabel = 'Edit';
-      const saveBtnDisabled = '';
+      const saveBtnState = '';
 
         toolHTML += `<tr id="details-${tool.tool}" class="details-row hidden">
           <td></td>
           <td><div id="details-content-${tool.tool}" class="details-content">${pathHtml}</div></td>
         <td>
-          <vscode-button appearance="secondary" class="save-path-button" data-tool="${tool.tool}" ${saveBtnDisabled}>${saveBtnLabel}</vscode-button>
+          <vscode-button appearance="secondary" class="save-path-button" data-tool="${tool.tool}" ${saveBtnState}>${saveBtnLabel}</vscode-button>
         </td>
         <td>
-            <vscode-checkbox class="add-to-path" data-tool="${tool.tool}" ${addToPathChecked}/> Add to PATH</vscode-checkbox>
+            <vscode-checkbox class="add-to-path" data-tool="${tool.tool}" ${addToPathChecked} ${addToPathState}/> Add to PATH</vscode-checkbox>
         </td>
         <td></td>
         <td></td>
