@@ -57,8 +57,8 @@ if (-not (Test-Path $Installer)) {
     exit 1
 }
 
-Write-Output "Running installer: $Installer /S"
-$process = Start-Process -FilePath $Installer -ArgumentList "/S" -Wait -PassThru
+Write-Output "Running installer: $Installer"
+$process = Start-Process -FilePath $Installer -Wait -PassThru
 
 if ($process.ExitCode -eq 0) {
     Write-Output "STM32CubeProgrammer installed successfully."
