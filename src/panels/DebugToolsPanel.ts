@@ -219,7 +219,9 @@ export class DebugToolsPanel {
         <div class="grid-group-div">
           <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" 
             placeholder="Enter the tool's path if not in the global PATH" value="${pathValue}" size="50" disabled>Path:</vscode-text-field>
-          <vscode-button id="browse-path-button-${tool.tool}" class="browse-input-button" appearance="secondary" disabled>Browse…</vscode-button>
+          <vscode-button id="browse-path-button-${tool.tool}" class="browse-input-button" appearance="secondary" disabled>
+            <span class="codicon codicon-folder"></span>
+          </vscode-button>
         </div>`;
       // Checkbox default: checked unless env.yml explicitly sets do_not_use=true
       const addToPathChecked = (this.envData?.runners?.[tool.tool]?.do_not_use !== true) ? 'checked' : '';
