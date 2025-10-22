@@ -106,20 +106,23 @@ function main() {
     const tool = btn.getAttribute('data-tool');
     const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
     const browseBtn = document.getElementById(`browse-path-button-${tool}`) as HTMLButtonElement | null;
+    const checkbox = document.querySelector(`.add-to-path[data-tool="${tool}"]`) as HTMLInputElement | null;
 
-    if (!input || !browseBtn) return;
+    if (!input || !browseBtn || !checkbox) return;
 
     if (btn.textContent === 'Edit') {
       input.disabled = false;
       browseBtn.disabled = false;
+      checkbox.disabled = false; 
       input.focus();
       btn.textContent = 'Done';
     } else if (btn.textContent === 'Done') {
       input.disabled = true;
       browseBtn.disabled = true;
+      checkbox.disabled = true;
       btn.textContent = 'Edit';
       // Save the new path
-      webviewApi.postMessage({ command: 'update-path', tool, newPath: input.value });
+      webviewApi.postMessage({ command: 'update-path', tool, newPath: input.value, addToPath: checkbox.checked  });
     }
   });
 

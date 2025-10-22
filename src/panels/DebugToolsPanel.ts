@@ -47,6 +47,16 @@ export class DebugToolsPanel {
     this._setWebviewMessageListener(this._panel.webview);
     // Load versions after panel is shown
     this.loadVersions();
+
+    // when panel becomes visible again, re-generate HTML so env.yml is re-read
+    this._panel.onDidChangeViewState(async () => {
+      if (this._panel.visible) {
+        this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
+        // reload versions / re-run any detection
+        this.loadVersions();
+        //we do NOT call _setWebviewMessageListener again (already registered)
+      }
+    }, null, this._disposables);
   }
 
   private async loadVersions() {
@@ -152,8 +162,14 @@ export class DebugToolsPanel {
       tool.version = "";
       tool.found = "";
 
-      toolHTML += `<tr id="row-${tool.tool}">
-        <td><button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right" data-tool="${tool.tool}" aria-label="Expand/Collapse"></button></td>
+      toolHTML += `<tr id="row-${tool.tool}">`;
+      // Show expand button only if no_edit is not true
+      if (tool.no_edit !== true) {
+        toolHTML += `<td><button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right" data-tool="${tool.tool}" aria-label="Expand/Collapse"></button></td>`;
+      } else {
+        toolHTML += `<td></td>`; // empty cell if no_edit is true
+      }
+      toolHTML += `
         <td id="name-${tool.tool}">${tool.name}</td>
         <td id="version-${tool.tool}">${tool.version}</td>
         <td id="detect-${tool.tool}">${tool.found}</td>
@@ -179,7 +195,6 @@ export class DebugToolsPanel {
                          <span class="codicon codicon-trash"></span>
                        </vscode-button-->`;
         }
-       
       }
 
       if(tool.website) {
@@ -203,23 +218,25 @@ export class DebugToolsPanel {
       const pathHtml = `
         <div class="grid-group-div">
           <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" 
-            placeholder="empty" value="${pathValue || 'empty'}" size="50" disabled>Path:</vscode-text-field>
+            placeholder="Enter the tool's path if not in the global PATH" value="${pathValue}" size="50" disabled>Path:</vscode-text-field>
           <vscode-button id="browse-path-button-${tool.tool}" class="browse-input-button" appearance="secondary" disabled>Browse…</vscode-button>
         </div>`;
       // Checkbox default: checked unless env.yml explicitly sets do_not_use=true
       const addToPathChecked = (this.envData?.runners?.[tool.tool]?.do_not_use !== true) ? 'checked' : '';
+      //Checkbox default: always disabled 
+      const addToPathState = 'disabled'; 
       // Keep the button label as "Edit" by default and do not disable it
       const saveBtnLabel = 'Edit';
-      const saveBtnDisabled = '';
+      const saveBtnState = '';
 
         toolHTML += `<tr id="details-${tool.tool}" class="details-row hidden">
           <td></td>
           <td><div id="details-content-${tool.tool}" class="details-content">${pathHtml}</div></td>
         <td>
-          <vscode-button appearance="secondary" class="save-path-button" data-tool="${tool.tool}" ${saveBtnDisabled}>${saveBtnLabel}</vscode-button>
+          <vscode-button appearance="secondary" class="save-path-button" data-tool="${tool.tool}" ${saveBtnState}>${saveBtnLabel}</vscode-button>
         </td>
         <td>
-            <vscode-checkbox class="add-to-path" data-tool="${tool.tool}" ${addToPathChecked}/> Add to PATH</vscode-checkbox>
+            <vscode-checkbox class="add-to-path" data-tool="${tool.tool}" ${addToPathChecked} ${addToPathState}/> Add to PATH</vscode-checkbox>
         </td>
         <td></td>
         <td></td>
@@ -328,10 +345,27 @@ export class DebugToolsPanel {
             break;
           case 'update-path': {
             // Persist new path to env.yml and send back confirmation
-            const { tool, newPath } = message;
-            const saved = await this.saveRunnerPath(tool, newPath);
-            webview.postMessage({ command: 'path-updated', tool, path: newPath, success: saved });
-            if (saved) {
+            const { tool, newPath, addToPath } = message;
+            const trimmedPath = (newPath ?? '').trim();
+
+            // Only save if path is not empty
+            if (!trimmedPath) {
+              // Do not save anything, just return success false
+              webview.postMessage({ command: 'path-updated', tool, path: '', success: false });
+              break;
+            }
+
+            // Save path
+            const savedPath = await this.saveRunnerPath(tool, trimmedPath);
+
+            // Save do_not_use together (if addToPath is present in message)
+            let savedDoNotUse = true;
+            if (typeof addToPath !== 'undefined') {
+              savedDoNotUse = await this.saveDoNotUse(tool, !addToPath);
+            }
+            const success = savedPath && savedDoNotUse;
+            webview.postMessage({ command: 'path-updated', tool, path: trimmedPath, success });
+            if (success) {
               // Re-detect installation/version right after saving the path
               const runner = getRunner(tool);
               if (runner) {
