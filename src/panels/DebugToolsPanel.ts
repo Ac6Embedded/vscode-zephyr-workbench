@@ -345,10 +345,27 @@ export class DebugToolsPanel {
             break;
           case 'update-path': {
             // Persist new path to env.yml and send back confirmation
-            const { tool, newPath } = message;
-            const saved = await this.saveRunnerPath(tool, newPath);
-            webview.postMessage({ command: 'path-updated', tool, path: newPath, success: saved });
-            if (saved) {
+            const { tool, newPath, addToPath } = message;
+            const trimmedPath = (newPath ?? '').trim();
+
+            // Only save if path is not empty
+            if (!trimmedPath) {
+              // Do not save anything, just return success false
+              webview.postMessage({ command: 'path-updated', tool, path: '', success: false });
+              break;
+            }
+
+            // Save path
+            const savedPath = await this.saveRunnerPath(tool, trimmedPath);
+
+            // Save do_not_use together (if addToPath is present in message)
+            let savedDoNotUse = true;
+            if (typeof addToPath !== 'undefined') {
+              savedDoNotUse = await this.saveDoNotUse(tool, !addToPath);
+            }
+            const success = savedPath && savedDoNotUse;
+            webview.postMessage({ command: 'path-updated', tool, path: trimmedPath, success });
+            if (success) {
               // Re-detect installation/version right after saving the path
               const runner = getRunner(tool);
               if (runner) {
