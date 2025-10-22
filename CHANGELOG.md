@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.3.38]
+
+- Fix STM32CubeProgrammer install
+
 ## [1.3.37]
 
 - Fix west_wrapper generation
