@@ -189,29 +189,37 @@ function setVSCodeMessageListener() {
         break;
       }
       case 'path-updated': {
-        const { tool, path, saved } = event.data;
-        
+        const { tool, path, saved, FromBrowse } = event.data;
         // Get input field for path
         const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
         // Get browse button for path
         const browseBtn = document.getElementById(`browse-path-button-${tool}`) as HTMLButtonElement | null;
+        const checkbox = document.querySelector(`.add-to-path[data-tool="${tool}"]`) as HTMLInputElement | null;
 
         if (input) {
-          input.value = path ?? ''; // Update input value with new path
-          input.disabled = true; // Disable input after update
+          input.value = path ?? '';
+          input.disabled = true;
         }
         if (browseBtn) {
-        browseBtn.disabled = true; // Disable browse button after update
+          browseBtn.disabled = true;
         }
+          if (checkbox) {
+            if (FromBrowse) {
+              checkbox.disabled = false; // Enable checkbox after browse
+            } else if (saved && path && path.length > 0) {
+              checkbox.disabled = true; // Disable checkbox after Done/Edit
+            }
+          }
 
         // Get save/edit button
         const btn = document.querySelector(`.save-path-button[data-tool="${tool}"]`) as HTMLButtonElement | null;
         if (btn) {
-          if (saved && path && path.length > 0) {
-            // After changing the path, show Done and disable the button
+          if (FromBrowse) {
+            // After selecting path via browse, show Done and enable button
             btn.textContent = 'Done';
-            btn.setAttribute('disabled', '');
-          } else {
+            btn.removeAttribute('disabled');
+          } else if (saved && path && path.length > 0) {
+            // After saving, show Edit and disable fields
             btn.textContent = 'Edit';
             btn.removeAttribute('disabled');
           }

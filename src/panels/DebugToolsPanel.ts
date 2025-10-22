@@ -219,7 +219,9 @@ export class DebugToolsPanel {
         <div class="grid-group-div">
           <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" 
             placeholder="Enter the tool's path if not in the global PATH" value="${pathValue}" size="50" disabled>Path:</vscode-text-field>
-          <vscode-button id="browse-path-button-${tool.tool}" class="browse-input-button" appearance="secondary" disabled>Browse…</vscode-button>
+          <vscode-button id="browse-path-button-${tool.tool}" class="browse-input-button" appearance="secondary" disabled>
+            <span class="codicon codicon-folder"></span>
+          </vscode-button>
         </div>`;
       // Checkbox default: checked unless env.yml explicitly sets do_not_use=true
       const addToPathChecked = (this.envData?.runners?.[tool.tool]?.do_not_use !== true) ? 'checked' : '';
@@ -233,7 +235,7 @@ export class DebugToolsPanel {
           <td></td>
           <td><div id="details-content-${tool.tool}" class="details-content">${pathHtml}</div></td>
         <td>
-          <vscode-button appearance="secondary" class="save-path-button" data-tool="${tool.tool}" ${saveBtnState}>${saveBtnLabel}</vscode-button>
+          <vscode-button appearance="primary" class="save-path-button" data-tool="${tool.tool}" ${saveBtnState}>${saveBtnLabel}</vscode-button>
         </td>
         <td>
             <vscode-checkbox class="add-to-path" data-tool="${tool.tool}" ${addToPathChecked} ${addToPathState}/> Add to PATH</vscode-checkbox>
@@ -398,11 +400,9 @@ export class DebugToolsPanel {
             break;
           }
           case 'toggle-add-to-path': {
-            // webview sends addToPath=true when checkbox is not checked. We store do_not_use = !addToPath
+            // Do NOT save do_not_use here, only update frontend state
             const { tool, addToPath } = message;
-            const doNotUse = !addToPath;
-            const ok = await this.saveDoNotUse(tool, !!doNotUse);
-            if (ok) { webview.postMessage({ command: 'add-to-path-updated', tool, doNotUse: !!doNotUse }); }
+            webview.postMessage({ command: 'add-to-path-updated', tool, doNotUse: !addToPath });
             break;
           }
           case 'remove':
