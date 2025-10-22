@@ -398,11 +398,9 @@ export class DebugToolsPanel {
             break;
           }
           case 'toggle-add-to-path': {
-            // webview sends addToPath=true when checkbox is not checked. We store do_not_use = !addToPath
+            // Do NOT save do_not_use here, only update frontend state
             const { tool, addToPath } = message;
-            const doNotUse = !addToPath;
-            const ok = await this.saveDoNotUse(tool, !!doNotUse);
-            if (ok) { webview.postMessage({ command: 'add-to-path-updated', tool, doNotUse: !!doNotUse }); }
+            webview.postMessage({ command: 'add-to-path-updated', tool, doNotUse: !addToPath });
             break;
           }
           case 'remove':
