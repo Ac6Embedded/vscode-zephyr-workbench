@@ -233,7 +233,7 @@ export class DebugToolsPanel {
           <td></td>
           <td><div id="details-content-${tool.tool}" class="details-content">${pathHtml}</div></td>
         <td>
-          <vscode-button appearance="secondary" class="save-path-button" data-tool="${tool.tool}" ${saveBtnState}>${saveBtnLabel}</vscode-button>
+          <vscode-button appearance="primary" class="save-path-button" data-tool="${tool.tool}" ${saveBtnState}>${saveBtnLabel}</vscode-button>
         </td>
         <td>
             <vscode-checkbox class="add-to-path" data-tool="${tool.tool}" ${addToPathChecked} ${addToPathState}/> Add to PATH</vscode-checkbox>
