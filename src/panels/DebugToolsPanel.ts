@@ -213,7 +213,7 @@ export class DebugToolsPanel {
       const pathHtml = `
         <div class="grid-group-div">
           <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" 
-            placeholder="empty" value="${pathValue || 'empty'}" size="50" disabled>Path:</vscode-text-field>
+            placeholder="Enter the tool's path if not in the global PATH" value="${pathValue}" size="50" disabled>Path:</vscode-text-field>
           <vscode-button id="browse-path-button-${tool.tool}" class="browse-input-button" appearance="secondary" disabled>Browse…</vscode-button>
         </div>`;
       // Checkbox default: checked unless env.yml explicitly sets do_not_use=true
