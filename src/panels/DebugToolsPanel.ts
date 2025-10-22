@@ -381,12 +381,18 @@ export class DebugToolsPanel {
             break;
           }
           case 'browse-path': {
-            const { tool } = message;
-            const pick = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: `Select folder for ${tool}` });
+            const { tool, addToPath } = message;
+            const pick = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: `Select the path for ${tool}` });
             if (pick && pick[0]) {
-              const chosen = pick[0].fsPath;
-              const ok = await this.saveRunnerPath(tool, chosen);
-              webview.postMessage({ command: 'path-updated', tool, path: chosen, success: ok });
+              const chosen = pick[0].fsPath.trim();
+              if (!chosen) {
+                webview.postMessage({ command: 'path-updated', tool, path: '', success: false });
+                break;
+              }
+              const okPath = await this.saveRunnerPath(tool, chosen);
+              const okDoNotUse = typeof addToPath !== 'undefined' ? await this.saveDoNotUse(tool, !addToPath) : true;
+              const ok = okPath && okDoNotUse;
+              webview.postMessage({ command: 'path-updated', tool, path: chosen, success: ok, FromBrowse: true });
               if (ok) {
                 // Re-detect installation/version with the newly saved path
                 const runner = getRunner(tool);

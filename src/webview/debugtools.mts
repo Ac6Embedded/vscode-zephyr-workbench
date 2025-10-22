@@ -203,26 +203,25 @@ function setVSCodeMessageListener() {
         if (browseBtn) {
           browseBtn.disabled = true;
         }
-          if (checkbox) {
-            if (FromBrowse) {
-              checkbox.disabled = false; // Enable checkbox after browse
-            } else if (saved && path && path.length > 0) {
-              checkbox.disabled = true; // Disable checkbox after Done/Edit
-            }
+        if (checkbox) {
+          // After saving path via Browse, disable checkbox
+          checkbox.disabled = true;
+          // If this is the first time via Browse, send update-path with checkbox value
+          if (FromBrowse) {
+            webviewApi.postMessage({
+              command: 'update-path',
+              tool,
+              newPath: path,
+              addToPath: checkbox.checked
+            });
           }
+        }
 
         // Get save/edit button
         const btn = document.querySelector(`.save-path-button[data-tool="${tool}"]`) as HTMLButtonElement | null;
         if (btn) {
-          if (FromBrowse) {
-            // After selecting path via browse, show Done and enable button
-            btn.textContent = 'Done';
-            btn.removeAttribute('disabled');
-          } else if (saved && path && path.length > 0) {
-            // After saving, show Edit and disable fields
-            btn.textContent = 'Edit';
-            btn.removeAttribute('disabled');
-          }
+          btn.textContent = 'Edit';
+          btn.removeAttribute('disabled');
         }
         break;
       }
