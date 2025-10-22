@@ -162,8 +162,14 @@ export class DebugToolsPanel {
       tool.version = "";
       tool.found = "";
 
-      toolHTML += `<tr id="row-${tool.tool}">
-        <td><button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right" data-tool="${tool.tool}" aria-label="Expand/Collapse"></button></td>
+      toolHTML += `<tr id="row-${tool.tool}">`;
+      // Show expand button only if no_edit is not true
+      if (tool.no_edit !== true) {
+        toolHTML += `<td><button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right" data-tool="${tool.tool}" aria-label="Expand/Collapse"></button></td>`;
+      } else {
+        toolHTML += `<td></td>`; // empty cell if no_edit is true
+      }
+      toolHTML += `
         <td id="name-${tool.tool}">${tool.name}</td>
         <td id="version-${tool.tool}">${tool.version}</td>
         <td id="detect-${tool.tool}">${tool.found}</td>
@@ -189,7 +195,6 @@ export class DebugToolsPanel {
                          <span class="codicon codicon-trash"></span>
                        </vscode-button-->`;
         }
-       
       }
 
       if(tool.website) {
