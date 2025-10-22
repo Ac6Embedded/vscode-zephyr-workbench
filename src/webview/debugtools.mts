@@ -194,7 +194,7 @@ function setVSCodeMessageListener() {
         const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
         // Get browse button for path
         const browseBtn = document.getElementById(`browse-path-button-${tool}`) as HTMLButtonElement | null;
-          const checkbox = document.querySelector(`.add-to-path[data-tool="${tool}"]`) as HTMLInputElement | null;
+        const checkbox = document.querySelector(`.add-to-path[data-tool="${tool}"]`) as HTMLInputElement | null;
 
         if (input) {
           input.value = path ?? '';
