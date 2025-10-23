@@ -7,6 +7,7 @@ import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getRunner } from "../debugUtils";
 import { getInternalDirRealPath } from "../utils";
+import { formatYml } from "../utilities/formatYml";
 
 export class DebugToolsPanel {
 	
@@ -472,9 +473,13 @@ export class DebugToolsPanel {
       // use setIn to update nested path while preserving other content/comments
       doc.setIn(['runners', toolId, 'path'], defPath);
 
-      // Persist
-      fs.mkdirSync(path.dirname(envYamlPath), { recursive: true });
-      fs.writeFileSync(envYamlPath, String(doc));
+      // Ensures block style in root and children
+      formatYml(doc.contents);
+
+      // Serializes by forcing multi-line format
+      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
+
+      fs.writeFileSync(envYamlPath, yamlText, 'utf8');
 
       // Update in-memory representations
       this.envYamlDoc = doc;
@@ -502,11 +507,15 @@ export class DebugToolsPanel {
       }
 
       // Remove the runner path if it exists
-      doc.deleteIn(['runners', toolId, 'path']);
+      doc.deleteIn(['runners', toolId]);
 
-      // Persist
-      fs.mkdirSync(path.dirname(envYamlPath), { recursive: true });
-      fs.writeFileSync(envYamlPath, String(doc));
+      // Ensures block style in root and children
+      formatYml(doc.contents);
+
+      // Serializes by forcing multi-line format
+      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
+
+      fs.writeFileSync(envYamlPath, yamlText, 'utf8');
 
       // Update in-memory representations
       this.envYamlDoc = doc;
@@ -536,9 +545,13 @@ export class DebugToolsPanel {
       // Set do_not_use under the specific runner, using setIn to preserve others
       doc.setIn(['runners', toolId, 'do_not_use'], doNotUse);
 
-      // Persist
-      fs.mkdirSync(path.dirname(envYamlPath), { recursive: true });
-      fs.writeFileSync(envYamlPath, String(doc));
+      // Ensures block style in root and children
+      formatYml(doc.contents);
+
+      // Serializes by forcing multi-line format
+      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
+
+      fs.writeFileSync(envYamlPath, yamlText, 'utf8');
 
       // Update in-memory representations
       this.envYamlDoc = doc;
