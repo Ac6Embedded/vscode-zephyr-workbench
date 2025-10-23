@@ -352,6 +352,10 @@ export class DebugToolsPanel {
 
             // Only save if path is not empty
             if (!trimmedPath) {
+
+              // Remove path from env.yml when it was previously set and then gets cleared
+              await this.removeRunnerPath(tool);
+
               // Do not save anything, just return success false
               webview.postMessage({ command: 'path-updated', tool, path: '', success: false });
               break;
@@ -478,6 +482,38 @@ export class DebugToolsPanel {
 
       return true;
     } catch (e) {
+      return false;
+    }
+  }
+
+  private async removeRunnerPath(toolId: string): Promise<boolean> {
+    try {
+      const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+
+      // Load existing Document if present, otherwise start from empty document
+      let doc: any;
+      if (fs.existsSync(envYamlPath)) {
+        const text = fs.readFileSync(envYamlPath, 'utf8');
+        doc = yaml.parseDocument(text);
+      } else if (this.envYamlDoc) {
+        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
+      } else {
+        doc = yaml.parseDocument('{}');
+      }
+
+      // Remove the runner path if it exists
+      doc.deleteIn(['runners', toolId, 'path']);
+
+      // Persist
+      fs.mkdirSync(path.dirname(envYamlPath), { recursive: true });
+      fs.writeFileSync(envYamlPath, String(doc));
+
+      // Update in-memory representations
+      this.envYamlDoc = doc;
+      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
+
+      return true;
+    } catch {
       return false;
     }
   }
