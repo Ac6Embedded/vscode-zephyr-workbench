@@ -139,7 +139,7 @@ function main() {
     }
   });
 
-  // Save the new path when Enter is pressed in the text field  
+  // Main Runners: Save the new path when Enter is pressed in the text field  
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       const active = document.activeElement as HTMLInputElement | null;
@@ -149,6 +149,24 @@ function main() {
         if (btn && btn.textContent === 'Done') {
           btn.click();
         }
+      }
+    }
+  });
+
+  // Extra Runners: Save the new path when Enter is pressed in the text field  
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const active = document.activeElement as HTMLInputElement | null;
+    if (!active || active.disabled) return;
+
+    // Check if the active element is one of the extra path inputs
+    if (active.id && active.id.startsWith('extra-path-input-')) {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = active.id.replace('extra-path-input-', '');
+      const btn = document.getElementById(`edit-extra-path-btn-${idx}`) as HTMLButtonElement | null;
+      if (btn && btn.textContent === 'Done') {
+        btn.click();
       }
     }
   });

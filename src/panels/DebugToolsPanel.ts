@@ -262,7 +262,7 @@ export class DebugToolsPanel {
             <td>
               <button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right" data-extra-idx="${idx}" aria-label="Expand/Collapse"></button>
             </td>
-            <td>${path}</td>
+            <td>Current Path: ${path}</td>
             <td></td>
             <td></td>
             <td></td>
@@ -273,7 +273,7 @@ export class DebugToolsPanel {
                <td colspan="5">
                  <div id="extra-details-content-${idx}" class="details-content">
                    <div class="grid-group-div extra-grid-group">
-                     <vscode-text-field id="extra-path-input-${idx}" class="details-path-field" value="${path}" size="50" disabled>Path:</vscode-text-field>
+                     <vscode-text-field id="extra-path-input-${idx}" class="details-path-field" value="${path}" size="50" disabled>New Path:</vscode-text-field>
                      <vscode-button id="edit-extra-path-btn-${idx}" class="edit-extra-path-button save-path-button" appearance="primary">Edit</vscode-button>
                      <vscode-button id="remove-extra-path-btn-${idx}" class="remove-extra-path-button" appearance="secondary" disabled>Remove</vscode-button>
                    </div>
@@ -478,8 +478,36 @@ export class DebugToolsPanel {
                 break;
               }
               if (!trimmed) {
-                // Do not allow empty updates; just return failure
-                webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: false });
+                // Empty string: keep the entry but clear its path in env.yml
+                const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+                let doc: any;
+                if (fs.existsSync(envYamlPath)) {
+                  const text = fs.readFileSync(envYamlPath, 'utf8');
+                  doc = yaml.parseDocument(text);
+                } else if (this.envYamlDoc) {
+                  doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
+                } else {
+                  doc = yaml.parseDocument('{}');
+                }
+
+                const jsEnv: any = yaml.parse(doc.toString()) || {};
+                jsEnv.other = jsEnv.other || {};
+                jsEnv.other.EXTRA_RUNNERS = jsEnv.other.EXTRA_RUNNERS || {};
+                jsEnv.other.EXTRA_RUNNERS.path = Array.isArray(jsEnv.other.EXTRA_RUNNERS.path) ? jsEnv.other.EXTRA_RUNNERS.path : [];
+                // Expand array if needed to avoid out-of-range
+                while (jsEnv.other.EXTRA_RUNNERS.path.length <= idx) {
+                  jsEnv.other.EXTRA_RUNNERS.path.push('');
+                }
+                jsEnv.other.EXTRA_RUNNERS.path[idx] = '';
+
+                const yamlText = yaml.stringify(jsEnv, { flow: false });
+                fs.writeFileSync(envYamlPath, yamlText, 'utf8');
+
+                // Refresh in-memory state
+                this.envYamlDoc = yaml.parseDocument(yamlText);
+                try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
+
+                webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: true });
                 break;
               }
 
