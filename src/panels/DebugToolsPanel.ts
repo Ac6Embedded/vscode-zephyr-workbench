@@ -282,6 +282,15 @@ export class DebugToolsPanel {
           </tr>
         `;
       });
+      // Add button to append a new extra runner path at the end
+      extraToolsHTML += `
+        <tr>
+          <td></td>
+          <td colspan="5">
+            <vscode-button id="add-extra-path-btn" appearance="secondary">Add new runner path</vscode-button>
+          </td>
+        </tr>
+      `;
     }
     return extraToolsHTML;
   }
@@ -365,6 +374,37 @@ export class DebugToolsPanel {
         const command = message.command;
 
         switch (command) {
+          case 'add-extra-path': {
+            try {
+              const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+              let doc: any;
+              if (fs.existsSync(envYamlPath)) {
+                const text = fs.readFileSync(envYamlPath, 'utf8');
+                doc = yaml.parseDocument(text);
+              } else if (this.envYamlDoc) {
+                doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
+              } else {
+                doc = yaml.parseDocument('{}');
+              }
+
+              const jsEnv: any = yaml.parse(doc.toString()) || {};
+              jsEnv.other = jsEnv.other || {};
+              jsEnv.other.EXTRA_RUNNERS = jsEnv.other.EXTRA_RUNNERS || {};
+              jsEnv.other.EXTRA_RUNNERS.path = Array.isArray(jsEnv.other.EXTRA_RUNNERS.path) ? jsEnv.other.EXTRA_RUNNERS.path : [];
+              jsEnv.other.EXTRA_RUNNERS.path.push('');
+
+              const yamlText = yaml.stringify(jsEnv, { flow: false });
+              fs.writeFileSync(envYamlPath, yamlText, 'utf8');
+              this.envYamlDoc = yaml.parseDocument(yamlText);
+              try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
+
+              // Regenerate UI to include the new row
+              this._panel.webview.html = await this._getWebviewContent(webview, this._extensionUri);
+            } catch (e) {
+              vscode.window.showErrorMessage('Failed to add new extra runner path');
+            }
+            break;
+          }
           case 'detect': {
             let runner = getRunner(message.tool);
             if(runner) {

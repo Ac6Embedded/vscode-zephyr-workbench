@@ -171,6 +171,17 @@ function main() {
     }
   });
 
+  // Add new extra runner path button
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const addBtn = target.closest('add-extra-path-btn') as HTMLElement | null;
+    if (!addBtn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    webviewApi.postMessage({ command: 'add-extra-path' });
+  });
+
   // Browse path button: open folder picker
   document.querySelectorAll('.browse-input-button').forEach(btn => {
     btn.addEventListener('click', () => {
