@@ -175,7 +175,7 @@ function main() {
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement | null;
     if (!target) return;
-    const addBtn = target.closest('add-extra-path-btn') as HTMLElement | null;
+    const addBtn = target.id === 'add-extra-path-btn' ? target : null;
     if (!addBtn) return;
     e.preventDefault();
     e.stopPropagation();
