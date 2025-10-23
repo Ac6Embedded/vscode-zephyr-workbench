@@ -214,42 +214,53 @@ export class DebugToolsPanel {
         `</td>
       </tr>`;
 
-  // Hidden details. It can be opened just below the main row
-  const pathValue = this.getRunnerPath(tool.tool) ?? '';
-      const pathHtml = `
-        <div class="grid-group-div">
-          <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" 
-            placeholder="Enter the tool's path if not in the global PATH" value="${pathValue}" size="50" disabled>Path:</vscode-text-field>
-          <vscode-button id="browse-path-button-${tool.tool}" class="browse-input-button" appearance="secondary" disabled>
-            <span class="codicon codicon-folder"></span>
-          </vscode-button>
-        </div>`;
-      // Checkbox default: checked unless env.yml explicitly sets do_not_use=true
-      const addToPathChecked = (this.envData?.runners?.[tool.tool]?.do_not_use !== true) ? 'checked' : '';
-      //Checkbox default: always disabled 
-      const addToPathState = 'disabled'; 
-      // Keep the button label as "Edit" by default and do not disable it
-      const saveBtnLabel = 'Edit';
-      const saveBtnState = '';
+      // Hidden details. It can be opened just below the main row
+      const pathValue = this.getRunnerPath(tool.tool) ?? '';
+        const pathHtml = `
+          <div class="grid-group-div">
+            <vscode-text-field id="details-path-input-${tool.tool}" class="details-path-field" 
+              placeholder="Enter the tool's path if not in the global PATH" value="${pathValue}" size="50" disabled>Path:</vscode-text-field>
+            <vscode-button id="browse-path-button-${tool.tool}" class="browse-input-button" appearance="secondary" disabled>
+              <span class="codicon codicon-folder"></span>
+            </vscode-button>
+          </div>`;
+        // Checkbox default: checked unless env.yml explicitly sets do_not_use=true
+        const addToPathChecked = (this.envData?.runners?.[tool.tool]?.do_not_use !== true) ? 'checked' : '';
+        //Checkbox default: always disabled 
+        const addToPathState = 'disabled'; 
+        // Keep the button label as "Edit" by default and do not disable it
+        const saveBtnLabel = 'Edit';
+        const saveBtnState = '';
 
-        toolHTML += `<tr id="details-${tool.tool}" class="details-row hidden">
+          toolHTML += `<tr id="details-${tool.tool}" class="details-row hidden">
+            <td></td>
+            <td><div id="details-content-${tool.tool}" class="details-content">${pathHtml}</div></td>
+          <td>
+            <vscode-button appearance="primary" class="save-path-button" data-tool="${tool.tool}" ${saveBtnState}>${saveBtnLabel}</vscode-button>
+          </td>
+          <td>
+              <vscode-checkbox class="add-to-path" data-tool="${tool.tool}" ${addToPathChecked} ${addToPathState}/> Add to PATH</vscode-checkbox>
+          </td>
           <td></td>
-          <td><div id="details-content-${tool.tool}" class="details-content">${pathHtml}</div></td>
-        <td>
-          <vscode-button appearance="primary" class="save-path-button" data-tool="${tool.tool}" ${saveBtnState}>${saveBtnLabel}</vscode-button>
-        </td>
-        <td>
-            <vscode-checkbox class="add-to-path" data-tool="${tool.tool}" ${addToPathChecked} ${addToPathState}/> Add to PATH</vscode-checkbox>
-        </td>
-        <td></td>
-        <td></td>
-      </tr>`;
+          <td></td>
+        </tr>`;
 
       if(tool.website || hasSource) {
         toolsHTML += toolHTML;
       }
     }
     return toolsHTML;
+  }
+
+  private async getExtraPathRunner(): Promise<string> {
+    let extraToolsHTML = '';
+    const paths = this.envData?.other?.EXTRA_RUNNERS?.path;
+    if (Array.isArray(paths)) {
+      for (const path of paths) {
+        extraToolsHTML += `<tr><td></td><td>${path}</td><td></td><td></td><td></td><td></td></tr>`;
+      }
+    }
+    return extraToolsHTML;
   }
   
   private async _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
@@ -260,6 +271,7 @@ export class DebugToolsPanel {
     const nonce = getNonce();
     const packsHTML = await this.getPacksHTML();
     const toolsHTML = await this.getToolsHTML();
+    const extraToolsHTML = await this.getExtraPathRunner();
       
     return /*html*/ `
       <!DOCTYPE html>
@@ -302,6 +314,20 @@ export class DebugToolsPanel {
                 <th></th>
               </tr>
               ${toolsHTML}
+            </table>
+          </form>
+          <form>
+            <h2>Extra Runners</h2>
+            <table class="debug-tools-table">
+              <tr>
+                <th></th>
+                <th>Custom tool path(s):</th>
+                <th></th>
+                <th></th>
+                <th></th>
+                <th></th>
+              </tr>
+              ${extraToolsHTML}
             </table>
           </form>
           <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
