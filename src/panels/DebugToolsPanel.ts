@@ -256,9 +256,32 @@ export class DebugToolsPanel {
     let extraToolsHTML = '';
     const paths = this.envData?.other?.EXTRA_RUNNERS?.path;
     if (Array.isArray(paths)) {
-      for (const path of paths) {
-        extraToolsHTML += `<tr><td></td><td>${path}</td><td></td><td></td><td></td><td></td></tr>`;
-      }
+      paths.forEach((path: string, idx: number) => {
+        extraToolsHTML += `
+          <tr id="extra-row-${idx}">
+            <td>
+              <button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right" data-extra-idx="${idx}" aria-label="Expand/Collapse"></button>
+            </td>
+            <td>${path}</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+          <tr id="extra-details-${idx}" class="details-row extra-details-row hidden">
+            <td></td>
+               <td colspan="5">
+                 <div id="extra-details-content-${idx}" class="details-content">
+                   <div class="grid-group-div extra-grid-group">
+                     <vscode-text-field id="extra-path-input-${idx}" class="details-path-field" value="${path}" size="50" disabled>Path:</vscode-text-field>
+                     <vscode-button id="edit-extra-path-btn-${idx}" class="edit-extra-path-button save-path-button" appearance="primary">Edit</vscode-button>
+                     <vscode-button id="remove-extra-path-btn-${idx}" class="remove-extra-path-button" appearance="secondary" disabled>Remove</vscode-button>
+                   </div>
+                 </div>
+               </td>
+          </tr>
+        `;
+      });
     }
     return extraToolsHTML;
   }
@@ -445,6 +468,101 @@ export class DebugToolsPanel {
           case 'remove':
             vscode.window.showErrorMessage(`Remove ${message.tool} is not implemented yet`);
             break;
+          case 'update-extra-path': {
+            try {
+              const idx: number = Number(message.idx);
+              const newPathRaw: string = (message.newPath ?? '').toString();
+              const trimmed = newPathRaw.trim();
+              if (!Number.isInteger(idx) || idx < 0) {
+                webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: false, error: 'Invalid index' });
+                break;
+              }
+              if (!trimmed) {
+                // Do not allow empty updates; just return failure
+                webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: false });
+                break;
+              }
+
+              const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+              let doc: any;
+              if (fs.existsSync(envYamlPath)) {
+                const text = fs.readFileSync(envYamlPath, 'utf8');
+                doc = yaml.parseDocument(text);
+              } else if (this.envYamlDoc) {
+                doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
+              } else {
+                doc = yaml.parseDocument('{}');
+              }
+
+              // Work on a plain object for easier array manipulation
+              const jsEnv: any = yaml.parse(doc.toString()) || {};
+              jsEnv.other = jsEnv.other || {};
+              jsEnv.other.EXTRA_RUNNERS = jsEnv.other.EXTRA_RUNNERS || {};
+              jsEnv.other.EXTRA_RUNNERS.path = Array.isArray(jsEnv.other.EXTRA_RUNNERS.path) ? jsEnv.other.EXTRA_RUNNERS.path : [];
+              const defPath = trimmed.replace(/\\/g, '/');
+              if (idx >= jsEnv.other.EXTRA_RUNNERS.path.length) {
+                webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: false, error: 'Index out of range' });
+                break;
+              }
+              jsEnv.other.EXTRA_RUNNERS.path[idx] = defPath;
+
+              // Serialize back to YAML in block style
+              const yamlText = yaml.stringify(jsEnv, { flow: false });
+              fs.writeFileSync(envYamlPath, yamlText, 'utf8');
+
+              // Refresh in-memory state
+              this.envYamlDoc = yaml.parseDocument(yamlText);
+              try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
+
+              webview.postMessage({ command: 'extra-path-updated', idx, path: defPath, success: true });
+            } catch (e) {
+              webview.postMessage({ command: 'extra-path-updated', idx: message.idx, path: '', success: false, error: 'Exception updating extra path' });
+            }
+            break;
+          }
+          case 'remove-extra-path': {
+            try {
+              const idx: number = Number(message.idx);
+              if (!Number.isInteger(idx) || idx < 0) {
+                webview.postMessage({ command: 'extra-path-removed', idx, success: false, error: 'Invalid index' });
+                break;
+              }
+
+              const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+              let doc: any;
+              if (fs.existsSync(envYamlPath)) {
+                const text = fs.readFileSync(envYamlPath, 'utf8');
+                doc = yaml.parseDocument(text);
+              } else if (this.envYamlDoc) {
+                doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
+              } else {
+                doc = yaml.parseDocument('{}');
+              }
+
+              const jsEnv: any = yaml.parse(doc.toString()) || {};
+              const arr: any[] = jsEnv?.other?.EXTRA_RUNNERS?.path;
+              if (!Array.isArray(arr) || idx >= arr.length) {
+                webview.postMessage({ command: 'extra-path-removed', idx, success: false, error: 'Index out of range' });
+                break;
+              }
+              arr.splice(idx, 1);
+              // Ensure the structure remains, even if empty array
+              jsEnv.other = jsEnv.other || {};
+              jsEnv.other.EXTRA_RUNNERS = jsEnv.other.EXTRA_RUNNERS || {};
+              jsEnv.other.EXTRA_RUNNERS.path = arr;
+
+              const yamlText = yaml.stringify(jsEnv, { flow: false });
+              fs.writeFileSync(envYamlPath, yamlText, 'utf8');
+
+              this.envYamlDoc = yaml.parseDocument(yamlText);
+              try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
+
+              webview.postMessage({ command: 'extra-path-removed', idx, success: true });
+            } catch (e) {
+              webview.postMessage({ command: 'extra-path-removed', idx: message.idx, success: false, error: 'Exception removing extra path' });
+            }
+            break;
+          }
         }
       },
       undefined,

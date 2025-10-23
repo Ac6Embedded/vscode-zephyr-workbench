@@ -68,29 +68,42 @@ function main() {
   expandButtons.forEach(button => {
     button.addEventListener('click', () => {
       const tool = button.getAttribute('data-tool');
-      if(!tool) return;
-      const row = document.getElementById(`details-${tool}`) as HTMLElement | null;
-      if(!row) return;
-      const isHidden = row.classList.contains('hidden');
-      // toggle chevron
-      button.classList.toggle('codicon-chevron-right', !isHidden);
-      button.classList.toggle('codicon-chevron-down', isHidden);
-      // lazy fill placeholder content if empty
-      const container = document.getElementById(`details-content-${tool}`) as HTMLElement | null;
-      if(container && container.childElementCount === 0) {
-      // Check if the input field is empty or not for the path
-        const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
-        const path = input?.value ?? '';
-        if (path && path !== 'empty') {
-          container.innerHTML = `<div class="details-line">Path detected: <strong>${path}</strong></div>`;
-        } else {
-          container.innerHTML = `<div class="details-line">No path detected for <strong>${tool}</strong>.</div>`;
+      const extraIdx = button.getAttribute('data-extra-idx');
+      if (tool) {
+        const row = document.getElementById(`details-${tool}`) as HTMLElement | null;
+        if(!row) return;
+        const isHidden = row.classList.contains('hidden');
+        // toggle chevron
+        button.classList.toggle('codicon-chevron-right', !isHidden);
+        button.classList.toggle('codicon-chevron-down', isHidden);
+        // lazy fill placeholder content if empty
+        const container = document.getElementById(`details-content-${tool}`) as HTMLElement | null;
+        if(container && container.childElementCount === 0) {
+          // Check if the input field is empty or not for the path
+          const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
+          const path = input?.value ?? '';
+          if (path && path !== 'empty') {
+            container.innerHTML = `<div class="details-line">Path detected: <strong>${path}</strong></div>`;
+          } else {
+            container.innerHTML = `<div class="details-line">No path detected for <strong>${tool}</strong>.</div>`;
+          }
         }
-      }
-      if(isHidden) {
-        row.classList.remove('hidden');
-      } else {
-        row.classList.add('hidden');
+        if(isHidden) {
+          row.classList.remove('hidden');
+        } else {
+          row.classList.add('hidden');
+        }
+      } else if (extraIdx) {
+        const row = document.getElementById(`extra-details-${extraIdx}`) as HTMLElement | null;
+        if (!row) return;
+        const isHidden = row.classList.contains('hidden');
+        button.classList.toggle('codicon-chevron-right', !isHidden);
+        button.classList.toggle('codicon-chevron-down', isHidden);
+        if (isHidden) {
+          row.classList.remove('hidden');
+        } else {
+          row.classList.add('hidden');
+        }
       }
     });
     // ensure chevron reflects initial state (hidden by default)
@@ -146,7 +159,9 @@ function main() {
       const id = (btn as HTMLElement).id; 
       const tool = id.replace('browse-path-button-', '');
       if (!tool) return;
-      webviewApi.postMessage({ command: 'browse-path', tool });
+      const checkbox = document.querySelector(`.add-to-path[data-tool="${tool}"]`) as HTMLInputElement | null;
+      const addToPath = checkbox ? checkbox.checked : undefined;
+      webviewApi.postMessage({ command: 'browse-path', tool, addToPath });
     });
   });
 
@@ -189,7 +204,7 @@ function setVSCodeMessageListener() {
         break;
       }
       case 'path-updated': {
-        const { tool, path, saved, FromBrowse } = event.data;
+        const { tool, path, success, FromBrowse } = event.data;
         // Get input field for path
         const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
         // Get browse button for path
@@ -227,11 +242,73 @@ function setVSCodeMessageListener() {
       }
       case 'add-to-path-updated': {
         const { tool, doNotUse } = event.data;
-        const cb = document.querySelector(`.add-to-path-checkbox[data-tool="${tool}"]`) as HTMLInputElement | null;
+        const cb = document.querySelector(`.add-to-path[data-tool="${tool}"]`) as HTMLInputElement | null;
         // doNotUse true => checkbox unchecked (do_not_use=true means do NOT add to PATH)
         if (cb) { cb.checked = !doNotUse; }
+        break;
+      }
+      case 'extra-path-updated': {
+        const { idx, path, success } = event.data;
+        const input = document.getElementById(`extra-path-input-${idx}`) as HTMLInputElement | null;
+        const btn = document.getElementById(`edit-extra-path-btn-${idx}`) as HTMLButtonElement | null;
+        const remove = document.getElementById(`remove-extra-path-btn-${idx}`) as HTMLButtonElement | null;
+        if (success) {
+          if (input) { input.value = path ?? ''; input.disabled = true; }
+          if (btn) { btn.textContent = 'Edit'; }
+          if (remove) { remove.setAttribute('disabled', 'true'); }
+        }
+        break;
+      }
+      case 'extra-path-removed': {
+        const { idx, success } = event.data;
+        if (success) {
+          const row = document.getElementById(`extra-row-${idx}`);
+          const details = document.getElementById(`extra-details-${idx}`);
+          if (row && row.parentElement) row.parentElement.removeChild(row);
+          if (details && details.parentElement) details.parentElement.removeChild(details);
+        }
         break;
       }
     }
   });
 }
+
+// Event delegation for Extra Runners: Edit/Done and Remove actions
+document.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement | null;
+  if (!target) return;
+  // Edit/Done for extra path
+  const editBtn = target.closest('.edit-extra-path-button') as HTMLButtonElement | null;
+  if (editBtn) {
+    const id = editBtn.id; // edit-extra-path-btn-<idx>
+    const idx = id.replace('edit-extra-path-btn-', '');
+    const input = document.getElementById(`extra-path-input-${idx}`) as HTMLInputElement | null;
+    const remove = document.getElementById(`remove-extra-path-btn-${idx}`) as HTMLButtonElement | null;
+    if (!input) return;
+    if (editBtn.textContent === 'Edit') {
+      input.disabled = false;
+      input.focus();
+      editBtn.textContent = 'Done';
+      // Enable Remove only while in Edit mode
+      if (remove) remove.removeAttribute('disabled');
+      return;
+    }
+    if (editBtn.textContent === 'Done') {
+      input.disabled = true;
+      editBtn.textContent = 'Edit';
+      // Disable Remove again when leaving Edit mode
+      if (remove) remove.setAttribute('disabled', 'true');
+      webviewApi.postMessage({ command: 'update-extra-path', idx, newPath: input.value });
+      return;
+    }
+  }
+  // Remove extra path
+  const removeBtn = target.closest('.remove-extra-path-button') as HTMLButtonElement | null;
+  if (removeBtn) {
+    if (removeBtn.hasAttribute('disabled')) { return; }
+    const idx = removeBtn.getAttribute('data-extra-idx') || removeBtn.id.replace('remove-extra-path-btn-', '');
+    if (!idx) return;
+    webviewApi.postMessage({ command: 'remove-extra-path', idx });
+    return;
+  }
+});

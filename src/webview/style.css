@@ -499,3 +499,20 @@ vscode-button {
   width: 70px;
   box-sizing: border-box;
 }
+
+.extra-grid-group {
+  align-items: center;
+  gap: 8px;
+}
+
+.extra-grid-group .details-path-field {
+  flex: 1;
+}
+
+.extra-details-row .grid-group-div {
+  align-items: flex-end;
+  width: 55%;
+  min-width: 340px;
+  gap: 8px;
+}
+
