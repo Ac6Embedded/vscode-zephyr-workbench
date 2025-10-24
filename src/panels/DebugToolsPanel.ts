@@ -349,7 +349,10 @@ export class DebugToolsPanel {
             </table>
           </form>
           <form>
-            <h2>Extra Runners</h2>
+            <h2>
+              Extra Runners
+                <span class="tooltip" data-tooltip="Add custom locations to the system PATH">?</span>
+            </h2>
             <table class="debug-tools-table">
               <tr>
                 <th></th>
