@@ -298,6 +298,19 @@ function setVSCodeMessageListener() {
         }
         break;
       }
+      case 'add-extra-path-done': {
+        const idx = event.data.idx;
+        setTimeout(() => {
+          const input = document.getElementById(`extra-path-input-${idx}`) as HTMLInputElement | null;
+          const btn = document.getElementById(`edit-extra-path-btn-${idx}`) as HTMLButtonElement | null;
+          if (input && btn) {
+            input.disabled = false;
+            input.focus();
+            btn.textContent = 'Done';
+          }
+        }, 100);
+        break;
+      }
     }
   });
 }

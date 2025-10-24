@@ -255,7 +255,7 @@ export class DebugToolsPanel {
   private async getExtraPathRunner(): Promise<string> {
     let extraToolsHTML = '';
     const paths = this.envData?.other?.EXTRA_RUNNERS?.path;
-    if (Array.isArray(paths)) {
+    if (Array.isArray(paths) && paths.length > 0) {
       paths.forEach((path: string, idx: number) => {
         extraToolsHTML += `
           <tr id="extra-row-${idx}">
@@ -282,7 +282,8 @@ export class DebugToolsPanel {
           </tr>
         `;
       });
-      // Add button to append a new extra runner path at the end
+    }
+    // Add button to append a new extra runner path at the end
       extraToolsHTML += `
         <tr>
           <td></td>
@@ -291,7 +292,6 @@ export class DebugToolsPanel {
           </td>
         </tr>
       `;
-    }
     return extraToolsHTML;
   }
   
@@ -399,6 +399,8 @@ export class DebugToolsPanel {
               try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
 
               // Regenerate UI to include the new row
+              const newIdx = jsEnv.other.EXTRA_RUNNERS.path.length - 1;
+              webview.postMessage({ command: 'add-extra-path-done', idx: newIdx });
               this._panel.webview.html = await this._getWebviewContent(webview, this._extensionUri);
             } catch (e) {
               vscode.window.showErrorMessage('Failed to add new extra runner path');
