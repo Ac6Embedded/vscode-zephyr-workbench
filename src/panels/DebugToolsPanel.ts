@@ -570,9 +570,9 @@ export class DebugToolsPanel {
               jsEnv.other.EXTRA_RUNNERS = jsEnv.other.EXTRA_RUNNERS || {};
               jsEnv.other.EXTRA_RUNNERS.path = Array.isArray(jsEnv.other.EXTRA_RUNNERS.path) ? jsEnv.other.EXTRA_RUNNERS.path : [];
               const defPath = trimmed.replace(/\\/g, '/');
-              if (idx >= jsEnv.other.EXTRA_RUNNERS.path.length) {
-                webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: false, error: 'Index out of range' });
-                break;
+              // Ensure array is large enough to accommodate new index and supports UI-inserted rows
+              while (jsEnv.other.EXTRA_RUNNERS.path.length <= idx) {
+                jsEnv.other.EXTRA_RUNNERS.path.push('');
               }
               jsEnv.other.EXTRA_RUNNERS.path[idx] = defPath;
 

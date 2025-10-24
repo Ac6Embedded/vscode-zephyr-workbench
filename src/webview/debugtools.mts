@@ -171,7 +171,7 @@ function main() {
     }
   });
 
-  // Add new extra runner path button
+  // Add new extra runner path button and insert a new editable row locally
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement | null;
     if (!target) return;
@@ -179,7 +179,48 @@ function main() {
     if (!addBtn) return;
     e.preventDefault();
     e.stopPropagation();
-    webviewApi.postMessage({ command: 'add-extra-path' });
+
+    // Determine next index based on current rows
+    const inputs = Array.from(document.querySelectorAll('[id^="extra-path-input-"]')) as HTMLElement[];
+    const usedIdx = inputs
+      .map(el => Number((el.id || '').replace('extra-path-input-', ''))) 
+      .filter(n => Number.isInteger(n) && n >= 0);
+    const nextIdx = usedIdx.length ? Math.max(...usedIdx) + 1 : 0;
+
+    // Build details row HTML with input enabled and button set to Done
+    const rowHtml = `
+      <tr id="extra-details-${nextIdx}" class="details-row extra-details-row">
+        <td></td>
+        <td colspan="5">
+          <div id="extra-details-content-${nextIdx}" class="details-content">
+            <div class="grid-group-div extra-grid-group">
+              <vscode-text-field id="extra-path-input-${nextIdx}" class="details-path-field" value="" size="50">New Path:</vscode-text-field>
+              <vscode-button id="edit-extra-path-btn-${nextIdx}" class="edit-extra-path-button save-path-button" appearance="primary">Done</vscode-button>
+              <vscode-button id="remove-extra-path-btn-${nextIdx}" class="remove-extra-path-button" appearance="secondary" disabled>Remove</vscode-button>
+            </div>
+          </div>
+        </td>
+      </tr>`;
+
+    const addRow = (addBtn as HTMLElement).closest('tr');
+    const tbody = addRow?.parentElement;
+    if (!tbody) return;
+    const temp = document.createElement('tbody');
+    temp.innerHTML = rowHtml.trim();
+    const newRow = temp.firstElementChild as HTMLElement;
+    tbody.insertBefore(newRow, addRow!);
+
+    // Focus input immediately
+    const input = document.getElementById(`extra-path-input-${nextIdx}`) as HTMLInputElement | null;
+    if (input) {
+      // ensure enabled
+      (input as any).disabled = false;
+      input.focus();
+    }
+
+    // Set button to Done state explicitly 
+    const btn = document.getElementById(`edit-extra-path-btn-${nextIdx}`) as HTMLButtonElement | null;
+    if (btn) btn.textContent = 'Done';
   });
 
   // Browse path button: open folder picker
