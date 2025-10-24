@@ -221,6 +221,10 @@ function main() {
     // Set button to Done state explicitly 
     const btn = document.getElementById(`edit-extra-path-btn-${nextIdx}`) as HTMLButtonElement | null;
     if (btn) btn.textContent = 'Done';
+
+    // Enable remove button
+    const removeBtn = document.getElementById(`remove-extra-path-btn-${nextIdx}`) as HTMLButtonElement | null;
+    if (removeBtn) removeBtn.removeAttribute('disabled');
   });
 
   // Browse path button: open folder picker
@@ -392,6 +396,14 @@ document.addEventListener('click', (e) => {
     if (removeBtn.hasAttribute('disabled')) { return; }
     const idx = removeBtn.getAttribute('data-extra-idx') || removeBtn.id.replace('remove-extra-path-btn-', '');
     if (!idx) return;
+    // If input is empty, just remove the row locally without notifying backend
+    const input = document.getElementById(`extra-path-input-${idx}`) as HTMLInputElement | null;
+    const detailsRow = document.getElementById(`extra-details-${idx}`);
+    if (input && input.value.trim() === '') {
+      if (detailsRow && detailsRow.parentElement) detailsRow.parentElement.removeChild(detailsRow);
+      webviewApi.postMessage({ command: 'remove-extra-path', idx });
+      return;
+    }
     webviewApi.postMessage({ command: 'remove-extra-path', idx });
     return;
   }
