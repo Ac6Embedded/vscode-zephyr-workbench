@@ -520,23 +520,25 @@ vscode-button {
   margin-top: 13px;
 }
 
-.tooltip {
+.tooltip-extra {
+  position: relative;
+  background: transparent;
   display: inline-block;
-  font-size: 13px;
-  color: #aaa;
-  margin-left: 6px;
-  cursor: help;
-  border-radius: 50%;
   width: 18px;
   height: 18px;
-  text-align: center;
   line-height: 18px;
-  background: transparent;
-  position: relative;
+  text-align: center;
+  border-radius: 50%;
+  padding: 0;
+  cursor: help;
+  border: 1px solid var(--vscode-descriptionForeground);
+  color: #aaa;
+  font-size: 13px;
+  margin-left: 6px;
   vertical-align: middle;
 }
 
-.tooltip[data-tooltip]:hover::after {
+.tooltip-extra[data-tooltip]:hover::after {
   content: attr(data-tooltip);
   position: absolute;
   left: 50%;
