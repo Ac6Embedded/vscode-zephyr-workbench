@@ -323,10 +323,8 @@ document.addEventListener('click', (e) => {
       return;
     }
     if (editBtn.textContent === 'Done') {
-      input.disabled = true;
-      editBtn.textContent = 'Edit';
-      // Disable Remove again when leaving Edit mode
-      if (remove) remove.setAttribute('disabled', 'true');
+      // Still enable remove button when path is empty 
+      if (remove) remove.setAttribute('enabled', 'true');
       // Clean the UI but not remove the content on the env.yml
       if (input.value.trim() !== '') {
         webviewApi.postMessage({ command: 'update-extra-path', idx, newPath: input.value });
