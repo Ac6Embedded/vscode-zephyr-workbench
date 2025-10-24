@@ -90,7 +90,7 @@ export class DebugToolsPanel {
     if (DebugToolsPanel.currentPanel) {
       DebugToolsPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
     } else {
-      const panel = vscode.window.createWebviewPanel("zephyr-workbench.install-debug-tools.panel", "Install Runners", vscode.ViewColumn.One, {
+      const panel = vscode.window.createWebviewPanel("zephyr-workbench.install-runners.panel", "Install Runners", vscode.ViewColumn.One, {
         // Enable javascript in the webview
         enableScripts: true,
         // Restrict the webview to only load resources from the `out` directory

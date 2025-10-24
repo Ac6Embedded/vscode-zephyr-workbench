@@ -298,7 +298,7 @@
         "category": "Zephyr Workbench"
       },
       {
-        "command": "zephyr-workbench.install-debug-tools",
+        "command": "zephyr-workbench.install-runners",
         "title": "Install Runners",
         "icon": "$(desktop-download)",
         "category": "Zephyr Workbench"
