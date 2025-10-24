@@ -520,3 +520,45 @@ vscode-button {
   margin-top: 13px;
 }
 
+.tooltip-extra {
+  position: relative;
+  background: transparent;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 50%;
+  padding: 0;
+  cursor: help;
+  border: 1px solid var(--vscode-descriptionForeground);
+  color: #aaa;
+  font-size: 13px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.tooltip-extra[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  top: 130%;
+  transform: translateX(-50%);
+  background: #222;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: pre-line;
+  z-index: 100;
+  box-shadow: 0 2px 12px #0008;
+  opacity: 1;
+  pointer-events: none;
+  text-align: center;
+  min-width: 180px;
+}
+
+.title-install-runners {
+  color: #0094ff;
+}
+

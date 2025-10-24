@@ -90,7 +90,7 @@ export class DebugToolsPanel {
     if (DebugToolsPanel.currentPanel) {
       DebugToolsPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
     } else {
-      const panel = vscode.window.createWebviewPanel("zephyr-workbench.install-debug-tools.panel", "Install Debug Tools", vscode.ViewColumn.One, {
+      const panel = vscode.window.createWebviewPanel("zephyr-workbench.install-debug-tools.panel", "Install Runners", vscode.ViewColumn.One, {
         // Enable javascript in the webview
         enableScripts: true,
         // Restrict the webview to only load resources from the `out` directory
@@ -255,7 +255,7 @@ export class DebugToolsPanel {
   private async getExtraPathRunner(): Promise<string> {
     let extraToolsHTML = '';
     const paths = this.envData?.other?.EXTRA_RUNNERS?.path;
-    if (Array.isArray(paths)) {
+    if (Array.isArray(paths) && paths.length > 0) {
       paths.forEach((path: string, idx: number) => {
         extraToolsHTML += `
           <tr id="extra-row-${idx}">
@@ -282,7 +282,8 @@ export class DebugToolsPanel {
           </tr>
         `;
       });
-      // Add button to append a new extra runner path at the end
+    }
+    // Add button to append a new extra runner path at the end
       extraToolsHTML += `
         <tr>
           <td></td>
@@ -291,7 +292,6 @@ export class DebugToolsPanel {
           </td>
         </tr>
       `;
-    }
     return extraToolsHTML;
   }
   
@@ -314,11 +314,13 @@ export class DebugToolsPanel {
           <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
           <link nonce="${nonce}" rel="stylesheet" href="${styleUri}">
           <link nonce="${nonce}" rel="stylesheet" href="${codiconUri}">
-          <title>Install Debug Tools</title>
+          <title>Install Runners</title>
         </head>
         
         <body>
-          <h1>Install Debug Tools</h1>
+          <h1>Install 
+            <span class="title-install-runners">Runners</span>
+          </h1>
           <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/debug-tools">Read Docs</a>
           <form>
             <h2>Packs</h2>
@@ -328,28 +330,39 @@ export class DebugToolsPanel {
                 <th>Pack</th>
                 <th></th>
                 <th></th>
-                <th>Actions</th>
+                <th>
+                  <span class="title-install-runners">Install</span>
+                </th>
                 <th></th>
               </tr>
               ${packsHTML}
             </table>
           </form>
           <form>
-            <h2>Debug tools</h2>
+            <h2>
+              <span class="title-install-runners">Runners</span>
+            </h2>
             <table class="debug-tools-table">
               <tr>
                 <th></th>
-                <th>Application Name</th>
+                <th>
+                  <span class="title-install-runners">Name</span>
+                </th>
                 <th>Version</th>
                 <th>Status</th>
-                <th>Actions</th>
+                <th>
+                  <span class="title-install-runners">Install</span>
+                </th>
                 <th></th>
               </tr>
               ${toolsHTML}
             </table>
           </form>
           <form>
-            <h2>Extra Runners</h2>
+            <h2>
+              Extra Runners
+                <span class="tooltip-extra" data-tooltip="Add custom locations to the system PATH">?</span>
+            </h2>
             <table class="debug-tools-table">
               <tr>
                 <th></th>
@@ -399,6 +412,8 @@ export class DebugToolsPanel {
               try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
 
               // Regenerate UI to include the new row
+              const newIdx = jsEnv.other.EXTRA_RUNNERS.path.length - 1;
+              webview.postMessage({ command: 'add-extra-path-done', idx: newIdx });
               this._panel.webview.html = await this._getWebviewContent(webview, this._extensionUri);
             } catch (e) {
               vscode.window.showErrorMessage('Failed to add new extra runner path');
@@ -518,6 +533,12 @@ export class DebugToolsPanel {
                 break;
               }
               if (!trimmed) {
+                // Show error if path is empty
+                vscode.window.showErrorMessage('Please provide a valid path');
+                webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: false, error: 'Empty path' });
+                break;
+              }
+              if (!trimmed) {
                 // Empty string: keep the entry but clear its path in env.yml
                 const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
                 let doc: any;
@@ -568,9 +589,9 @@ export class DebugToolsPanel {
               jsEnv.other.EXTRA_RUNNERS = jsEnv.other.EXTRA_RUNNERS || {};
               jsEnv.other.EXTRA_RUNNERS.path = Array.isArray(jsEnv.other.EXTRA_RUNNERS.path) ? jsEnv.other.EXTRA_RUNNERS.path : [];
               const defPath = trimmed.replace(/\\/g, '/');
-              if (idx >= jsEnv.other.EXTRA_RUNNERS.path.length) {
-                webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: false, error: 'Index out of range' });
-                break;
+              // Ensure array is large enough to accommodate new index and supports UI-inserted rows
+              while (jsEnv.other.EXTRA_RUNNERS.path.length <= idx) {
+                jsEnv.other.EXTRA_RUNNERS.path.push('');
               }
               jsEnv.other.EXTRA_RUNNERS.path[idx] = defPath;
 

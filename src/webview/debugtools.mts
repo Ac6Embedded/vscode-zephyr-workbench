@@ -171,7 +171,7 @@ function main() {
     }
   });
 
-  // Add new extra runner path button
+  // Add new extra runner path button and insert a new editable row locally
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement | null;
     if (!target) return;
@@ -179,7 +179,52 @@ function main() {
     if (!addBtn) return;
     e.preventDefault();
     e.stopPropagation();
-    webviewApi.postMessage({ command: 'add-extra-path' });
+
+    // Determine next index based on current rows
+    const inputs = Array.from(document.querySelectorAll('[id^="extra-path-input-"]')) as HTMLElement[];
+    const usedIdx = inputs
+      .map(el => Number((el.id || '').replace('extra-path-input-', ''))) 
+      .filter(n => Number.isInteger(n) && n >= 0);
+    const nextIdx = usedIdx.length ? Math.max(...usedIdx) + 1 : 0;
+
+    // Build details row HTML with input enabled and button set to Done
+    const rowHtml = `
+      <tr id="extra-details-${nextIdx}" class="details-row extra-details-row">
+        <td></td>
+        <td colspan="5">
+          <div id="extra-details-content-${nextIdx}" class="details-content">
+            <div class="grid-group-div extra-grid-group">
+              <vscode-text-field id="extra-path-input-${nextIdx}" class="details-path-field" value="" size="50">New Path:</vscode-text-field>
+              <vscode-button id="edit-extra-path-btn-${nextIdx}" class="edit-extra-path-button save-path-button" appearance="primary">Done</vscode-button>
+              <vscode-button id="remove-extra-path-btn-${nextIdx}" class="remove-extra-path-button" appearance="secondary" disabled>Remove</vscode-button>
+            </div>
+          </div>
+        </td>
+      </tr>`;
+
+    const addRow = (addBtn as HTMLElement).closest('tr');
+    const tbody = addRow?.parentElement;
+    if (!tbody) return;
+    const temp = document.createElement('tbody');
+    temp.innerHTML = rowHtml.trim();
+    const newRow = temp.firstElementChild as HTMLElement;
+    tbody.insertBefore(newRow, addRow!);
+
+    // Focus input immediately
+    const input = document.getElementById(`extra-path-input-${nextIdx}`) as HTMLInputElement | null;
+    if (input) {
+      // ensure enabled
+      (input as any).disabled = false;
+      input.focus();
+    }
+
+    // Set button to Done state explicitly 
+    const btn = document.getElementById(`edit-extra-path-btn-${nextIdx}`) as HTMLButtonElement | null;
+    if (btn) btn.textContent = 'Done';
+
+    // Enable remove button
+    const removeBtn = document.getElementById(`remove-extra-path-btn-${nextIdx}`) as HTMLButtonElement | null;
+    if (removeBtn) removeBtn.removeAttribute('disabled');
   });
 
   // Browse path button: open folder picker
@@ -298,6 +343,19 @@ function setVSCodeMessageListener() {
         }
         break;
       }
+      case 'add-extra-path-done': {
+        const idx = event.data.idx;
+        setTimeout(() => {
+          const input = document.getElementById(`extra-path-input-${idx}`) as HTMLInputElement | null;
+          const btn = document.getElementById(`edit-extra-path-btn-${idx}`) as HTMLButtonElement | null;
+          if (input && btn) {
+            input.disabled = false;
+            input.focus();
+            btn.textContent = 'Done';
+          }
+        }, 100);
+        break;
+      }
     }
   });
 }
@@ -323,11 +381,15 @@ document.addEventListener('click', (e) => {
       return;
     }
     if (editBtn.textContent === 'Done') {
-      input.disabled = true;
-      editBtn.textContent = 'Edit';
-      // Disable Remove again when leaving Edit mode
-      if (remove) remove.setAttribute('disabled', 'true');
-      webviewApi.postMessage({ command: 'update-extra-path', idx, newPath: input.value });
+      // Still enable remove button when path is empty 
+      if (remove) remove.setAttribute('enabled', 'true');
+      // Clean the UI but not remove the content on the env.yml
+      if (input.value.trim() !== '') {
+        webviewApi.postMessage({ command: 'update-extra-path', idx, newPath: input.value });
+      }
+      else if (input.value.trim() === '') {
+        webviewApi.postMessage({ command: 'update-extra-path', idx, newPath: input.value });
+      }
       return;
     }
   }
@@ -337,6 +399,14 @@ document.addEventListener('click', (e) => {
     if (removeBtn.hasAttribute('disabled')) { return; }
     const idx = removeBtn.getAttribute('data-extra-idx') || removeBtn.id.replace('remove-extra-path-btn-', '');
     if (!idx) return;
+    // If input is empty, just remove the row locally without notifying backend
+    const input = document.getElementById(`extra-path-input-${idx}`) as HTMLInputElement | null;
+    const detailsRow = document.getElementById(`extra-details-${idx}`);
+    if (input && input.value.trim() === '') {
+      if (detailsRow && detailsRow.parentElement) detailsRow.parentElement.removeChild(detailsRow);
+      webviewApi.postMessage({ command: 'remove-extra-path', idx });
+      return;
+    }
     webviewApi.postMessage({ command: 'remove-extra-path', idx });
     return;
   }
