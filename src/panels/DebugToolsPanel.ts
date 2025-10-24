@@ -90,7 +90,7 @@ export class DebugToolsPanel {
     if (DebugToolsPanel.currentPanel) {
       DebugToolsPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
     } else {
-      const panel = vscode.window.createWebviewPanel("zephyr-workbench.install-debug-tools.panel", "Install Debug Tools", vscode.ViewColumn.One, {
+      const panel = vscode.window.createWebviewPanel("zephyr-workbench.install-debug-tools.panel", "Install Runners", vscode.ViewColumn.One, {
         // Enable javascript in the webview
         enableScripts: true,
         // Restrict the webview to only load resources from the `out` directory
@@ -314,11 +314,13 @@ export class DebugToolsPanel {
           <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
           <link nonce="${nonce}" rel="stylesheet" href="${styleUri}">
           <link nonce="${nonce}" rel="stylesheet" href="${codiconUri}">
-          <title>Install Debug Tools</title>
+          <title>Install Runners</title>
         </head>
         
         <body>
-          <h1>Install Debug Tools</h1>
+          <h1>Install 
+            <span class="title-install-runners">Runners</span>
+          </h1>
           <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/debug-tools">Read Docs</a>
           <form>
             <h2>Packs</h2>
@@ -328,21 +330,29 @@ export class DebugToolsPanel {
                 <th>Pack</th>
                 <th></th>
                 <th></th>
-                <th>Actions</th>
+                <th>
+                  <span class="title-install-runners">Install</span>
+                </th>
                 <th></th>
               </tr>
               ${packsHTML}
             </table>
           </form>
           <form>
-            <h2>Debug tools</h2>
+            <h2>
+              <span class="title-install-runners">Runners</span>
+            </h2>
             <table class="debug-tools-table">
               <tr>
                 <th></th>
-                <th>Application Name</th>
+                <th>
+                  <span class="title-install-runners">Name</span>
+                </th>
                 <th>Version</th>
                 <th>Status</th>
-                <th>Actions</th>
+                <th>
+                  <span class="title-install-runners">Install</span>
+                </th>
                 <th></th>
               </tr>
               ${toolsHTML}

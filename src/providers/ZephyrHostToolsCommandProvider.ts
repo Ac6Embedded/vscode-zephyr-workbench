@@ -48,12 +48,12 @@ const verifyHostToolsMenuItem = new MenuItem(
 );
 
 const installDebugToolsMenuItem = new MenuItem(
-  'Install Debug Tools',
+  'Install Runners',
   vscode.TreeItemCollapsibleState.None,
   'desktop-download',
   {
     command: 'zephyr-workbench.install-debug-tools',
-    title: 'Install Debug Tools',
+    title: 'Install Runners',
   }
 );
 
