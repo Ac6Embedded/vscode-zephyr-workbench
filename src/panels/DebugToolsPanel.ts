@@ -533,6 +533,12 @@ export class DebugToolsPanel {
                 break;
               }
               if (!trimmed) {
+                // Show error if path is empty
+                vscode.window.showErrorMessage('Please provide a valid path');
+                webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: false, error: 'Empty path' });
+                break;
+              }
+              if (!trimmed) {
                 // Empty string: keep the entry but clear its path in env.yml
                 const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
                 let doc: any;

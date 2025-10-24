@@ -387,6 +387,9 @@ document.addEventListener('click', (e) => {
       if (input.value.trim() !== '') {
         webviewApi.postMessage({ command: 'update-extra-path', idx, newPath: input.value });
       }
+      else if (input.value.trim() === '') {
+        webviewApi.postMessage({ command: 'update-extra-path', idx, newPath: input.value });
+      }
       return;
     }
   }
