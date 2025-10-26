@@ -77,6 +77,4 @@ $PathForYaml = $PathForYaml -replace '\\', '/'
 
 Update-EnvYamlBlock -ToolName "nrfutil" -YqPath $Yq -EnvYamlPath $EnvYaml -ToolPath "$PathForYaml" -Version $Version
 
-# Ensure success exit code
-$global:LastExitCode = 0
 exit 0

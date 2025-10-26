@@ -118,17 +118,6 @@ debug_tools:
       - "/Applications/LinkServer.app/Contents/MacOS"
       - "/Applications/NXP/LinkServer.app/Contents/MacOS"
       - "/usr/local/LinkServer*"
-- tool: pyocd
-  name: pyOCD
-  version: 0.36.0
-  website: https://pyocd.io/
-  type: debug_server
-  group: Common
-  no_edit: true
-  os:
-    windows: true
-    linux: true
-    darwin: true
 - tool: nrfjprog
   name: nRF Command Line Tools
   version: 10.24.2
@@ -165,6 +154,33 @@ debug_tools:
     darwin:
       source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/nordic/nrfutil/darwin/8.1.1/nrfutil
       sha256: 726c8e6e4cb5e0811f342620f88472351b1203f2af8e27b744e653f34a08deb4
+- tool: simplicity_commander
+  name: Silabs Simplicity Commander
+  version: 1v20p5b1945
+  website: https://www.silabs.com/software-and-tools/simplicity-studio/simplicity-commander
+  vendor: Silicon Labs
+  type: flasher
+  group: Silabs
+  root: false
+  os:
+    windows:
+      source: https://www.silabs.com/documents/public/software/SimplicityCommander-Windows.zip
+      sha256: SKIP
+#TODO
+#    linux:
+#      source: https://www.silabs.com/documents/public/software/SimplicityCommander-Linux.zip
+#      sha256: SKIP
+#    darwin:
+#      source: https://www.silabs.com/documents/public/software/SimplicityCommander-Mac.zip
+#      sha256: SKIP
+  auto-detect:
+    windows:
+      - "C:/SiliconLabs/SimplicityCommander*"
+    linux:
+      - "/opt/SimplicityCommander*"
+      - "/usr/local/SimplicityCommander*"
+    darwin:
+      - "/Applications/SimplicityCommander.app/Contents/MacOS"
 - tool: udev-rules
   name: Udev Rules
   version: 1.0.0 
@@ -178,6 +194,17 @@ debug_tools:
     linux:
       source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/zw-udev-rules-1.0.0.tar.xz
       sha256: 0cd477139825438cef3e1f15ec01be801c9b9dfcf3085c43d7af284122f862b9
+- tool: pyocd
+  name: pyOCD
+  version: 0.36.0
+  website: https://pyocd.io/
+  type: debug_server
+  group: Common
+  no_edit: true
+  os:
+    windows: true
+    linux: true
+    darwin: true
 - tool: cp210x
   name: USB to UART Bridge VCP CP210x Universal Windows Drivers 
   version: 11.4.0 
@@ -201,6 +228,9 @@ packs:
 - pack: nordic
   name: Nordic
   tools: [nrfjprog, nrfutil, jlink]
+- pack: silabs
+  name: Silabs
+  tools: [simplicity_commander, cp210x, jlink]
 - pack: esp32
   name: ESP32
   tools: [cp210x]

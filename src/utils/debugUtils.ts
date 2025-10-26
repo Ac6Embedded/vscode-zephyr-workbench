@@ -11,6 +11,7 @@ import { getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
 import { STM32CubeProgrammer } from '../debug/runners/STM32CubeProgrammer';
 import { Nrfutil } from '../debug/runners/Nrfutil';
 import { Nrfjprog } from '../debug/runners/Nrfjprog';
+import { SimplicityCommander } from '../debug/runners/SimplicityCommander';
 import { JLink } from '../debug/runners/JLink';
 import { PyOCD } from '../debug/runners/PyOCD';
 import { ZephyrBoard } from '../models/ZephyrBoard';
@@ -35,7 +36,8 @@ export function getRunRunners(): WestRunner[] {
     new JLink(),
     new PyOCD(),
     new Nrfutil(),
-    new Nrfjprog()
+    new Nrfjprog(),
+    new SimplicityCommander()
   ];
 }
 
@@ -55,6 +57,8 @@ export function getRunner(runnerName: string): WestRunner | undefined {
       return new Nrfutil();
     case 'nrfjprog':
       return new Nrfjprog();
+    case 'simplicity_commander':
+      return new SimplicityCommander();
     default:
       return undefined;
   }
