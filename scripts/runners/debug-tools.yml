@@ -1,5 +1,5 @@
 #--- use versionning, this is needed to manage env.yml, mainly for auto-detect ---
-version: 1.0
+version: 1
 other_content:
 - tool: yq
   os:

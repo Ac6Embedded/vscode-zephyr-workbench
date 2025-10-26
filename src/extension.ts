@@ -43,6 +43,7 @@ import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, 
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './SPDXCommands';
 import { exec } from 'child_process';
+import { syncAutoDetectEnv } from './autoDetectSync';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -52,6 +53,8 @@ let zephyrDebugConfigurationProvide: vscode.Disposable | undefined;
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+	// Sync env.yml auto-detect entries from debug-tools.yml when versions differ
+	syncAutoDetectEnv(context);
 	// Setup task and debug providers
 	zephyrTaskProvider = vscode.tasks.registerTaskProvider(ZephyrTaskProvider.ZephyrType, new ZephyrTaskProvider());
 	zephyrDebugConfigurationProvide = vscode.debug.registerDebugConfigurationProvider('cppdbg', new ZephyrDebugConfigurationProvider());
