@@ -200,6 +200,12 @@
             "description": "Path to STM32_Programmer_CLI executable",
             "scope": "machine-overridable"
           },
+          "zephyr-workbench.debug.nrfutil.pathExec": {
+            "type": "string",
+            "default": "",
+            "description": "Path to nRFUtil executable",
+            "scope": "machine-overridable"
+          },
           "zephyr-workbench.build.active": {
             "type": "number",
             "default": 0,
