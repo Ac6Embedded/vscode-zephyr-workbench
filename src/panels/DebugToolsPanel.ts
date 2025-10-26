@@ -61,30 +61,43 @@ export class DebugToolsPanel {
   }
 
   private async loadVersions() {
-    for(let tool of this.data.debug_tools) {
-        let runner = getRunner(tool.tool);
-        if(runner) {
-            runner.loadArgs(undefined);
-            let installedVersion = await runner.detectVersion();
-            let actualVersion = tool.version;
+    const versionPromises = this.data.debug_tools.map(async (tool: any) => {
+      const runner = getRunner(tool.tool);
+      if (!runner) {return;}
 
-            if(installedVersion) {
-                tool.version = installedVersion;
-                tool.found = "Installed";
-                if(tool.os && (actualVersion !== installedVersion)) {
-                    tool.found = "New Version Available";
-                }
-            }
+      runner.loadArgs(undefined);
+      try {
+        const installedVersion = await runner.detectVersion();
+        const actualVersion = tool.version;
 
-            // Update the webview with the new version info
-            this._panel.webview.postMessage({ 
-                command: 'detect-done', 
-                tool: tool.tool,
-                version: installedVersion || '',
-            });
+        if (installedVersion) {
+          tool.version = installedVersion;
+          tool.found = "Installed";
+          if (tool.os && actualVersion !== installedVersion) {
+            tool.found = "New Version Available";
+          }
         }
-    }
+
+        // Update UI immediately after each finishes
+        this._panel.webview.postMessage({
+          command: "detect-done",
+          tool: tool.tool,
+          version: installedVersion || "",
+        });
+      } catch (err) {
+        console.warn(`Version check failed for ${tool.tool}:`, err);
+        this._panel.webview.postMessage({
+          command: "detect-done",
+          tool: tool.tool,
+          version: "",
+        });
+      }
+    });
+
+    // Run all in parallel
+    await Promise.all(versionPromises);
   }
+
 
   public static render(extensionUri: vscode.Uri) {
     if (DebugToolsPanel.currentPanel) {
