@@ -166,10 +166,9 @@ debug_tools:
     windows:
       source: https://www.silabs.com/documents/public/software/SimplicityCommander-Windows.zip
       sha256: SKIP
-#TODO
-#    linux:
-#      source: https://www.silabs.com/documents/public/software/SimplicityCommander-Linux.zip
-#      sha256: SKIP
+    linux:
+      source: https://www.silabs.com/documents/public/software/SimplicityCommander-Linux.zip
+      sha256: SKIP
 #    darwin:
 #      source: https://www.silabs.com/documents/public/software/SimplicityCommander-Mac.zip
 #      sha256: SKIP

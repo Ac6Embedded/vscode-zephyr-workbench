@@ -139,6 +139,12 @@ download_and_check_hash() {
     # Compute the SHA-256 hash of the downloaded file
     local computed_hash=$(sha256sum "$file_path" | awk '{print $1}')
 
+    # Skip verification if expected hash is "SKIP"
+    if [[ "$expected_hash" == "SKIP" ]]; then
+        pr_warn "Skipping hash verification for $filename (expected=SKIP)"
+        return 0
+    fi
+
     # Compare the computed hash with the expected hash
     if [ "$computed_hash" == "$expected_hash" ]; then
         pr_info "DL: $filename downloaded successfully"

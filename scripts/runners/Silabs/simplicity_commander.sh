@@ -8,7 +8,7 @@ TMP_DIR="$3"    # Temporary directory (.zinstaller/tmp)
 
 TOOL_KEY="simplicity_commander"
 TOOL_DIR="${DEST_DIR}/${TOOL_KEY}"
-CLI_SUBDIR="Simplicity Commander CLI"
+CLI_SUBDIR="commander-cli"
 
 echo "Installing Simplicity Commander from ${FILE}..."
 
@@ -23,22 +23,22 @@ echo "Extracting into temporary directory: $WORK_DIR"
 unzip -qq "$FILE" -d "$WORK_DIR"
 
 # --- Step 2: Locate the CLI inner ZIP (Commander-cli_win32_x64_*.zip or Linux equivalent) ---
-INNER_ZIP=$(find "$WORK_DIR" -type f -name "Commander-cli_*_x64_*.zip" | head -n 1)
+INNER_TAR=$(find "$WORK_DIR" -type f -name "Commander-cli_linux_x86_64_*tar.bz" | head -n 1)
 
-if [[ -z "$INNER_ZIP" ]]; then
-    echo "ERROR: Could not find Commander-cli_*_x64_*.zip inside extracted folder."
+if [[ -z "$INNER_TAR" ]]; then
+    echo "ERROR: Could not find Commander-cli_linux_x86_64_*tar.bz inside extracted folder."
     rm -rf "$WORK_DIR"
     exit 1
 fi
 
-echo "Found CLI archive: $INNER_ZIP"
+echo "Found CLI archive: $INNER_TAR"
 
 # --- Step 3: Extract CLI to tool directory ---
 rm -rf "$TOOL_DIR"
 mkdir -p "$TOOL_DIR"
 
 echo "Extracting CLI into ${TOOL_DIR}..."
-unzip -qq "$INNER_ZIP" -d "$TOOL_DIR"
+tar xf "$INNER_TAR" -C "$TOOL_DIR"
 
 # --- Step 4: Detect actual version ---
 CLI_EXE_PATH="${TOOL_DIR}/${CLI_SUBDIR}/commander-cli"
