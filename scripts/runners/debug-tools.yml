@@ -125,6 +125,10 @@ debug_tools:
   type: debug_server
   group: Common
   no_edit: true
+  os:
+    windows: true
+    linux: true
+    darwin: true
 - tool: nrfjprog
   name: nRF Command Line Tools
   version: 10.24.2
@@ -189,11 +193,14 @@ debug_tools:
       sha256: SKIP
 packs:
 - pack: stm32
-  name: STM32 Debug Pack
+  name: STM32
   tools: [openocd-zephyr, stm32cubeprogrammer, jlink, udev-rules]
-- pack: esp32
-  name: ESP32 Debug Pack
-  tools: [cp210x]
+- pack: nxp
+  name: NXP
+  tools: [linkserver, jlink]
 - pack: nordic
-  name: Nordic Debug Pack
+  name: Nordic
   tools: [nrfjprog, nrfutil, jlink]
+- pack: esp32
+  name: ESP32
+  tools: [cp210x]

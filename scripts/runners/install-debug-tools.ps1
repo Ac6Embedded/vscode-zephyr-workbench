@@ -163,15 +163,29 @@ function New-ManifestEntry {
         [string]$Tool,
         [string]$OperatingSystem
     )
-    # Using yq to parse the source and sha256 for the specific OS and tool
-    $Source = & $Yq eval ".*[] | select(.tool == `"`"`"$Tool`"`"`") | .os.$OperatingSystem.source" $YamlFilePath
-    $Sha256 = & $Yq eval ".*[] | select(.tool == `"`"`"$Tool`"`"`") | .os.$OperatingSystem.sha256" $YamlFilePath
 
-    # Check if the source and sha256 are not null (meaning the tool supports the OS)
-    if ($Source -ne 'null' -and $Sha256 -ne 'null') {
-        $ManifestEntry = @"
+    # Query YAML
+    $OsNode = & $Yq eval ".*[] | select(.tool == `"`"`"$Tool`"`"`") | .os.$OperatingSystem" $YamlFilePath
+
+    # Case 1: OS node is a mapping (has source + sha256)
+    if ($OsNode -match "source:" -or $OsNode -match "sha256:") {
+        $Source = & $Yq eval ".*[] | select(.tool == `"`"`"$Tool`"`"`") | .os.$OperatingSystem.source" $YamlFilePath
+        $Sha256 = & $Yq eval ".*[] | select(.tool == `"`"`"$Tool`"`"`") | .os.$OperatingSystem.sha256" $YamlFilePath
+
+        if ($Source -ne 'null' -and $Sha256 -ne 'null') {
+            $ManifestEntry = @"
 `$SOURCE_URLS["$Tool"]="$Source"
 `$SHA256_HASHES["$Tool"]="$Sha256"
+"@
+            Add-Content $ManifestFilePath $ManifestEntry
+        }
+    }
+
+    # Case 2: OS node is simply "true" → mark as script-only install
+    elseif ($OsNode -eq "true") {
+        $ManifestEntry = @"
+`$SOURCE_URLS["$Tool"]="SCRIPT_ONLY"
+`$SHA256_HASHES["$Tool"]="SKIP"
 "@
         Add-Content $ManifestFilePath $ManifestEntry
     }
@@ -419,14 +433,37 @@ $SevenZPath = "C:\Program Files\7-Zip"
 
 $env:PATH = "$SevenZPath;" + $env:PATH
 
+# ---------------------------------------------------------------------
+# Main installation loop
+# ---------------------------------------------------------------------
+# For each requested tool:
+#   1. Check the tool’s source entry in the manifest.
+#      - If the entry is "SCRIPT_ONLY", this means the tool does not
+#        have a downloadable archive (e.g., pyOCD installed via pip).
+#        → Directly execute its dedicated install script (<tool>.ps1).
+#      - Otherwise, download the installer or archive defined in the
+#        manifest and call the standard Install function.
+#   2. Handle both script-based and file-based installations uniformly.
+#   3. Stop execution if any tool installation fails.
+# ---------------------------------------------------------------------
 foreach ($Tool in $Tools) {
     Write-Host "Installing $Tool"
-    $InstallerFilename = Get-FilenameFromUrl -Url $SOURCE_URLS[$Tool]
+
+    $Source = $SOURCE_URLS[$Tool]
+
+    if ($Source -eq "SCRIPT_ONLY") {
+        Write-Host "$Tool is script-only (no download needed)."
+        Run-InstallScript $Tool ""
+        continue
+    }
+
+    $InstallerFilename = Get-FilenameFromUrl -Url $Source
     Write-Host "INSTALLER_FILENAME=$InstallerFilename"
-    Download-FileWithHashCheck $SOURCE_URLS[$Tool] $SHA256_HASHES[$Tool] "$InstallerFilename"
+    Download-FileWithHashCheck $Source $SHA256_HASHES[$Tool] "$InstallerFilename"
     $Installer = Join-Path -Path $DownloadDirectory -ChildPath $InstallerFilename
     Install $Tool "$Installer" $ToolsDirectory
 }
 
+# Cleanup temporary directory
 Remove-Item "$TemporaryDirectory" -Recurse -Force -ErrorAction SilentlyContinue
 

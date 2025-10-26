@@ -290,24 +290,32 @@ install() {
 }
 
 # Function to generate array entries if the tool supports the specified OS
-function generate_manifest_entries {
+generate_manifest_entries() {
     local tool=$1
     local SELECTED_OS=$2
     local manifest=$3
 
-    # Using yq to parse the source and sha256 for the specific OS and tool
-    source=$($YQ eval ".*[] | select(.tool == \"$tool\") | .os.$SELECTED_OS.source" $YAML_FILE)
-    sha256=$($YQ eval ".*[] | select(.tool == \"$tool\") | .os.$SELECTED_OS.sha256" $YAML_FILE)
+    # Extract the OS node value
+    local os_value
+    os_value=$($YQ eval ".*[] | select(.tool == \"$tool\") | .os.$SELECTED_OS" "$YAML_FILE")
 
-    echo "source=$source"
+    # Case 1: OS node is a map (has source + sha256)
+    if [[ "$os_value" == *"source:"* ]]; then
+        local source sha256
+        source=$($YQ eval ".*[] | select(.tool == \"$tool\") | .os.$SELECTED_OS.source" "$YAML_FILE")
+        sha256=$($YQ eval ".*[] | select(.tool == \"$tool\") | .os.$SELECTED_OS.sha256" "$YAML_FILE")
+        if [[ "$source" != "null" && "$sha256" != "null" ]]; then
+            echo "SOURCE_URLS[${tool}]=\"$source\"" >> "$manifest"
+            echo "SHA256_HASHES[${tool}]=\"$sha256\"" >> "$manifest"
+        fi
 
-    # Check if the source and sha256 are not null (meaning the tool supports the OS)
-    if [ "$source" != "null" ] && [ "$sha256" != "null" ]; then
-        echo "SOURCE_URLS[${tool}]=\"$source\"" >> $manifest
-        echo "SHA256_HASHES[${tool}]=\"$sha256\"" >> $manifest
+    # Case 2: OS node is simply "true" → script-only install
+    elif [[ "$os_value" == "true" ]]; then
+        echo "SOURCE_URLS[${tool}]=\"SCRIPT_ONLY\"" >> "$manifest"
+        echo "SHA256_HASHES[${tool}]=\"SKIP\"" >> "$manifest"
+
     fi
 }
-
 
 mkdir -p "$TMP_DIR"
 mkdir -p "$DL_DIR"
@@ -356,12 +364,33 @@ done
 
 source $MANIFEST_FILE
 
-for tool in ${TOOLS[@]}; do
+# ---------------------------------------------------------------------
+# Main installation loop
+# ---------------------------------------------------------------------
+# For each tool:
+#   - If SOURCE_URLS entry = "SCRIPT_ONLY", it means the tool is not
+#     downloaded but installed directly via its own script (<tool>.sh).
+#     Example: pyocd (installed via pip, no archive source).
+#   - Otherwise, download and install as usual.
+# ---------------------------------------------------------------------
+for tool in "${TOOLS[@]}"; do
     pr_title "$tool"
-    INSTALLER_FILENAME=$(get_filename_from_url ${SOURCE_URLS[$tool]})
-    echo "INSTALLER_FILENAME=$INSTALLER_FILENAME"
-    download_and_check_hash ${SOURCE_URLS[$tool]} ${SHA256_HASHES[$tool]} "$INSTALLER_FILENAME"
-    install "$tool" "$DL_DIR/$INSTALLER_FILENAME" "$TOOLS_DIR"
+
+    local source="${SOURCE_URLS[$tool]}"
+
+    if [[ "$source" == "SCRIPT_ONLY" ]]; then
+        pr_info "$tool is script-only (no download needed)."
+        run_install_script "$tool" ""
+        continue
+    fi
+
+    local installer_filename
+    installer_filename=$(get_filename_from_url "$source")
+    echo "INSTALLER_FILENAME=$installer_filename"
+
+    download_and_check_hash "$source" "${SHA256_HASHES[$tool]}" "$installer_filename"
+    install "$tool" "$DL_DIR/$installer_filename" "$TOOLS_DIR"
 done
 
-rm -rf $TMP_DIR
+# Clean up temporary directory
+rm -rf "$TMP_DIR"
