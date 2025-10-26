@@ -127,8 +127,6 @@ export class WestRunner {
     let execPath = '';
     if(this.serverPath) {
       execPath = this.serverPath;
-    } else if(this.getSetting('pathExec')) {
-      execPath = this.getSetting('pathExec') as string;
     } else if(this.executable) {
       execPath = this.executable;
     }
@@ -138,22 +136,22 @@ export class WestRunner {
     }
 
     let versionCmd = `${execPath} --version`;
-    return new Promise<string | undefined>((resolve, reject) => {
-      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
+    return new Promise<string | undefined>((resolve) => {
+      execCommandWithEnv(versionCmd, undefined, (error: any, stdout: string, stderr: string) => {
         if (error) {
           resolve(undefined);
-        } else if (stderr) {
-          resolve(undefined);
-        } else {
-          if(this.versionRegex) {
-            const versionMatch = stdout.match(this.versionRegex);
-            if (versionMatch) {
-                resolve(versionMatch[1]);
-            }
-          } 
-          reject(undefined);
+          return;
         }
 
+        // Merge both outputs, since some tools (e.g., OpenOCD) print version info to stderr
+        const output = `${stdout}\n${stderr}`;
+
+        const match = output.match(this.versionRegex);
+        if (match) {
+          resolve(match[1]);
+        } else {
+          resolve(undefined);
+        }
       });
     });
   }

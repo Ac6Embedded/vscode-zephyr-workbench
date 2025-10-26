@@ -108,16 +108,16 @@ debug_tools:
   type: debug_server
   group: NXP
   auto-detect:
-  windows:
-    - "C:/NXP/LinkServer_*"
-  linux:
-    - "/opt/NXP/LinkServer*"
-    - "/usr/local/NXP/LinkServer*"
-    - "/opt/linkserver*"
-  darwin:
-    - "/Applications/LinkServer.app/Contents/MacOS"
-    - "/Applications/NXP/LinkServer.app/Contents/MacOS"
-    - "/usr/local/LinkServer*"
+    windows:
+      - "C:/NXP/LinkServer_*"
+    linux:
+      - "/opt/NXP/LinkServer*"
+      - "/usr/local/NXP/LinkServer*"
+      - "/opt/linkserver*"
+    darwin:
+      - "/Applications/LinkServer.app/Contents/MacOS"
+      - "/Applications/NXP/LinkServer.app/Contents/MacOS"
+      - "/usr/local/LinkServer*"
 - tool: pyocd
   name: pyOCD
   version: 0.36.0

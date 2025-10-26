@@ -1,172 +1,65 @@
-import fs from "fs";
 import { RunnerType, WestRunner } from "./WestRunner";
-import { compareVersions } from "../../utils";
-import path from "path";
-import { execPath } from "process";
 import { execCommandWithEnv } from "../../execUtils";
 
+/**
+ * Runner for NXP LinkServer.
+ * Simplified version — assumes the LinkServer CLI tool is available in the system PATH.
+ * Used for flashing and debugging NXP MCUs.
+ */
 export class Linkserver extends WestRunner {
   name = 'linkserver';
   label = 'LinkServer';
-  types = [ RunnerType.FLASH, RunnerType.DEBUG ];
-  serverStartedPattern = 'GDB server listening on port';
+  types = [ RunnerType.FLASH, RunnerType.DEBUG ]; // Supports flashing and debugging
+  serverStartedPattern = 'GDB server listening on port'; // Used to detect when the server starts
 
-  get executable(): string | undefined{
-    const exec = super.executable;
-    if(!exec) {
-      if(process.platform === 'win32') {
-        return 'LinkServer.exe';
-      } else {
-        return 'LinkServer';
-      }
-    }
+  /**
+   * Returns the executable name based on the current platform.
+   * On Windows → LinkServer.exe
+   * On Linux/macOS → LinkServer
+   */
+  get executable(): string {
+    return process.platform === 'win32' ? 'LinkServer.exe' : 'LinkServer';
   }
 
-  get versionRegex(): any | undefined {
+  /**
+   * Regex to capture the version number from CLI output.
+   * Example: "LinkServer v2.7.0" → captures "2.7.0"
+   */
+  get versionRegex(): RegExp {
     return /v([\d.]+)/;
   }
 
+  /**
+   * Load user-provided arguments (if any).
+   * No path discovery or system searching.
+   */
   loadArgs(args: string | undefined) {
     super.loadArgs(args);
-
-    if(args) {
-      const pathRegex = /--linkserver\s+("[^"]+"|\S+)/;
-      const pathMatch = args.match(pathRegex);
-      if(pathMatch) {
-        this.serverPath = pathMatch[1];
-      }
-    }
-    
-    // Search if serverPath is set in settings
-    if(!this.serverPath || this.serverPath.length === 0 ) {
-      let pathExecSetting = this.getSetting('pathExec');
-      if(pathExecSetting) {
-        this.serverPath = pathExecSetting;
-      }
-    }
-
-    // Search in system
-    if(!this.serverPath || this.serverPath.length === 0 ) {
-      this.serverPath = this.findSystemLinkServer();
-    }
-
-    if(args) {
+    if (args) {
       this.loadUserArgs(args);
     }
   }
 
+  /**
+   * Auto arguments for the LinkServer runner.
+   * In this simplified version, just inherits the base arguments.
+   */
+  get autoArgs(): string {
+    return super.autoArgs;
+  }
+
+  /**
+   * Detect if LinkServer is installed and accessible from the PATH.
+   * Runs "<executable> --version" and returns true if it executes successfully.
+   */
   async detect(): Promise<boolean> {
-    let found = await super.detect();
+    const cmd = `${this.executable} --version`;
 
-    if(found) {
-      return true;
-    }
-
-    return new Promise<boolean>(async (resolve, reject) => {
-      let execPath = await this.findSystemLinkServer();
-      
-      if (!execPath) {
-        resolve(false);
-        return;
-      }
-
-      let versionCmd = `${execPath} --version`;
-      if(process.platform === 'linux' || process.platform === 'darwin') {
-        versionCmd = `${versionCmd} 2>&1`;
-      }
-      
-      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
-        if (error) {
-          resolve(false);
-        } else {
-          resolve(true);
-        }
+    return new Promise<boolean>((resolve) => {
+      execCommandWithEnv(cmd, undefined, (error: any) => {
+        // If no error → LinkServer was found and executed correctly
+        resolve(!error);
       });
     });
-  }
-
-  findSystemLinkServer(): string | undefined {
-    let directoryPath = '';
-    switch(process.platform) {
-      case 'win32': {
-        directoryPath = path.win32.join('c:\\', 'NXP');
-        break;
-      } 
-      case 'linux': {
-        directoryPath = '/usr/local';
-        break;
-      }
-      case 'darwin': {
-        directoryPath = '/Applications';
-        break;
-      }
-      default: {
-        return undefined;
-      }
-    }
-
-    const latestFile = this.findLatestVersion(directoryPath);
-
-    if (latestFile && this.executable) {
-      return path.join(latestFile, this.executable);
-    }
-
-    return undefined;
-  }
-
-  getVersionFromPath(filePath: string): string | null {
-    const match = filePath.match(/LinkServer_(\d+\.\d+\.\d+)/);
-    return match ? match[1] : null;
-  }
-
-  findLatestVersion(directory: string): string | null {
-    try {
-      const files = fs.readdirSync(directory);
-      
-      if (files.length === 0) {
-        return null;
-      }
-  
-      let latestVersion: string | null = null;
-      let latestFilePath: string | null = null;
-  
-      for (const file of files) {
-        const filePath = path.join(directory, file);
-        const version = this.getVersionFromPath(filePath);
-  
-        if (version) {
-          if (!latestVersion || compareVersions(version, latestVersion) > 0) {
-            latestVersion = version;
-            latestFilePath = filePath;
-          }
-        }
-      }
-  
-      return latestFilePath;
-    } catch (error) {
-      return null;
-    }
-  }
-  
-  get autoArgs(): string {
-    let cmdArgs = super.autoArgs;
-
-    if(this.serverPath) {
-      cmdArgs += ` --linkserver ${this.serverPath}`;
-    } else {
-
-      let pathExecSetting = this.getSetting('pathExec');
-      if(pathExecSetting) {
-        cmdArgs += ` --linkserver ${pathExecSetting}`;
-      } else {
-        // Search in system
-        let pathExec = this.findSystemLinkServer();
-        if(pathExec && pathExec.length > 0) {
-          cmdArgs += ` --linkserver ${pathExec}`;
-        }
-      }
-      
-    }
-    return cmdArgs;
   }
 }

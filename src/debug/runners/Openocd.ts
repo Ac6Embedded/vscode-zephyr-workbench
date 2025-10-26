@@ -1,151 +1,93 @@
-import fs from 'fs';
-import path from "path";
 import { RunnerType, WestRunner } from "./WestRunner";
-import { getInternalDirRealPath } from "../../utils";
-import { execCommandWithEnv } from '../../execUtils';
+import { execCommandWithEnv } from "../../execUtils";
 
+/**
+ * Runner for OpenOCD (Open On-Chip Debugger).
+ * Simplified version — assumes `openocd` is available in the system PATH.
+ * Used for flashing and debugging ARM-based targets.
+ */
 export class Openocd extends WestRunner {
   name = 'openocd';
   label = 'OpenOCD';
-  binDirPath = 'bin';
-  types = [RunnerType.FLASH, RunnerType.DEBUG];
-  serverStartedPattern = 'halted due to debug-request, current mode: Thread';
+  types = [RunnerType.FLASH, RunnerType.DEBUG]; // Supports both flashing and debugging
+  serverStartedPattern = 'halted due to debug-request, current mode: Thread'; // Pattern used to detect when OpenOCD is ready
 
-  get executable(): string | undefined {
-    const exec = super.executable;
-    if (!exec) {
-      if (process.platform === 'win32') {
-        return 'openocd.exe';
-      } else {
-        return 'openocd';
-      }
-    }
+  /**
+   * Returns the executable name based on the current platform.
+   * On Windows → openocd.exe
+   * On Linux/macOS → openocd
+   */
+  get executable(): string {
+    return process.platform === 'win32' ? 'openocd.exe' : 'openocd';
   }
 
-  get versionRegex(): any | undefined {
+  /**
+   * Regex to capture the version number from CLI output.
+   * Example: "Open On-Chip Debugger 0.12.0" → captures "0.12.0"
+   */
+  get versionRegex(): RegExp {
     return /Open On-Chip Debugger ([\d.]+)/;
   }
 
+  /**
+   * Loads user-provided arguments (if any).
+   * No searching for installation paths.
+   */
   loadArgs(args: string | undefined) {
     super.loadArgs(args);
-
-    if (args) {
-      const pathRegex = /--openocd\s+("[^"]+"|\S+)/;
-      const scriptsRegex = /--openocd-search\s+("[^"]+"|\S+)/;
-      const pathMatch = args.match(pathRegex);
-      const scriptsMatch = args.match(scriptsRegex);
-
-      if (pathMatch) {
-        this.serverPath = pathMatch[1];
-      }
-      if (scriptsMatch) {
-        this.args['scriptDir'] = scriptsMatch[1];
-      }
-    }
-
-    // Search if serverPath is set in settings
-    if (!this.serverPath || this.serverPath.length === 0) {
-      let pathExecSetting = this.getSetting('pathExec');
-      if (pathExecSetting) {
-        this.serverPath = pathExecSetting;
-      }
-    }
-
     if (args) {
       this.loadUserArgs(args);
     }
   }
 
-  async loadInternalArgs() {
-    if (!this.serverPath || this.serverPath.length === 0) {
-      this.serverPath = await this.searchServerPath();
-    }
-  }
-
+  /**
+   * Automatically builds command-line arguments.
+   * You can adjust default config file arguments here as needed.
+   */
   get autoArgs(): string {
     let cmdArgs = super.autoArgs;
-    if (this.serverPath && this.serverPath.length !== 0) {
-      cmdArgs += ` --openocd ${this.serverPath}`;
-    } else {
-      let pathExecSetting = this.getSetting('pathExec');
-      if (pathExecSetting) {
-        cmdArgs += ` --openocd ${pathExecSetting}`;
-      }
-    }
-
     cmdArgs += ' --config openocd.cfg';
     cmdArgs += ' --config ${workspaceFolder}/build/.debug/gdb.cfg';
-
     return cmdArgs;
   }
 
-  async searchServerPath(): Promise<string> {
-    let internalOpenOCDPath = path.join(getInternalDirRealPath(), 'tools', 'openocd', 'bin', 'openocd');
-    try {
-      const stats = await fs.promises.stat(internalOpenOCDPath);
-      if (stats.isFile()) {
-        return internalOpenOCDPath;
-      }
-    } catch (error: unknown) {
-      return '';
-    }
-    return '';
-  }
-
-  async detectVersion(): Promise<string | undefined> {
-    if (!this.versionRegex) {
-      return undefined;
-    }
-
-    let execPath = '';
-    if (this.serverPath) {
-      execPath = this.serverPath;
-    } else if (this.getSetting('pathExec')) {
-      execPath = this.getSetting('pathExec') as string;
-    } else if (this.executable) {
-      execPath = this.executable;
-    }
-
-    let versionCmd = `${execPath} --version`;
-    // Redirect stderr to stdout because openocd prints version on stderr
-    versionCmd = `${versionCmd} 2>&1`;
-    return new Promise<string | undefined>((resolve, reject) => {
-      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
-        if (error) {
-          resolve(undefined);
-        } else if (stderr) {
-          resolve(undefined);
-        } else {
-          if (this.versionRegex) {
-            const versionMatch = stdout.match(this.versionRegex);
-            if (versionMatch) {
-              resolve(versionMatch[1]);
-            }
-          }
-          reject(undefined);
-        }
-
+  /**
+   * Detects if OpenOCD is installed and available in PATH.
+   * Runs "openocd --version" and checks if it executes successfully.
+   */
+  async detect(): Promise<boolean> {
+    const cmd = `${this.executable} --version`; // Redirect stderr since OpenOCD prints version to stderr
+    return new Promise<boolean>((resolve) => {
+      execCommandWithEnv(cmd, undefined, (error: any) => {
+        // If no error, OpenOCD is available
+        resolve(!error);
       });
     });
   }
 
+  /**
+   * Creates a small workaround GDB config file that ensures
+   * OpenOCD shuts down automatically when GDB detaches.
+   */
   static createWorkaroundCfg(parentDir: string) {
-    let buildDir = path.join(parentDir, 'build', '.debug');
+    const fs = require('fs');
+    const path = require('path');
+    const buildDir = path.join(parentDir, 'build', '.debug');
 
+    // Ensure directory exists
     if (!fs.existsSync(buildDir)) {
       fs.mkdirSync(buildDir, { recursive: true });
     }
+
     const cfgPath = path.join(buildDir, 'gdb.cfg');
-    const cfgContent = `# Workaround to force OpenOCD to shutdown when gdb is detached (auto-generated)
+    const cfgContent = `# Auto-generated: Force OpenOCD to shutdown when GDB detaches
 
 if {[info exists _TARGETNAME]} {
   $_TARGETNAME configure -event gdb-detach {
     shutdown
   }
 } else {
-  # Fallback: check available targets dynamically
   set targets [target names]
-
   foreach t $targets {
     if {[string match "*.cpu*" $t]} {
       $t configure -event gdb-detach {

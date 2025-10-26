@@ -1,116 +1,63 @@
-import path from "path";
-import os from 'os';
 import { RunnerType, WestRunner } from "./WestRunner";
 import { execCommandWithEnv } from "../../execUtils";
 
+/**
+ * Runner for STM32CubeProgrammer.
+ * Simplified version — assumes the CLI tool is available in the system PATH.
+ */
 export class STM32CubeProgrammer extends WestRunner {
   name = 'stm32cubeprogrammer';
   label = 'STM32CubeProgrammer';
-  types = [ RunnerType.FLASH ];
+  types = [ RunnerType.FLASH ];  // This runner is used for flashing firmware
   serverStartedPattern = '';
 
-  get executable(): string | undefined {
-    const exec = super.executable;
-    if(!exec) {
-      if(process.platform === 'win32') {
-        return 'STM32_Programmer_CLI.exe';
-      } else {
-        return 'STM32_Programmer_CLI';
-      }
-    }
+  /**
+   * Returns the executable name based on the current platform.
+   * On Windows → STM32_Programmer_CLI.exe
+   * On Linux/macOS → STM32_Programmer_CLI
+   */
+  get executable(): string {
+    return process.platform === 'win32'
+      ? 'STM32_Programmer_CLI.exe'
+      : 'STM32_Programmer_CLI';
   }
 
-  get versionRegex(): any | undefined {
+  /**
+   * Regex to capture the version number from CLI output.
+   */
+  get versionRegex(): RegExp {
     return /STM32CubeProgrammer version: ([\d.]+)/;
   }
 
-
+  /**
+   * Load user arguments if provided — no extra search logic.
+   */
   loadArgs(args: string | undefined) {
     super.loadArgs(args);
-
-    if(args) {
-      const pathRegex = /--extload\s+("[^"]+"|\S+)/;
-      const pathMatch = args.match(pathRegex);
-
-      if(pathMatch) {
-        this.serverPath = pathMatch[1];
-      } 
-    }
-    
-    // Search if serverPath is set in settings
-    if(!this.serverPath || this.serverPath.length === 0 ) {
-      let pathExecSetting = this.getSetting('pathExec');
-      if(pathExecSetting) {
-        this.serverPath = pathExecSetting;
-      }
-    }
-
-    // Search in system
-    if(!this.serverPath || this.serverPath.length === 0 ) {
-      this.serverPath = this.findSystemCubeProgrammer();
-    }
-
-    if(args) {
+    if (args) {
       this.loadUserArgs(args);
     }
   }
 
+  /**
+   * Auto arguments for this runner.
+   * Just inherits from the base runner — no extra args needed.
+   */
   get autoArgs(): string {
-    let cmdArgs = super.autoArgs;
-    if(this.serverPath) {
-      cmdArgs += ` --extload ${this.serverPath}`;
-    }
-    return cmdArgs;
+    return super.autoArgs;
   }
 
-  findSystemCubeProgrammer(): string | undefined {
-    let directoryPath = '';
-    switch(process.platform) {
-      case 'win32': {
-        directoryPath = path.win32.join('c:\\', 'Program Files', 'STMicroelectronics', 'STM32Cube', 'STM32CubeProgrammer', 'bin');
-        break;
-      } 
-      case 'linux': {
-        directoryPath = path.join(os.homedir(), 'STMicroelectronics', 'STM32Cube', 'STM32CubeProgrammer', 'bin');
-        break;
-      }
-      default: {
-        return undefined;
-      }
-    }
-
-    if (this.executable) {
-      return path.join(directoryPath, this.executable);
-    }
-    return undefined;
-  }
-
+  /**
+   * Detect if STM32CubeProgrammer is available in PATH.
+   * Simply runs `<executable> --version` and checks if it executes successfully.
+   */
   async detect(): Promise<boolean> {
-    let found = await super.detect();
+    const cmd = `${this.executable} --version`;
 
-    if(found) {
-      return true;
-    }
-
-    return new Promise<boolean>(async (resolve, reject) => {
-      let execPath = this.findSystemCubeProgrammer();
-      
-      if (!execPath) {
-        resolve(false);
-        return;
-      }
-
-      let versionCmd = `${execPath} --version`;
-      if(process.platform === 'linux' || process.platform === 'darwin') {
-        versionCmd = `${versionCmd} 2>&1`;
-      }
-      
-      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
-        if (error) {
-          resolve(false);
-        } else {
-          resolve(true);
-        }
+    return new Promise<boolean>((resolve) => {
+      execCommandWithEnv(cmd, undefined, (error: any) => {
+        // If command executes without error, the tool is available
+        resolve(!error);
       });
     });
   }

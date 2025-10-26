@@ -9,6 +9,8 @@ import { checkPyOCDTarget, concatCommands, getShell, getShellSourceCommand, inst
 import { ZephyrProject } from "./ZephyrProject";
 import { getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
 import { STM32CubeProgrammer } from './debug/runners/STM32CubeProgrammer';
+import { Nrfutil } from './debug/runners/Nrfutil';
+import { Nrfjprog } from './debug/runners/Nrfjprog';
 import { JLink } from './debug/runners/JLink';
 import { PyOCD } from './debug/runners/PyOCD';
 import { ZephyrBoard } from './ZephyrBoard';
@@ -31,13 +33,15 @@ export function getRunRunners(): WestRunner[] {
     new Linkserver(),
     new STM32CubeProgrammer(),
     new JLink(),
-    new PyOCD()
+    new PyOCD(),
+    new Nrfutil(),
+    new Nrfjprog()
   ];
 }
 
 export function getRunner(runnerName: string): WestRunner | undefined {
   switch(runnerName) {
-    case 'openocd':
+    case 'openocd-zephyr':
       return new Openocd();
     case 'linkserver':
       return new Linkserver();
@@ -47,7 +51,11 @@ export function getRunner(runnerName: string): WestRunner | undefined {
       return new PyOCD();
     case 'stm32cubeprogrammer':
       return new STM32CubeProgrammer();
-    default: 
+    case 'nrfutil':
+      return new Nrfutil();
+    case 'nrfjprog':
+      return new Nrfjprog();
+    default:
       return undefined;
   }
 }
