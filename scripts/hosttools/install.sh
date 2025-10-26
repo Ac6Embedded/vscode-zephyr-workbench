@@ -559,13 +559,6 @@ fi
 python:
   global_venv_path: "$INSTALL_DIR/.venv"
 
-# It may be overwritten when you reinstall host tools
-#other:
-#  EXTRA_PATH:
-#    path:
-#      - "path/to/custom/tool1"
-#      - "path/to/custom/tool2"
-
 EOF
 
 echo "Created environment manifest: $ENV_YAML_PATH"
@@ -585,10 +578,9 @@ for PowerShell, CMD (.bat), or POSIX shells (Bash, Zsh, etc.)
 Features:
   - Cross-platform: Windows, Linux, macOS, WSL, MSYS2, Cygwin
   - Converts Windows paths to Unix-style under WSL/MSYS2/Cygwin
-  - Fast (no per-path subprocess calls)
-  - Expands ${VAR} references
+  - Expands ${VAR}, * and ? wildcards
   - Sets both $env:VAR and $VAR in PowerShell
-  - Safely appends to PATH instead of overwriting it
+  - Prepends project paths; appends auto-detect paths
 """
 
 import os
@@ -596,6 +588,7 @@ import sys
 import yaml
 import re
 import platform
+import glob
 
 
 # -----------------------------
@@ -624,7 +617,6 @@ def expand_vars(value, env_vars):
 # -----------------------------
 def detect_env_type():
     """Detect whether running under MSYS2, Cygwin, or WSL (quiet and safe)."""
-    # Check environment hints first (fast and silent)
     env = os.environ
     if "MSYSTEM" in env:
         return "MSYS2"
@@ -635,7 +627,6 @@ def detect_env_type():
     if platform.system() != "Windows":
         return "POSIX"
 
-    # Fallback: safe uname call with suppressed errors
     try:
         with os.popen("uname -s 2>/dev/null") as proc:
             uname = proc.read().strip().upper()
@@ -652,6 +643,19 @@ def detect_env_type():
 
     return "WINDOWS"
 
+
+def detect_platform():
+    """Return simplified platform key for auto-detect section."""
+    system = platform.system().lower()
+    if "windows" in system:
+        return "windows"
+    if "darwin" in system or "mac" in system:
+        return "darwin"
+    if "linux" in system:
+        return "linux"
+    return "unknown"
+
+
 def to_unix_path(path: str, env_type: str = None) -> str:
     """Convert Windows paths to Unix-style; keep POSIX unchanged."""
     if not path:
@@ -662,7 +666,6 @@ def to_unix_path(path: str, env_type: str = None) -> str:
     env_type = env_type or detect_env_type()
     norm = path.replace("\\", "/")
 
-    # Drive letter conversion
     if len(norm) >= 2 and norm[1] == ":":
         drive = norm[0].lower()
         rest = norm[2:]
@@ -678,32 +681,57 @@ def to_unix_path(path: str, env_type: str = None) -> str:
 # Data collection from YAML
 # -----------------------------
 def collect_paths(data, env_vars):
-    """Collect active paths from tools, runners, and other."""
+    """Collect active paths from tools, runners, other, and auto-detect."""
     paths = []
+    autodetect_paths = []
 
-    def add_path(val):
+    def add_path(val, target_list):
+        """Expand variables, wildcards, and append to target list."""
         if isinstance(val, list):
             for p in val:
-                paths.append(expand_vars(p, env_vars))
-        elif isinstance(val, str):
-            paths.append(expand_vars(val, env_vars))
+                add_path(p, target_list)
+            return
+
+        expanded_value = expand_vars(val, env_vars)
+        if not isinstance(expanded_value, str):
+            return
+
+        # Expand * and ? wildcards (glob)
+        if "*" in expanded_value or "?" in expanded_value:
+            matches = sorted(glob.glob(expanded_value))
+            if matches:
+                target_list.extend(matches)
+            else:
+                target_list.append(expanded_value)  # keep literal if no match
+        else:
+            target_list.append(expanded_value)
 
     # Tools
     for t in data.get("tools", {}).values():
         if isinstance(t, dict) and not t.get("do_not_use", False):
-            add_path(t.get("path"))
+            add_path(t.get("path"), paths)
 
     # Runners
     for r in data.get("runners", {}).values():
         if isinstance(r, dict) and not r.get("do_not_use", False):
-            add_path(r.get("path"))
+            add_path(r.get("path"), paths)
 
     # Other
     for o in data.get("other", {}).values():
         if isinstance(o, dict):
-            add_path(o.get("path"))
+            add_path(o.get("path"), paths)
 
-    return paths
+    # --- Auto-detect section ---
+    ad = data.get("auto-detect", {})
+    if isinstance(ad, dict):
+        platform_key = detect_platform()
+        for name, group in ad.items():
+            if isinstance(group, dict):
+                os_paths = group.get(platform_key)
+                if os_paths:
+                    add_path(os_paths, autodetect_paths)
+
+    return paths, autodetect_paths
 
 
 # -----------------------------
@@ -728,32 +756,46 @@ def detect_shell():
     return "powershell"
 
 
-def output_powershell(env_vars, paths):
-    """Emit PowerShell commands (sets both $env:VAR and $VAR)."""
+def output_powershell(env_vars, paths, autodetect_paths):
+    """Emit PowerShell commands (prepends normal paths, appends autodetect)."""
     for k, v in env_vars.items():
         expanded = expand_vars(v, env_vars)
         print(f"$env:{k} = \"{expanded}\"")
         print(f"${k} = \"{expanded}\"")
 
+    # Prepend normal paths
     for p in paths:
         norm = os.path.normpath(p)
         print(f"$env:PATH = \"{norm};$env:PATH\"")
 
+    # Append autodetect paths
+    for p in autodetect_paths:
+        norm = os.path.normpath(p)
+        print(f"$env:PATH = \"$env:PATH;{norm}\"")
+
     print("Write-Output 'Environment variables and paths loaded from env.yml.'")
 
 
-def output_cmd(env_vars, paths):
+def output_cmd(env_vars, paths, autodetect_paths):
     """Emit CMD-compatible commands."""
     for k, v in env_vars.items():
         expanded = expand_vars(v, env_vars)
         print(f"set \"{k}={expanded}\"")
+
+    # Prepend normal paths
     for p in paths:
         norm = os.path.normpath(p)
         print(f"set \"PATH={norm};%PATH%\"")
+
+    # Append autodetect paths
+    for p in autodetect_paths:
+        norm = os.path.normpath(p)
+        print(f"set \"PATH=%PATH%;{norm}\"")
+
     print("echo Environment variables and paths loaded from env.yml.")
 
 
-def output_sh(env_vars, paths):
+def output_sh(env_vars, paths, autodetect_paths):
     """Emit Bash/Zsh-compatible exports with Unix-style paths (fast)."""
     env_type = detect_env_type()
 
@@ -762,10 +804,15 @@ def output_sh(env_vars, paths):
         expanded = to_unix_path(expanded, env_type)
         print(f"export {k}='{expanded}'")
 
+    # Prepend normal paths
     for p in paths:
         norm = to_unix_path(os.path.normpath(p), env_type)
-        # Append safely without overwriting
         print(f"export PATH=\"{norm}:${{PATH:+$PATH:}}\"")
+
+    # Append autodetect paths
+    for p in autodetect_paths:
+        norm = to_unix_path(os.path.normpath(p), env_type)
+        print(f"export PATH=\"${{PATH:+$PATH:}}{norm}\"")
 
     print("echo Environment variables and paths loaded from env.yml.")
 
@@ -784,15 +831,15 @@ def main():
 
     data = load_yaml(yaml_path)
     env_vars = data.get("env", {})
-    paths = collect_paths(data, env_vars)
+    paths, autodetect_paths = collect_paths(data, env_vars)
 
     shell = detect_shell()
     if shell == "powershell":
-        output_powershell(env_vars, paths)
+        output_powershell(env_vars, paths, autodetect_paths)
     elif shell == "cmd":
-        output_cmd(env_vars, paths)
+        output_cmd(env_vars, paths, autodetect_paths)
     else:
-        output_sh(env_vars, paths)
+        output_sh(env_vars, paths, autodetect_paths)
 
 
 if __name__ == "__main__":

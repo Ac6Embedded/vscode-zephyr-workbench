@@ -1,3 +1,5 @@
+#--- use versionning, this is needed to manage env.yml, mainly for auto-detect ---
+version: 1.0
 other_content:
 - tool: yq
   os:
@@ -62,16 +64,16 @@ debug_tools:
   type: debug_server
   group: Common
   root: false
-  os:
+  auto-detect:
     windows:
-      source: https://www.segger.com/downloads/jlink/JLink_Windows_V878_x86_64.exe
-      sha256: cf101dc4073ff8a362a193e6a8f1efbdf5ac738e8723e4ebc0654fc9417494f9
+      - "C:/Program Files/SEGGER/JLink*"
+      - "C:/Program Files (x86)/SEGGER/JLink*"
     linux:
-      source: https://www.segger.com/downloads/jlink/JLink_Linux_V878_x86_64.tgz
-      sha256: d480f4d157393cc12510271f8dd46646e2722e5dd83a58d6f15836886f8c2664
+      - "/opt/SEGGER/JLink*"
+      - "/usr/local/SEGGER/JLink*"
     darwin:
-      source: https://www.segger.com/downloads/jlink/JLink_MacOSX_V878_universal.pkg
-      sha256: 0a0ba4c0fe321b7fa2685d7c14edbb7e8d8a811e09b13bb4d7e493bb6fd8e666
+      - "/Applications/SEGGER/JLink*"
+      - "/Applications/JLink*"
 - tool: stm32cubeprogrammer
   name: STM32CubeProgrammer
   version: 2.17.0 
@@ -80,13 +82,24 @@ debug_tools:
   type: flasher
   group: STM32
   root: false
-  os:
+# Auto-detect common installation paths, use wildcards as needed:
+# "*" → multiple characters (e.g., any version number)
+# "?" → exactly one character
+  auto-detect:
     windows:
-      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/win32/en.stm32cubeprg-win64-v2-17-0.zip
-      sha256: 9f36a8dd7ecca3eb89e49fb27a4cc7368ace2fa546662bcfab190ee51abd86fa
+      - "C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin"
+      - "C:/Program Files (x86)/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin"
+      - "C:/ST/STM32CubeCLT_*/STM32CubeProgrammer/bin"
     linux:
-      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/en.stm32cubeprg-lin-v2-17-0.zip
-      sha256: 44956b76aa2fcff0d899c5c43e353a83a9ea36afc6ad2f6e7b89c5141ccbfde4
+      - "/usr/local/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin"
+      - "/opt/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin"
+      - "/usr/bin/STM32_Programmer_CLI"
+      - "/usr/local/bin/STM32_Programmer_CLI"
+    darwin:
+      - "/Applications/STMicroelectronics/STM32CubeProgrammer/STM32CubeProgrammer.app/Contents/MacOS/bin"
+      - "/Applications/STM32CubeProgrammer/STM32CubeProgrammer.app/Contents/MacOS/bin"
+      - "/usr/local/bin/STM32_Programmer_CLI"
+      - "/usr/bin/STM32_Programmer_CLI"
 - tool: linkserver
   name: NXP LinkServer for Microcontrollers
   version: 24.9.75
@@ -94,6 +107,17 @@ debug_tools:
   vendor: NXP
   type: debug_server
   group: NXP
+  auto-detect:
+  windows:
+    - "C:/NXP/LinkServer_*"
+  linux:
+    - "/opt/NXP/LinkServer*"
+    - "/usr/local/NXP/LinkServer*"
+    - "/opt/linkserver*"
+  darwin:
+    - "/Applications/LinkServer.app/Contents/MacOS"
+    - "/Applications/NXP/LinkServer.app/Contents/MacOS"
+    - "/usr/local/LinkServer*"
 - tool: pyocd
   name: pyOCD
   version: 0.36.0
