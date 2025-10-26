@@ -206,6 +206,12 @@
             "description": "Path to nRFUtil executable",
             "scope": "machine-overridable"
           },
+          "zephyr-workbench.debug.simplicity_commander.pathExec": {
+            "type": "string",
+            "default": "",
+            "description": "Path to Simplicity Commander executable",
+            "scope": "machine-overridable"
+          },
           "zephyr-workbench.build.active": {
             "type": "number",
             "default": 0,
