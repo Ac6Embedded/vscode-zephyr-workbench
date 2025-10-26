@@ -137,8 +137,12 @@ export class DebugToolsPanel {
     for(let pack of this.data.packs) {
       let listToolsName: string[] = [];
       pack.tools.forEach((packTool: string) => {
-        let tool = this.data.debug_tools.find((tool: { tool: string; }) => tool.tool === packTool);
-        if(this.isToolCompatible(tool)) {
+        const tool = this.data.debug_tools.find((t: { tool: string; }) => t.tool === packTool);
+        if (!tool) { return; }
+        // Include compatible tools and link-only ones (with website but no downloadable source)
+        const compatible = this.isToolCompatible(tool);
+        const linkOnly = !!tool.website && !compatible;
+        if (compatible || linkOnly) {
           listToolsName.push(tool.name);
         }
       });
@@ -449,15 +453,31 @@ export class DebugToolsPanel {
             vscode.window.showInformationMessage(message.text);
             return;
           case 'install-pack':
-            let selectedPack = this.data.packs.find((pack: { pack: string; }) => pack.pack === message.pack);
-            let tools: any[] = [];
-            selectedPack.tools.forEach((packTool: string) => {
-              let tool = this.data.debug_tools.find((tool: { tool: string; }) => tool.tool === packTool);
-              if(this.isToolCompatible(tool)) {
-                tools.push(tool);
+            {
+              const selectedPack = this.data.packs.find((pack: { pack: string; }) => pack.pack === message.pack);
+              const tools: any[] = [];
+              const linkOnlyWebsites: string[] = [];
+
+              selectedPack.tools.forEach((packTool: string) => {
+                const tool = this.data.debug_tools.find((t: { tool: string; }) => t.tool === packTool);
+                if (!tool) { return; }
+                const compatible = this.isToolCompatible(tool);
+                const hasWebsite = !!tool.website;
+                if (compatible) {
+                  tools.push(tool);
+                } else if (hasWebsite) {
+                  linkOnlyWebsites.push(String(tool.website));
+                }
+              });
+
+              for (const url of linkOnlyWebsites) {
+                try { await vscode.env.openExternal(vscode.Uri.parse(url)); } catch {}
               }
-            });
-            vscode.commands.executeCommand("zephyr-workbench.run-install-debug-tools", this._panel, tools);
+
+              if (tools.length > 0) {
+                vscode.commands.executeCommand("zephyr-workbench.run-install-debug-tools", this._panel, tools);
+              }
+            }
             break;
           case 'install':
             let selectedTool = this.data.debug_tools.find((tool: { tool: string; }) => tool.tool === message.tool);
