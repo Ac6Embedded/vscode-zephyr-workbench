@@ -1,7 +1,7 @@
 import vscode, { ExtensionContext, QuickPickItem } from "vscode";
-import { ZephyrProject } from "./ZephyrProject";
-import { getSupportedBoards, getWestWorkspace } from "./utils";
-import { ZephyrBoard } from "./ZephyrBoard";
+import { ZephyrProject } from "../models/ZephyrProject";
+import { getSupportedBoards, getWestWorkspace } from "../utils/utils";
+import { ZephyrBoard } from "../models/ZephyrBoard";
 
 export async function changeBoardQuickStep(context: ExtensionContext, project: ZephyrProject, buildConfigName?: string): Promise<string | undefined> {
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);

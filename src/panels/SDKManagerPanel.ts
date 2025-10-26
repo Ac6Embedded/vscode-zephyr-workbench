@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { listToolchainArch } from '../sdkUtils';
+import { listToolchainArch } from '../utils/sdkUtils';
 
 // @unused
 // This class is unused but kept for potential future use

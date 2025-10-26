@@ -2,15 +2,15 @@ import * as fs from 'fs';
 import * as fsPromise from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { WestWorkspace } from './WestWorkspace';
-import { ZephyrAppProject } from './ZephyrAppProject';
-import { ZephyrBoard } from './ZephyrBoard';
-import { ZephyrSDK, IARToolchain } from './ZephyrSDK';
-import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
-import { concatCommands, getEnvVarFormat, getShell, getShellArgs } from './execUtils';
-import { getWestWorkspace, getZephyrSDK, findIarEntry, msleep } from './utils';
-import { addConfig, deleteConfig } from './zephyrEnvUtils';
-import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
+import { WestWorkspace } from '../models/WestWorkspace';
+import { ZephyrAppProject } from '../models/ZephyrAppProject';
+import { ZephyrBoard } from '../models/ZephyrBoard';
+import { ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
+import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from '../constants';
+import { concatCommands, getEnvVarFormat, getShell, getShellArgs } from '../utils/execUtils';
+import { getWestWorkspace, getZephyrSDK, findIarEntry, msleep } from '../utils/utils';
+import { addConfig, deleteConfig } from '../utils/zephyrEnvUtils';
+import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 
 export interface TaskConfig {
   version: string;

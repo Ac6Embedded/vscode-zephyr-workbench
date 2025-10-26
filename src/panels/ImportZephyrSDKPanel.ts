@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { getSdkVersion, listToolchainArch } from "../sdkUtils";
-import { getListZephyrSDKs } from "../utils";
+import { getSdkVersion, listToolchainArch } from "../utils/sdkUtils";
+import { getListZephyrSDKs } from "../utils/utils";
 
 export class ImportZephyrSDKPanel {
   public static currentPanel: ImportZephyrSDKPanel | undefined;

@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ZephyrModuleProject } from '../ZephyrModuleProject';
-import { getListProject } from '../utils';
+import { ZephyrModuleProject } from '../models/ZephyrModuleProject';
+import { getListProject } from '../utils/utils';
 
 export class ZephyrModuleDataProvider implements vscode.TreeDataProvider<ZephyrModuleTreeItem> {
   private wsRoot: string | undefined;

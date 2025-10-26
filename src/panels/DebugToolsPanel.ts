@@ -5,8 +5,8 @@ import path from "path";
 import { execSync } from "child_process";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { getRunner } from "../debugUtils";
-import { getInternalDirRealPath } from "../utils";
+import { getRunner } from "../utils/debugUtils";
+import { getInternalDirRealPath } from "../utils/utils";
 import { formatYml } from "../utilities/formatYml";
 
 export class DebugToolsPanel {

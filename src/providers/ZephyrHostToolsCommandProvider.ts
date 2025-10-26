@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { checkHostTools } from '../installUtils';
+import { checkHostTools } from '../utils/installUtils';
 
 class MenuItem extends vscode.TreeItem {
   constructor(

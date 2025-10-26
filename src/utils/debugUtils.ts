@@ -1,20 +1,20 @@
 import fs from 'fs';
 import path, { resolve } from 'path';
 import * as vscode from 'vscode';
-import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "./constants";
-import { Linkserver } from "./debug/runners/Linkserver";
-import { Openocd } from "./debug/runners/Openocd";
-import { WestRunner } from "./debug/runners/WestRunner";
+import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../constants";
+import { Linkserver } from "../debug/runners/Linkserver";
+import { Openocd } from "../debug/runners/Openocd";
+import { WestRunner } from "../debug/runners/WestRunner";
 import { checkPyOCDTarget, concatCommands, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from './execUtils';
-import { ZephyrProject } from "./ZephyrProject";
+import { ZephyrProject } from "../models/ZephyrProject";
 import { getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
-import { STM32CubeProgrammer } from './debug/runners/STM32CubeProgrammer';
-import { Nrfutil } from './debug/runners/Nrfutil';
-import { Nrfjprog } from './debug/runners/Nrfjprog';
-import { JLink } from './debug/runners/JLink';
-import { PyOCD } from './debug/runners/PyOCD';
-import { ZephyrBoard } from './ZephyrBoard';
-import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
+import { STM32CubeProgrammer } from '../debug/runners/STM32CubeProgrammer';
+import { Nrfutil } from '../debug/runners/Nrfutil';
+import { Nrfjprog } from '../debug/runners/Nrfjprog';
+import { JLink } from '../debug/runners/JLink';
+import { PyOCD } from '../debug/runners/PyOCD';
+import { ZephyrBoard } from '../models/ZephyrBoard';
+import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 

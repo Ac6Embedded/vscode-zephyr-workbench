@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ZephyrSDK, IARToolchain } from '../ZephyrSDK';
-import { getInternalZephyrSDK, getListZephyrSDKs, getListIARs} from '../utils';
+import { ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
+import { getInternalZephyrSDK, getListZephyrSDKs, getListIARs} from '../utils/utils';
 
 export class ZephyrSdkDataProvider implements vscode.TreeDataProvider<ZephyrSdkTreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<ZephyrSdkTreeItem | undefined | void> = new vscode.EventEmitter<ZephyrSdkTreeItem | undefined | void>();

@@ -1,5 +1,5 @@
 import { RunnerType, WestRunner } from "./WestRunner";
-import { execCommandWithEnv } from "../../execUtils";
+import { execCommandWithEnv } from "../../utils/execUtils";
 
 /**
  * Runner for Nordic nrfutil CLI tool.

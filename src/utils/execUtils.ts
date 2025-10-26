@@ -6,7 +6,7 @@ import {
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
   ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY
-} from './constants';
+} from '../constants';
 import {
   ChildProcess, ExecException, ExecOptions, SpawnOptions,
   exec, spawn

@@ -1,6 +1,6 @@
 import vscode, { ExtensionContext, QuickPickItem } from "vscode";
-import { ZephyrProject } from "./ZephyrProject";
-import { getListZephyrSDKs, getListIARs } from "./utils";
+import { ZephyrProject } from "../models/ZephyrProject";
+import { getListZephyrSDKs, getListIARs } from "../utils/utils";
 
 export interface ToolchainPick {
     tcKind: "zephyr_sdk" | "iar";

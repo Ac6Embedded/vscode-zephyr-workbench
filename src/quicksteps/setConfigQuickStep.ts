@@ -1,6 +1,6 @@
 import vscode, {  } from "vscode";
-import { ZephyrProjectBuildConfiguration } from "./ZephyrProjectBuildConfiguration";
-import { ZephyrProject } from "./ZephyrProject";
+import { ZephyrProjectBuildConfiguration } from "../models/ZephyrProjectBuildConfiguration";
+import { ZephyrProject } from "../models/ZephyrProject";
 
 export async function setConfigQuickStep(
   context: ZephyrProjectBuildConfiguration,

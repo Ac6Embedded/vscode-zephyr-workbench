@@ -1,10 +1,10 @@
 import vscode, { ExtensionContext, QuickPickItem, ThemeIcon } from "vscode";
-import { WestWorkspace } from "./WestWorkspace";
-import { ZephyrBoard } from "./ZephyrBoard";
-import { ZephyrProject } from "./ZephyrProject";
-import { ZephyrSDK } from "./ZephyrSDK";
-import { MultiStepInput } from "./utilities/MultiStepQuickPick";
-import { fileExists, getListZephyrSDKs, getListIARs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, validateProjectLocation, getZephyrSDK, getIarToolchainForSdk, normalizePath } from "./utils";
+import { WestWorkspace } from "../models/WestWorkspace";
+import { ZephyrBoard } from "../models/ZephyrBoard";
+import { ZephyrProject } from "../models/ZephyrProject";
+import { ZephyrSDK } from "../models/ZephyrSDK";
+import { MultiStepInput } from "../utilities/MultiStepQuickPick";
+import { fileExists, getListZephyrSDKs, getListIARs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, validateProjectLocation, getZephyrSDK, getIarToolchainForSdk, normalizePath } from "../utils/utils";
 
 export async function importProjectQuickStep(context: ExtensionContext) {
   const title = 'Import Project';

@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { createLaunchConfiguration as createDefaultConfiguration, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getRunRunners, getServerAddressFromConfig, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../debugUtils";
-import { ZephyrAppProject } from "../ZephyrAppProject";
-import { getZephyrProject } from '../utils';
+import { createLaunchConfiguration as createDefaultConfiguration, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getRunRunners, getServerAddressFromConfig, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugUtils";
+import { ZephyrAppProject } from "../models/ZephyrAppProject";
+import { getZephyrProject } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
-import { ZephyrProject } from '../ZephyrProject';
+import { ZephyrProject } from '../models/ZephyrProject';
 
 // @unused
 // This class is unused but kept for potential future use

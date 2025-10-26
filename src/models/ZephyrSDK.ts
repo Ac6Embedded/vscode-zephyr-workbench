@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import fs from "fs";
 import path from "path";
-import { fileExists } from './utils';
+import { fileExists } from '../utils/utils';
 
 export class ZephyrSDK {
   version!: string;

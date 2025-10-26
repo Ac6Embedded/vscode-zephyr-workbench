@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { concatCommands, execShellCommand,   classifyShell, getShellExe,getShell, getShellArgs, getShellSourceCommand, normalizePathForShell, normalisePathsInString } from "./execUtils";
-import { ZephyrProject } from './ZephyrProject';
-import { findVenvSPDXActivateScript } from './installUtils';
-import { fileExists } from './utils';
+import { concatCommands, execShellCommand,   classifyShell, getShellExe,getShell, getShellArgs, getShellSourceCommand, normalizePathForShell, normalisePathsInString } from "../utils/execUtils";
+import { ZephyrProject } from '../models/ZephyrProject';
+import { findVenvSPDXActivateScript } from '../utils/installUtils';
+import { fileExists } from '../utils/utils';
 
 export async function execNtiaCheckerCommand(spdxFile: string, zephyrProject: ZephyrProject) {
   const command = `ntia-checker --file ${spdxFile}`;

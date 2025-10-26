@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../debugUtils";
-import { ZephyrAppProject } from "../ZephyrAppProject";
-import { getZephyrProject } from '../utils';
+import { createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugUtils";
+import { ZephyrAppProject } from "../models/ZephyrAppProject";
+import { getZephyrProject } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
-import { ZephyrProject } from '../ZephyrProject';
-import { ZephyrProjectBuildConfiguration } from '../ZephyrProjectBuildConfiguration';
+import { ZephyrProject } from '../models/ZephyrProject';
+import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { getGdbMode, getSetupCommands } from '../debug/gdbUtils';
 
 export class DebugManagerPanel {

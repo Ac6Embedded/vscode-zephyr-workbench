@@ -1,6 +1,6 @@
 import vscode from "vscode"; 
-import { ZEPHYR_ENV_SETTING_PREFIX_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "./constants";
-import { ZephyrProjectBuildConfiguration } from "./ZephyrProjectBuildConfiguration";
+import { ZEPHYR_ENV_SETTING_PREFIX_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../constants";
+import { ZephyrProjectBuildConfiguration } from "../models/ZephyrProjectBuildConfiguration";
 
 export function addEnvValue(envVars: { [key: string]: any }, key: string, value: string): void {
   if (envVars[key]) {

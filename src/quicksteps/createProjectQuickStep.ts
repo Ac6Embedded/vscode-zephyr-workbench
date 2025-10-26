@@ -1,12 +1,12 @@
 import vscode, { ThemeIcon } from "vscode";
 import path from "path";
 import { ExtensionContext, QuickPickItem } from "vscode";
-import { WestWorkspace } from "./WestWorkspace";
-import { ZephyrBoard } from "./ZephyrBoard";
-import { ZephyrSample } from "./ZephyrSample";
-import { MultiStepInput } from "./utilities/MultiStepQuickPick";
-import { fileExists, getListSamples, getListZephyrSDKs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK } from "./utils";
-import { ZephyrSDK } from "./ZephyrSDK";
+import { WestWorkspace } from "../models/WestWorkspace";
+import { ZephyrBoard } from "../models/ZephyrBoard";
+import { ZephyrSample } from "../models/ZephyrSample";
+import { MultiStepInput } from "../utilities/MultiStepQuickPick";
+import { fileExists, getListSamples, getListZephyrSDKs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK } from "../utils/utils";
+import { ZephyrSDK } from "../models/ZephyrSDK";
 
 export async function createProjectQuickStep(context: ExtensionContext) {
   const title = 'Create New Project';

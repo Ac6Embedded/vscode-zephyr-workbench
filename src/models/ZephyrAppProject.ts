@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ZephyrProject } from "./ZephyrProject";
-import { fileExists } from './utils';
+import { fileExists } from '../utils/utils';
 
 export class ZephyrAppProject extends ZephyrProject {
 

@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { fileExists, getBase64, getBoard, getListSamples, getListZephyrSDKs, getListIARs, getIarToolchainForSdk, getSample, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils";
-import { ZephyrSDK, IARToolchain } from '../ZephyrSDK';
+import { fileExists, getBase64, getBoard, getListSamples, getListZephyrSDKs, getListIARs, getIarToolchainForSdk, getSample, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils/utils";
+import { ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
 import path from "path";
 
 export class CreateZephyrAppPanel {

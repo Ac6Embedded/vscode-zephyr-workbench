@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ZephyrAppProject } from '../ZephyrAppProject';
-import { getWestWorkspace } from '../utils';
-import { ZephyrProjectBuildConfiguration } from '../ZephyrProjectBuildConfiguration';
+import { ZephyrAppProject } from '../models/ZephyrAppProject';
+import { getWestWorkspace } from '../utils/utils';
+import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY } from '../constants';
 
 export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {

@@ -3,18 +3,18 @@ import os from 'os';
 import path from "path";
 import yaml from 'yaml';
 import * as vscode from "vscode";
-import { WestWorkspace } from "./WestWorkspace";
-import { ZephyrAppProject } from "./ZephyrAppProject";
-import { ZephyrBoard } from "./ZephyrBoard";
-import { ZephyrSDK, IARToolchain } from "./ZephyrSDK";
-import { ZephyrSample } from "./ZephyrSample";
+import { WestWorkspace } from "../models/WestWorkspace";
+import { ZephyrAppProject } from "../models/ZephyrAppProject";
+import { ZephyrBoard } from "../models/ZephyrBoard";
+import { ZephyrSDK, IARToolchain } from "../models/ZephyrSDK";
+import { ZephyrSample } from "../models/ZephyrSample";
 import { getEnvVarFormat, getShell } from "./execUtils";
 import { checkHostTools } from "./installUtils";
-import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY, ZINSTALLER_MINIMUM_VERSION } from './constants';
-import { ZephyrProject } from './ZephyrProject';
-import { getBoardsDirectories, westTmpBuildSystemCommand } from './WestCommands';
-import { checkOrCreateTask, ZephyrTaskProvider } from './ZephyrTaskProvider';
-import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
+import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY, ZINSTALLER_MINIMUM_VERSION } from '../constants';
+import { ZephyrProject } from '../models/ZephyrProject';
+import { getBoardsDirectories, westTmpBuildSystemCommand } from '../commands/WestCommands';
+import { checkOrCreateTask, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
+import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 
 export function msleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));

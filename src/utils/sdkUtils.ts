@@ -2,7 +2,7 @@
 import * as vscode from "vscode";
 import path from "path";
 import { execCommand, extract, getFirstDirectoryName7z } from "./installUtils";
-import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY } from "./constants";
+import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY } from "../constants";
 import { getGitTags } from "./execUtils";
 import { url } from "inspector";
 

@@ -2,14 +2,14 @@ import { ChildProcess, exec, spawn, ExecOptions } from 'child_process';
 import * as fs from 'fs';
 import path from 'path';
 import * as vscode from 'vscode';
-import { WestWorkspace } from './WestWorkspace';
-import { ZephyrAppProject } from './ZephyrAppProject';
-import { ZephyrProject } from './ZephyrProject';
-import { ZephyrSDK } from './ZephyrSDK';
-import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
-import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
-import { concatCommands, execShellCommandWithEnv, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from './execUtils';
-import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from './utils'; 
+import { WestWorkspace } from '../models/WestWorkspace';
+import { ZephyrAppProject } from '../models/ZephyrAppProject';
+import { ZephyrProject } from '../models/ZephyrProject';
+import { ZephyrSDK } from '../models/ZephyrSDK';
+import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
+import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from '../constants';
+import { concatCommands, execShellCommandWithEnv, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
+import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from '../utils/utils'; 
 
 function quote(p: string): string {
   return /\s/.test(p) ? `"${p}"` : p;

@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { execCommandWithEnv, getGitTags, getGitBranches } from "../execUtils";
-import { listHals } from "../manifestUtils";
+import { execCommandWithEnv, getGitTags, getGitBranches } from "../utils/execUtils";
+import { listHals } from "../utils/manifestUtils";
 
 export class CreateWestWorkspacePanel {
   public static currentPanel: CreateWestWorkspacePanel | undefined;

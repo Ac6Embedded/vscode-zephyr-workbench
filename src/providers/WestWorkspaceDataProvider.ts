@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { WestWorkspace } from '../WestWorkspace';
+import { WestWorkspace } from '../models/WestWorkspace';
 
 export class WestWorkspaceDataProvider implements vscode.TreeDataProvider<WestWorkspaceTreeItem | WestWorkspaceMiscTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem> {
 	private _onDidChangeTreeData: vscode.EventEmitter<WestWorkspaceTreeItem | WestWorkspaceMiscTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem | undefined | void> = new vscode.EventEmitter<WestWorkspaceTreeItem | WestWorkspaceMiscTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem | undefined | void>();
