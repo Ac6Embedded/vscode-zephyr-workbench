@@ -245,7 +245,7 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
 }
 
 function makeWestArgs(raw: string | undefined): string {
-  if (!raw?.trim()) return '';
+  if (!raw?.trim()) {return '';}
   return raw.trim().startsWith('--') ? raw.trim() : `-- ${raw.trim()}`;
 }
 
@@ -479,8 +479,8 @@ export function execWestCommandWithEnv(
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
 
-  if (!rawEnv) throw new Error('Missing Zephyr env script');
-  if (activatePath && !fileExists(activatePath)) throw new Error('Invalid venv activate path');
+  if (!rawEnv) {throw new Error('Missing Zephyr env script');}
+  if (activatePath && !fileExists(activatePath)) {throw new Error('Invalid venv activate path');}
 
   // build cwd + env
   const options: any = { env: { ...process.env }, cwd: '' };
@@ -494,7 +494,7 @@ export function execWestCommandWithEnv(
     options.cwd = ws.rootUri.fsPath;
     options.env = { ...options.env, ...ws.buildEnv };
   }
-  if (activatePath) options.env.PYTHON_VENV_ACTIVATE_PATH = activatePath;
+  if (activatePath) {options.env.PYTHON_VENV_ACTIVATE_PATH = activatePath;}
 
   // shell + flags
   const shellExe = getShellExe();

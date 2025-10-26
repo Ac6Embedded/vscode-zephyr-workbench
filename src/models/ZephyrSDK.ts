@@ -133,7 +133,7 @@ export class IARToolchain {
 
 
   static isIarPath(p: string): boolean {
-    if (!p) return false;
+    if (!p) {return false;}
   
     const exe = process.platform === "win32" ? "iccarm.exe" : "iccarm";
     const candidates = [
