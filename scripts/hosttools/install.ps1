@@ -1050,7 +1050,7 @@ def collect_paths(data, env_vars):
 
         # Expand * and ? wildcards (glob)
         if "*" in expanded_value or "?" in expanded_value:
-            matches = sorted(glob.glob(expanded_value))
+            matches = sorted(glob.glob(expanded_value), reverse=True)
             if matches:
                 target_list.extend(matches)
             else:
