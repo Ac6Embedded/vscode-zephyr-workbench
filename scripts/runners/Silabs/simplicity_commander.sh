@@ -85,7 +85,7 @@ PATH_FOR_YAML=$(echo "$PATH_FOR_YAML" | sed 's#\\#/#g')
 echo "Updating env.yml for tool '$TOOL_KEY' (version: $VERSION)"
 update_env_yaml_block "$TOOL_KEY" "$YQ" "$ENV_YAML" "$PATH_FOR_YAML" "$VERSION"
 
-echo "✅ Simplicity Commander installed successfully"
+echo "Simplicity Commander installed successfully"
 echo "   Path: $PATH_FOR_YAML"
 echo "   Version: $VERSION"
 
