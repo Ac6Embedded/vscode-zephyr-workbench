@@ -376,7 +376,7 @@ source $MANIFEST_FILE
 for tool in "${TOOLS[@]}"; do
     pr_title "$tool"
 
-    local source="${SOURCE_URLS[$tool]}"
+    source="${SOURCE_URLS[$tool]}"
 
     if [[ "$source" == "SCRIPT_ONLY" ]]; then
         pr_info "$tool is script-only (no download needed)."
@@ -384,7 +384,6 @@ for tool in "${TOOLS[@]}"; do
         continue
     fi
 
-    local installer_filename
     installer_filename=$(get_filename_from_url "$source")
     echo "INSTALLER_FILENAME=$installer_filename"
 
