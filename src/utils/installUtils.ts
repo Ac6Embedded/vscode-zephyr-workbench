@@ -494,7 +494,7 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
 }
 
 export async function createLocalVenv(context: vscode.ExtensionContext, workbenchFolder: vscode.WorkspaceFolder): Promise<string | undefined> {
-  let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
+  let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'venv');
   let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
   if(installDirUri && envScript) {
     let installScript: string = "";
