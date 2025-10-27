@@ -324,7 +324,7 @@ export class DebugManagerPanel {
             break;
           }
           case 'install': {
-            vscode.commands.executeCommand('zephyr-workbench.install-debug-tools');
+            vscode.commands.executeCommand('zephyr-workbench.install-runners');
           }
           case 'reset': {
             await resetHandler(message);

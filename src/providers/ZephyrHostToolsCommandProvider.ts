@@ -52,7 +52,7 @@ const installDebugToolsMenuItem = new MenuItem(
   vscode.TreeItemCollapsibleState.None,
   'desktop-download',
   {
-    command: 'zephyr-workbench.install-debug-tools',
+    command: 'zephyr-workbench.install-runners',
     title: 'Install Runners',
   }
 );
