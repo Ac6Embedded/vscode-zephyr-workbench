@@ -129,7 +129,7 @@ install_python_venv() {
     source "$install_dir/.venv/bin/activate"
 
     echo "Installing Python dependencies..."
-    python3 -m pip install --upgrade pip setuptools wheel yaml
+    python3 -m pip install --upgrade pip setuptools wheel pyyaml
     python3 -m pip install west pyelftools anytree puncover
     python3 -m pip install -r "$REQ_DIR/requirements.txt"
 

@@ -136,7 +136,7 @@ function Install-PythonVenv {
 
     Write-Output "Installing Python dependencies..."
     python -m pip install --upgrade pip setuptools wheel
-    python -m pip install windows-curses west pyelftools anytree yaml
+    python -m pip install windows-curses west pyelftools anytree pyyaml
     python -m pip install puncover
     python -m pip install -r "$RequirementsDirectory\requirements.txt"
 
