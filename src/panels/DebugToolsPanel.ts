@@ -103,7 +103,7 @@ export class DebugToolsPanel {
     if (DebugToolsPanel.currentPanel) {
       DebugToolsPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
     } else {
-      const panel = vscode.window.createWebviewPanel("zephyr-workbench.install-debug-tools.panel", "Install Runners", vscode.ViewColumn.One, {
+      const panel = vscode.window.createWebviewPanel("zephyr-workbench.install-runners.panel", "Install Runners", vscode.ViewColumn.One, {
         // Enable javascript in the webview
         enableScripts: true,
         // Restrict the webview to only load resources from the `out` directory
@@ -335,9 +335,7 @@ export class DebugToolsPanel {
         </head>
         
         <body>
-          <h1>Install 
-            <span class="title-install-runners">Runners</span>
-          </h1>
+          <h1>Install Runners</h1>
           <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/debug-tools">Read Docs</a>
           <form>
             <h2>Packs</h2>
@@ -347,29 +345,21 @@ export class DebugToolsPanel {
                 <th>Pack</th>
                 <th></th>
                 <th></th>
-                <th>
-                  <span class="title-install-runners">Install</span>
-                </th>
+                <th>Install</th>
                 <th></th>
               </tr>
               ${packsHTML}
             </table>
           </form>
           <form>
-            <h2>
-              <span class="title-install-runners">Runners</span>
-            </h2>
+            <h2> Runners</h2>
             <table class="debug-tools-table">
               <tr>
                 <th></th>
-                <th>
-                  <span class="title-install-runners">Name</span>
-                </th>
+                <th>Name</th>
                 <th>Version</th>
                 <th>Status</th>
-                <th>
-                  <span class="title-install-runners">Install</span>
-                </th>
+                <th>Install</th>
                 <th></th>
               </tr>
               ${toolsHTML}

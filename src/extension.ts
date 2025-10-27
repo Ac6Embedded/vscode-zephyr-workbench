@@ -1230,7 +1230,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench.install-debug-tools", async () => {
+		vscode.commands.registerCommand("zephyr-workbench.install-runners", async () => {
 			DebugToolsPanel.render(context.extensionUri);
 		})
 	);
