@@ -366,8 +366,6 @@ export async function execWestCommand(cmdName: string, cmd: string, options: vsc
   await execShellCommandWithEnv(cmdName, cmd, options);
 }
 
-
-
 export async function getBoardsDirectories(parent: ZephyrAppProject | WestWorkspace, boardRoots?: string[]): Promise<string[]> {
   return new Promise((resolve, reject) => {
     let cmd = 'west boards -f "{dir}"';
@@ -380,15 +378,30 @@ export async function getBoardsDirectories(parent: ZephyrAppProject | WestWorksp
         }
       }
     }
-    execWestCommandWithEnv(cmd, parent, (error: any, stdout: string, stderr: any) => {
+    execWestCommandWithEnv(cmd, parent, async (error: any, stdout: string, stderr: any) => {
       if (error) {
         reject(`Error: ${stderr}`);
+        return;
       }
 
-      const boardDirs = stdout
+      const candidates = stdout
         .split(/\r?\n/)
-        .map(dir => dir.trim())
-        .filter(dir => dir !== '');
+        .map(s => s.trim().replace(/^"+|"+$/g, ''))
+        .filter(s => s.length > 0);
+
+      // Use VS Code FS stat to verify existence and directory type
+      // Filter any echoes in environment scripts that are not directories
+      const results = await Promise.all(candidates.map(async (p) => {
+        try {
+          const uri = vscode.Uri.file(p);
+          const st = await vscode.workspace.fs.stat(uri);
+          return (st.type & vscode.FileType.Directory) === vscode.FileType.Directory ? p : null;
+        } catch {
+          return null;
+        }
+      }));
+
+      const boardDirs = results.filter((p): p is string => !!p);
       resolve(boardDirs);
     });
   });
