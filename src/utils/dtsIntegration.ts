@@ -21,7 +21,7 @@ import { WestWorkspace } from '../models/WestWorkspace';
 import { ZephyrAppProject } from '../models/ZephyrAppProject';
 import { ZephyrProject } from '../models/ZephyrProject';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
-import { getWestWorkspaces } from '../utils/utils';
+import { getWestWorkspaces } from './utils';
 
 // Minimal copies of the external types we need
 // We keep them narrow to avoid adding new dependencies

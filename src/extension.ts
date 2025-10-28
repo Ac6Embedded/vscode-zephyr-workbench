@@ -44,7 +44,7 @@ import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './u
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
 import { exec } from 'child_process';
 import { syncAutoDetectEnv } from './utils/autoDetectSyncUtils';
-import { initDtsIntegration } from './dts/dtsIntegration';
+import { initDtsIntegration } from './utils/dtsIntegration';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
