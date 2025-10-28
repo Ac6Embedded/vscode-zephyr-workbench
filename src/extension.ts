@@ -44,6 +44,7 @@ import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './u
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
 import { exec } from 'child_process';
 import { syncAutoDetectEnv } from './utils/autoDetectSyncUtils';
+import { initDtsIntegration } from './dts/dtsIntegration';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -88,6 +89,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const zephyrResourcesCommandProvider = new ZephyrOtherResourcesCommandProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-other-resources', zephyrResourcesCommandProvider);
+
+	// Initialize DTS-LSP integration: creates contexts on .overlay/.dts opens
+	initDtsIntegration(context);
 
 	// Register commands
 	// TODO: Could be refactored / Optimized

@@ -1603,6 +1603,7 @@
     "ms-vscode.cpptools",
     "ms-vscode.cpptools-extension-pack",
     "ms-vscode.vscode-serial-monitor",
-    "mindaro-dev.file-downloader"
+    "mindaro-dev.file-downloader",
+    "KyleMicallefBonnici.dts-lsp"
   ]
 }
