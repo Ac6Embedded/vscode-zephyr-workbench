@@ -5,11 +5,22 @@ Goals
 - Dynamically create/update DTS contexts for .overlay and workspace .dts files
 - Use build_info.yml for application overlays to derive include paths, bindings, dtsFile, overlays
 - Use workspace (west) information for Zephyr tree .dts files
+- To make dtsi work, we should keep the parent .dts context (so not closing the .dts)
 
 Notes
-- We avoid .dtsi files as requested
+- We avoid .dtsi files
 - We only call setDefaultSettings to set allowAdhocContexts=false
-- We keep comments short to explain why things happen
+- We only set third-party API methods: requestContext and setActiveContextByName
+- We track created contexts to avoid duplicates and enable removal on file delete or changes
+
+TODO/Improvements
+- Better error handling/logging
+- Detecting DTS_ROOT for workspace contexts from modules
+  Example: hal_stm32 uses DTS from modules/hal/stm32/dts
+  Current approach: hard-coded vendor list
+  Best practice: How to do it ?
+  * Parse west.yml and extract dts_root from zephyr/module.yml
+  * This should be done only when parsing the workspaces at startup or creating a new one, cache the results
 */
 
 import * as vscode from 'vscode';
@@ -27,6 +38,7 @@ import { getWestWorkspaces } from './utils';
 // We keep them narrow to avoid adding new dependencies
 interface IntegrationSettingsMinimal {
   allowAdhocContexts?: boolean;
+  defaultShowFormattingErrorAsDiagnostics?: boolean;
 }
 
 interface DtsContextMinimal {
@@ -92,8 +104,9 @@ export async function initDtsIntegration(context: vscode.ExtensionContext) {
     return;
   }
 
-  // Only set this knob: do not allow adhoc contexts
-  await dtsApi.setDefaultSettings({ allowAdhocContexts: false });
+  // Only set these knobs: do not allow adhoc contexts and disable formatting errors diagnostics by default
+  await dtsApi.setDefaultSettings({ allowAdhocContexts: false, defaultShowFormattingErrorAsDiagnostics: false });
+  // Best-effort: also set default on contexts we create, if the API honors it via defaults
 
   // React to file openings and editor focus changes
   context.subscriptions.push(
@@ -227,7 +240,7 @@ async function handleApplicationOverlay(filePath: string) {
     overlays: nOverlays ?? [],
     lockRenameEdits: [],
     compileCommands: nCompile,
-    showFormattingErrorAsDiagnostics: undefined,
+    showFormattingErrorAsDiagnostics: false,
   };
 
   console.log('[ZW][DTS] Application context payload:', JSON.stringify(ctx, null, 2));
@@ -295,6 +308,27 @@ async function handleWorkspaceDts(filePath: string) {
     if (sub.length === 0) { continue; } // avoid duplicating zephyr/dts
     includePaths.push(path.join(zephyrBase, 'dts', sub));
   }
+  // TODO: improve vendor modules detection (temporary hard-coded vendor DTS roots)
+  // Append common vendor HAL roots (DTS trees are expected under each).
+  // modules is a sibling of the zephyr folder (same parent as zephyrBase)
+  // Basically include modules/hal/<vendor>/dts for known vendors that have dts_root in their module.yml
+
+  const modulesBase = path.join(zephyrBase, '..', 'modules');
+  // Vendor roots to append under modules/hal
+  const vendorHalRoots = [
+    'adi',
+    'atmel',
+    'microchip',
+    'nuvoton',
+    'gigadevice',
+    'stm32',
+    'nxp',
+    'espressif',
+  ];
+  for (const v of vendorHalRoots) {
+    includePaths.push(path.join(modulesBase, 'hal', v, 'dts'));
+  }
+
   // Add optional user roots from workspace env (best effort)
   for (const key of ['ARCH_ROOT', 'SOC_ROOT', 'BOARD_ROOT', 'DTS_ROOT'] as const) {
     const vals = west.envVars[key];
@@ -325,7 +359,7 @@ async function handleWorkspaceDts(filePath: string) {
     overlays: [],
     lockRenameEdits: [],
     compileCommands: '',
-    showFormattingErrorAsDiagnostics: true,
+    showFormattingErrorAsDiagnostics: false,
   };
 
   console.log('[ZW][DTS] Workspace context payload:', JSON.stringify(ctx, null, 2));
