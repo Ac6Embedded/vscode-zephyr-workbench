@@ -488,6 +488,7 @@ function trackContextAndWatchersForOverlay(overlayPath: string, ctxName: string,
     const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(path.dirname(buildInfo), path.basename(buildInfo)));
     watcher.onDidChange(() => {
       console.log('[ZW][DTS] build_info.yml changed -> recreate context for', overlayPath);
+      removeContextForFile(overlayPath);
       handleApplicationOverlay(overlayPath);
     });
     watcher.onDidDelete(() => {
