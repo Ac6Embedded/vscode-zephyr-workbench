@@ -329,6 +329,15 @@ async function handleWorkspaceDts(filePath: string) {
     includePaths.push(path.join(modulesBase, 'hal', v, 'dts'));
   }
 
+  // Also add vendor bindings if present under modules/hal/<vendor>/dts/bindings
+  let vendorBindings: string[] = [];
+  for (const v of vendorHalRoots) {
+    const vb = path.join(modulesBase, 'hal', v, 'dts', 'bindings');
+    if (dirExists(vb)) {
+      vendorBindings.push(pathNormalizeFs(vb));
+    }
+  }
+
   // Add optional user roots from workspace env (best effort)
   for (const key of ['ARCH_ROOT', 'SOC_ROOT', 'BOARD_ROOT', 'DTS_ROOT'] as const) {
     const vals = west.envVars[key];
@@ -340,7 +349,10 @@ async function handleWorkspaceDts(filePath: string) {
   // Filter only existing directories to satisfy dts-lsp checks
   includePaths = includePaths.filter(p => dirExists(p)).map(pathNormalizeFs);
   const bindingsCandidate = path.join(zephyrBase, 'dts', 'bindings');
-  const bindings = dirExists(bindingsCandidate) ? [pathNormalizeFs(bindingsCandidate)] : [];
+  const bindings = [
+    ...(dirExists(bindingsCandidate) ? [pathNormalizeFs(bindingsCandidate)] : []),
+    ...vendorBindings,
+  ];
 
   console.log('[ZW][DTS] Workspace context for', filePath);
   console.log('[ZW][DTS] includePaths:', includePaths);
