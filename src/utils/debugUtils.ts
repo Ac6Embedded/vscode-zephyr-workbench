@@ -43,7 +43,7 @@ export function getRunRunners(): WestRunner[] {
 
 export function getRunner(runnerName: string): WestRunner | undefined {
   switch(runnerName) {
-    case 'openocd-zephyr':
+    case 'openocd':
       return new Openocd();
     case 'linkserver':
       return new Linkserver();
@@ -229,13 +229,23 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
   }
 
   const listBoards = await getSupportedBoards(westWorkspace, project, buildConfig);
-  for(let board of listBoards) {
-    if(board.identifier === boardIdentifier) {
-      targetBoard = board;
+  // boardIdentifier may be hierarchical like X/Y/Z; fallback to X/Y then X
+  if (boardIdentifier) {
+    let candidate = String(boardIdentifier);
+    while (candidate.length > 0) {
+      const found = listBoards.find(b => b.identifier === candidate);
+      if (found) { targetBoard = found; break; }
+      const lastSlash = candidate.lastIndexOf('/');
+      if (lastSlash === -1) {break;}
+      candidate = candidate.substring(0, lastSlash);
     }
   }
   if(!targetBoard) {
-    return;
+    // Warn the user and throw to prevent pushing an invalid configuration
+    try {
+      vscode.window.showWarningMessage('Zephyr Workbench: Board was not automatically detected.');
+    } catch {}
+    throw new Error('createLaunchConfiguration: target board not found');
   }
 
   const shell: string = getShell();
@@ -369,8 +379,20 @@ export async function findLaunchConfiguration(launchJson: any, project: ZephyrPr
       return configuration;
     }
   }
-  
-  launchJson.configurations.push(await createLaunchConfiguration(project, buildConfigName));
+  // Create and push a new configuration only if valid
+  let newCfg: any;
+  try {
+    newCfg = await createLaunchConfiguration(project, buildConfigName);
+  } catch (err) {
+    console.error('[DebugManager] findLaunchConfiguration: failed to create configuration', err);
+    // Propagate error; do not push invalid entry
+    throw err;
+  }
+  if (!newCfg || typeof newCfg !== 'object' || typeof newCfg.name !== 'string') {
+    console.error('[DebugManager] findLaunchConfiguration: createLaunchConfiguration returned invalid config', newCfg);
+    throw new Error('createLaunchConfiguration returned invalid configuration');
+  }
+  launchJson.configurations.push(newCfg);
   return await findLaunchConfiguration(launchJson, project, buildConfigName);
 }
 

@@ -38,13 +38,13 @@ other_content:
       source: https://repo.msys2.org/msys/x86_64/libyaml-0.2.5-2-x86_64.pkg.tar.zst
       sha256: 11509c6e3133b3fc63f99cc04e89a1cc5685aa746e96bd5f481e3424fbd4f6c1
 debug_tools:
-- tool: openocd-zephyr
+- tool: openocd
   name: OpenOCD Zephyr
   version: 0.11.0
   website: https://github.com/zephyrproject-rtos/openocd
   type: debug_server
   group: Common
-  install_dir: openocd-zephyr
+  install_dir: openocd
   root: false
   os:
     windows:
@@ -220,7 +220,7 @@ debug_tools:
 packs:
 - pack: stm32
   name: STM32
-  tools: [openocd-zephyr, stm32cubeprogrammer, jlink, udev-rules]
+  tools: [openocd, stm32cubeprogrammer, jlink, udev-rules]
 - pack: nxp
   name: NXP
   tools: [linkserver, jlink]

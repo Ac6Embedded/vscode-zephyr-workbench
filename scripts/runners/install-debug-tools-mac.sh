@@ -14,7 +14,7 @@ TOOLS=()
 
 usage() {
     echo "Usage: $0 -D <installDir> <tool1> [tool2 ...]"
-    echo "Example: $0 -D ~/zephyr openocd-zephyr pyocd"
+    echo "Example: $0 -D ~/zephyr openocd pyocd"
 }
 
 pr_title() {

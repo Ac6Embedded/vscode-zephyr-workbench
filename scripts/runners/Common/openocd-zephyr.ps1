@@ -36,7 +36,7 @@ function Extract-ArchiveFile {
 
 # --- Main logic ---
 
-$ToolName = "openocd-zephyr"
+$ToolName = "openocd"
 
 # Final tools directory
 $ToolDir = Join-Path -Path $ToolsDir -ChildPath $ToolName
@@ -124,10 +124,10 @@ if (-not $Version -or $Version -eq "") {
 
 Write-Output "Detected version for ${ToolName}: $Version"
 
-$PathForYaml = "$ToolsDir/openocd-zephyr/bin"
+$PathForYaml = "$ToolsDir/openocd/bin"
 $PathForYaml = $PathForYaml -replace '\\', '/'
 
-Update-EnvYamlBlock -ToolName "openocd-zephyr" -YqPath $Yq -EnvYamlPath $EnvYaml -ToolPath "$PathForYaml" -Version $Version
+Update-EnvYamlBlock -ToolName "openocd" -YqPath $Yq -EnvYamlPath $EnvYaml -ToolPath "$PathForYaml" -Version $Version
 
 # Explicitly signal success
 $global:LastExitCode = 0
