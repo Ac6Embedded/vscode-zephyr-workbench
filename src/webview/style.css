@@ -61,15 +61,13 @@ form {
   text-align: center;
 }
 
-/* Keep Status text centered while placing the refresh button at the right edge */
+/* Refresh icon sits inline after Status with spacing */
 #status-header {
-  position: relative;
+  padding-left: calc(var(--input-height) * 1px + 5px);
 }
 #status-header .header-icon-button {
-  position: absolute;
-  right: 30px;
-  top: 50%;
-  transform: translateY(-50%);
+  margin-left: 5px;
+  vertical-align: middle;
 }
 
 .debug-tools-table th {

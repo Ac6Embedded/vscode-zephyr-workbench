@@ -305,7 +305,7 @@ export class DebugToolsPanel {
         <tr>
           <td></td>
           <td colspan="5">
-            <vscode-button id="add-extra-path-btn" appearance="secondary">Add new runner path</vscode-button>
+            <vscode-button id="add-extra-path-btn" appearance="secondary">Add</vscode-button>
           </td>
         </tr>
       `;
@@ -377,7 +377,7 @@ export class DebugToolsPanel {
             <table class="debug-tools-table">
               <tr>
                 <th></th>
-                <th>Custom tool path(s):</th>
+                <th>Custom runners:</th>
                 <th></th>
                 <th></th>
                 <th></th>
