@@ -7,7 +7,8 @@ import { Openocd } from "../debug/runners/Openocd";
 import { WestRunner } from "../debug/runners/WestRunner";
 import { checkPyOCDTarget, concatCommands, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from './execUtils';
 import { ZephyrProject } from "../models/ZephyrProject";
-import { getSupportedBoards, getWestWorkspace, getZephyrSDK } from './utils';
+import { ZephyrAppProject } from "../models/ZephyrAppProject";
+import { getSupportedBoards, getWestWorkspace, getZephyrSDK, deleteFolder } from './utils';
 import { STM32CubeProgrammer } from '../debug/runners/STM32CubeProgrammer';
 import { Nrfutil } from '../debug/runners/Nrfutil';
 import { Nrfjprog } from '../debug/runners/Nrfjprog';
@@ -16,6 +17,7 @@ import { JLink } from '../debug/runners/JLink';
 import { PyOCD } from '../debug/runners/PyOCD';
 import { ZephyrBoard } from '../models/ZephyrBoard';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
+import { execWestCommandWithEnv, execWestCommandWithEnvAsync } from '../commands/WestCommands';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 
@@ -25,6 +27,54 @@ export function getDebugRunners(): WestRunner[] {
     new Linkserver(),
     new JLink(),
     new PyOCD()
+  ];
+}
+
+// Static list of flash-capable runners to use for task inputs
+// and as a fallback when discovery fails. Order matches existing
+// tasks.json options for predictability.
+export function getStaticFlashRunnerNames(): string[] {
+  return [
+    'arc-nsim',
+    'blackmagicprobe',
+    'bossac',
+    'canopen_program',
+    'dediprog',
+    'dfu-util',
+    'esp32',
+    'ezflashcli',
+    'gd32isp',
+    'hifive1',
+    'intel_adsp',
+    'intel_cyclonev',
+    'jlink',
+    'linkserver',
+    'mdb-hw',
+    'mdb-nsim',
+    'misc-flasher',
+    'nios2',
+    'nrfjprog',
+    'nrfutil',
+    'nsim',
+    'nxp_s32dbg',
+    'openocd',
+    'pyocd',
+    'qemu',
+    'renode-robot',
+    'renode',
+    'silabs_commander',
+    'spi_burn',
+    'stm32cubeprogrammer',
+    'stm32flash',
+    'teensy',
+    'trace32',
+    'uf2',
+    'xtensa',
+    'ecpprog',
+    'minichlink',
+    'probe_rs',
+    'native',
+    'xsdb'
   ];
 }
 
@@ -39,6 +89,81 @@ export function getRunRunners(): WestRunner[] {
     new Nrfjprog(),
     new SimplicityCommander()
   ];
+}
+
+/**
+ * Query west to get flash-capable runners and those available in runners.yaml for a given build config.
+ * Runs with --build-dir and --board, using a temporary build dir if the main one doesn't exist.
+ */
+export async function getFlashRunners(
+  project: ZephyrAppProject,
+  config: ZephyrProjectBuildConfiguration
+): Promise<{ all: string[]; available: string[]; def?: string; output: string }>
+{
+  return new Promise((resolve, reject) => {
+    // Always use a temporary build directory for help query; avoids touching real build artifacts
+    const buildDir = path.join(project.folderPath, '.tmp', 'flash-runners', config.name);
+    try { fs.mkdirSync(buildDir, { recursive: true }); } catch {}
+
+    // 1) Ensure runner properties are generated for this build dir
+    //    Use dedicated target runners_yaml_props_target then query help
+    const westArgs = (config.westArgs && config.westArgs.length > 0) ? ` ${config.westArgs}` : '';
+    const buildCmd = `west build -t runners_yaml_props_target --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.folderPath}"${westArgs}`;
+    const helpCmd  = `west flash -H --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.folderPath}"`;
+
+    execWestCommandWithEnvAsync(buildCmd, project)
+      .then(() => {
+        execWestCommandWithEnv(helpCmd, project, (err, stdout) => {
+          if (err) { deleteFolder(buildDir); deleteFolder(path.join(project.folderPath, '.tmp')); return reject(err); }
+
+      const lines = stdout.split(/\r?\n/).map(l => l.trim());
+      const pickList: string[] = [];
+      const available: string[] = [];
+      let def: string | undefined = undefined;
+
+      // Extract block under: zephyr runners which support "west flash":
+      const headerIdx = lines.findIndex(l => l.toLowerCase().startsWith('zephyr runners which support') && l.includes('west flash'));
+      if (headerIdx !== -1) {
+        for (let i = headerIdx + 1; i < lines.length; i++) {
+          const l = lines[i];
+          if (l.length === 0 || l.toLowerCase().startsWith('note:') || l.toLowerCase().startsWith('available runners')) {
+            break;
+          }
+          l.split(',').map(s => s.trim()).filter(s => s.length > 0).forEach(s => pickList.push(s));
+        }
+      }
+
+      // Extract available runners in runners.yaml:
+      const availIdx = lines.findIndex(l => l.toLowerCase().startsWith('available runners in runners.yaml'));
+      if (availIdx !== -1) {
+        for (let i = availIdx + 1; i < lines.length; i++) {
+          const l = lines[i];
+          if (l.length === 0 || l.endsWith(':')) { break; }
+          l.split(',').map(s => s.trim()).filter(s => s.length > 0).forEach(s => available.push(s));
+        }
+      }
+
+      // Extract default runner in runners.yaml:
+      const defIdx = lines.findIndex(l => l.toLowerCase().startsWith('default runner in runners.yaml'));
+      if (defIdx !== -1 && defIdx + 1 < lines.length) {
+        const v = lines[defIdx + 1].trim();
+        def = v.split(',')[0].trim();
+      }
+
+          // De-duplicate and basic validation
+          const all = Array.from(new Set(pickList));
+          if (all.length === 0 && available.length === 0) {
+            deleteFolder(buildDir);
+            deleteFolder(path.join(project.folderPath, '.tmp'));
+            return reject(new Error('No flash runners were found for this configuration.'));
+          }
+          deleteFolder(buildDir);
+          deleteFolder(path.join(project.folderPath, '.tmp'));
+          resolve({ all, available, def, output: stdout });
+        });
+      })
+      .catch((e) => { deleteFolder(buildDir); deleteFolder(path.join(project.folderPath, '.tmp')); reject(e); });
+  });
 }
 
 export function getRunner(runnerName: string): WestRunner | undefined {

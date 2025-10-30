@@ -23,6 +23,8 @@ export class ZephyrProjectBuildConfiguration {
     SHIELD: [],
   };
   westArgs: string = '';
+  // Preferred west runner for this configuration (used for Run/Flash)
+  defaultRunner?: string;
 
   sysbuild: string = "false";
 
@@ -35,6 +37,12 @@ export class ZephyrProjectBuildConfiguration {
   parseSettings(buildConfig: any, workspaceContext: vscode.WorkspaceFolder) {
     this.active = buildConfig['active'] === "true" ? true : false;
     this.boardIdentifier = buildConfig['board'];
+    // Read persisted default runner if set; empty string means unset
+    if (typeof buildConfig['default-runner'] === 'string' && buildConfig['default-runner'].length > 0) {
+      this.defaultRunner = buildConfig['default-runner'];
+    } else {
+      this.defaultRunner = undefined;
+    }
     this.westArgs = buildConfig['west-args'];
     for (let key in this.envVars) {
       const values = loadConfigEnv(workspaceContext, this.name, key);
