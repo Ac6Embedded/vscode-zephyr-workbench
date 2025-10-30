@@ -165,6 +165,10 @@ vscode-button {
   min-width: calc(var(--design-unit)* 60px);
 }
 
+#listBoards, #listSamples {
+  display: flex !important;
+}
+
 .combo-dropdown .combo-dropdown-control {
   align-items: center;
   box-sizing: border-box;
@@ -275,6 +279,52 @@ vscode-button {
   gap: 8px;
   flex: 0 0 auto;
   margin-left: 4px;
+}
+#listBoards, #listSamples {
+  display: flex !important;
+}
+
+#listBoards, #listSamples {
+  display: flex !important;
+  align-items: center;
+  width: calc(var(--design-unit) * 135px + 269px);
+}
+
+#listBoards .combo-dropdown-input,
+#listSamples .combo-dropdown-input {
+  position: relative;
+  flex: 0 0 calc(var(--design-unit) * 135px);
+  max-width: calc(var(--design-unit) * 135px);
+}
+
+#listBoards .combo-dropdown-control,
+#listSamples .combo-dropdown-control {
+  width: 100%;
+  padding-right: 28px;
+}
+
+#listBoards .indicator,
+#listSamples .indicator {
+  right: 7px;
+}
+
+#listBoards .combo-dropdown-controls,
+#listSamples .combo-dropdown-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+  width: 22px;
+  margin-left: 4px;
+}
+
+#listBoards .dropdown-content,
+#listSamples .dropdown-content {
+  width: calc(var(--design-unit) * 135px);
+  min-width: calc(var(--design-unit) * 135px);
+  max-width: calc(var(--design-unit) * 135px);
+  left: 0;
+  right: auto;
 }
 
 .dropdown-content {

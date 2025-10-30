@@ -202,7 +202,9 @@ function main() {
   boardImage.style.visibility = 'hidden';
   boardImage.style.display = 'none';
   boardDropdownSpinner.style.display = 'none';
+  boardDropdownSpinner.style.visibility = 'hidden';
   samplesDropdownSpinner.style.display = 'none';
+  samplesDropdownSpinner.style.visibility = 'hidden';
 
   browseParentButton.addEventListener("click", browseParentHandler);
   createButton.addEventListener("click", createHandler);
@@ -264,18 +266,40 @@ async function westWorkspaceChanged(selectedWorkspaceUri: string) {
 
   const boardDropdownSpinner = document.getElementById('boardDropdownSpinner') as HTMLElement;
   const samplesDropdownSpinner = document.getElementById('samplesDropdownSpinner') as HTMLElement;
+  const boardInput = document.getElementById('boardInput') as HTMLInputElement;
+  const boardDropdown = document.getElementById('boardDropdown') as HTMLElement;
+  
+  if (boardInput) {
+    boardInput.disabled = true;
+  }
+  if (boardDropdown) {
+    boardDropdown.style.display = 'none';
+  }
   boardDropdownSpinner.style.display = 'block';
+  boardDropdownSpinner.style.visibility = 'visible';
   samplesDropdownSpinner.style.display = 'block';
+  samplesDropdownSpinner.style.visibility = 'visible';
 }
 
 async function updateBoardDropdown(boardHTML: string) {
   const boardInput = document.getElementById('boardInput') as HTMLInputElement;
   const boardDropdown = document.getElementById('boardDropdown') as HTMLElement;
   const boardDropdownSpinner = document.getElementById('boardDropdownSpinner') as HTMLElement;
+
+  boardInput.disabled = true;
+  boardDropdown.style.display = 'none';
+  boardDropdownSpinner.style.display = 'block';
+  boardDropdownSpinner.style.visibility = 'visible';
+
+  await new Promise(resolve => setTimeout(resolve, 300)); 
+
   boardDropdown.innerHTML = boardHTML;
   addDropdownItemEventListeners(boardDropdown, boardInput);
-  boardDropdownSpinner.style.display = 'none';
 
+  boardDropdownSpinner.style.display = 'none';
+  boardDropdownSpinner.style.visibility = 'hidden';
+  boardDropdown.style.display = 'block';
+  boardInput.disabled = false;
 }
 
 function updateBoardImage(imgSrc: string) {
@@ -298,6 +322,7 @@ async function updateSamplesDropdown(samplesHTML: string) {
   samplesDropdown.innerHTML = samplesHTML;
   addDropdownItemEventListeners(samplesDropdown, sampleInput);
   samplesDropdownSpinner.style.display = 'none';
+  samplesDropdownSpinner.style.visibility = 'hidden';
 }
 
 function setVSCodeMessageListener() {
@@ -360,4 +385,3 @@ function browseParentHandler(this: HTMLElement, ev: MouseEvent) {
     }
   );
 }
-

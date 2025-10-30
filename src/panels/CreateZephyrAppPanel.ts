@@ -145,17 +145,20 @@ export class CreateZephyrAppPanel {
                       <label for="listBoards">Select Board:</label>
                     </div>
                     <div id="listBoards" class="combo-dropdown grid-value-div">
-                      <input type="text" id="boardInput" class="combo-dropdown-control" placeholder="Choose your target board..." data-value="">
-                      <div aria-hidden="true" class="indicator" part="indicator">
-                        <slot name="indicator">  
-                          <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                            <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
-                          </svg>
-                          <div class="spinner" id="boardDropdownSpinner" style="display:none;"></div>
-                        </slot>
+                      <div class="combo-dropdown-input">
+                        <input type="text" id="boardInput" class="combo-dropdown-control" placeholder="Choose your target board..." data-value="">
+                        <div aria-hidden="true" class="indicator" part="indicator">
+                          <slot name="indicator">  
+                            <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                              <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                            </svg>
+                          </slot>
+                        </div>
                       </div>
-                      <div id="boardDropdown" class="dropdown-content">
+                      <div class="combo-dropdown-controls">
+                        <div id="boardDropdownSpinner" class="spinner" aria-label="Loading boards"></div>
                       </div>
+                      <div id="boardDropdown" class="dropdown-content"></div>
                     </div>
                   </div>
 
@@ -172,17 +175,20 @@ export class CreateZephyrAppPanel {
                       <label for="listBoards">Select Sample project:</label>
                     </div>
                     <div id="listSamples" class="combo-dropdown grid-value-div">
-                      <input type="text" id="sampleInput" class="combo-dropdown-control" placeholder="Choose a sample as base..." data-value="">
-                      <div aria-hidden="true" class="indicator" part="indicator">
-                        <slot name="indicator">  
-                          <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                            <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
-                          </svg>
-                          <div class="spinner" id="samplesDropdownSpinner" style="display:none;"></div>
-                        </slot>
+                      <div class="combo-dropdown-input">
+                        <input type="text" id="sampleInput" class="combo-dropdown-control" placeholder="Choose a sample as base..." data-value="">
+                        <div aria-hidden="true" class="indicator" part="indicator">
+                          <slot name="indicator">  
+                            <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                              <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                            </svg>
+                          </slot>
+                        </div>
                       </div>
-                      <div id="samplesDropdown" class="dropdown-content">
+                      <div class="combo-dropdown-controls">
+                        <div id="samplesDropdownSpinner" class="spinner" aria-label="Loading samples"></div>
                       </div>
+                      <div id="samplesDropdown" class="dropdown-content"></div>
                     </div>
                   </div>
 
