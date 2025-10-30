@@ -24,6 +24,7 @@ import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
 import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
+import { HostToolsPanel } from './panels/HostToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { changeToolchainQuickStep } from "./quicksteps/changeToolchainQuickStep";
@@ -1276,6 +1277,15 @@ export function activate(context: vscode.ExtensionContext) {
 					true,
 					""
 				);
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench.host-tools-manager",
+			async () => {
+				HostToolsPanel.render(context.extensionUri);
 			}
 		)
 	);

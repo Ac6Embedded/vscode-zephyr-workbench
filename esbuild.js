@@ -90,6 +90,14 @@ const webviewDebugManagerConfig = {
   outfile: "./out/debugmanager.js",
 };
 
+const webviewHostToolsConfig = {
+  ...baseConfig,
+  target: "es2020",
+  format: "esm",
+  entryPoints: ["./src/webview/hosttools.mts"],
+  outfile: "./out/hosttools.js",
+};
+
 const webviewSdkManagerConfig = {
   ...baseConfig,
   target: "es2020",
@@ -123,6 +131,7 @@ const webviewNewModuleConfig = {
         ...webviewNewModuleConfig,
         ...webviewDebugToolsConfig,
         ...webviewDebugManagerConfig,
+        ...webviewHostToolsConfig,
         ...webviewSdkManagerConfig,
         ...watchConfig,
       });
@@ -136,6 +145,7 @@ const webviewNewModuleConfig = {
       await build(webviewNewModuleConfig);
       await build(webviewDebugToolsConfig);
       await build(webviewDebugManagerConfig);
+      await build(webviewHostToolsConfig);
       await build(webviewSdkManagerConfig);
       console.log("build complete");
     }

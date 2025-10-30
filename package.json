@@ -273,6 +273,12 @@
         "category": "Zephyr Workbench"
       },
       {
+        "command": "zephyr-workbench.host-tools-manager",
+        "title": "Host Tools Manager",
+        "icon": "$(wrench)",
+        "category": "Zephyr Workbench"
+      },
+      {
         "command": "zephyr-workbench.reinstall-venv",
         "title": "Reinstall VENV",
         "icon": "$(desktop-download)",

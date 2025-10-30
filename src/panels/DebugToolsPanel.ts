@@ -291,6 +291,9 @@ export class DebugToolsPanel {
                  <div id="extra-details-content-${idx}" class="details-content">
                    <div class="grid-group-div extra-grid-group">
                      <vscode-text-field id="extra-path-input-${idx}" class="details-path-field" value="${path}" size="50" disabled>New Path:</vscode-text-field>
+                     <vscode-button id="browse-extra-path-button-${idx}" class="browse-extra-input-button" appearance="secondary" disabled>
+                       <span class="codicon codicon-folder"></span>
+                     </vscode-button>
                      <vscode-button id="edit-extra-path-btn-${idx}" class="edit-extra-path-button save-path-button" appearance="primary">Edit</vscode-button>
                      <vscode-button id="remove-extra-path-btn-${idx}" class="remove-extra-path-button" appearance="secondary" disabled>Remove</vscode-button>
                    </div>
@@ -404,35 +407,14 @@ export class DebugToolsPanel {
             break;
           }
           case 'add-extra-path': {
+            // Do not modify env.yml on Add. Insert a local row only; persist on Done/Enter.
             try {
-              const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-              let doc: any;
-              if (fs.existsSync(envYamlPath)) {
-                const text = fs.readFileSync(envYamlPath, 'utf8');
-                doc = yaml.parseDocument(text);
-              } else if (this.envYamlDoc) {
-                doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-              } else {
-                doc = yaml.parseDocument('{}');
-              }
-
-              const jsEnv: any = yaml.parse(doc.toString()) || {};
-              jsEnv.other = jsEnv.other || {};
-              jsEnv.other.EXTRA_RUNNERS = jsEnv.other.EXTRA_RUNNERS || {};
-              jsEnv.other.EXTRA_RUNNERS.path = Array.isArray(jsEnv.other.EXTRA_RUNNERS.path) ? jsEnv.other.EXTRA_RUNNERS.path : [];
-              jsEnv.other.EXTRA_RUNNERS.path.push('');
-
-              const yamlText = yaml.stringify(jsEnv, { flow: false });
-              fs.writeFileSync(envYamlPath, yamlText, 'utf8');
-              this.envYamlDoc = yaml.parseDocument(yamlText);
-              try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
-
-              // Regenerate UI to include the new row
-              const newIdx = jsEnv.other.EXTRA_RUNNERS.path.length - 1;
-              webview.postMessage({ command: 'add-extra-path-done', idx: newIdx });
-              this._panel.webview.html = await this._getWebviewContent(webview, this._extensionUri);
+              const count = Array.isArray(this.envData?.other?.EXTRA_RUNNERS?.path)
+                ? this.envData.other.EXTRA_RUNNERS.path.length
+                : 0;
+              webview.postMessage({ command: 'add-extra-path-done', idx: count });
             } catch (e) {
-              vscode.window.showErrorMessage('Failed to add new extra runner path');
+              webview.postMessage({ command: 'add-extra-path-done', idx: 0 });
             }
             break;
           }
@@ -569,42 +551,9 @@ export class DebugToolsPanel {
                 break;
               }
               if (!trimmed) {
-                // Show error if path is empty
+                // Show error if path is empty and do not modify YAML
                 vscode.window.showErrorMessage('Please provide a valid path');
                 webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: false, error: 'Empty path' });
-                break;
-              }
-              if (!trimmed) {
-                // Empty string: keep the entry but clear its path in env.yml
-                const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-                let doc: any;
-                if (fs.existsSync(envYamlPath)) {
-                  const text = fs.readFileSync(envYamlPath, 'utf8');
-                  doc = yaml.parseDocument(text);
-                } else if (this.envYamlDoc) {
-                  doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-                } else {
-                  doc = yaml.parseDocument('{}');
-                }
-
-                const jsEnv: any = yaml.parse(doc.toString()) || {};
-                jsEnv.other = jsEnv.other || {};
-                jsEnv.other.EXTRA_RUNNERS = jsEnv.other.EXTRA_RUNNERS || {};
-                jsEnv.other.EXTRA_RUNNERS.path = Array.isArray(jsEnv.other.EXTRA_RUNNERS.path) ? jsEnv.other.EXTRA_RUNNERS.path : [];
-                // Expand array if needed to avoid out-of-range
-                while (jsEnv.other.EXTRA_RUNNERS.path.length <= idx) {
-                  jsEnv.other.EXTRA_RUNNERS.path.push('');
-                }
-                jsEnv.other.EXTRA_RUNNERS.path[idx] = '';
-
-                const yamlText = yaml.stringify(jsEnv, { flow: false });
-                fs.writeFileSync(envYamlPath, yamlText, 'utf8');
-
-                // Refresh in-memory state
-                this.envYamlDoc = yaml.parseDocument(yamlText);
-                try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
-
-                webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: true });
                 break;
               }
 
@@ -625,11 +574,14 @@ export class DebugToolsPanel {
               jsEnv.other.EXTRA_RUNNERS = jsEnv.other.EXTRA_RUNNERS || {};
               jsEnv.other.EXTRA_RUNNERS.path = Array.isArray(jsEnv.other.EXTRA_RUNNERS.path) ? jsEnv.other.EXTRA_RUNNERS.path : [];
               const defPath = trimmed.replace(/\\/g, '/');
-              // Ensure array is large enough to accommodate new index and supports UI-inserted rows
-              while (jsEnv.other.EXTRA_RUNNERS.path.length <= idx) {
-                jsEnv.other.EXTRA_RUNNERS.path.push('');
+              const arr: string[] = jsEnv.other.EXTRA_RUNNERS.path;
+              if (idx === arr.length) {
+                arr.push(defPath);
+              } else if (idx >= 0 && idx < arr.length) {
+                arr[idx] = defPath;
+              } else {
+                arr.push(defPath);
               }
-              jsEnv.other.EXTRA_RUNNERS.path[idx] = defPath;
 
               // Serialize back to YAML in block style
               const yamlText = yaml.stringify(jsEnv, { flow: false });
@@ -638,10 +590,59 @@ export class DebugToolsPanel {
               // Refresh in-memory state
               this.envYamlDoc = yaml.parseDocument(yamlText);
               try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
-
               webview.postMessage({ command: 'extra-path-updated', idx, path: defPath, success: true });
+              // Rebuild UI to update summary row with saved path
+              this._panel.webview.html = await this._getWebviewContent(webview, this._extensionUri);
             } catch (e) {
               webview.postMessage({ command: 'extra-path-updated', idx: message.idx, path: '', success: false, error: 'Exception updating extra path' });
+            }
+            break;
+          }
+          case 'browse-extra-path': {
+            try {
+              const idx: number = Number(message.idx);
+              if (!Number.isInteger(idx) || idx < 0) {
+                webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: false, error: 'Invalid index' });
+                break;
+              }
+              const pick = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: 'Select extra runner path' });
+              if (!pick || !pick[0]) { break; }
+              const chosen = pick[0].fsPath.trim();
+              if (!chosen) {
+                webview.postMessage({ command: 'extra-path-updated', idx, path: '', success: false });
+                break;
+              }
+              const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+              let doc: any;
+              if (fs.existsSync(envYamlPath)) {
+                const text = fs.readFileSync(envYamlPath, 'utf8');
+                doc = yaml.parseDocument(text);
+              } else if (this.envYamlDoc) {
+                doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
+              } else {
+                doc = yaml.parseDocument('{}');
+              }
+
+              const jsEnv: any = yaml.parse(doc.toString()) || {};
+              jsEnv.other = jsEnv.other || {};
+              jsEnv.other.EXTRA_RUNNERS = jsEnv.other.EXTRA_RUNNERS || {};
+              jsEnv.other.EXTRA_RUNNERS.path = Array.isArray(jsEnv.other.EXTRA_RUNNERS.path) ? jsEnv.other.EXTRA_RUNNERS.path : [];
+              const arr: string[] = jsEnv.other.EXTRA_RUNNERS.path;
+              const defPath = chosen.replace(/\\/g, '/');
+              if (idx === arr.length) arr.push(defPath);
+              else if (idx >= 0 && idx < arr.length) arr[idx] = defPath;
+              else arr.push(defPath);
+
+              const yamlText = yaml.stringify(jsEnv, { flow: false });
+              fs.writeFileSync(envYamlPath, yamlText, 'utf8');
+              this.envYamlDoc = yaml.parseDocument(yamlText);
+              try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
+
+              webview.postMessage({ command: 'extra-path-updated', idx, path: defPath, success: true });
+              // Refresh UI so summary row updates
+              this._panel.webview.html = await this._getWebviewContent(webview, this._extensionUri);
+            } catch (e) {
+              webview.postMessage({ command: 'extra-path-updated', idx: message.idx, path: '', success: false, error: 'Browse failed' });
             }
             break;
           }
@@ -665,16 +666,29 @@ export class DebugToolsPanel {
               }
 
               const jsEnv: any = yaml.parse(doc.toString()) || {};
-              const arr: any[] = jsEnv?.other?.EXTRA_RUNNERS?.path;
-              if (!Array.isArray(arr) || idx >= arr.length) {
-                webview.postMessage({ command: 'extra-path-removed', idx, success: false, error: 'Index out of range' });
+              const arr: any[] | undefined = jsEnv?.other?.EXTRA_RUNNERS?.path;
+              if (!Array.isArray(arr) || arr.length === 0) {
+                // Nothing persisted; treat as success
+                webview.postMessage({ command: 'extra-path-removed', idx, success: true });
                 break;
               }
-              arr.splice(idx, 1);
-              // Ensure the structure remains, even if empty array
-              jsEnv.other = jsEnv.other || {};
-              jsEnv.other.EXTRA_RUNNERS = jsEnv.other.EXTRA_RUNNERS || {};
-              jsEnv.other.EXTRA_RUNNERS.path = arr;
+              if (idx >= 0 && idx < arr.length) {
+                arr.splice(idx, 1);
+              } else {
+                arr.pop();
+              }
+              // Clean empty containers if last item removed
+              if (arr.length === 0) {
+                if (jsEnv.other && jsEnv.other.EXTRA_RUNNERS) {
+                  delete jsEnv.other.EXTRA_RUNNERS.path;
+                  if (Object.keys(jsEnv.other.EXTRA_RUNNERS).length === 0) delete jsEnv.other.EXTRA_RUNNERS;
+                }
+                if (jsEnv.other && Object.keys(jsEnv.other).length === 0) delete jsEnv.other;
+              } else {
+                jsEnv.other = jsEnv.other || {};
+                jsEnv.other.EXTRA_RUNNERS = jsEnv.other.EXTRA_RUNNERS || {};
+                jsEnv.other.EXTRA_RUNNERS.path = arr;
+              }
 
               const yamlText = yaml.stringify(jsEnv, { flow: false });
               fs.writeFileSync(envYamlPath, yamlText, 'utf8');

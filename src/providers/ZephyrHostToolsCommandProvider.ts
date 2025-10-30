@@ -67,6 +67,16 @@ const debugManagerMenuItem = new MenuItem(
   }
 );
 
+const hostToolsManagerMenuItem = new MenuItem(
+  'Host Tools Manager',
+  vscode.TreeItemCollapsibleState.None,
+  'wrench',
+  {
+    command: 'zephyr-workbench.host-tools-manager',
+    title: 'Host Tools Manager',
+  }
+);
+
 export class ZephyrHostToolsCommandProvider implements vscode.TreeDataProvider<MenuItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<MenuItem | undefined> = new vscode.EventEmitter<MenuItem | undefined>();
   readonly onDidChangeTreeData: vscode.Event<MenuItem | undefined> = this._onDidChangeTreeData.event;
@@ -83,6 +93,7 @@ export class ZephyrHostToolsCommandProvider implements vscode.TreeDataProvider<M
         items.push(reinstallHostToolsMenuItem);
         items.push(reinstallVenvMenuItem);
         items.push(verifyHostToolsMenuItem);
+        items.push(hostToolsManagerMenuItem);
         items.push(installDebugToolsMenuItem);
         items.push(debugManagerMenuItem);
       }
