@@ -6,6 +6,7 @@ import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getInternalDirRealPath } from "../utils/utils";
 import { formatYml } from "../utilities/formatYml";
+import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
 
 export class HostToolsPanel {
   public static currentPanel: HostToolsPanel | undefined;
@@ -74,14 +75,14 @@ export class HostToolsPanel {
     this._panel.dispose();
     while (this._disposables.length) {
       const d = this._disposables.pop();
-      if (d) d.dispose();
+      if (d) {d.dispose();}
     }
   }
 
   private getToolVersion(toolId: string): string {
     try {
       const v = (this.envData as any)?.tools?.[toolId]?.version;
-      if (v === undefined || v === null) return "";
+      if (v === undefined || v === null) {return "";}
       return String(v);
     } catch {
       return "";
@@ -94,7 +95,7 @@ export class HostToolsPanel {
       if (Array.isArray(p)) {
         return p.join(";");
       }
-      if (typeof p === "string") return p;
+      if (typeof p === "string") {return p;}
     } catch {}
     return "";
   }
@@ -323,35 +324,7 @@ export class HostToolsPanel {
                 webview.postMessage({ command: "extra-path-updated", idx, path: "", success: false, error: "Empty path" });
                 break;
               }
-              const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-              let doc: any;
-              if (fs.existsSync(envYamlPath)) {
-                const text = fs.readFileSync(envYamlPath, "utf8");
-                doc = yaml.parseDocument(text);
-              } else if (this.envYamlDoc) {
-                doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-              } else {
-                doc = yaml.parseDocument("{}");
-              }
-
-              const jsEnv: any = yaml.parse(doc.toString()) || {};
-              jsEnv.other = jsEnv.other || {};
-              jsEnv.other.EXTRA_TOOLS = jsEnv.other.EXTRA_TOOLS || {};
-              jsEnv.other.EXTRA_TOOLS.path = Array.isArray(jsEnv.other.EXTRA_TOOLS.path) ? jsEnv.other.EXTRA_TOOLS.path : [];
-              const arr: string[] = jsEnv.other.EXTRA_TOOLS.path;
-              // If idx is at end, append; if within range, replace; otherwise, append to avoid creating empty placeholders
-              if (idx === arr.length) {
-                arr.push(trimmed);
-              } else if (idx >= 0 && idx < arr.length) {
-                arr[idx] = trimmed;
-              } else {
-                arr.push(trimmed);
-              }
-
-              const yamlText = yaml.stringify(jsEnv, { flow: false });
-              fs.writeFileSync(envYamlPath, yamlText, "utf8");
-              this.envYamlDoc = yaml.parseDocument(yamlText);
-              try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
+              this.envData = setEnvExtraPath('EXTRA_TOOLS', idx, trimmed);
 
               webview.postMessage({ command: "extra-path-updated", idx, path: trimmed, success: true });
               // Rebuild UI so the summary row (Current Path: ...) reflects the saved value
@@ -420,53 +393,7 @@ export class HostToolsPanel {
                 webview.postMessage({ command: "extra-path-removed", idx, success: false });
                 break;
               }
-              const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-              let doc: any;
-              if (fs.existsSync(envYamlPath)) {
-                const text = fs.readFileSync(envYamlPath, "utf8");
-                doc = yaml.parseDocument(text);
-              } else if (this.envYamlDoc) {
-                doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-              } else {
-                doc = yaml.parseDocument("{}");
-              }
-
-              const jsEnv: any = yaml.parse(doc.toString()) || {};
-              const arr: any[] | undefined = jsEnv?.other?.EXTRA_TOOLS?.path;
-              if (!Array.isArray(arr) || arr.length === 0) {
-                // Nothing persisted; treat as success (UI-only row)
-                webview.postMessage({ command: "extra-path-removed", idx, success: true });
-                break;
-              }
-
-              // Remove selected entry; if index is out of range, remove the last one
-              if (idx >= 0 && idx < arr.length) {
-                arr.splice(idx, 1);
-              } else {
-                arr.pop();
-              }
-
-              // Clean empty containers if last item removed
-              if (arr.length === 0) {
-                if (jsEnv.other && jsEnv.other.EXTRA_TOOLS) {
-                  delete jsEnv.other.EXTRA_TOOLS.path;
-                  if (Object.keys(jsEnv.other.EXTRA_TOOLS).length === 0) {
-                    delete jsEnv.other.EXTRA_TOOLS;
-                  }
-                }
-                if (jsEnv.other && Object.keys(jsEnv.other).length === 0) {
-                  delete jsEnv.other;
-                }
-              } else {
-                jsEnv.other = jsEnv.other || {};
-                jsEnv.other.EXTRA_TOOLS = jsEnv.other.EXTRA_TOOLS || {};
-                jsEnv.other.EXTRA_TOOLS.path = arr;
-              }
-
-              const yamlText = yaml.stringify(jsEnv, { flow: false });
-              fs.writeFileSync(envYamlPath, yamlText, "utf8");
-              this.envYamlDoc = yaml.parseDocument(yamlText);
-              try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
+              this.envData = removeEnvExtraPath('EXTRA_TOOLS', idx);
 
               webview.postMessage({ command: "extra-path-removed", idx, success: true });
             } catch {
