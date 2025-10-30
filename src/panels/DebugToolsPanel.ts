@@ -358,7 +358,11 @@ export class DebugToolsPanel {
                 <th></th>
                 <th>Name</th>
                 <th>Version</th>
-                <th>Status</th>
+                <th id="status-header"><span>Status</span>
+                  <vscode-button appearance="icon" id="refresh-status-btn" class="header-icon-button" title="Refresh installation status">
+                    <span class="codicon codicon-refresh"></span>
+                  </vscode-button>
+                </th>
                 <th>Install</th>
                 <th></th>
               </tr>
@@ -394,6 +398,11 @@ export class DebugToolsPanel {
         const command = message.command;
 
         switch (command) {
+          case 'refresh-all': {
+            // Re-run detection for all tools; UI already cleared by webview
+            await this.loadVersions();
+            break;
+          }
           case 'add-extra-path': {
             try {
               const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
@@ -507,6 +516,8 @@ export class DebugToolsPanel {
                 const version = await runner.detectVersion();
                 webview.postMessage({ command: 'detect-done', tool, version: version ? version : '' });
               }
+              // Trigger a full refresh of all runners after edit completes
+              webview.postMessage({ command: 'exec-install-finished' });
             } else {
               vscode.window.showErrorMessage(`Failed to update path for ${tool}`);
             }
@@ -533,6 +544,8 @@ export class DebugToolsPanel {
                   const version = await runner.detectVersion();
                   webview.postMessage({ command: 'detect-done', tool, version: version ? version : '' });
                 }
+                // Trigger a full refresh of all runners after edit completes
+                webview.postMessage({ command: 'exec-install-finished' });
               }
             }
             break;

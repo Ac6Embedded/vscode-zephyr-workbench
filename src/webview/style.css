@@ -61,6 +61,17 @@ form {
   text-align: center;
 }
 
+/* Keep Status text centered while placing the refresh button at the right edge */
+#status-header {
+  position: relative;
+}
+#status-header .header-icon-button {
+  position: absolute;
+  right: 30px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 .debug-tools-table th {
   border-bottom: 3px solid var(--vscode-tab-border);
   padding-bottom: 5px;
@@ -561,4 +572,3 @@ vscode-button {
 .title-install-runners {
   color: #0094ff;
 }
-

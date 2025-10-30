@@ -63,6 +63,21 @@ function main() {
     pw.style.display = 'none';
   });
 
+  // Refresh all runner statuses: clear cells and ask backend to re-detect
+  const refreshBtn = document.getElementById('refresh-status-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      // Clear Version and Status columns
+      document.querySelectorAll('[id^="version-"]')
+        .forEach(el => { (el as HTMLElement).textContent = ''; });
+      document.querySelectorAll('[id^="detect-"]')
+        .forEach(el => { (el as HTMLElement).textContent = ''; });
+
+      // Trigger backend to re-run detection for all tools
+      webviewApi.postMessage({ command: 'refresh-all' });
+    });
+  }
+
   // Expand or collapse details row under the application name
   const expandButtons = document.querySelectorAll('.expand-button');
   expandButtons.forEach(button => {
@@ -258,10 +273,15 @@ function setVSCodeMessageListener() {
       case 'exec-done': {
         const progress = document.getElementById(`progress-${event.data.tool}`) as HTMLElement;
         progress.style.display = 'none';
-        webviewApi.postMessage({
-          command: 'detect',
-          tool: event.data.tool
-        });
+        // Keep legacy per-tool detect for immediate feedback
+        webviewApi.postMessage({ command: 'detect', tool: event.data.tool });
+        break;
+      }
+      case 'exec-install-finished': {
+        // Clear all versions and statuses, then ask backend to refresh all
+        document.querySelectorAll('[id^="version-"]').forEach(el => { (el as HTMLElement).textContent = ''; });
+        document.querySelectorAll('[id^="detect-"]').forEach(el => { (el as HTMLElement).textContent = ''; });
+        webviewApi.postMessage({ command: 'refresh-all' });
         break;
       }
       case 'detect-done': {

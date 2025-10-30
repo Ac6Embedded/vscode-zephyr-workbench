@@ -1370,6 +1370,9 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 					panel.webview.postMessage({ command: 'exec-done', tool: `${tool.tool}` });
 				}
+
+				// Notify webview that the whole install batch has finished (single or pack)
+				panel.webview.postMessage({ command: 'exec-install-finished' });
 			});
 		})
 	);
