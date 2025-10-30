@@ -81,6 +81,26 @@ function main() {
     }
   });
 
+  // Top action buttons
+  const btnReinstall = document.getElementById('btn-reinstall-host-tools');
+  if (btnReinstall) {
+    btnReinstall.addEventListener('click', () => {
+      webviewApi.postMessage({ command: 'reinstall-host-tools' });
+    });
+  }
+  const btnVerify = document.getElementById('btn-verify-host-tools');
+  if (btnVerify) {
+    btnVerify.addEventListener('click', () => {
+      webviewApi.postMessage({ command: 'verify-host-tools' });
+    });
+  }
+  const btnReinstallVenv = document.getElementById('btn-reinstall-venv');
+  if (btnReinstallVenv) {
+    btnReinstallVenv.addEventListener('click', () => {
+      webviewApi.postMessage({ command: 'reinstall-venv' });
+    });
+  }
+
   // Save on Enter for main tools
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {

@@ -5,6 +5,7 @@ import path from "path";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getInternalDirRealPath } from "../utils/utils";
+import { ZINSTALLER_MINIMUM_VERSION } from "../constants";
 import { formatYml } from "../utilities/formatYml";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
 
@@ -205,6 +206,15 @@ export class HostToolsPanel {
     const toolsHTML = await this.getToolsHTML();
     const extraToolsHTML = await this.getExtraPathTools();
 
+    // Read installed Zinstaller version from file and compare with minimum
+    const installedVersion = this.getInstalledZinstallerVersion();
+    const minVersion = ZINSTALLER_MINIMUM_VERSION;
+    const status = installedVersion
+      ? (this.versionAtLeast(installedVersion, minVersion)
+          ? { text: 'Up to date', icon: 'codicon-check', cls: 'success-icon' }
+          : { text: 'Needs update', icon: 'codicon-warning', cls: 'warning-icon' })
+      : { text: 'Unknown', icon: 'codicon-warning', cls: 'warning-icon' };
+
     return /*html*/ `
       <!DOCTYPE html>
       <html lang="en">
@@ -218,6 +228,22 @@ export class HostToolsPanel {
         </head>
         <body>
           <h1>Host Tools Manager</h1>
+          <div class="summary">
+            <div class="summary-title"><strong>Zinstaller</strong></div>
+            <div>
+              <strong>Installed:</strong> ${installedVersion || 'Unknown'}
+              &nbsp;|&nbsp;
+              <strong>Minimum Required:</strong> ${minVersion}
+              &nbsp;|&nbsp;
+              <strong>Status:</strong> <span class="codicon ${status.icon} ${status.cls}"></span> ${status.text}
+            </div>
+            <div class="summary-actions">
+              <div class="actions-title"><strong>Actions</strong></div>
+              <vscode-button id="btn-reinstall-host-tools" appearance="primary">Reinstall host tools</vscode-button>
+              <vscode-button id="btn-verify-host-tools" appearance="primary">Verify host tools</vscode-button>
+              <vscode-button id="btn-reinstall-venv" appearance="primary">Reinstall virtual environment</vscode-button>
+            </div>
+          </div>
           <form>
             <h2>Host Tools</h2>
             <table class="debug-tools-table">
@@ -259,6 +285,19 @@ export class HostToolsPanel {
       async (message: any) => {
         const command = message.command;
         switch (command) {
+          case "reinstall-host-tools": {
+            // Open manager with force reinstall confirmation
+            await vscode.commands.executeCommand("zephyr-workbench.install-host-tools.open-manager", true);
+            break;
+          }
+          case "verify-host-tools": {
+            await vscode.commands.executeCommand("zephyr-workbench.verify-host-tools");
+            break;
+          }
+          case "reinstall-venv": {
+            await vscode.commands.executeCommand("zephyr-workbench.reinstall-venv", true);
+            break;
+          }
           case "update-path": {
             const { tool, newPath, addToPath } = message;
             const trimmed = (newPath ?? "").toString().trim();
@@ -406,6 +445,42 @@ export class HostToolsPanel {
       undefined,
       this._disposables
     );
+  }
+
+  private getEnvGlobalVersion(): string | undefined {
+    try {
+      const v = (this.envData as any)?.global?.version;
+      if (v === undefined || v === null) { return undefined; }
+      return String(v);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private versionAtLeast(current: string, minimum: string): boolean {
+    const a = current.split('.').map(n => Number(n));
+    const b = minimum.split('.').map(n => Number(n));
+    const len = Math.max(a.length, b.length);
+    for (let i = 0; i < len; i++) {
+      const x = a[i] ?? 0;
+      const y = b[i] ?? 0;
+      if (x > y) { return true; }
+      if (x < y) { return false; }
+    }
+    return true;
+  }
+
+  private getInstalledZinstallerVersion(): string | undefined {
+    try {
+      const versionFile = path.join(getInternalDirRealPath(), 'zinstaller_version');
+      if (!fs.existsSync(versionFile)) { return undefined; }
+      const txt = fs.readFileSync(versionFile, 'utf8');
+      const m = /^Script Version:\s*([0-9.]+)/m.exec(txt);
+      if (m) { return m[1]; }
+      return undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private async saveToolPath(toolId: string, newPath: string): Promise<boolean> {

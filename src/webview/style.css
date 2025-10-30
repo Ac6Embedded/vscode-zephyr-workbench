@@ -4,6 +4,36 @@ body {
   color: var(--vscode-editor-foreground);
 }
 
+/* Modern summary header for Host Tools */
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  margin: 6px 0 12px 0;
+  border: 1px solid var(--vscode-tab-border);
+  border-radius: calc(var(--corner-radius-round) * 1px);
+  background: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent);
+}
+
+.summary-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.summary-title {
+  font-size: calc(var(--type-ramp-base-font-size) + 1px);
+}
+
+.actions-title {
+  margin-right: 8px;
+  align-self: center;
+}
+
+.warning-icon { color: #ffcc00; }
+.success-icon { color: #2ecc71; }
+
 form {
   margin-top: 5px;
   margin-bottom: 10px;
