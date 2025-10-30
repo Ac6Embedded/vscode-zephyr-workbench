@@ -541,6 +541,11 @@ export async function findConfigTask(taskLabel: string, project: ZephyrProject, 
                 args.push(arg);
               }
             }
+            // Explicitly set board for temporary tasks so west can build if needed
+            // (multi-build configs might not be built yet)
+            if (config.boardIdentifier && config.boardIdentifier.length > 0) {
+              args.push(`--board ${config.boardIdentifier}`);
+            }
             args.push(`--build-dir ${buildDirVar}`);
 
             // Create temporary task with the args adapted to the config

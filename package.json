@@ -240,6 +240,11 @@
                   "default": "",
                   "description": "The identifier of target board"
                 },
+                "default-runner": {
+                  "type": "string",
+                  "default": "",
+                  "description": "Preferred west runner for this configuration (used for Run/Flash without prompting)"
+                },
                 "west-args": {
                   "type": "string",
                   "default": "",
@@ -290,6 +295,17 @@
         "title": "Install Host Tools",
         "icon": "$(desktop-download)",
         "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.set-default-runner",
+        "title": "Set Default Runner",
+        "icon": "$(run)",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.change-default-runner",
+        "title": "Change Runner",
+        "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench.install-host-tools.open-manager",
@@ -923,6 +939,11 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-board"
         },
         {
+          "command": "zephyr-workbench-app-explorer.set-default-runner",
+          "group": "0@view/item/context@8.1",
+          "when": "view == zephyr-workbench-app-explorer && (viewItem == zephyr-application || viewItem =~ /^zephyr-build-config/)"
+        },
+        {
           "command": "zephyr-workbench-app-explorer.change-west-workspace",
           "group": "0@view/item/context@9",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-workspace"
@@ -991,6 +1012,11 @@
           "command": "zephyr-workbench-app-explorer.change-board",
           "group": "0@view/item/context@8",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.change-default-runner",
+          "group": "0@view/item/context@8.2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-default-runner"
         },
         {
           "command": "zephyr-workbench-app-explorer.rename-config",

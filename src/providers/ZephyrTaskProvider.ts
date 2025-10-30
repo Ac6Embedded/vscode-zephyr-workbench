@@ -11,6 +11,7 @@ import { concatCommands, getEnvVarFormat, getShell, getShellArgs } from '../util
 import { getWestWorkspace, getZephyrSDK, findIarEntry, msleep } from '../utils/utils';
 import { addConfig, deleteConfig } from '../utils/zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
+import { getStaticFlashRunnerNames } from '../utils/debugUtils';
 
 export interface TaskConfig {
   version: string;
@@ -246,6 +247,12 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       }
     }
 
+    // If a default runner is set on the build configuration, inject it to avoid prompting
+    // We look for the input token rather than the task label to support temporary tasks like "West Flash [cfg]".
+    if (config && config.defaultRunner && config.defaultRunner.length > 0 && args.includes("${input:west.runner}")) {
+      args = args.replace("${input:west.runner}", `--runner ${config.defaultRunner}`);
+    }
+
     const sysbuildEnabled =
       config && String(config.sysbuild).toLowerCase() === "true";
 
@@ -385,46 +392,7 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
           description: "Override default runner. Runners can flash and/or debug Zephyr programs.",
           options: [
             "",
-            "--runner arc-nsim",
-            "--runner blackmagicprobe",
-            "--runner bossac",
-            "--runner canopen_program",
-            "--runner dediprog",
-            "--runner dfu-util",
-            "--runner esp32",
-            "--runner ezflashcli",
-            "--runner gd32isp",
-            "--runner hifive1",
-            "--runner intel_adsp",
-            "--runner intel_cyclonev",
-            "--runner jlink",
-            "--runner linkserver",
-            "--runner mdb-hw",
-            "--runner mdb-nsim",
-            "--runner misc-flasher",
-            "--runner nios2",
-            "--runner nrfjprog",
-            "--runner nrfutil",
-            "--runner nsim",
-            "--runner nxp_s32dbg",
-            "--runner openocd",
-            "--runner pyocd",
-            "--runner qemu",
-            "--runner renode-robot",
-            "--runner renode",
-            "--runner silabs_commander",
-            "--runner spi_burn",
-            "--runner stm32cubeprogrammer",
-            "--runner stm32flash",
-            "--runner teensy",
-            "--runner trace32",
-            "--runner uf2",
-            "--runner xtensa",
-            "--runner ecpprog", 
-            "--runner minichlink",
-            "--runner probe_rs",
-            "--runner native",
-            "--runner xsdb"
+            ...getStaticFlashRunnerNames().map(n => `--runner ${n}`)
           ],
           default: ""
         }

@@ -44,9 +44,14 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       } else if(element.project.configs.length === 1) {
         const config = element.project.configs[0];
         const boardItem = new ZephyrConfigBoardTreeItem(element.project, config);
+        // Show default runner just under the board when set
+        if (config.defaultRunner && config.defaultRunner.length > 0) {
+          const runnerItem = new ZephyrConfigDefaultRunnerTreeItem(element.project, config);
+          items.push(boardItem, runnerItem);
+        } else {
+          items.push(boardItem);
+        }
         const westArgsItem = new ZephyrConfigArgTreeItem(element.project, config, 'west arguments', config.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
-
-        items.push(boardItem);
         items.push(westArgsItem);
 
         for(let key of Object.keys(config.envVars)) {
@@ -64,9 +69,14 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
 
     if(element instanceof ZephyrConfigTreeItem) {
       const boardItem = new ZephyrConfigBoardTreeItem(element.project, element.buildConfig);
+      // Show default runner just under the board when set
+      if (element.buildConfig.defaultRunner && element.buildConfig.defaultRunner.length > 0) {
+        const runnerItem = new ZephyrConfigDefaultRunnerTreeItem(element.project, element.buildConfig);
+        items.push(boardItem, runnerItem);
+      } else {
+        items.push(boardItem);
+      }
       const westArgsItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, 'west arguments', element.buildConfig.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
-
-      items.push(boardItem);
       items.push(westArgsItem);
 
       for(let key of Object.keys(element.buildConfig.envVars)) {
@@ -234,6 +244,20 @@ export class ZephyrConfigBoardTreeItem extends vscode.TreeItem {
 	}
   
   contextValue = 'zephyr-application-board';
+}
+
+export class ZephyrConfigDefaultRunnerTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly project: ZephyrAppProject,
+    public readonly config: ZephyrProjectBuildConfiguration,
+  ) {
+    // Label kept short to match existing style; description shows runner
+    super('runner', vscode.TreeItemCollapsibleState.None);
+    this.description = config.defaultRunner ?? '';
+    this.tooltip = `Default runner: ${config.defaultRunner}`;
+    this.iconPath = new vscode.ThemeIcon('run');
+  }
+  contextValue = 'zephyr-application-default-runner';
 }
 
 export class ZephyrApplicationEnvTreeItem extends vscode.TreeItem {
