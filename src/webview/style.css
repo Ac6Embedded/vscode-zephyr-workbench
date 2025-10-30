@@ -612,3 +612,16 @@ vscode-button {
   color: #0094ff;
 }
 
+.browse-spinner-inline {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.browse-spinner-inline .spinner {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+}
+

@@ -162,10 +162,12 @@ export class DebugManagerPanel {
               <div class="grid-group-div">
                 <vscode-text-field class="browse-field" size="50" type="text" id="programPath" value="">Program Path:</vscode-text-field>
                 <vscode-button id="browseProgramButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+                <span class="browse-spinner-inline"><span id="programPathSpinner" class="spinner" aria-label="Loading program path" style="display:none;"></span></span>
               </div>
               <div class="grid-group-div">
                 <vscode-text-field class="browse-field" size="50" type="text" id="svdPath" value="" placeholder="(Optional)" >SVD File:</vscode-text-field>
                 <vscode-button id="browseSvdButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+                <span class="browse-spinner-inline"><span id="svdPathSpinner" class="spinner" aria-label="Loading SVD file" style="display:none;"></span></span>
               </div>
             </fieldset>
 
@@ -179,6 +181,7 @@ export class DebugManagerPanel {
               <div class="grid-group-div">
                 <vscode-text-field class="browse-field" size="50" type="text" id="gdbPath" value="">GDB Path:</vscode-text-field>
                 <vscode-button id="browseGdbButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+                <span class="browse-spinner-inline"><span id="gdbPathSpinner" class="spinner" aria-label="Loading GDB path" style="display:none;"></span></span>
               </div>
 
               <div class="grid-group-div">
@@ -229,6 +232,7 @@ export class DebugManagerPanel {
               <div class="grid-group-div">
                 <vscode-text-field class="browse-field" size="50" type="text" id="runnerPath" value="">Runner Path:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Enter to debug server's location if not found automatically in PATH">?</span>&nbsp;&nbsp;&nbsp;<span id="runnerDetect"></span></vscode-text-field>
                 <vscode-button id="browseRunnerButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+                <span class="browse-spinner-inline"><span id="runnerPathSpinner" class="spinner" aria-label="Loading runner path" style="display:none;"></span></span>
               </div>
             
               <div class="grid-group-div">
