@@ -8,7 +8,7 @@ import { WestRunner } from "../debug/runners/WestRunner";
 import { checkPyOCDTarget, concatCommands, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from './execUtils';
 import { ZephyrProject } from "../models/ZephyrProject";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
-import { getSupportedBoards, getWestWorkspace, getZephyrSDK, deleteFolder } from './utils';
+import { getSupportedBoards, getWestWorkspace, getZephyrSDK, deleteFolder, findBoardByHierarchicalIdentifier } from './utils';
 import { STM32CubeProgrammer } from '../debug/runners/STM32CubeProgrammer';
 import { Nrfutil } from '../debug/runners/Nrfutil';
 import { Nrfjprog } from '../debug/runners/Nrfjprog';
@@ -354,16 +354,8 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
   }
 
   const listBoards = await getSupportedBoards(westWorkspace, project, buildConfig);
-  // boardIdentifier may be hierarchical like X/Y/Z; fallback to X/Y then X
   if (boardIdentifier) {
-    let candidate = String(boardIdentifier);
-    while (candidate.length > 0) {
-      const found = listBoards.find(b => b.identifier === candidate);
-      if (found) { targetBoard = found; break; }
-      const lastSlash = candidate.lastIndexOf('/');
-      if (lastSlash === -1) {break;}
-      candidate = candidate.substring(0, lastSlash);
-    }
+    targetBoard = findBoardByHierarchicalIdentifier(boardIdentifier, listBoards);
   }
   if(!targetBoard) {
     // Warn the user and throw to prevent pushing an invalid configuration

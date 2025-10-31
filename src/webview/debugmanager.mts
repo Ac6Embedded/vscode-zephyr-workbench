@@ -60,6 +60,16 @@ function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputEl
       if (input.id === 'buildConfigInput') {
         showBrowseSpinnersWhileLoading();
       }
+
+      if (input.id === 'runnerInput') {
+        // Clear previous detection text and start spinner before re-checking
+        const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
+        if (runnerDetectSpan) {
+          runnerDetectSpan.innerHTML = '';
+          runnerDetectSpan.style.color = '';
+        }
+        showSpinner('runnerPathSpinner');
+      }
     });
   }
 }
@@ -288,6 +298,7 @@ function initBuildConfigsDropdown() {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
   const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
   const buildConfigDropdown = document.getElementById('buildConfigDropdown') as HTMLElement;
+  const buildConfigDropdownSpinner = document.getElementById('buildConfigDropdownSpinner') as HTMLElement;
 
   buildConfigInput.addEventListener('focusin', () => {
     if (buildConfigDropdown) buildConfigDropdown.style.display = 'block';
@@ -319,6 +330,9 @@ function initBuildConfigsDropdown() {
   buildConfigDropdown.addEventListener('mouseup', e => e.preventDefault());
 
   addDropdownItemEventListeners(buildConfigDropdown, buildConfigInput);
+
+  // Ensure spinner is hidden on initial load
+  if (buildConfigDropdownSpinner) buildConfigDropdownSpinner.style.display = 'none';
 }
 
 function initRunnersDropdown() {
@@ -339,6 +353,12 @@ function initRunnersDropdown() {
   });
 
   runnerInput.addEventListener('input', () => {
+    // Clear previous detection text before triggering new detection
+    const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
+    if (runnerDetectSpan) {
+      runnerDetectSpan.innerHTML = '';
+      runnerDetectSpan.style.color = '';
+    }
     webviewApi.postMessage({
       command: 'runnerChanged',
       runner: runnerInput.getAttribute('data-value'),
@@ -476,6 +496,7 @@ function updateRunnerConfig(runnerPath: string, runnerArgs: string) {
 
 function updateRunnerDetect(runnerDetect: boolean) {
   const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
+  hideSpinner('runnerPathSpinner');
   if (runnerDetect === true) {
     runnerDetectSpan.innerHTML = "(Runner executable found)";
     runnerDetectSpan.style.color = "#00aa00";

@@ -150,6 +150,7 @@ export class DebugManagerPanel {
                       <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
                     </svg>
                   </slot>
+                  <div class="spinner" id="buildConfigDropdownSpinner" style="display:none;"></div>
                 </div>
                 <div id="buildConfigDropdown" class="dropdown-content" style="display: none;">
                 </div>
@@ -167,7 +168,6 @@ export class DebugManagerPanel {
               <div class="grid-group-div">
                 <vscode-text-field class="browse-field" size="50" type="text" id="svdPath" value="" placeholder="(Optional)" >SVD File:</vscode-text-field>
                 <vscode-button id="browseSvdButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
-                <span class="browse-spinner-inline"><span id="svdPathSpinner" class="spinner" aria-label="Loading SVD file" style="display:none;"></span></span>
               </div>
             </fieldset>
 
@@ -583,5 +583,3 @@ export class DebugManagerPanel {
     }
   }  
 }
-
-

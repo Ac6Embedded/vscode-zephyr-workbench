@@ -238,12 +238,26 @@ export function removeWorkspaceFolder(workspaceFolder: vscode.WorkspaceFolder) {
 }
 
 
-export async function getBoardFromIdentifier(boardIdentifier: string, westWorkspace: WestWorkspace, resource?: ZephyrProject | string, buildConfig?: ZephyrProjectBuildConfiguration | undefined): Promise<ZephyrBoard> {
-  for (let board of await getSupportedBoards(westWorkspace, resource, buildConfig)) {
-    if (boardIdentifier === board.identifier) {
-      return board;
-    }
+export function findBoardByHierarchicalIdentifier(boardIdentifier: string, boards: ZephyrBoard[]): ZephyrBoard | undefined {
+  // Try exact match first
+  let candidate = String(boardIdentifier);
+  let found = boards.find(b => b.identifier === candidate);
+  if (found) {return found;}
+  // boardIdentifier may be hierarchical like X/Y/Z; fallback to X/Y then X
+  while (candidate.length > 0) {
+    const lastSlash = candidate.lastIndexOf('/');
+    if (lastSlash === -1) {break;}
+    candidate = candidate.substring(0, lastSlash);
+    found = boards.find(b => b.identifier === candidate);
+    if (found) {return found;}
   }
+  return undefined;
+}
+
+export async function getBoardFromIdentifier(boardIdentifier: string, westWorkspace: WestWorkspace, resource?: ZephyrProject | string, buildConfig?: ZephyrProjectBuildConfiguration | undefined): Promise<ZephyrBoard> {
+  const boards = await getSupportedBoards(westWorkspace, resource, buildConfig);
+  const board = findBoardByHierarchicalIdentifier(boardIdentifier, boards);
+  if (board) {return board;}
   throw new Error(`No board named ${boardIdentifier} found`);
 }
 
