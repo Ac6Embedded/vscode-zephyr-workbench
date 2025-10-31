@@ -652,3 +652,50 @@ vscode-button {
   animation: spinner-preserve-translate 0.6s linear infinite;
 }
 
+.edit-env-button {
+  min-width: 80px;
+  width: 80px;
+  box-sizing: border-box;
+}
+
+.env-name, .env-value {
+  width: 40%;
+  padding: 0 8px;
+}
+.env-value {
+  width: 50%;
+}
+
+.env-add-btn {
+  margin-top: 0;
+  margin-left: 0;
+  min-width: 200px;
+  width: 50%; 
+  max-width: 420px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+.env-actions-cell {
+  width: 10%;
+  text-align: right;
+  padding-right: 8px;
+}
+.env-input {
+  width: 100%;
+  min-width: 80px;
+  box-sizing: border-box;
+  margin-right: 12px; 
+}
+.env-actions {
+  display: inline-flex;
+  gap: 16px; 
+  margin-left: 8px; 
+  vertical-align: middle;
+  align-items: center;
+  justify-content: flex-start;
+}
+
