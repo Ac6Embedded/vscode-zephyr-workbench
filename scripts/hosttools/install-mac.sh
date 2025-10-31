@@ -264,9 +264,8 @@ if [[ $non_root_packages == true ]]; then
       if [ -d "$INSTALL_DIR/.venv" ]; then
         rm -rf "$INSTALL_DIR/.venv"
       fi
-      source "$ENV_FILE" &> /dev/null
       install_python_venv "$INSTALL_DIR" "$TMP_DIR"
-	    rm -rf $TMP_DIR
+      rm -rf "$TMP_DIR"
       exit 0
     fi
 

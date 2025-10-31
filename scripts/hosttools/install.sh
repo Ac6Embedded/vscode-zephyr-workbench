@@ -9,10 +9,8 @@ YAML_FILE="$SCRIPT_DIR/tools.yml"
 root_packages=true
 non_root_packages=true
 check_installed_bool=true
-skip_sdk_bool=false
-install_sdk_bool=false
 reinstall_venv_bool=false
-portable=false
+portable_python=false
 INSTALL_DIR=""
 
 zinstaller_version="2.0"
@@ -29,11 +27,7 @@ OPTIONS:
   --only-root               Only install packages that require root privileges.
   --only-without-root       Only install packages that do not require root privileges.
   --only-check              Only check the installation status of the packages without installing them.
-  --skip-sdk                Skip default SDK download
-  --install-sdk             Additionally install the SDK after installing the packages.
   --reinstall-venv          Remove existing virtual environment and create a new one.
-  --portable                Install portable Python instead of global
-  --select-sdk="SDK1 SDK2"  Specify space-separated SDKs to install. E.g., 'arm aarch64'
 
 ARGUMENTS:
   installDir                The directory where the packages should be installed. 
@@ -41,7 +35,7 @@ ARGUMENTS:
 
 DESCRIPTION:
   This script installs host dependencies for Zephyr project on your system.
-  By default, it installs all necessary packages without installing the SDK globally.
+  By default, it installs all necessary packages.
   If no installDir is specified, the default directory is used.
 EOF
 }
@@ -65,22 +59,10 @@ while [[ "$#" -gt 0 ]]; do
       root_packages=false
       non_root_packages=false
       ;;
-    --skip-sdk)
-      skip_sdk_bool=true
-      ;;
-    --install-sdk)
-      install_sdk_bool=true
-      ;;
     --reinstall-venv)
       reinstall_venv_bool=true
       root_packages=false
       check_installed_bool=false
-      ;;
-    --portable)
-      portable=true
-      ;;
-    --select-sdk=*)
-      selected_sdk_list="${1#*=}"
       ;;
     *)
       if [[ -z "$INSTALL_DIR" ]]; then
@@ -225,14 +207,6 @@ install_python_venv() {
 if [[ $root_packages == true ]]; then
     pr_title "Install non portable tools"
 
-    # Install Python3 & OpenSSL as packages if not portable 
-    python_pkg=""
-    openssl_pkg=""
-    if [ $portable = false ]; then
-      python_pkg="python3"
-      openssl_pkg="openssl"
-    fi
-
     if [[ -f /etc/os-release ]]; then
         . /etc/os-release
         case "$ID" in
@@ -244,24 +218,28 @@ if [[ $root_packages == true ]]; then
                 pr_error 3 "Ubuntu version lower than 20.04 are not supported"
                 exit 3
             fi
+            portable_python=true
             sudo apt-get update
-            sudo apt -y install --no-install-recommends git gperf ccache dfu-util wget xz-utils unzip file make libsdl2-dev libmagic1 ${python_pkg} ${openssl_pkg}
+            sudo apt -y install --no-install-recommends git cmake ninja-build gperf ccache dfu-util device-tree-compiler wget python3-dev python3-pip python3-setuptools python3-tk python3-wheel xz-utils file make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1 unzip
             ;;
         fedora)
             echo "This is Fedora."
-            sudo dnf upgrade
-            sudo dnf group install "Development Tools" "C Development Tools and Libraries"
-            sudo dnf install gperf dfu-util wget which xz file SDL2-devel ${python_pkg}
+            portable_python=false
+            sudo dnf upgrade -y
+            sudo dnf group install -y "Development Tools" "C Development Tools and Libraries"
+            sudo dnf install -y cmake ninja-build gperf dfu-util dtc wget which python3-pip python3-tkinter xz file python3-devel SDL2-devel
             ;;
         clear-linux-os)
             echo "This is Clear Linux."
+            portable_python=false
             sudo swupd update
-            sudo swupd bundle-add c-basic dev-utils dfu-util dtc os-core-dev ${python_pkg}
+            sudo swupd bundle-add c-basic dev-utils dfu-util dtc os-core-dev python-basic python3-basic python3-tcl
             ;;
         arch)
             echo "This is Arch Linux."
-            sudo pacman -Syu
-            sudo pacman -S git cmake ninja gperf ccache dfu-util dtc wget xz file make ${python_pkg}
+            portable_python=false
+            sudo pacman -Syu --noconfirm
+            sudo pacman -S --noconfirm git cmake ninja gperf ccache dfu-util dtc wget python-pip python-setuptools python-wheel tk xz file make
             ;;
         *)
             pr_error 3 "Distribution is not recognized."
@@ -332,34 +310,38 @@ if [[ $non_root_packages == true ]]; then
       if [ -d "$INSTALL_DIR/.venv" ]; then
         rm -rf "$INSTALL_DIR/.venv"
       fi
-      source "$ENV_FILE" &> /dev/null
+      # Prefer portable Python in tools if present; otherwise rely on system python3
+      TOOLS_PY=$(find "$INSTALL_DIR/tools" -maxdepth 2 -type f -name python3 2>/dev/null | head -n 1)
+      if [[ -x "$TOOLS_PY" ]]; then
+        export PATH="$(dirname "$TOOLS_PY"):$PATH"
+      fi
       install_python_venv "$INSTALL_DIR" "$TMP_DIR"
-	    rm -rf $TMP_DIR
+      rm -rf "$TMP_DIR"
       exit 0
     fi
 
-	if [ $portable = true ]; then
-    openssl_lib_bool=true
-    if [ $openssl_lib_bool = true ]; then
-      pr_title "OpenSSL"
-      OPENSSL_FOLDER_NAME="openssl-1.1.1t"
-      OPENSSL_ARCHIVE_NAME="${OPENSSL_FOLDER_NAME}.tar.bz2"
-      download_and_check_hash ${openssl[source]} ${openssl[sha256]} "$OPENSSL_ARCHIVE_NAME"
-      tar xf "$DL_DIR/$OPENSSL_ARCHIVE_NAME" -C "$TOOLS_DIR"
-      openssl_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME/usr/local/bin"
-      openssl_lib_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME/usr/local/lib"
-      export LD_LIBRARY_PATH="$openssl_lib_path:$LD_LIBRARY_PATH"
-      export PATH="$openssl_path:$PATH"
-    fi
+	if [ $portable_python = true ]; then
+        openssl_lib_bool=true
+        if [ $openssl_lib_bool = true ]; then
+        pr_title "OpenSSL"
+        OPENSSL_FOLDER_NAME="openssl-1.1.1t"
+        OPENSSL_ARCHIVE_NAME="${OPENSSL_FOLDER_NAME}.tar.bz2"
+        download_and_check_hash ${openssl[source]} ${openssl[sha256]} "$OPENSSL_ARCHIVE_NAME"
+        tar xf "$DL_DIR/$OPENSSL_ARCHIVE_NAME" -C "$TOOLS_DIR"
+        openssl_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME/usr/local/bin"
+        openssl_lib_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME/usr/local/lib"
+        export LD_LIBRARY_PATH="$openssl_lib_path:$LD_LIBRARY_PATH"
+        export PATH="$openssl_path:$PATH"
+        fi
 
-    pr_title "Python"
-    PYTHON_FOLDER_NAME="3.13.5"
-    PYTHON_ARCHIVE_NAME="cpython-${PYTHON_FOLDER_NAME}-linux-x86_64.tar.gz"
-    download_and_check_hash ${python_portable[source]} ${python_portable[sha256]} "$PYTHON_ARCHIVE_NAME"
-    tar xf "$DL_DIR/$PYTHON_ARCHIVE_NAME" -C "$TOOLS_DIR"
-    python_path="$INSTALL_DIR/tools/$PYTHON_FOLDER_NAME/bin"
-    export PATH="$python_path:$PATH"
-  fi
+        pr_title "Python"
+        PYTHON_FOLDER_NAME="3.13.5"
+        PYTHON_ARCHIVE_NAME="cpython-${PYTHON_FOLDER_NAME}-linux-x86_64.tar.gz"
+        download_and_check_hash ${python_portable[source]} ${python_portable[sha256]} "$PYTHON_ARCHIVE_NAME"
+        tar xf "$DL_DIR/$PYTHON_ARCHIVE_NAME" -C "$TOOLS_DIR"
+        python_path="$INSTALL_DIR/tools/$PYTHON_FOLDER_NAME/bin"
+        export PATH="$python_path:$PATH"
+    fi
 
     pr_title "Ninja"
     NINJA_ARCHIVE_NAME="ninja-linux.zip"
@@ -372,46 +354,6 @@ if [[ $non_root_packages == true ]]; then
     CMAKE_ARCHIVE_NAME="${CMAKE_FOLDER_NAME}.tar.gz"
     download_and_check_hash ${cmake[source]} ${cmake[sha256]} "$CMAKE_ARCHIVE_NAME"
     tar xf "$DL_DIR/$CMAKE_ARCHIVE_NAME" -C "$TOOLS_DIR"
-
-    if [ $skip_sdk_bool = false ]; then
-      pr_title "Zephyr SDK"
-      SDK_VERSION="0.16.8"
-      ZEPHYR_SDK_FOLDER_NAME="zephyr-sdk-${SDK_VERSION}"
-      if [ -n "$selected_sdk_list" ]; then
-        # If --select-sdk was used, download and extract the minimal SDK and specified toolchains
-	    
-        SDK_BASE_URL="https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SDK_VERSION}"
-        SDK_MINIMAL_URL="${SDK_BASE_URL}/zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz"
-        MINIMAL_ARCHIVE_NAME="zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz"
-      
-        echo "Installing minimal SDK for $selected_sdk_list"
-        wget --no-check-certificate -q -O "$DL_DIR/$MINIMAL_ARCHIVE_NAME" "$SDK_MINIMAL_URL"
-        tar xf "$DL_DIR/$MINIMAL_ARCHIVE_NAME" -C "$INSTALL_DIR"
-      
-        # Loop through the selected SDKs and download/extract each toolchain
-        IFS=' ' read -r -a sdk_array <<< "$selected_sdk_list"
-        for sdk in "${sdk_array[@]}"; do
-          toolchain_name="${sdk}-zephyr-elf"
-          [ "$sdk" = "arm" ] && toolchain_name="${sdk}-zephyr-eabi"
-      
-          toolchain_url="${SDK_BASE_URL}/toolchain_linux-x86_64_${toolchain_name}.tar.xz"
-          toolchain_archive_name="toolchain_linux-x86_64_${toolchain_name}.tar.xz"
-      
-          echo "Downloading and extracting $toolchain_name"
-          wget --no-check-certificate -q -O "$DL_DIR/$toolchain_archive_name" "$toolchain_url"
-          tar xf "$DL_DIR/$toolchain_archive_name" -C "$INSTALL_DIR/$ZEPHYR_SDK_FOLDER_NAME"
-        done
-      else
-        ZEPHYR_SDK_ARCHIVE_NAME="zephyr-sdk-${SDK_VERSION}_linux-x86_64.tar.xz"
-        download_and_check_hash ${zephyr_sdk[source]} ${zephyr_sdk[sha256]} "$ZEPHYR_SDK_ARCHIVE_NAME"
-        tar xf "$DL_DIR/$ZEPHYR_SDK_ARCHIVE_NAME" -C "$INSTALL_DIR"
-      fi
-      
-      if [[ $install_sdk_bool == true ]]; then
-          pr_title "Install Zephyr SDK"
-          yes | bash "$INSTALL_DIR/$ZEPHYR_SDK_FOLDER_NAME/setup.sh"
-      fi
-    fi
 	
     cmake_path="$INSTALL_DIR/tools/$CMAKE_FOLDER_NAME/bin"
     ninja_path="$INSTALL_DIR/tools/ninja"
@@ -531,7 +473,7 @@ tools:
     do_not_use: false
 EOF
 
-if [ "$portable" = true ]; then
+if [ "$portable_python" = true ]; then
 	# Detect the installed Python version (from system or portable)
 	if command -v python3 >/dev/null 2>&1; then
 		PYTHON_VERSION=$(python3 --version 2>&1 | grep -oP 'Python \K[^\s]+')
@@ -539,6 +481,7 @@ if [ "$portable" = true ]; then
 		PYTHON_VERSION=""
 	fi
 	
+if [ "$portable_python" = true ]; then
 	cat << EOF >> "$ENV_YAML_PATH"
 
   python:
@@ -560,6 +503,14 @@ python:
   global_venv_path: "$INSTALL_DIR/.venv"
 
 EOF
+else
+	cat << EOF >> "$ENV_YAML_PATH"
+
+python:
+  global_venv_path: "$INSTALL_DIR/.venv"
+
+EOF
+fi
 
 echo "Created environment manifest: $ENV_YAML_PATH"
 

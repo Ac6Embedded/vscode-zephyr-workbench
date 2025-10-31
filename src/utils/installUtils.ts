@@ -212,30 +212,7 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
   }
 }
 
-export async function getInstallHostToolsArgs(option: string, listSdks: string[]) {
-  if(option === 'skip') {
-    switch(process.platform) {
-      case 'linux': 
-        return '--skip-sdk';
-      case 'darwin':
-        return '';
-      case 'win32':
-        return '-SkipSdk ';
-    }
-  } else if(option === 'all') {
-    return '';
-  } else {
-    if(listSdks) {
-      switch(process.platform) {
-        case 'linux': 
-        case 'darwin':
-          return `--select-sdk="${listSdks.join(' ')}"`;
-        case 'win32':
-          return `-SelectSdk "${listSdks.join(' ')}"`;
-      }
-    }
-  }
-}
+// Removed: getInstallHostToolsArgs (no longer used)
 
 export async function installHostTools(context: vscode.ExtensionContext, skipSdk: boolean = false, listTools: string = "") {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
@@ -251,12 +228,6 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
       case 'linux': {
         installScript = 'install.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        if(skipSdk) {
-          installArgs += ' --skip-sdk';
-        } else if(listTools.length > 0) {
-          installArgs += ` --select-sdk="${listTools}"`;
-        }
-        installArgs += ' --portable';
         installArgs += ` ${destDir}`;
         shell = 'bash';
         break; 
@@ -264,14 +235,9 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
       case 'win32': {
         installScript = 'install.ps1';
         installCmd = `powershell -ExecutionPolicy Bypass --% -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        if(skipSdk) {
-          installArgs += ' -SkipSdk ';
-        } else if(listTools.length > 0) {
-          installArgs += ` -SelectSdk "${listTools}"`;
-        }
-        installArgs += ' --Portable';
         installArgs += ` -InstallDir ${destDir}`;
         shell = 'powershell.exe';
+        // TODO: check if powershell 7 is installed and used by default then use pwsh.exe instead
         break; 
       }
       case 'darwin': {
@@ -282,7 +248,6 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
         } else if(listTools.length > 0) {
           installArgs += ` --select-sdk="${listTools}"`;
         }
-        installArgs += ' --portable';
         installArgs += ` ${destDir}`;
         shell = 'bash';
         break; 

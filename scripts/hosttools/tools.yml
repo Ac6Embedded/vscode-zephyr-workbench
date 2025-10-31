@@ -118,4 +118,17 @@ zephyr_content:
     darwin:
       source: xxx
       sha256: xxx
-      
+ 
+python_packages:
+  # You can specify just a name
+  - name: windows-curses
+  - name: anytree
+  # Or a name + version (string)
+  - name: puncover
+    version: "0.4.2"
+  # Or a direct URL (wheel/sdist)
+  # - url: https://files.pythonhosted.org/packages/.../somepkg-1.2.3-py3-none-any.whl
+  - name: setuptools
+  - name: wheel
+  - name: pyelftools
+  - name: west
