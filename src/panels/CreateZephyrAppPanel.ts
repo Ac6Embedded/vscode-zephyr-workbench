@@ -350,6 +350,26 @@ export class CreateZephyrAppPanel {
 
 async function updateForm(webview: vscode.Webview, workspaceUri: string) {
   if (workspaceUri && workspaceUri.length > 0) {
+    // Start timing discovery (Windows only) and warn if it exceeds 30 seconds
+    let completed = false;
+    let warningTimeout: ReturnType<typeof setTimeout> | undefined;
+    if (process.platform === 'win32') {
+      warningTimeout = setTimeout(() => {
+        if (!completed) {
+          vscode.window
+            .showWarningMessage(
+              'Searching boards is taking so long, this either due to a slow disk or you must add antivirus exclusion to your workspace',
+              'Read more'
+            )
+            .then(choice => {
+              if (choice === 'Read more') {
+                vscode.env.openExternal(vscode.Uri.parse('https://z-workbench.com/docs/documentation/known-issues#slow-builds---exclude-workspace-from-antivirus'));
+              }
+            });
+        }
+      }, 30000);
+    }
+
     let westWorkspace = getWestWorkspace(vscode.Uri.parse(workspaceUri, true).fsPath);
     const boards = await getSupportedBoards(westWorkspace);
     boards.sort((a, b) => {
@@ -391,6 +411,10 @@ async function updateForm(webview: vscode.Webview, workspaceUri: string) {
       newSamplesHTML += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${sample.rootDir.fsPath}</span></div>`;
     }
     webview.postMessage({ command: 'updateSamplesDropdown', samplesHTML: newSamplesHTML });
+
+    // Discovery completed; clear the warning timer
+    completed = true;
+    if (warningTimeout) { clearTimeout(warningTimeout); }
   }
 }
 
@@ -434,4 +458,3 @@ function checkCreateParameters(message: any) {
 
   return true;
 }
-

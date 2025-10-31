@@ -63,6 +63,21 @@ function main() {
     pw.style.display = 'none';
   });
 
+  // Refresh all runner statuses: clear cells and ask backend to re-detect
+  const refreshBtn = document.getElementById('refresh-status-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      // Clear Version and Status columns
+      document.querySelectorAll('[id^="version-"]')
+        .forEach(el => { (el as HTMLElement).textContent = ''; });
+      document.querySelectorAll('[id^="detect-"]')
+        .forEach(el => { (el as HTMLElement).textContent = ''; });
+
+      // Trigger backend to re-run detection for all tools
+      webviewApi.postMessage({ command: 'refresh-all' });
+    });
+  }
+
   // Expand or collapse details row under the application name
   const expandButtons = document.querySelectorAll('.expand-button');
   expandButtons.forEach(button => {
@@ -175,7 +190,7 @@ function main() {
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement | null;
     if (!target) return;
-    const addBtn = target.id === 'add-extra-path-btn' ? target : null;
+    const addBtn = target.closest('#add-extra-path-btn') as HTMLElement | null;
     if (!addBtn) return;
     e.preventDefault();
     e.stopPropagation();
@@ -195,6 +210,9 @@ function main() {
           <div id="extra-details-content-${nextIdx}" class="details-content">
             <div class="grid-group-div extra-grid-group">
               <vscode-text-field id="extra-path-input-${nextIdx}" class="details-path-field" value="" size="50">New Path:</vscode-text-field>
+              <vscode-button id="browse-extra-path-button-${nextIdx}" class="browse-extra-input-button" appearance="secondary">
+                <span class="codicon codicon-folder"></span>
+              </vscode-button>
               <vscode-button id="edit-extra-path-btn-${nextIdx}" class="edit-extra-path-button save-path-button" appearance="primary">Done</vscode-button>
               <vscode-button id="remove-extra-path-btn-${nextIdx}" class="remove-extra-path-button" appearance="secondary" disabled>Remove</vscode-button>
             </div>
@@ -239,6 +257,18 @@ function main() {
     });
   });
 
+  // Browse extra runner path (event delegation)
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const browseBtn = target.closest('.browse-extra-input-button') as HTMLElement | null;
+    if (!browseBtn) return;
+    const id = browseBtn.id || '';
+    const idx = id.replace('browse-extra-path-button-', '');
+    if (idx === '') return;
+    webviewApi.postMessage({ command: 'browse-extra-path', idx });
+  });
+
   // Toggle Add to PATH: use event delegation so dynamically-updated rows still work
   document.addEventListener('change', (ev) => {
     const target = ev.target as any;
@@ -258,10 +288,15 @@ function setVSCodeMessageListener() {
       case 'exec-done': {
         const progress = document.getElementById(`progress-${event.data.tool}`) as HTMLElement;
         progress.style.display = 'none';
-        webviewApi.postMessage({
-          command: 'detect',
-          tool: event.data.tool
-        });
+        // Keep legacy per-tool detect for immediate feedback
+        webviewApi.postMessage({ command: 'detect', tool: event.data.tool });
+        break;
+      }
+      case 'exec-install-finished': {
+        // Clear all versions and statuses, then ask backend to refresh all
+        document.querySelectorAll('[id^="version-"]').forEach(el => { (el as HTMLElement).textContent = ''; });
+        document.querySelectorAll('[id^="detect-"]').forEach(el => { (el as HTMLElement).textContent = ''; });
+        webviewApi.postMessage({ command: 'refresh-all' });
         break;
       }
       case 'detect-done': {
@@ -325,10 +360,12 @@ function setVSCodeMessageListener() {
         const { idx, path, success } = event.data;
         const input = document.getElementById(`extra-path-input-${idx}`) as HTMLInputElement | null;
         const btn = document.getElementById(`edit-extra-path-btn-${idx}`) as HTMLButtonElement | null;
+        const browse = document.getElementById(`browse-extra-path-button-${idx}`) as HTMLButtonElement | null;
         const remove = document.getElementById(`remove-extra-path-btn-${idx}`) as HTMLButtonElement | null;
         if (success) {
           if (input) { input.value = path ?? ''; input.disabled = true; }
           if (btn) { btn.textContent = 'Edit'; }
+          if (browse) { browse.setAttribute('disabled', 'true'); }
           if (remove) { remove.setAttribute('disabled', 'true'); }
         }
         break;
@@ -370,6 +407,7 @@ document.addEventListener('click', (e) => {
     const id = editBtn.id; // edit-extra-path-btn-<idx>
     const idx = id.replace('edit-extra-path-btn-', '');
     const input = document.getElementById(`extra-path-input-${idx}`) as HTMLInputElement | null;
+    const browse = document.getElementById(`browse-extra-path-button-${idx}`) as HTMLButtonElement | null;
     const remove = document.getElementById(`remove-extra-path-btn-${idx}`) as HTMLButtonElement | null;
     if (!input) return;
     if (editBtn.textContent === 'Edit') {
@@ -377,11 +415,13 @@ document.addEventListener('click', (e) => {
       input.focus();
       editBtn.textContent = 'Done';
       // Enable Remove only while in Edit mode
+      if (browse) browse.removeAttribute('disabled');
       if (remove) remove.removeAttribute('disabled');
       return;
     }
     if (editBtn.textContent === 'Done') {
       // Still enable remove button when path is empty 
+      if (browse) browse.setAttribute('disabled', 'true');
       if (remove) remove.setAttribute('enabled', 'true');
       // Clean the UI but not remove the content on the env.yml
       if (input.value.trim() !== '') {

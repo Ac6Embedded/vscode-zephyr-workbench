@@ -72,18 +72,16 @@ export class WestRunner {
   }
 
   loadSettings() {
-    let pathExec: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(this.getSettingKey('pathExec'));
-    if(pathExec) {
-      this.serverPath = pathExec;
-    }
+    // No-op: runner paths are detected from environment; settings removed
   }
 
   async updateSettings() {
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(this.getSettingKey('pathExec'), this.serverPath, vscode.ConfigurationTarget.Global);
+    // No-op: do not persist runner path to settings
   }
 
   getSetting(key: string): string | undefined {
-    return vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(this.getSettingKey(key));
+    // Settings for debug runner paths are no longer used
+    return undefined;
   }
 
   async updateSetting(key: string, value: string) {
@@ -94,8 +92,6 @@ export class WestRunner {
     let execPath = '';
     if(this.serverPath) {
       execPath = this.serverPath;
-    } else if(this.getSetting('pathExec')) {
-      execPath = this.getSetting('pathExec') as string;
     } else if(this.executable) {
       execPath = this.executable;
     }

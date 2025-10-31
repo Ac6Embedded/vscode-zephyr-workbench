@@ -24,6 +24,7 @@ import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
 import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
+import { HostToolsPanel } from './panels/HostToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { changeToolchainQuickStep } from "./quicksteps/changeToolchainQuickStep";
@@ -1237,6 +1238,8 @@ export function activate(context: vscode.ExtensionContext) {
 						zephyrSdkProvider.refresh();
 						zephyrShortcutProvider.refresh();
 						zephyrToolsCommandProvider.refresh();
+						// If Host Tools Manager is open, refresh its content
+						try { HostToolsPanel.currentPanel?.refresh(); } catch {}
 					}
 				);
 			}
@@ -1276,6 +1279,15 @@ export function activate(context: vscode.ExtensionContext) {
 					true,
 					""
 				);
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench.host-tools-manager",
+			async () => {
+				HostToolsPanel.render(context.extensionUri);
 			}
 		)
 	);
@@ -1370,6 +1382,9 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 					panel.webview.postMessage({ command: 'exec-done', tool: `${tool.tool}` });
 				}
+
+				// Notify webview that the whole install batch has finished (single or pack)
+				panel.webview.postMessage({ command: 'exec-install-finished' });
 			});
 		})
 	);
