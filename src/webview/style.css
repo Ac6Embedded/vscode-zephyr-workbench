@@ -398,13 +398,16 @@ vscode-button {
 
 .spinner {
   display: inline-block;
-  width: 18px;
-  height: 18px;
-  border: 3px solid rgba(0, 0, 0, 0.3);
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  border: 2px solid rgba(0, 0, 0, 0.2);
   border-top-color: var(--vscode-statusBar-focusBorder);
   border-radius: 50%;
   animation: spinner 0.6s linear infinite;
   visibility: visible;
+  vertical-align: middle;
 }
 
 .tooltip {
@@ -525,7 +528,7 @@ vscode-button {
 
 .debug-tools-table .grid-group-div {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
   width: 100%;
 }
@@ -616,14 +619,14 @@ vscode-button {
 .browse-spinner-inline {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   margin-left: 8px;
   margin-right: 0;
   vertical-align: middle;
-  position: absolute;
-  right: 8px;
-  top: 0;
-  height: 100%;
+  position: static;
+  height: auto;
+  top: auto;
+  right: auto;
   transform: none;
-  justify-content: center;
 }
 
