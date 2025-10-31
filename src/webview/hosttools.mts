@@ -77,6 +77,11 @@ function main() {
         checkbox.disabled = true;
         btn.textContent = 'Edit';
         webviewApi.postMessage({ command: 'update-path', tool, newPath: input.value, addToPath: checkbox.checked });
+        // Refresh versions when Done is pressed
+        document.querySelectorAll('td[id^="version-"]').forEach((el) => {
+          (el as HTMLElement).textContent = '';
+        });
+        webviewApi.postMessage({ command: 'refresh-versions' });
       }
     }
   });
@@ -86,6 +91,17 @@ function main() {
   if (btnReinstall) {
     btnReinstall.addEventListener('click', () => {
       webviewApi.postMessage({ command: 'reinstall-host-tools' });
+    });
+  }
+
+  const btnRefreshVersions = document.getElementById('btn-refresh-versions');
+  if (btnRefreshVersions) {
+    btnRefreshVersions.addEventListener('click', () => {
+      // Clear all version cells before requesting a refresh
+      document.querySelectorAll('td[id^="version-"]').forEach((el) => {
+        (el as HTMLElement).textContent = '';
+      });
+      webviewApi.postMessage({ command: 'refresh-versions' });
     });
   }
 
@@ -129,6 +145,11 @@ function main() {
           newKey: nameInput.value,
           newValue: valueInput.value,
         });
+        // Refresh versions when Done is pressed
+        document.querySelectorAll('td[id^="version-"]').forEach((el) => {
+          (el as HTMLElement).textContent = '';
+        });
+        webviewApi.postMessage({ command: 'refresh-versions' });
         return;
       }
     }
@@ -232,8 +253,25 @@ function setVSCodeMessageListener() {
   window.addEventListener('message', (event) => {
     const command = event.data.command;
     switch (command) {
+      case 'toggle-spinner': {
+        const show = !!event.data.show;
+        const sp = document.getElementById('ht-spinner');
+        if (sp) {
+          if (show) sp.classList.remove('hidden');
+          else sp.classList.add('hidden');
+        }
+        break;
+      }
+      case 'update-tool-versions': {
+        const versions = event.data.versions || {};
+        for (const [tool, ver] of Object.entries(versions)) {
+          const cell = document.getElementById(`version-${tool}`);
+          if (cell) { cell.textContent = String(ver); }
+        }
+        break;
+      }
       case 'path-updated': {
-        const { tool, path, FromBrowse } = event.data;
+        const { tool, path, FromBrowse, success } = event.data;
         const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
         const browseBtn = document.getElementById(`browse-path-button-${tool}`) as HTMLButtonElement | null;
         const checkbox = document.querySelector(`.add-to-path[data-tool="${tool}"]`) as HTMLInputElement | null;
@@ -405,28 +443,33 @@ document.addEventListener('click', (e) => {
   const target = e.target as HTMLElement | null;
   if (!target) return;
   const editBtn = target.closest('.edit-extra-path-button') as HTMLButtonElement | null;
-  if (editBtn) {
-    const id = editBtn.id;
-    const idx = id.replace('edit-extra-path-btn-', '');
-    const input = document.getElementById(`extra-path-input-${idx}`) as HTMLInputElement | null;
-    const browse = document.getElementById(`browse-extra-path-button-${idx}`) as HTMLButtonElement | null;
-    const remove = document.getElementById(`remove-extra-path-btn-${idx}`) as HTMLButtonElement | null;
-    if (!input) return;
-    if (editBtn.textContent === 'Edit') {
-      input.disabled = false;
-      input.focus();
-      editBtn.textContent = 'Done';
-      if (browse) browse.removeAttribute('disabled');
-      if (remove) remove.removeAttribute('disabled');
-      return;
+    if (editBtn) {
+      const id = editBtn.id;
+      const idx = id.replace('edit-extra-path-btn-', '');
+      const input = document.getElementById(`extra-path-input-${idx}`) as HTMLInputElement | null;
+      const browse = document.getElementById(`browse-extra-path-button-${idx}`) as HTMLButtonElement | null;
+      const remove = document.getElementById(`remove-extra-path-btn-${idx}`) as HTMLButtonElement | null;
+      if (!input) return;
+      if (editBtn.textContent === 'Edit') {
+        input.disabled = false;
+        input.focus();
+        editBtn.textContent = 'Done';
+        if (browse) browse.removeAttribute('disabled');
+        if (remove) remove.removeAttribute('disabled');
+        return;
+      }
+      if (editBtn.textContent === 'Done') {
+        if (browse) browse.setAttribute('disabled', 'true');
+        if (remove) remove.setAttribute('enabled', 'true');
+        webviewApi.postMessage({ command: 'update-extra-path', idx, newPath: input.value });
+        // Refresh versions when Done is pressed
+        document.querySelectorAll('td[id^="version-"]').forEach((el) => {
+          (el as HTMLElement).textContent = '';
+        });
+        webviewApi.postMessage({ command: 'refresh-versions' });
+        return;
+      }
     }
-    if (editBtn.textContent === 'Done') {
-      if (browse) browse.setAttribute('disabled', 'true');
-      if (remove) remove.setAttribute('enabled', 'true');
-      webviewApi.postMessage({ command: 'update-extra-path', idx, newPath: input.value });
-      return;
-    }
-  }
   const removeBtn = target.closest('.remove-extra-path-button') as HTMLButtonElement | null;
   if (removeBtn) {
     if (removeBtn.hasAttribute('disabled')) return;
