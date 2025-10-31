@@ -55,11 +55,10 @@ function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputEl
       input.dispatchEvent(new Event('input'));
       dropdown.style.display = 'none';
 
-          if (input.id === 'applicationInput') {
-            hideSpinner('svdPathSpinner'); 
-            hideSpinner('runnerPathSpinner'); 
-            showSpinner('programPathSpinner');
-            showSpinner('gdbPathSpinner');
+      // Start spinners only when a build configuration is chosen,
+      // since that triggers the heavy work (parse + populate fields).
+      if (input.id === 'buildConfigInput') {
+        showBrowseSpinnersWhileLoading();
       }
     });
   }
@@ -97,7 +96,6 @@ function setLocalPath(id: string, path: string) {
     localPath.dispatchEvent(new Event('input'));
   }
   if (id === 'programPath') hideSpinner('programPathSpinner');
-  if (id === 'svdPath') hideSpinner('svdPathSpinner');
   if (id === 'gdbPath') hideSpinner('gdbPathSpinner');
   if (id === 'runnerPath') hideSpinner('runnerPathSpinner');
 }
@@ -149,7 +147,6 @@ function browseProgramHandler(this: HTMLElement, ev: MouseEvent) {
 }
 
 function browseSvdHandler(this: HTMLElement, ev: MouseEvent) {
-  showSpinner('svdPathSpinner');
   webviewApi.postMessage({ command: 'browseSvd' });
 }
 
@@ -246,7 +243,6 @@ function showBrowseSpinnersWhileLoading() {
 
 function hideBrowseSpinners() {
   hideSpinner('programPathSpinner');
-  hideSpinner('svdPathSpinner');
   hideSpinner('gdbPathSpinner');
   hideSpinner('runnerPathSpinner');
 }
@@ -255,6 +251,7 @@ function initApplicationsDropdown() {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
   const applicationsDropdown = document.getElementById('applicationsDropdown') as HTMLElement;
   const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement;
+  const buildConfigDropdownSpinner = document.getElementById('buildConfigDropdownSpinner') as HTMLElement;
 
   applicationInput.addEventListener('focusin', () => {
     if (applicationsDropdown) applicationsDropdown.style.display = 'block';
@@ -269,6 +266,7 @@ function initApplicationsDropdown() {
   });
 
   applicationInput.addEventListener('input', () => {
+    if (buildConfigDropdownSpinner) buildConfigDropdownSpinner.style.display = 'inline-block';
     webviewApi.postMessage({
       command: 'projectChanged',
       project: applicationInput.getAttribute('data-value'),
@@ -304,6 +302,8 @@ function initBuildConfigsDropdown() {
   });
 
   buildConfigInput.addEventListener('input', () => {
+    // Show spinners when build config changes, as heavy work begins now.
+    showBrowseSpinnersWhileLoading();
     webviewApi.postMessage({
       command: 'buildConfigChanged',
       project: applicationInput.getAttribute('data-value'),
@@ -383,6 +383,7 @@ async function updateSelectedApplication(projectPath: string, configName: string
 function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = false) {
   const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
   const buildConfigDropdown = document.getElementById('buildConfigDropdown') as HTMLElement;
+  const buildConfigDropdownSpinner = document.getElementById('buildConfigDropdownSpinner') as HTMLElement;
 
   if (buildConfigsHTML.length > 0) {
     buildConfigInput.disabled = false;
@@ -397,6 +398,7 @@ function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = fal
   } else {
     buildConfigInput.disabled = true;
   }
+  if (buildConfigDropdownSpinner) buildConfigDropdownSpinner.style.display = 'none';
 }
 
 function updateConfig(data: any) {
@@ -458,7 +460,6 @@ function updateConfig(data: any) {
     if (programLoaded) hideSpinner('programPathSpinner');
     if (gdbLoaded) hideSpinner('gdbPathSpinner');
     if (runnerLoaded) hideSpinner('runnerPathSpinner');
-    if ((svdPathText.value ?? '').trim().length > 0) hideSpinner('svdPathSpinner');
   }
 }
 
