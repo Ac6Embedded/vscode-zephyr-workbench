@@ -297,6 +297,8 @@ function initApplicationsDropdown() {
     if(applicationsDropdown) {
       applicationsDropdown.style.display = 'block';
     }
+    applicationDropdownSpinner.style.display = 'block';
+    showBrowseSpinnersWhileLoading();
   });
 
   applicationInput.addEventListener('input', () => {
@@ -307,7 +309,6 @@ function initApplicationsDropdown() {
       }
     );
     applicationDropdownSpinner.style.display = 'block';
-    showBrowseSpinnersWhileLoading();
   });
 
   applicationInput.addEventListener('keyup', () => {
@@ -359,7 +360,6 @@ function initBuildConfigsDropdown() {
       }
     );
     applicationDropdownSpinner.style.display = 'block';
-    showBrowseSpinnersWhileLoading();
   });
 
   buildConfigInput.addEventListener('keyup', () => {
