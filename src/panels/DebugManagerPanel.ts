@@ -284,7 +284,14 @@ export class DebugManagerPanel {
             const buildConfig = appProject.getBuildConfiguration(buildConfigName);
 
             if(appProject && buildConfig) {
-              await updateConfiguration(appProject, buildConfig);
+              await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: 'Debug Manager',
+                cancellable: false,
+              }, async (progress) => {
+                progress.report({ message: 'Preparing build configuration' });
+                await updateConfiguration(appProject, buildConfig);
+              });
             }
             break;
           }
