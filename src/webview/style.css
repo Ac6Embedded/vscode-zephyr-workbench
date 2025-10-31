@@ -617,16 +617,14 @@ vscode-button {
 }
 
 .browse-spinner-inline {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 8px;
-  margin-right: 0;
-  vertical-align: middle;
-  position: static;
-  height: auto;
-  top: auto;
-  right: auto;
-  transform: none;
+  position: absolute;
+  right: 4px; 
+  top: 58%;
+  transform: translateY(-58%); 
+  margin: 0; 
+  display: inline-block; 
+  height: 10px; 
+  width: 10px; 
+  border-width: 1.2px;
 }
 
