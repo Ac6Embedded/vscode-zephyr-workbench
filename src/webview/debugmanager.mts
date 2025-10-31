@@ -91,12 +91,12 @@ function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
 
 function showSpinner(spinnerId: string) {
   const spinner = document.getElementById(spinnerId);
-  if (spinner) spinner.style.display = 'inline-block';
+  if (spinner) {spinner.style.display = 'inline-block';}
 }
 
 function hideSpinner(spinnerId: string) {
   const spinner = document.getElementById(spinnerId);
-  if (spinner) spinner.style.display = 'none';
+  if (spinner) {spinner.style.display = 'none';}
 }
 
 function setLocalPath(id: string, path: string) {
@@ -105,9 +105,9 @@ function setLocalPath(id: string, path: string) {
     localPath.value = path;
     localPath.dispatchEvent(new Event('input'));
   }
-  if (id === 'programPath') hideSpinner('programPathSpinner');
-  if (id === 'gdbPath') hideSpinner('gdbPathSpinner');
-  if (id === 'runnerPath') hideSpinner('runnerPathSpinner');
+  if (id === 'programPath') {hideSpinner('programPathSpinner');}
+  if (id === 'gdbPath') {hideSpinner('gdbPathSpinner');}
+  if (id === 'runnerPath') {hideSpinner('runnerPathSpinner');}
 }
 
 function setVSCodeMessageListener() {
@@ -264,19 +264,19 @@ function initApplicationsDropdown() {
   const buildConfigDropdownSpinner = document.getElementById('buildConfigDropdownSpinner') as HTMLElement;
 
   applicationInput.addEventListener('focusin', () => {
-    if (applicationsDropdown) applicationsDropdown.style.display = 'block';
+    if (applicationsDropdown) {applicationsDropdown.style.display = 'block';}
   });
 
   applicationInput.addEventListener('focusout', () => {
-    if (applicationsDropdown) applicationsDropdown.style.display = 'none';
+    if (applicationsDropdown) {applicationsDropdown.style.display = 'none';}
   });
 
   applicationInput.addEventListener('click', () => {
-    if (applicationsDropdown) applicationsDropdown.style.display = 'block';
+    if (applicationsDropdown) {applicationsDropdown.style.display = 'block';}
   });
 
   applicationInput.addEventListener('input', () => {
-    if (buildConfigDropdownSpinner) buildConfigDropdownSpinner.style.display = 'inline-block';
+    if (buildConfigDropdownSpinner) {buildConfigDropdownSpinner.style.display = 'inline-block';}
     webviewApi.postMessage({
       command: 'projectChanged',
       project: applicationInput.getAttribute('data-value'),
@@ -301,15 +301,15 @@ function initBuildConfigsDropdown() {
   const buildConfigDropdownSpinner = document.getElementById('buildConfigDropdownSpinner') as HTMLElement;
 
   buildConfigInput.addEventListener('focusin', () => {
-    if (buildConfigDropdown) buildConfigDropdown.style.display = 'block';
+    if (buildConfigDropdown) {buildConfigDropdown.style.display = 'block';}
   });
 
   buildConfigInput.addEventListener('focusout', () => {
-    if (buildConfigDropdown) buildConfigDropdown.style.display = 'none';
+    if (buildConfigDropdown) {buildConfigDropdown.style.display = 'none';}
   });
 
   buildConfigInput.addEventListener('click', () => {
-    if (buildConfigDropdown) buildConfigDropdown.style.display = 'block';
+    if (buildConfigDropdown) {buildConfigDropdown.style.display = 'block';}
   });
 
   buildConfigInput.addEventListener('input', () => {
@@ -332,7 +332,7 @@ function initBuildConfigsDropdown() {
   addDropdownItemEventListeners(buildConfigDropdown, buildConfigInput);
 
   // Ensure spinner is hidden on initial load
-  if (buildConfigDropdownSpinner) buildConfigDropdownSpinner.style.display = 'none';
+  if (buildConfigDropdownSpinner) {buildConfigDropdownSpinner.style.display = 'none';}
 }
 
 function initRunnersDropdown() {
@@ -341,15 +341,15 @@ function initRunnersDropdown() {
   const runnerPath = document.getElementById('runnerPath') as TextField;
 
   runnerInput.addEventListener('focusin', () => {
-    if (runnersDropdown) runnersDropdown.style.display = 'block';
+    if (runnersDropdown) {runnersDropdown.style.display = 'block';}
   });
 
   runnerInput.addEventListener('focusout', () => {
-    if (runnersDropdown) runnersDropdown.style.display = 'none';
+    if (runnersDropdown) {runnersDropdown.style.display = 'none';}
   });
 
   runnerInput.addEventListener('click', () => {
-    if (runnersDropdown) runnersDropdown.style.display = 'block';
+    if (runnersDropdown) {runnersDropdown.style.display = 'block';}
   });
 
   runnerInput.addEventListener('input', () => {
@@ -418,7 +418,7 @@ function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = fal
   } else {
     buildConfigInput.disabled = true;
   }
-  if (buildConfigDropdownSpinner) buildConfigDropdownSpinner.style.display = 'none';
+  if (buildConfigDropdownSpinner) {buildConfigDropdownSpinner.style.display = 'none';}
 }
 
 function updateConfig(data: any) {
@@ -477,9 +477,9 @@ function updateConfig(data: any) {
   if (programLoaded && gdbLoaded && runnerLoaded) {
     hideBrowseSpinners();
   } else {
-    if (programLoaded) hideSpinner('programPathSpinner');
-    if (gdbLoaded) hideSpinner('gdbPathSpinner');
-    if (runnerLoaded) hideSpinner('runnerPathSpinner');
+    if (programLoaded) {hideSpinner('programPathSpinner');}
+    if (gdbLoaded) {hideSpinner('gdbPathSpinner');}
+    if (runnerLoaded) {hideSpinner('runnerPathSpinner');}
   }
 }
 
@@ -491,7 +491,7 @@ function updateRunnerConfig(runnerPath: string, runnerArgs: string) {
   runnerArgsText.value = runnerArgs ?? '';
   runnerArgsText.dispatchEvent(new Event('input'));
 
-  if ((runnerPath ?? '').trim().length > 0) hideSpinner('runnerPathSpinner');
+  if ((runnerPath ?? '').trim().length > 0) {hideSpinner('runnerPathSpinner');}
 }
 
 function updateRunnerDetect(runnerDetect: boolean) {
