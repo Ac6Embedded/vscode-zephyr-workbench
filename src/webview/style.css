@@ -1,38 +1,8 @@
-﻿body {
+body {
   display: flex;
   flex-direction: column;
   color: var(--vscode-editor-foreground);
 }
-
-/* Modern summary header for Host Tools */
-.summary {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
-  margin: 6px 0 12px 0;
-  border: 1px solid var(--vscode-tab-border);
-  border-radius: calc(var(--corner-radius-round) * 1px);
-  background: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent);
-}
-
-.summary-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.summary-title {
-  font-size: calc(var(--type-ramp-base-font-size) + 1px);
-}
-
-.actions-title {
-  margin-right: 8px;
-  align-self: center;
-}
-
-.warning-icon { color: #ffcc00; }
-.success-icon { color: #2ecc71; }
 
 form {
   margin-top: 5px;
@@ -54,6 +24,7 @@ form {
 
 .grid-group-div {
   margin-bottom: 10px;
+  position: relative;
 }
 
 .grid-group-div * {
@@ -85,70 +56,25 @@ form {
   border-collapse: collapse;
 }
 
-/* Environment variables table tweaks */
-.env-table { table-layout: fixed; width: 100%; }
-.env-table { padding: 0; }
-.debug-tools-table.env-table { width: 100% !important; padding-left: 0; padding-right: 0; }
-.env-table th:nth-child(1), .env-table td:nth-child(1) {
-  width: 25%;
-  text-align: left;
-}
-.env-table th:nth-child(2), .env-table td:nth-child(2) {
-  width: 60%;
-  text-align: left;
-}
-.env-table th:nth-child(3), .env-table td:nth-child(3) {
-  width: 15%;
-  text-align: right;
-}
-.env-table td { padding: 6px 8px; }
-.env-table td { border-bottom: 1px solid var(--vscode-tab-border); }
-.env-table td.env-actions-cell { padding-right: 0; }
-.env-table td .env-actions { display: flex; width: 100%; justify-content: flex-end; gap: 6px; white-space: nowrap; }
-.env-table .env-input { width: 100%; max-width: 100%; box-sizing: border-box; }
-.env-table .env-add-row { text-align: left; padding-top: 10px; }
-
-/* Ensure env inputs stretch despite generic field width defaults */
-.debug-tools-table.env-table vscode-text-field.env-input {
-  width: 100% !important;
-  min-width: 0 !important;
-  display: block;
-  box-sizing: border-box;
-}
-
-.debug-tools-table:not(.env-table) td {
+.debug-tools-table th, .debug-tools-table td {
   border-bottom: 1px solid var(--vscode-tab-border);
+  width: 13%;
   text-align: center;
 }
 
-/* Refresh icon sits inline after Status with spacing */
-#status-header {
-  padding-left: calc(var(--input-height) * 1px + 5px);
-}
-#status-header .header-icon-button {
-  margin-left: 5px;
-  vertical-align: middle;
-}
-
 .debug-tools-table th {
-  border-bottom: 4px solid var(--vscode-tab-border);
-  padding-bottom: 6px;
+  border-bottom: 3px solid var(--vscode-tab-border);
+  padding-bottom: 5px;
 }
 
-.debug-tools-table:not(.env-table) th:nth-child(1), .debug-tools-table:not(.env-table) td:nth-child(1) {
-  width: calc(var(--input-height) * 1px + 12px);
-}
-.debug-tools-table:not(.env-table) td:nth-child(1) {
-  text-align: left;
-  padding-left: 0;
+.debug-tools-table th:nth-child(1), .debug-tools-table td:nth-child(1) {
+  width: 20px;
 }
 
-.debug-tools-table:not(.env-table) th:nth-child(2), .debug-tools-table:not(.env-table) td:nth-child(2) {
+.debug-tools-table th:nth-child(2), .debug-tools-table td:nth-child(2) {
   width: 40%;
   text-align: left;
 }
-
-/* debug-borders helpers removed */
 
 .debug-tools-table .details-row td {
   background-color: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent);
@@ -168,7 +94,7 @@ form {
 }
 
 .debug-tools-table tr.details-row td:nth-child(2) { 
-  width: 56%;
+  width: 60%;
 }
 .debug-tools-table tr.details-row td:nth-child(3) {
   width: 12%;
@@ -238,6 +164,10 @@ vscode-button {
   display: inline-block;
   width: calc(var(--design-unit)* 135px);
   min-width: calc(var(--design-unit)* 60px);
+}
+
+#listBoards, #listSamples {
+  display: flex !important;
 }
 
 .combo-dropdown .combo-dropdown-control {
@@ -351,6 +281,52 @@ vscode-button {
   flex: 0 0 auto;
   margin-left: 4px;
 }
+#listBoards, #listSamples {
+  display: flex !important;
+}
+
+#listBoards, #listSamples {
+  display: flex !important;
+  align-items: center;
+  width: calc(var(--design-unit) * 135px + 269px);
+}
+
+#listBoards .combo-dropdown-input,
+#listSamples .combo-dropdown-input {
+  position: relative;
+  flex: 0 0 calc(var(--design-unit) * 135px);
+  max-width: calc(var(--design-unit) * 135px);
+}
+
+#listBoards .combo-dropdown-control,
+#listSamples .combo-dropdown-control {
+  width: 100%;
+  padding-right: 28px;
+}
+
+#listBoards .indicator,
+#listSamples .indicator {
+  right: 7px;
+}
+
+#listBoards .combo-dropdown-controls,
+#listSamples .combo-dropdown-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+  width: 22px;
+  margin-left: 4px;
+}
+
+#listBoards .dropdown-content,
+#listSamples .dropdown-content {
+  width: calc(var(--design-unit) * 135px);
+  min-width: calc(var(--design-unit) * 135px);
+  max-width: calc(var(--design-unit) * 135px);
+  left: 0;
+  right: auto;
+}
 
 .dropdown-content {
   display: none;
@@ -422,13 +398,13 @@ vscode-button {
 
 .spinner {
   display: inline-block;
-  visibility: hidden;
-  width: 12px;
-  height: 12px;
+  width: 18px;
+  height: 18px;
   border: 3px solid rgba(0, 0, 0, 0.3);
   border-top-color: var(--vscode-statusBar-focusBorder);
   border-radius: 50%;
   animation: spinner 0.6s linear infinite;
+  visibility: visible;
 }
 
 .tooltip {
@@ -637,4 +613,17 @@ vscode-button {
   color: #0094ff;
 }
 
+.browse-spinner-inline {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  margin-right: 0;
+  vertical-align: middle;
+  position: absolute;
+  right: 8px;
+  top: 0;
+  height: 100%;
+  transform: none;
+  justify-content: center;
+}
 

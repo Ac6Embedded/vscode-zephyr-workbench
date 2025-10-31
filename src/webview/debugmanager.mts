@@ -78,12 +78,26 @@ function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
   }
 }
 
+function showSpinner(spinnerId: string) {
+  const spinner = document.getElementById(spinnerId);
+  if (spinner) spinner.style.display = 'inline-block';
+}
+
+function hideSpinner(spinnerId: string) {
+  const spinner = document.getElementById(spinnerId);
+  if (spinner) spinner.style.display = 'none';
+}
+
 function setLocalPath(id: string, path: string) {
   const localPath = document.getElementById(id) as TextField;
   if(path) {
     localPath.value = path;
     localPath.dispatchEvent(new Event('input'));
   }
+  if (id === 'programPath') hideSpinner('programPathSpinner');
+  if (id === 'svdPath') hideSpinner('svdPathSpinner');
+  if (id === 'gdbPath') hideSpinner('gdbPathSpinner');
+  if (id === 'runnerPath') hideSpinner('runnerPathSpinner');
 }
 
 function setVSCodeMessageListener() {
@@ -128,6 +142,7 @@ function setVSCodeMessageListener() {
 }
 
 function browseProgramHandler(this: HTMLElement, ev: MouseEvent) {
+  showSpinner('programPathSpinner');
   webviewApi.postMessage(
     {
       command: 'browseProgram',
@@ -136,6 +151,7 @@ function browseProgramHandler(this: HTMLElement, ev: MouseEvent) {
 }
 
 function browseSvdHandler(this: HTMLElement, ev: MouseEvent) {
+  showSpinner('svdPathSpinner');
   webviewApi.postMessage(
     {
       command: 'browseSvd',
@@ -144,6 +160,7 @@ function browseSvdHandler(this: HTMLElement, ev: MouseEvent) {
 }
 
 function browseGdbHandler(this: HTMLElement, ev: MouseEvent) {
+  showSpinner('gdbPathSpinner');
   webviewApi.postMessage(
     {
       command: 'browseGdb',
@@ -152,6 +169,7 @@ function browseGdbHandler(this: HTMLElement, ev: MouseEvent) {
 }
 
 function browseRunnerHandler(this: HTMLElement, ev: MouseEvent) {
+  showSpinner('runnerPathSpinner');
   webviewApi.postMessage(
     {
       command: 'browseRunner',
@@ -244,6 +262,20 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
   );
 }
 
+function showBrowseSpinnersWhileLoading() {
+  showSpinner('programPathSpinner');
+  showSpinner('svdPathSpinner');
+  showSpinner('gdbPathSpinner');
+  showSpinner('runnerPathSpinner');
+}
+
+function hideBrowseSpinners() {
+  hideSpinner('programPathSpinner');
+  hideSpinner('svdPathSpinner');
+  hideSpinner('gdbPathSpinner');
+  hideSpinner('runnerPathSpinner');
+}
+
 function initApplicationsDropdown() {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
   const applicationsDropdown = document.getElementById('applicationsDropdown') as HTMLElement;
@@ -275,6 +307,7 @@ function initApplicationsDropdown() {
       }
     );
     applicationDropdownSpinner.style.display = 'block';
+    showBrowseSpinnersWhileLoading();
   });
 
   applicationInput.addEventListener('keyup', () => {
@@ -326,6 +359,7 @@ function initBuildConfigsDropdown() {
       }
     );
     applicationDropdownSpinner.style.display = 'block';
+    showBrowseSpinnersWhileLoading();
   });
 
   buildConfigInput.addEventListener('keyup', () => {
@@ -429,6 +463,7 @@ function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = fal
     
     // Hide loading spinner
     applicationDropdownSpinner.style.display = 'none';
+    hideBrowseSpinners();
 
     if(selectFirst) {
       const firstOption = buildConfigDropdown.children[0] as HTMLElement;
@@ -490,6 +525,7 @@ function updateConfig(data: any) {
 
   // Hide loading spinner
   applicationDropdownSpinner.style.display = 'none';
+  hideBrowseSpinners();
 }
 
 function updateRunnerConfig(runnerPath: string, runnerArgs: string) {
