@@ -396,6 +396,14 @@ vscode-button {
   to { transform: rotate(360deg); }
 }
 
+/* Special animation that preserves a translateY offset while rotating.
+   Used for absolutely positioned spinners where we need to keep vertical
+   centering (avoid animation clobbering the translateY). */
+@keyframes spinner-preserve-translate {
+  from { transform: translateY(-50%) rotate(0deg); }
+  to   { transform: translateY(-50%) rotate(360deg); }
+}
+
 .spinner {
   display: inline-block;
   width: 16px;
@@ -617,14 +625,30 @@ vscode-button {
 }
 
 .browse-spinner-inline {
-  position: absolute;
-  right: 4px; 
-  top: 58%;
-  transform: translateY(-58%); 
+  position: absolute; 
+  right: 10px; 
+  top: 58%; 
+  transform: translateY(-58%);
   margin: 0; 
   display: inline-block; 
   height: 10px; 
   width: 10px; 
-  border-width: 1.2px;
+  border-width: 1.2px; 
+}
+
+#applicationsDropdownSpinner {
+  position: absolute; 
+  right: -32px;
+  top: 50%; 
+  transform: translateY(-50%) rotate(0deg); 
+  margin: 0; 
+  display: inline-block; 
+  height: 16px; 
+  width: 16px; 
+  border-width: 2px; 
+  border-color: rgba(0, 0, 0, 0.2); 
+  border-top-color: var(--vscode-statusBar-focusBorder);
+  border-radius: 50%; 
+  animation: spinner-preserve-translate 0.6s linear infinite;
 }
 
