@@ -108,17 +108,20 @@ function main() {
       const valueInput = document.getElementById(`env-value-input-${idx}`) as HTMLInputElement | null;
       const prevKey = editBtn.getAttribute('data-prev-key') || '';
       if (!nameInput || !valueInput) return;
+      const removeBtn = document.getElementById(`remove-env-btn-${idx}`) as HTMLButtonElement | null;
       if (editBtn.textContent === 'Edit') {
         nameInput.disabled = false;
         valueInput.disabled = false;
         nameInput.focus();
         editBtn.textContent = 'Done';
+        if (removeBtn) removeBtn.removeAttribute('disabled');
         return;
       }
       if (editBtn.textContent === 'Done') {
         nameInput.disabled = true;
         valueInput.disabled = true;
         editBtn.textContent = 'Edit';
+        if (removeBtn) removeBtn.setAttribute('disabled', 'true');
         webviewApi.postMessage({
           command: 'update-env-var',
           idx,
@@ -286,7 +289,7 @@ function setVSCodeMessageListener() {
           if (nameInput) { nameInput.value = key; nameInput.disabled = true; }
           if (valueInput) { valueInput.value = value ?? ''; valueInput.disabled = true; }
           if (editBtn) { editBtn.textContent = 'Edit'; editBtn.setAttribute('data-prev-key', key); }
-          if (removeBtn) { removeBtn.setAttribute('data-key', key); }
+          if (removeBtn) { removeBtn.setAttribute('data-key', key); removeBtn.setAttribute('disabled', 'true'); }
         }
         break;
       }

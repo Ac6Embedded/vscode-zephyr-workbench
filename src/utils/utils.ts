@@ -828,6 +828,27 @@ function versionAtLeast(current: string, minimum: string): boolean {
   return true;
 }
 
+// Returns true if zinstaller_version is missing or below the minimum required
+export function isZinstallerUpdateNeeded(): boolean {
+  try {
+    const versionFile = path.join(getInternalDirRealPath(), 'zinstaller_version');
+    if (!fs.existsSync(versionFile)) { return true; }
+
+    let current = '0';
+    try {
+      const txt = fs.readFileSync(versionFile, 'utf8');
+      const m = /^Script Version:\s*([0-9.]+)/m.exec(txt);
+      if (m) { current = m[1]; }
+    } catch {
+      return true; // unreadable or unparsable
+    }
+
+    return !versionAtLeast(current, ZINSTALLER_MINIMUM_VERSION);
+  } catch {
+    return true;
+  }
+}
+
 export async function checkZinstallerVersion(
   context: vscode.ExtensionContext)
 {
@@ -836,16 +857,22 @@ export async function checkZinstallerVersion(
     "zinstaller_version"
   );
 
-  if (!fs.existsSync(versionFile)) { return; }
+  const fileExists = fs.existsSync(versionFile);
 
   let current = "0";
-  try {
-    const txt = await fs.promises.readFile(versionFile, "utf8");
-    const m = /^Script Version:\s*([0-9.]+)/m.exec(txt);
-    if (m) { current = m[1]; }
-  } catch { return; }
+  if (fileExists) {
+    try {
+      const txt = await fs.promises.readFile(versionFile, "utf8");
+      const m = /^Script Version:\s*([0-9.]+)/m.exec(txt);
+      if (m) { current = m[1]; }
+    } catch {
+      // If unreadable, treat as outdated
+      current = "0";
+    }
+  }
 
-  if (versionAtLeast(current, ZINSTALLER_MINIMUM_VERSION)) { return; }
+  // If version file exists and meets minimum, no action; otherwise prompt
+  if (fileExists && versionAtLeast(current, ZINSTALLER_MINIMUM_VERSION)) { return; }
 
 
   const answer = await vscode.window.showWarningMessage(

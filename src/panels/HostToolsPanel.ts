@@ -48,6 +48,25 @@ export class HostToolsPanel {
     }, null, this._disposables);
   }
 
+  public async refresh() {
+    try {
+      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
+      if (fs.existsSync(envYamlPath)) {
+        const text = fs.readFileSync(envYamlPath, "utf8");
+        this.envData = yaml.parse(text);
+        this.envYamlDoc = yaml.parseDocument(text);
+      } else {
+        this.envData = undefined;
+        this.envYamlDoc = undefined;
+      }
+    } catch {
+      this.envData = undefined;
+      this.envYamlDoc = undefined;
+    }
+
+    this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
+  }
+
   public static render(extensionUri: vscode.Uri) {
     if (HostToolsPanel.currentPanel) {
       HostToolsPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
@@ -209,11 +228,9 @@ export class HostToolsPanel {
     // Read installed Zinstaller version from file and compare with minimum
     const installedVersion = this.getInstalledZinstallerVersion();
     const minVersion = ZINSTALLER_MINIMUM_VERSION;
-    const status = installedVersion
-      ? (this.versionAtLeast(installedVersion, minVersion)
-          ? { text: 'Up to date', icon: 'codicon-check', cls: 'success-icon' }
-          : { text: 'Needs update', icon: 'codicon-warning', cls: 'warning-icon' })
-      : { text: 'Unknown', icon: 'codicon-warning', cls: 'warning-icon' };
+    const status = (installedVersion && this.versionAtLeast(installedVersion, minVersion))
+      ? { text: 'Up to date', icon: 'codicon-check', cls: 'success-icon' }
+      : { text: 'Needs update, Reinstall Host Tools', icon: 'codicon-warning', cls: 'warning-icon' };
 
     return /*html*/ `
       <!DOCTYPE html>
@@ -525,7 +542,7 @@ export class HostToolsPanel {
           <td class="env-actions-cell">
             <div class="env-actions">
               <vscode-button id="edit-env-btn-${idx}" class="edit-env-button" appearance="primary" data-prev-key="${keyEsc}">Edit</vscode-button>
-              <vscode-button id="remove-env-btn-${idx}" class="remove-env-button" appearance="secondary" data-env-idx="${idx}" data-key="${keyEsc}">Remove</vscode-button>
+              <vscode-button id="remove-env-btn-${idx}" class="remove-env-button" appearance="secondary" data-env-idx="${idx}" data-key="${keyEsc}" disabled>Remove</vscode-button>
             </div>
           </td>
         </tr>`;

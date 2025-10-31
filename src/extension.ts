@@ -1238,6 +1238,8 @@ export function activate(context: vscode.ExtensionContext) {
 						zephyrSdkProvider.refresh();
 						zephyrShortcutProvider.refresh();
 						zephyrToolsCommandProvider.refresh();
+						// If Host Tools Manager is open, refresh its content
+						try { HostToolsPanel.currentPanel?.refresh(); } catch {}
 					}
 				);
 			}
