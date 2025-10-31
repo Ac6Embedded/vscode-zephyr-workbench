@@ -260,6 +260,25 @@ export class HostToolsPanel {
           </form>
           <form>
             <h2>
+              Environment Variables
+              <span class="tooltip-extra" data-tooltip="Variables defined here are global environment variables.">?</span>
+            </h2>
+            <table class="debug-tools-table env-table">
+              <tr>
+                <th>Name</th>
+                <th>Value</th>
+                <th></th>
+              </tr>
+              ${this.getEnvVarsHTML()}
+              <tr>
+                <td colspan="3" class="env-add-row">
+                  <vscode-button id="add-env-var-btn" appearance="secondary">Add variable</vscode-button>
+                </td>
+              </tr>
+            </table>
+          </form>
+          <form>
+            <h2>
               Extra Tools
               <span class="tooltip-extra" data-tooltip="Add custom locations to the system PATH">?</span>
             </h2>
@@ -335,6 +354,47 @@ export class HostToolsPanel {
           case "toggle-add-to-path": {
             const { tool, addToPath } = message;
             webview.postMessage({ command: "add-to-path-updated", tool, doNotUse: !addToPath });
+            break;
+          }
+          case "add-env-var": {
+            try {
+              const count = this.getEnvVarsList().length;
+              webview.postMessage({ command: "add-env-var-done", idx: count });
+            } catch {
+              webview.postMessage({ command: "add-env-var-done", idx: 0 });
+            }
+            break;
+          }
+          case "update-env-var": {
+            try {
+              const idx: number = Number(message.idx);
+              const prevKey: string = (message.prevKey ?? '').toString();
+              const newKey: string = (message.newKey ?? '').toString().trim();
+              const newValue: string = (message.newValue ?? '').toString();
+              if (!newKey) {
+                vscode.window.showErrorMessage('Please provide a variable name');
+                webview.postMessage({ command: 'env-var-updated', idx, success: false });
+                break;
+              }
+              const ok = await this.saveEnvVar(prevKey, newKey, newValue);
+              webview.postMessage({ command: 'env-var-updated', idx, key: newKey, value: newValue, success: ok });
+              if (ok) {
+                this._panel.webview.html = await this._getWebviewContent(webview, this._extensionUri);
+              }
+            } catch {
+              webview.postMessage({ command: 'env-var-updated', idx: message.idx, success: false });
+            }
+            break;
+          }
+          case "remove-env-var": {
+            try {
+              const idx: number = Number(message.idx);
+              const key: string = (message.key ?? '').toString();
+              const ok = await this.removeEnvVar(key);
+              webview.postMessage({ command: 'env-var-removed', idx, key, success: ok });
+            } catch {
+              webview.postMessage({ command: 'env-var-removed', idx: message.idx, success: false });
+            }
             break;
           }
           case "add-extra-path": {
@@ -445,6 +505,84 @@ export class HostToolsPanel {
       undefined,
       this._disposables
     );
+  }
+
+  private getEnvVarsList(): Array<{ key: string; value: any }> {
+    const env = (this.envData?.env && typeof this.envData.env === 'object') ? this.envData.env : {};
+    return Object.keys(env).map(k => ({ key: k, value: (env as any)[k] }));
+  }
+
+  private getEnvVarsHTML(): string {
+    const rows = this.getEnvVarsList();
+    let html = '';
+    rows.forEach((pair, idx) => {
+      const keyEsc = String(pair.key);
+      const valEsc = typeof pair.value === 'string' ? pair.value : JSON.stringify(pair.value);
+      html += `
+        <tr id="env-row-${idx}">
+          <td class="env-name"><vscode-text-field id="env-name-input-${idx}" class="env-input" value="${keyEsc}" placeholder="Name" size="30" disabled></vscode-text-field></td>
+          <td class="env-value"><vscode-text-field id="env-value-input-${idx}" class="env-input" value="${valEsc}" placeholder="Value" size="50" disabled></vscode-text-field></td>
+          <td class="env-actions-cell">
+            <div class="env-actions">
+              <vscode-button id="edit-env-btn-${idx}" class="edit-env-button" appearance="primary" data-prev-key="${keyEsc}">Edit</vscode-button>
+              <vscode-button id="remove-env-btn-${idx}" class="remove-env-button" appearance="secondary" data-env-idx="${idx}" data-key="${keyEsc}">Remove</vscode-button>
+            </div>
+          </td>
+        </tr>`;
+    });
+    return html;
+  }
+
+  private async saveEnvVar(prevKey: string, key: string, value: any): Promise<boolean> {
+    try {
+      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
+      let doc: any;
+      if (fs.existsSync(envYamlPath)) {
+        const text = fs.readFileSync(envYamlPath, "utf8");
+        doc = yaml.parseDocument(text);
+      } else if (this.envYamlDoc) {
+        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
+      } else {
+        doc = yaml.parseDocument("{}");
+      }
+
+      if (prevKey && prevKey !== key) {
+        doc.deleteIn(["env", prevKey]);
+      }
+      doc.setIn(["env", key], value);
+      formatYml(doc.contents);
+      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
+      fs.writeFileSync(envYamlPath, yamlText, "utf8");
+      this.envYamlDoc = doc;
+      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async removeEnvVar(key: string): Promise<boolean> {
+    try {
+      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
+      let doc: any;
+      if (fs.existsSync(envYamlPath)) {
+        const text = fs.readFileSync(envYamlPath, "utf8");
+        doc = yaml.parseDocument(text);
+      } else if (this.envYamlDoc) {
+        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
+      } else {
+        doc = yaml.parseDocument("{}");
+      }
+      doc.deleteIn(["env", key]);
+      formatYml(doc.contents);
+      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
+      fs.writeFileSync(envYamlPath, yamlText, "utf8");
+      this.envYamlDoc = doc;
+      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private getEnvGlobalVersion(): string | undefined {

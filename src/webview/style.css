@@ -1,4 +1,4 @@
-body {
+﻿body {
   display: flex;
   flex-direction: column;
   color: var(--vscode-editor-foreground);
@@ -85,9 +85,39 @@ form {
   border-collapse: collapse;
 }
 
-.debug-tools-table th, .debug-tools-table td {
+/* Environment variables table tweaks */
+.env-table { table-layout: fixed; width: 100%; }
+.env-table { padding: 0; }
+.debug-tools-table.env-table { width: 100% !important; padding-left: 0; padding-right: 0; }
+.env-table th:nth-child(1), .env-table td:nth-child(1) {
+  width: 25%;
+  text-align: left;
+}
+.env-table th:nth-child(2), .env-table td:nth-child(2) {
+  width: 60%;
+  text-align: left;
+}
+.env-table th:nth-child(3), .env-table td:nth-child(3) {
+  width: 15%;
+  text-align: right;
+}
+.env-table td { padding: 6px 8px; }
+.env-table td { border-bottom: 1px solid var(--vscode-tab-border); }
+.env-table td.env-actions-cell { padding-right: 0; }
+.env-table td .env-actions { display: flex; width: 100%; justify-content: flex-end; gap: 6px; white-space: nowrap; }
+.env-table .env-input { width: 100%; max-width: 100%; box-sizing: border-box; }
+.env-table .env-add-row { text-align: left; padding-top: 10px; }
+
+/* Ensure env inputs stretch despite generic field width defaults */
+.debug-tools-table.env-table vscode-text-field.env-input {
+  width: 100% !important;
+  min-width: 0 !important;
+  display: block;
+  box-sizing: border-box;
+}
+
+.debug-tools-table:not(.env-table) td {
   border-bottom: 1px solid var(--vscode-tab-border);
-  width: 13%;
   text-align: center;
 }
 
@@ -101,18 +131,24 @@ form {
 }
 
 .debug-tools-table th {
-  border-bottom: 3px solid var(--vscode-tab-border);
-  padding-bottom: 5px;
+  border-bottom: 4px solid var(--vscode-tab-border);
+  padding-bottom: 6px;
 }
 
-.debug-tools-table th:nth-child(1), .debug-tools-table td:nth-child(1) {
-  width: 20px;
+.debug-tools-table:not(.env-table) th:nth-child(1), .debug-tools-table:not(.env-table) td:nth-child(1) {
+  width: calc(var(--input-height) * 1px + 12px);
+}
+.debug-tools-table:not(.env-table) td:nth-child(1) {
+  text-align: left;
+  padding-left: 0;
 }
 
-.debug-tools-table th:nth-child(2), .debug-tools-table td:nth-child(2) {
+.debug-tools-table:not(.env-table) th:nth-child(2), .debug-tools-table:not(.env-table) td:nth-child(2) {
   width: 40%;
   text-align: left;
 }
+
+/* debug-borders helpers removed */
 
 .debug-tools-table .details-row td {
   background-color: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent);
@@ -132,7 +168,7 @@ form {
 }
 
 .debug-tools-table tr.details-row td:nth-child(2) { 
-  width: 60%;
+  width: 56%;
 }
 .debug-tools-table tr.details-row td:nth-child(3) {
   width: 12%;
@@ -600,3 +636,5 @@ vscode-button {
 .title-install-runners {
   color: #0094ff;
 }
+
+

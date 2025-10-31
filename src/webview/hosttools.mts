@@ -88,6 +88,56 @@ function main() {
       webviewApi.postMessage({ command: 'reinstall-host-tools' });
     });
   }
+
+  // Environment variables section
+  const addEnvBtn = document.getElementById('add-env-var-btn');
+  if (addEnvBtn) {
+    addEnvBtn.addEventListener('click', () => {
+      webviewApi.postMessage({ command: 'add-env-var' });
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const editBtn = target.closest('.edit-env-button') as HTMLButtonElement | null;
+    if (editBtn) {
+      const id = editBtn.id; // edit-env-btn-<idx>
+      const idx = id.replace('edit-env-btn-', '');
+      const nameInput = document.getElementById(`env-name-input-${idx}`) as HTMLInputElement | null;
+      const valueInput = document.getElementById(`env-value-input-${idx}`) as HTMLInputElement | null;
+      const prevKey = editBtn.getAttribute('data-prev-key') || '';
+      if (!nameInput || !valueInput) return;
+      if (editBtn.textContent === 'Edit') {
+        nameInput.disabled = false;
+        valueInput.disabled = false;
+        nameInput.focus();
+        editBtn.textContent = 'Done';
+        return;
+      }
+      if (editBtn.textContent === 'Done') {
+        nameInput.disabled = true;
+        valueInput.disabled = true;
+        editBtn.textContent = 'Edit';
+        webviewApi.postMessage({
+          command: 'update-env-var',
+          idx,
+          prevKey,
+          newKey: nameInput.value,
+          newValue: valueInput.value,
+        });
+        return;
+      }
+    }
+    const removeBtn = target.closest('.remove-env-button') as HTMLButtonElement | null;
+    if (removeBtn) {
+      if (removeBtn.hasAttribute('disabled')) return;
+      const idx = removeBtn.getAttribute('data-env-idx') || removeBtn.id.replace('remove-env-btn-', '');
+      const key = removeBtn.getAttribute('data-key') || '';
+      webviewApi.postMessage({ command: 'remove-env-var', idx, key });
+      return;
+    }
+  });
   const btnVerify = document.getElementById('btn-verify-host-tools');
   if (btnVerify) {
     btnVerify.addEventListener('click', () => {
@@ -223,6 +273,55 @@ function setVSCodeMessageListener() {
           const details = document.getElementById(`extra-details-${idx}`);
           if (row && row.parentElement) row.parentElement.removeChild(row);
           if (details && details.parentElement) details.parentElement.removeChild(details);
+        }
+        break;
+      }
+      case 'env-var-updated': {
+        const { idx, key, value, success } = event.data;
+        if (success) {
+          const nameInput = document.getElementById(`env-name-input-${idx}`) as HTMLInputElement | null;
+          const valueInput = document.getElementById(`env-value-input-${idx}`) as HTMLInputElement | null;
+          const editBtn = document.getElementById(`edit-env-btn-${idx}`) as HTMLButtonElement | null;
+          const removeBtn = document.getElementById(`remove-env-btn-${idx}`) as HTMLButtonElement | null;
+          if (nameInput) { nameInput.value = key; nameInput.disabled = true; }
+          if (valueInput) { valueInput.value = value ?? ''; valueInput.disabled = true; }
+          if (editBtn) { editBtn.textContent = 'Edit'; editBtn.setAttribute('data-prev-key', key); }
+          if (removeBtn) { removeBtn.setAttribute('data-key', key); }
+        }
+        break;
+      }
+      case 'env-var-removed': {
+        const { idx, success } = event.data;
+        if (success) {
+          const row = document.getElementById(`env-row-${idx}`);
+          if (row && row.parentElement) row.parentElement.removeChild(row);
+        }
+        break;
+      }
+      case 'add-env-var-done': {
+        const idx = event.data.idx;
+        if (!document.getElementById(`env-row-${idx}`)) {
+          const addRow = document.getElementById('add-env-var-btn')?.closest('tr');
+          const tbody = addRow?.parentElement;
+          if (tbody && addRow) {
+            const rowHtml = `
+              <tr id="env-row-${idx}">
+                <td class="env-name"><vscode-text-field id="env-name-input-${idx}" class="env-input" value="" placeholder="Name" size="30"></vscode-text-field></td>
+                <td class="env-value"><vscode-text-field id="env-value-input-${idx}" class="env-input" value="" placeholder="Value" size="50"></vscode-text-field></td>
+                <td class="env-actions-cell">
+                  <div class="env-actions">
+                    <vscode-button id="edit-env-btn-${idx}" class="edit-env-button" appearance="primary" data-prev-key="">Done</vscode-button>
+                    <vscode-button id="remove-env-btn-${idx}" class="remove-env-button" appearance="secondary" data-env-idx="${idx}" data-key="">Remove</vscode-button>
+                  </div>
+                </td>
+              </tr>`;
+            const temp = document.createElement('tbody');
+            temp.innerHTML = rowHtml.trim();
+            const first = temp.firstElementChild as HTMLElement;
+            tbody.insertBefore(first, addRow);
+            const nameInput = document.getElementById(`env-name-input-${idx}`) as HTMLInputElement | null;
+            if (nameInput) nameInput.focus();
+          }
         }
         break;
       }
