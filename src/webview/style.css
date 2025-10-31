@@ -396,15 +396,26 @@ vscode-button {
   to { transform: rotate(360deg); }
 }
 
+/* Special animation that preserves a translateY offset while rotating.
+   Used for absolutely positioned spinners where we need to keep vertical
+   centering (avoid animation clobbering the translateY). */
+@keyframes spinner-preserve-translate {
+  from { transform: translateY(-50%) rotate(0deg); }
+  to   { transform: translateY(-50%) rotate(360deg); }
+}
+
 .spinner {
   display: inline-block;
-  width: 18px;
-  height: 18px;
-  border: 3px solid rgba(0, 0, 0, 0.3);
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  border: 2px solid rgba(0, 0, 0, 0.2);
   border-top-color: var(--vscode-statusBar-focusBorder);
   border-radius: 50%;
   animation: spinner 0.6s linear infinite;
   visibility: visible;
+  vertical-align: middle;
 }
 
 .tooltip {
@@ -525,7 +536,7 @@ vscode-button {
 
 .debug-tools-table .grid-group-div {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
   width: 100%;
 }
@@ -614,16 +625,30 @@ vscode-button {
 }
 
 .browse-spinner-inline {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 8px;
-  margin-right: 0;
-  vertical-align: middle;
-  position: absolute;
-  right: 8px;
-  top: 0;
-  height: 100%;
-  transform: none;
-  justify-content: center;
+  position: absolute; 
+  right: 10px; 
+  top: 58%; 
+  transform: translateY(-58%);
+  margin: 0; 
+  display: inline-block; 
+  height: 10px; 
+  width: 10px; 
+  border-width: 1.2px; 
+}
+
+#applicationsDropdownSpinner {
+  position: absolute; 
+  right: -32px;
+  top: 50%; 
+  transform: translateY(-50%) rotate(0deg); 
+  margin: 0; 
+  display: inline-block; 
+  height: 16px; 
+  width: 16px; 
+  border-width: 2px; 
+  border-color: rgba(0, 0, 0, 0.2); 
+  border-top-color: var(--vscode-statusBar-focusBorder);
+  border-radius: 50%; 
+  animation: spinner-preserve-translate 0.6s linear infinite;
 }
 

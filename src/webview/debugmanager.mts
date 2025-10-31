@@ -1,22 +1,19 @@
-import { Button, RadioGroup, TextField, allComponents,
-  provideVSCodeDesignSystem } from "@vscode/webview-ui-toolkit/";
+import { Button, RadioGroup, TextField, allComponents, provideVSCodeDesignSystem } from "@vscode/webview-ui-toolkit/";
 
-provideVSCodeDesignSystem().register(
-  allComponents
-);
+provideVSCodeDesignSystem().register(allComponents);
 
 const webviewApi = acquireVsCodeApi();
 
 window.addEventListener("load", main);
 
 function main() {
-
   setVSCodeMessageListener();
 
+  hideBrowseSpinners();
   initApplicationsDropdown();
   initBuildConfigsDropdown();
   initRunnersDropdown();
-  
+
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const browseProgramButton = document.getElementById("browseProgramButton") as Button;
   const browseSvdButton = document.getElementById("browseSvdButton") as Button;
@@ -29,13 +26,11 @@ function main() {
 
   runnerPathText.addEventListener('input', function() {
     const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
-    webviewApi.postMessage(
-      {
-        command: 'runnerPathChanged',
-        runner: runnerInput.getAttribute('data-value'),
-        runnerPath: runnerPathText.value
-      }
-    );
+    webviewApi.postMessage({
+      command: 'runnerPathChanged',
+      runner: runnerInput.getAttribute('data-value'),
+      runnerPath: runnerPathText.value
+    });
   });
 
   browseProgramButton?.addEventListener("click", browseProgramHandler);
@@ -59,6 +54,13 @@ function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputEl
       input.setAttribute('data-value', item.getAttribute('data-value') || '');
       input.dispatchEvent(new Event('input'));
       dropdown.style.display = 'none';
+
+          if (input.id === 'applicationInput') {
+            hideSpinner('svdPathSpinner'); 
+            hideSpinner('runnerPathSpinner'); 
+            showSpinner('programPathSpinner');
+            showSpinner('gdbPathSpinner');
+      }
     });
   }
 }
@@ -90,7 +92,7 @@ function hideSpinner(spinnerId: string) {
 
 function setLocalPath(id: string, path: string) {
   const localPath = document.getElementById(id) as TextField;
-  if(path) {
+  if (path) {
     localPath.value = path;
     localPath.dispatchEvent(new Event('input'));
   }
@@ -103,10 +105,10 @@ function setLocalPath(id: string, path: string) {
 function setVSCodeMessageListener() {
   window.addEventListener("message", (event) => {
     const command = event.data.command;
-    switch(command) {
+    switch (command) {
       case 'updateLaunchConfig': {
         const projectPath = event.data.projectPath;
-        if(projectPath && projectPath.length > 0) {
+        if (projectPath && projectPath.length > 0) {
           const configName = event.data.configName;
           updateSelectedApplication(projectPath, configName);
         }
@@ -129,7 +131,8 @@ function setVSCodeMessageListener() {
       }
       case 'updateRunnerDetect': {
         const runnerDetect = event.data.runnerDetect;
-        updateRunnerDetect(runnerDetect === 'true'?true:false);
+        updateRunnerDetect(runnerDetect === 'true' ? true : false);
+        break;
       }
       case 'fileSelected':
         setLocalPath(event.data.id, event.data.fileUri);
@@ -137,65 +140,42 @@ function setVSCodeMessageListener() {
       default:
         break;
     }
-
   });
 }
 
 function browseProgramHandler(this: HTMLElement, ev: MouseEvent) {
   showSpinner('programPathSpinner');
-  webviewApi.postMessage(
-    {
-      command: 'browseProgram',
-    }
-  );
+  webviewApi.postMessage({ command: 'browseProgram' });
 }
 
 function browseSvdHandler(this: HTMLElement, ev: MouseEvent) {
   showSpinner('svdPathSpinner');
-  webviewApi.postMessage(
-    {
-      command: 'browseSvd',
-    }
-  );
+  webviewApi.postMessage({ command: 'browseSvd' });
 }
 
 function browseGdbHandler(this: HTMLElement, ev: MouseEvent) {
   showSpinner('gdbPathSpinner');
-  webviewApi.postMessage(
-    {
-      command: 'browseGdb',
-    }
-  );
+  webviewApi.postMessage({ command: 'browseGdb' });
 }
 
 function browseRunnerHandler(this: HTMLElement, ev: MouseEvent) {
   showSpinner('runnerPathSpinner');
-  webviewApi.postMessage(
-    {
-      command: 'browseRunner',
-    }
-  );
+  webviewApi.postMessage({ command: 'browseRunner' });
 }
 
 function installHandler(this: HTMLElement, ev: MouseEvent) {
-  webviewApi.postMessage(
-    {
-      command: 'install',
-    }
-  );
+  webviewApi.postMessage({ command: 'install' });
 }
 
 function resetHandler(this: HTMLElement, ev: MouseEvent) {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
   const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
 
-  webviewApi.postMessage(
-    {
-      command: 'reset',
-      project: applicationInput.getAttribute('data-value'),
-      buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : ''
-    }
-  );
+  webviewApi.postMessage({
+    command: 'reset',
+    project: applicationInput.getAttribute('data-value'),
+    buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : ''
+  });
 }
 
 function applyHandler(this: HTMLElement, ev: MouseEvent) {
@@ -211,22 +191,20 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
   const runnerPath = document.getElementById('runnerPath') as TextField;
   const runnerArgs = document.getElementById('runnerArgs') as TextField;
 
-  webviewApi.postMessage(
-    {
-      command: 'apply',
-      project: applicationInput.getAttribute('data-value'),
-      buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
-      programPath: programPath.value,
-      svdPath: svdPath.value,
-      gdbPath: gdbPath.value,
-      gdbAddress: gdbAddress.value,
-      gdbPort: gdbPort.value,
-      gdbMode: gdbModeRadioGroup.value,
-      runner: runnerInput.getAttribute('data-value'),
-      runnerPath: runnerPath.value,
-      runnerArgs: runnerArgs.value
-    }
-  );
+  webviewApi.postMessage({
+    command: 'apply',
+    project: applicationInput.getAttribute('data-value'),
+    buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
+    programPath: programPath.value,
+    svdPath: svdPath.value,
+    gdbPath: gdbPath.value,
+    gdbAddress: gdbAddress.value,
+    gdbPort: gdbPort.value,
+    gdbMode: gdbModeRadioGroup.value,
+    runner: runnerInput.getAttribute('data-value'),
+    runnerPath: runnerPath.value,
+    runnerArgs: runnerArgs.value
+  });
 }
 
 function debugHandler(this: HTMLElement, ev: MouseEvent) {
@@ -244,29 +222,26 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
   const debugButton = document.getElementById("debugButton") as Button;
 
   debugButton.disabled = true;
-  webviewApi.postMessage(
-    {
-      command: 'debug',
-      project: applicationInput.getAttribute('data-value'),
-      buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
-      programPath: programPath.value,
-      svdPath: svdPath.value,
-      gdbPath: gdbPath.value,
-      gdbAddress: gdbAddress.value,
-      gdbPort: gdbPort.value,
-      gdbMode: gdbModeRadioGroup.value,
-      runner: runnerInput.getAttribute('data-value'),
-      runnerPath: runnerPath.value,
-      runnerArgs: runnerArgs.value
-    }
-  );
+  webviewApi.postMessage({
+    command: 'debug',
+    project: applicationInput.getAttribute('data-value'),
+    buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
+    programPath: programPath.value,
+    svdPath: svdPath.value,
+    gdbPath: gdbPath.value,
+    gdbAddress: gdbAddress.value,
+    gdbPort: gdbPort.value,
+    gdbMode: gdbModeRadioGroup.value,
+    runner: runnerInput.getAttribute('data-value'),
+    runnerPath: runnerPath.value,
+    runnerArgs: runnerArgs.value
+  });
 }
 
 function showBrowseSpinnersWhileLoading() {
   showSpinner('programPathSpinner');
-  showSpinner('svdPathSpinner');
   showSpinner('gdbPathSpinner');
-  showSpinner('runnerPathSpinner');
+  hideSpinner('runnerPathSpinner');
 }
 
 function hideBrowseSpinners() {
@@ -280,47 +255,32 @@ function initApplicationsDropdown() {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
   const applicationsDropdown = document.getElementById('applicationsDropdown') as HTMLElement;
   const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement;
-  
-  applicationInput.addEventListener('focusin', function() {
-    if(applicationsDropdown) {
-      applicationsDropdown.style.display = 'block';
-    }
+
+  applicationInput.addEventListener('focusin', () => {
+    if (applicationsDropdown) applicationsDropdown.style.display = 'block';
   });
 
-  applicationInput.addEventListener('focusout', function() {
-    if(applicationsDropdown) {
-      applicationsDropdown.style.display = 'none';
-    }
+  applicationInput.addEventListener('focusout', () => {
+    if (applicationsDropdown) applicationsDropdown.style.display = 'none';
   });
 
-  applicationInput.addEventListener('click', function(event) {
-    if(applicationsDropdown) {
-      applicationsDropdown.style.display = 'block';
-    }
+  applicationInput.addEventListener('click', () => {
+    if (applicationsDropdown) applicationsDropdown.style.display = 'block';
   });
 
   applicationInput.addEventListener('input', () => {
-    webviewApi.postMessage(
-      { 
-        command: 'projectChanged',
-        project: applicationInput.getAttribute('data-value'),
-      }
-    );
-    applicationDropdownSpinner.style.display = 'block';
-    showBrowseSpinnersWhileLoading();
+    webviewApi.postMessage({
+      command: 'projectChanged',
+      project: applicationInput.getAttribute('data-value'),
+    });
   });
 
   applicationInput.addEventListener('keyup', () => {
     filterFunction(applicationInput, applicationsDropdown);
   });
 
-  applicationsDropdown.addEventListener('mousedown', function(event) {
-    event.preventDefault();
-  });
-
-  applicationsDropdown.addEventListener('mouseup', function(event) {
-    event.preventDefault();
-  });
+  applicationsDropdown.addEventListener('mousedown', e => e.preventDefault());
+  applicationsDropdown.addEventListener('mouseup', e => e.preventDefault());
 
   applicationDropdownSpinner.style.display = 'none';
   addDropdownItemEventListeners(applicationsDropdown, applicationInput);
@@ -330,51 +290,34 @@ function initBuildConfigsDropdown() {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
   const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
   const buildConfigDropdown = document.getElementById('buildConfigDropdown') as HTMLElement;
-  const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement;
-  
-  buildConfigInput.addEventListener('focusin', function() {
-    if(buildConfigDropdown) {
-      buildConfigDropdown.style.display = 'block';
-    }
+
+  buildConfigInput.addEventListener('focusin', () => {
+    if (buildConfigDropdown) buildConfigDropdown.style.display = 'block';
   });
 
-  buildConfigInput.addEventListener('focusout', function() {
-    if(buildConfigDropdown) {
-      buildConfigDropdown.style.display = 'none';
-    }
+  buildConfigInput.addEventListener('focusout', () => {
+    if (buildConfigDropdown) buildConfigDropdown.style.display = 'none';
   });
 
-  buildConfigInput.addEventListener('click', function(event) {
-    if(buildConfigDropdown) {
-      buildConfigDropdown.style.display = 'block';
-    }
+  buildConfigInput.addEventListener('click', () => {
+    if (buildConfigDropdown) buildConfigDropdown.style.display = 'block';
   });
 
   buildConfigInput.addEventListener('input', () => {
-    webviewApi.postMessage(
-      { 
-        command: 'buildConfigChanged',
-        project: applicationInput.getAttribute('data-value'),
-        buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : ''
-      }
-    );
-    applicationDropdownSpinner.style.display = 'block';
-    showBrowseSpinnersWhileLoading();
+    webviewApi.postMessage({
+      command: 'buildConfigChanged',
+      project: applicationInput.getAttribute('data-value'),
+      buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : ''
+    });
   });
 
   buildConfigInput.addEventListener('keyup', () => {
     filterFunction(buildConfigInput, buildConfigDropdown);
   });
 
-  buildConfigDropdown.addEventListener('mousedown', function(event) {
-    event.preventDefault();
-  });
+  buildConfigDropdown.addEventListener('mousedown', e => e.preventDefault());
+  buildConfigDropdown.addEventListener('mouseup', e => e.preventDefault());
 
-  buildConfigDropdown.addEventListener('mouseup', function(event) {
-    event.preventDefault();
-  });
-
-  //buildConfigDropdownSpinner.style.display = 'none';
   addDropdownItemEventListeners(buildConfigDropdown, buildConfigInput);
 }
 
@@ -383,45 +326,32 @@ function initRunnersDropdown() {
   const runnersDropdown = document.getElementById('runnersDropdown') as HTMLElement;
   const runnerPath = document.getElementById('runnerPath') as TextField;
 
-  runnerInput.addEventListener('focusin', function() {
-    if(runnersDropdown) {
-      runnersDropdown.style.display = 'block';
-    }
+  runnerInput.addEventListener('focusin', () => {
+    if (runnersDropdown) runnersDropdown.style.display = 'block';
   });
 
-  runnerInput.addEventListener('focusout', function() {
-    if(runnersDropdown) {
-      runnersDropdown.style.display = 'none';
-    }
+  runnerInput.addEventListener('focusout', () => {
+    if (runnersDropdown) runnersDropdown.style.display = 'none';
   });
 
-  runnerInput.addEventListener('click', function(event) {
-    if(runnersDropdown) {
-      runnersDropdown.style.display = 'block';
-    }
+  runnerInput.addEventListener('click', () => {
+    if (runnersDropdown) runnersDropdown.style.display = 'block';
   });
 
   runnerInput.addEventListener('input', () => {
-    webviewApi.postMessage(
-      { 
-        command: 'runnerChanged',
-        runner: runnerInput.getAttribute('data-value'),
-        runnerPath: runnerPath.value ?? '',
-      }
-    );
+    webviewApi.postMessage({
+      command: 'runnerChanged',
+      runner: runnerInput.getAttribute('data-value'),
+      runnerPath: runnerPath.value ?? '',
+    });
   });
 
   runnerInput.addEventListener('keyup', () => {
     filterFunction(runnerInput, runnersDropdown);
   });
 
-  runnersDropdown.addEventListener('mousedown', function(event) {
-    event.preventDefault();
-  });
-
-  runnersDropdown.addEventListener('mouseup', function(event) {
-    event.preventDefault();
-  });
+  runnersDropdown.addEventListener('mousedown', e => e.preventDefault());
+  runnersDropdown.addEventListener('mouseup', e => e.preventDefault());
 
   addDropdownItemEventListeners(runnersDropdown, runnerInput);
 }
@@ -431,43 +361,35 @@ async function updateSelectedApplication(projectPath: string, configName: string
   const applicationsDropdown = document.getElementById('applicationsDropdown') as HTMLElement;
   const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
 
-  if(projectPath) {
-    for(let i=0; i<applicationsDropdown.children.length; i++) {
+  if (projectPath) {
+    for (let i = 0; i < applicationsDropdown.children.length; i++) {
       const option = applicationsDropdown.children[i] as HTMLElement;
-      if(option.getAttribute('data-value') === projectPath) {
+      if (option.getAttribute('data-value') === projectPath) {
         applicationInput.value = option.getAttribute('data-label') || '';
         applicationInput.setAttribute('data-value', option.getAttribute('data-value') || '');
         applicationInput.dispatchEvent(new Event('input'));
         break;
       }
     }
-    
-    if(configName.length > 0) {
+
+    if (configName.length > 0) {
       buildConfigInput.value = configName || '';
       buildConfigInput.setAttribute('data-value', configName || '');
       buildConfigInput.dispatchEvent(new Event('input'));
     }
   }
-  
 }
 
 function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = false) {
-  const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement; 
   const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
   const buildConfigDropdown = document.getElementById('buildConfigDropdown') as HTMLElement;
 
-  if(buildConfigsHTML.length > 0) {
+  if (buildConfigsHTML.length > 0) {
     buildConfigInput.disabled = false;
     buildConfigDropdown.innerHTML = buildConfigsHTML;
     addDropdownItemEventListeners(buildConfigDropdown, buildConfigInput);
-    
-    // Hide loading spinner
-    applicationDropdownSpinner.style.display = 'none';
-    hideBrowseSpinners();
-
-    if(selectFirst) {
+    if (selectFirst) {
       const firstOption = buildConfigDropdown.children[0] as HTMLElement;
-      
       buildConfigInput.value = firstOption.getAttribute('data-label') || '';
       buildConfigInput.setAttribute('data-value', firstOption.getAttribute('data-value') || '');
       buildConfigInput.dispatchEvent(new Event('input'));
@@ -477,8 +399,6 @@ function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = fal
   }
 }
 
-
-// Ugly method to refactor/split
 function updateConfig(data: any) {
   const programPath = data.programPath;
   const svdPath = data.svdPath;
@@ -491,7 +411,6 @@ function updateConfig(data: any) {
   const runnerPath = data.runnerPath;
   const runnerArgs = data.runnerArgs;
 
-  const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement; 
   const programPathText = document.getElementById('programPath') as TextField;
   const svdPathText = document.getElementById('svdPath') as TextField;
   const gdbPathText = document.getElementById('gdbPath') as TextField;
@@ -506,40 +425,57 @@ function updateConfig(data: any) {
   programPathText.value = programPath ?? '';
   svdPathText.value = svdPath ?? '';
   gdbPathText.value = gdbPath ?? '';
-  gdbAddressText.value = gdbAddress?? '';
+  gdbAddressText.value = gdbAddress ?? '';
   gdbPortText.value = gdbPort ?? '';
   gdbModeRadioGroup.value = gdbMode ?? 'program';
 
-  if(runnersHTML.length > 0) {
+  if (runnersHTML && runnersHTML.length > 0) {
     runnersDropdown.innerHTML = runnersHTML;
     addDropdownItemEventListeners(runnersDropdown, runnerInput);
   }
 
   const selectedRunner = runnersDropdown.querySelector(`.dropdown-item[data-label="${runner}"]`) as HTMLDivElement;
   if (selectedRunner) {
-    selectedRunner.click();
+    runnerInput.value = selectedRunner.getAttribute('data-label') || '';
+    runnerInput.setAttribute('data-value', selectedRunner.getAttribute('data-value') || '');
   }
-  runnerPathText.value = runnerPath;
-  runnerArgsText.value = runnerArgs;
+
+  runnerPathText.value = runnerPath ?? '';
+  runnerArgsText.value = runnerArgs ?? '';
+
+  programPathText.dispatchEvent(new Event('input'));
+  svdPathText.dispatchEvent(new Event('input'));
+  gdbPathText.dispatchEvent(new Event('input'));
   runnerPathText.dispatchEvent(new Event('input'));
 
-  // Hide loading spinner
-  applicationDropdownSpinner.style.display = 'none';
-  hideBrowseSpinners();
+  const programLoaded = (programPathText.value ?? '').trim().length > 0;
+  const gdbLoaded = (gdbPathText.value ?? '').trim().length > 0;
+  const runnerLoaded = (runnerPathText.value ?? '').trim().length > 0;
+
+  if (programLoaded && gdbLoaded && runnerLoaded) {
+    hideBrowseSpinners();
+  } else {
+    if (programLoaded) hideSpinner('programPathSpinner');
+    if (gdbLoaded) hideSpinner('gdbPathSpinner');
+    if (runnerLoaded) hideSpinner('runnerPathSpinner');
+    if ((svdPathText.value ?? '').trim().length > 0) hideSpinner('svdPathSpinner');
+  }
 }
 
 function updateRunnerConfig(runnerPath: string, runnerArgs: string) {
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const runnerArgsText = document.getElementById('runnerArgs') as TextField;
-  runnerPathText.value = runnerPath;
+  runnerPathText.value = runnerPath ?? '';
   runnerPathText.dispatchEvent(new Event('input'));
-  runnerArgsText.value = runnerArgs;
+  runnerArgsText.value = runnerArgs ?? '';
   runnerArgsText.dispatchEvent(new Event('input'));
+
+  if ((runnerPath ?? '').trim().length > 0) hideSpinner('runnerPathSpinner');
 }
 
 function updateRunnerDetect(runnerDetect: boolean) {
   const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
-  if(runnerDetect === true) {
+  if (runnerDetect === true) {
     runnerDetectSpan.innerHTML = "(Runner executable found)";
     runnerDetectSpan.style.color = "#00aa00";
   } else if (runnerDetect === false) {
