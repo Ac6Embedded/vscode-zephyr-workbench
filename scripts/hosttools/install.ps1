@@ -130,10 +130,37 @@ function Install-PythonVenv {
 	
     python -m venv "$InstallDirectory\.venv"
     . "$InstallDirectory\.venv\Scripts\Activate.ps1"
-    python -m pip install setuptools windows-curses west wheel pyelftools --quiet
-    python -m pip install anytree --quiet
+    
+    Write-Output "Upgrading pip to the latest version..."
+    python -m pip install --upgrade pip --quiet
+
+    # Install Python packages declared in tools.yml -> python_packages using yq
+    # Robust JSON parse and property checks to handle name/version/url
+    $pythonPackagesJson = & $Yq eval -o=json '.python_packages' $YamlFilePath
+    $pythonPackages = ($pythonPackagesJson -join "`n") | ConvertFrom-Json
+
+    foreach ($pkg in $pythonPackages) {
+        $hasUrl = $pkg.PSObject.Properties.Name -contains 'url' -and $null -ne $pkg.url -and ($pkg.url.ToString().Trim() -ne '')
+        $hasName = $pkg.PSObject.Properties.Name -contains 'name' -and $null -ne $pkg.name -and ($pkg.name.ToString().Trim() -ne '')
+        $hasVersion = $pkg.PSObject.Properties.Name -contains 'version' -and $null -ne $pkg.version -and ($pkg.version.ToString().Trim() -ne '')
+
+        $spec = $null
+        if ($hasUrl) {
+            $spec = $pkg.url.ToString().Trim()
+        } elseif ($hasName -and $hasVersion) {
+            $spec = "{0}=={1}" -f $pkg.name.ToString().Trim(), $pkg.version.ToString().Trim()
+        } elseif ($hasName) {
+            $spec = $pkg.name.ToString().Trim()
+        }
+
+        if ($spec -and ($spec.Trim() -ne '')) {
+            Write-Output "Installing Python package: $spec"
+            python -m pip install $spec --quiet
+        }
+    }
+
+    Write-Output "Installing Zephyr's base requirements..."
     python -m pip install -r "$RequirementsBaseUrl/requirements.txt" --quiet
-    python -m pip install puncover --quiet
 }
 
 
