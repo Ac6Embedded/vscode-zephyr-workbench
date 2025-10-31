@@ -258,7 +258,7 @@ export class HostToolsPanel {
               <div class="actions-title"><strong>Actions</strong></div>
               <vscode-button id="btn-reinstall-host-tools" appearance="primary">Reinstall host tools</vscode-button>
               <vscode-button id="btn-verify-host-tools" appearance="primary">Verify host tools</vscode-button>
-              <vscode-button id="btn-reinstall-venv" appearance="primary">Reinstall virtual environment</vscode-button>
+              <vscode-button id="btn-reinstall-venv" appearance="primary">Reinstall python venv</vscode-button>
             </div>
           </div>
           <form>
