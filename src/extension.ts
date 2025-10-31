@@ -1313,6 +1313,8 @@ export function activate(context: vscode.ExtensionContext) {
 			}, async () => {
 				try {
 					await verifyHostTools(context);
+					// Refresh Host Tools Manager to reflect parsed versions from check output
+					try { HostToolsPanel.currentPanel?.refresh(); } catch {}
 				} catch (error) {
 
 					if (error instanceof Error) {

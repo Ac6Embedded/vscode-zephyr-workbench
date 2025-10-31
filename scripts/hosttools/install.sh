@@ -498,7 +498,7 @@ EOF
 	ENV_YAML_PATH="$INSTALL_DIR/env.yml"
 	
 	cat << EOF > "$ENV_YAML_PATH"
-# env.yaml
+# env.yml
 # ZInstaller Workspace Environment Manifest
 # Defines workspace tools and Python environment metadata for Zephyr Workbench
 
@@ -522,12 +522,10 @@ cat << EOF >> "$ENV_YAML_PATH"
 tools:
   cmake:
     path: "\${zi_tools_dir}/$CMAKE_FOLDER_NAME/bin"
-    version: "3.29.2"
     do_not_use: false
 
   ninja:
     path: "\${zi_tools_dir}/ninja"
-    version: "1.12.1"
     do_not_use: false
 EOF
 
@@ -553,7 +551,6 @@ fi
 
   openssl:
     path: "\${zi_tools_dir}/$OPENSSL_FOLDER_NAME/usr/local/bin"
-    version: "1.1.1t"
     do_not_use: false
 
 python:

@@ -866,32 +866,26 @@ env:
 tools:
   cmake:
     path: "`${zi_tools_dir}/cmake/bin"
-    version: ${CmakeVersion}
     do_not_use: false
 
   dtc:
     path: "`${zi_tools_dir}/dtc/usr/bin"
-    version: ${DtcVersion}
     do_not_use: false
 
   gperf:
     path: "`${zi_tools_dir}/gperf/bin"
-    version: ${GperfVersion}
     do_not_use: false
 
   ninja:
     path: "`${zi_tools_dir}/ninja"
-    version: ${NinjaVersion}
     do_not_use: false
 
   git:
     path: "`${zi_tools_dir}/git/bin"
-    version: ${GitVersion}
     do_not_use: false
 
-  seven_zip:
+  7z:
     path: "$SevenZPathSlashFormat"
-    version: 24.08
     do_not_use: false
 
   python:

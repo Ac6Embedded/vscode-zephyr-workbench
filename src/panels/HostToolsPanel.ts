@@ -5,6 +5,7 @@ import path from "path";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getInternalDirRealPath } from "../utils/utils";
+import { execCommandWithEnv } from "../utils/execUtils";
 import { ZINSTALLER_MINIMUM_VERSION } from "../constants";
 import { formatYml } from "../utilities/formatYml";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
@@ -17,6 +18,8 @@ export class HostToolsPanel {
 
   private envData: any | undefined;
   private envYamlDoc: any | undefined;
+  private toolVersionsFromCheck: Record<string, string> = {};
+  private didInitialVersionCheck = false;
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -38,6 +41,7 @@ export class HostToolsPanel {
   }
 
   public async createContent() {
+    // Render immediately for faster open
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
     this._setWebviewMessageListener(this._panel.webview);
 
@@ -46,6 +50,18 @@ export class HostToolsPanel {
         this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
       }
     }, null, this._disposables);
+
+    // Then check versions asynchronously and update DOM
+    if (!this.didInitialVersionCheck) {
+      this.didInitialVersionCheck = true;
+      try {
+        this._panel.webview.postMessage({ command: 'toggle-spinner', show: true });
+        await this.checkAndPublishToolVersions();
+      } catch {}
+      finally {
+        try { this._panel.webview.postMessage({ command: 'toggle-spinner', show: false }); } catch {}
+      }
+    }
   }
 
   public async refresh() {
@@ -100,13 +116,83 @@ export class HostToolsPanel {
   }
 
   private getToolVersion(toolId: string): string {
+    // Do not read or display versions from env.yml.
+    // Version values are populated asynchronously from the verify/check output.
+    return "";
+  }
+
+  private lookupCheckedVersion(toolId: string): string | undefined {
+    if (!this.toolVersionsFromCheck) { return undefined; }
+    const id = String(toolId || '').trim();
+    if (!id) { return undefined; }
+
+    return this.toolVersionsFromCheck[id.toLowerCase()];
+  }
+
+  private async refreshToolVersionsFromCheck(): Promise<void> {
     try {
-      const v = (this.envData as any)?.tools?.[toolId]?.version;
-      if (v === undefined || v === null) {return "";}
-      return String(v);
+      const scriptsDir = vscode.Uri.joinPath(this._extensionUri, 'scripts', 'hosttools');
+      const destDir = getInternalDirRealPath();
+
+      let cmd = '';
+      if (process.platform === 'win32') {
+        const ps = vscode.Uri.joinPath(scriptsDir, 'install.ps1').fsPath;
+        cmd = `powershell -ExecutionPolicy Bypass -File "${ps}" -OnlyCheck -InstallDir "${destDir}"`;
+      } else if (process.platform === 'darwin') {
+        const sh = vscode.Uri.joinPath(scriptsDir, 'install-mac.sh').fsPath;
+        cmd = `bash "${sh}" --only-check ${destDir}`;
+      } else {
+        const sh = vscode.Uri.joinPath(scriptsDir, 'install.sh').fsPath;
+        cmd = `bash "${sh}" --only-check ${destDir}`;
+      }
+
+      const proc = await execCommandWithEnv(cmd);
+
+      let full = '';
+      await new Promise<void>((resolve, reject) => {
+        proc.stdout?.on('data', c => { full += c.toString(); });
+        proc.stderr?.on('data', c => { full += c.toString(); });
+        proc.on('error', e => reject(e));
+        proc.on('close', _code => resolve());
+      });
+
+      const map: Record<string, string> = {};
+      const lines = full.split(/\r?\n/);
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line.startsWith('---')) { continue; }
+        // Expect lines like: python [3.13.5] or 7z [24.08 (x64)]
+        const m = line.match(/^(\S+)\s*\[(.+?)\]\s*$/);
+        if (!m) { continue; }
+        let name = m[1].toLowerCase();
+        name = name.replace(/\.exe$/, '');
+        const ver = m[2].trim();
+        if (name && ver) {
+          map[name] = ver;
+        }
+      }
+      this.toolVersionsFromCheck = map;
     } catch {
-      return "";
+      // On any failure, do not block UI, just keep previous/empty map
+      this.toolVersionsFromCheck = this.toolVersionsFromCheck || {};
     }
+  }
+
+  private async checkAndPublishToolVersions(): Promise<void> {
+    await this.refreshToolVersionsFromCheck();
+    try {
+      const tools = (this.envData?.tools && typeof this.envData.tools === "object")
+        ? Object.keys(this.envData.tools)
+        : [];
+      const out: Record<string, string> = {};
+      for (const id of tools) {
+        const v = this.lookupCheckedVersion(id);
+        if (v) { out[id] = v; }
+      }
+      if (Object.keys(out).length > 0) {
+        this._panel.webview.postMessage({ command: 'update-tool-versions', versions: out });
+      }
+    } catch {}
   }
 
   private getToolPathDisplay(toolId: string): string {
@@ -262,12 +348,16 @@ export class HostToolsPanel {
             </div>
           </div>
           <form>
-            <h2>Host Tools</h2>
+            <h2>Host Tools
+              <span id="ht-spinner" class="codicon codicon-loading codicon-modifier-spin hidden" title="Checking versions"></span>
+            </h2>
             <table class="debug-tools-table">
               <tr>
                 <th></th>
                 <th>Name</th>
-                <th>Version</th>
+                <th>Version
+                  <button id="btn-refresh-versions" type="button" class="inline-icon-button codicon codicon-refresh" title="Refresh versions" aria-label="Refresh versions"></button>
+                </th>
                 <th></th>
                 <th></th>
                 <th></th>
@@ -332,6 +422,15 @@ export class HostToolsPanel {
           }
           case "reinstall-venv": {
             await vscode.commands.executeCommand("zephyr-workbench.reinstall-venv", true);
+            break;
+          }
+          case "refresh-versions": {
+            try {
+              this._panel.webview.postMessage({ command: 'toggle-spinner', show: true });
+              await this.checkAndPublishToolVersions();
+            } finally {
+              this._panel.webview.postMessage({ command: 'toggle-spinner', show: false });
+            }
             break;
           }
           case "update-path": {
