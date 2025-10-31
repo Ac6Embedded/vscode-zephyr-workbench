@@ -114,6 +114,23 @@ function setVSCodeMessageListener() {
   window.addEventListener("message", (event) => {
     const command = event.data.command;
     switch (command) {
+      case 'applicationsLoading': {
+        const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement;
+        if (applicationDropdownSpinner) applicationDropdownSpinner.style.display = 'inline-block';
+        break;
+      }
+      case 'updateApplications': {
+        const appsHTML = event.data.applicationsHTML as string;
+        const applicationsDropdown = document.getElementById('applicationsDropdown') as HTMLElement;
+        if (applicationsDropdown) {
+          applicationsDropdown.innerHTML = appsHTML ?? '';
+          const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
+          addDropdownItemEventListeners(applicationsDropdown, applicationInput);
+        }
+        const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement;
+        if (applicationDropdownSpinner) applicationDropdownSpinner.style.display = 'none';
+        break;
+      }
       case 'updateLaunchConfig': {
         const projectPath = event.data.projectPath;
         if (projectPath && projectPath.length > 0) {

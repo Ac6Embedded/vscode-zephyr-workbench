@@ -16,6 +16,7 @@ export class DebugManagerPanel {
   private _disposables: vscode.Disposable[] = [];
   public project: ZephyrProject | undefined;
   public buildConfig: ZephyrProjectBuildConfiguration | undefined;
+  private _loadApplicationsAsync: (wv: vscode.Webview) => void = () => {};
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -29,6 +30,9 @@ export class DebugManagerPanel {
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
     this._setWebviewMessageListener(this._panel.webview);
     this._setDefaultSelection(this._panel.webview);
+    // Trigger async applications discovery post-render
+    this._panel.webview.postMessage({ command: 'applicationsLoading' });
+    this._loadApplicationsAsync(this._panel.webview);
   }
 
   public static render(extensionUri: vscode.Uri, project?: ZephyrProject | undefined, buildConfig?: ZephyrProjectBuildConfiguration | undefined) {
@@ -83,16 +87,8 @@ export class DebugManagerPanel {
     const codiconUri = getUri(webview, extensionUri, ["out", "codicon.css"]);
     const nonce = getNonce();
 
+    // Defer fetching applications until after the panel renders
     let applicationsHTML: string = '';
-
-    if(vscode.workspace.workspaceFolders) {
-      for(let workspaceFolder of vscode.workspace.workspaceFolders) {
-        if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
-          const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-          applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.sourceDir}" data-label="${appProject.folderName}">${appProject.folderName} <span class="description">${appProject.sourceDir}</span></div>`);
-        }
-      }
-    }
 
     // Init runners
     let runnersHTML: string = '';
@@ -149,8 +145,8 @@ export class DebugManagerPanel {
                     <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
                       <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
                     </svg>
+                    <div class="spinner" id="buildConfigDropdownSpinner" style="display:none;"></div>
                   </slot>
-                  <div class="spinner" id="buildConfigDropdownSpinner" style="display:none;"></div>
                 </div>
                 <div id="buildConfigDropdown" class="dropdown-content" style="display: none;">
                 </div>
@@ -363,6 +359,24 @@ export class DebugManagerPanel {
       this._disposables
     );
 
+    // Helper to load applications asynchronously and update the webview
+    async function loadApplications(webview: vscode.Webview) {
+      let applicationsHTML = '';
+      if(vscode.workspace.workspaceFolders) {
+        for(const workspaceFolder of vscode.workspace.workspaceFolders) {
+          try {
+            if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
+              const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
+              applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.sourceDir}" data-label="${appProject.folderName}">${appProject.folderName} <span class="description">${appProject.sourceDir}</span></div>`);
+            }
+          } catch {}
+        }
+      }
+      webview.postMessage({ command: 'updateApplications', applicationsHTML: `${applicationsHTML}` });
+    }
+  
+    // Expose as bound method wrapper
+    this._loadApplicationsAsync = (wv: vscode.Webview) => { loadApplications(wv); };
     function updateBuildConfigs(project: ZephyrProject) {
       let newBuildConfigsHTML = '';
       for(let config of project.configs) {
