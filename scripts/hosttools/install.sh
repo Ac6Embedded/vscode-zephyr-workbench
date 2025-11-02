@@ -178,47 +178,95 @@ install_python_venv() {
 
     pr_title "Zephyr Python Requirements"
 
-    REQUIREMENTS_DIR="$TMP_DIR/requirements"
-    REQUIREMENTS_BASEURL="https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
-    
-    mkdir -p "$REQUIREMENTS_DIR"
+    local requirements_baseurl="https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
+    local requirements_dir="$work_directory/requirements"
+    local venv_path="$install_directory/.venv"
+    local requirement_files=(
+        "requirements.txt"
+        "requirements-run-test.txt"
+        "requirements-extras.txt"
+        "requirements-compliance.txt"
+        "requirements-build-test.txt"
+        "requirements-base.txt"
+    )
 
-    download "$REQUIREMENTS_BASEURL/requirements.txt" "requirements.txt"
-    download "$REQUIREMENTS_BASEURL/requirements-run-test.txt" "requirements-run-test.txt"
-    download "$REQUIREMENTS_BASEURL/requirements-extras.txt" "requirements-extras.txt"
-    download "$REQUIREMENTS_BASEURL/requirements-compliance.txt" "requirements-compliance.txt"
-    download "$REQUIREMENTS_BASEURL/requirements-build-test.txt" "requirements-build-test.txt"
-    download "$REQUIREMENTS_BASEURL/requirements-base.txt" "requirements-base.txt"
-    mv "$DL_DIR/requirements.txt" "$REQUIREMENTS_DIR"
-    mv "$DL_DIR/requirements-run-test.txt" "$REQUIREMENTS_DIR"
-    mv "$DL_DIR/requirements-extras.txt" "$REQUIREMENTS_DIR"
-    mv "$DL_DIR/requirements-compliance.txt" "$REQUIREMENTS_DIR"
-    mv "$DL_DIR/requirements-build-test.txt" "$REQUIREMENTS_DIR"
-    mv "$DL_DIR/requirements-base.txt" "$REQUIREMENTS_DIR"
+    mkdir -p "$requirements_dir"
 
-    python3 -m venv "$install_directory/.venv"
-    source "$install_directory/.venv/bin/activate"
-    # Upgrade pip first
-    echo "Upgrading pip to the latest version..."
-    python3 -m pip install --upgrade pip --quiet
+    for requirement in "${requirement_files[@]}"; do
+        download "$requirements_baseurl/$requirement" "$requirement"
+        mv "$DL_DIR/$requirement" "$requirements_dir/$requirement"
+    done
 
-    # Install Python packages from tools.yml -> python_packages using yq
-    # Supports entries with: name, name+version, or url
-    if [[ -x "$YQ" ]]; then
-        while IFS= read -r spec; do
-            # Skip empty or null outputs
-            if [[ -n "$spec" && "$spec" != "null" ]]; then
-                echo "Installing Python package: $spec"
-                python3 -m pip install "$spec" --quiet
-            fi
-        done < <("$YQ" eval -r '.python_packages[] | if has("url") then .url elif has("version") then "\(.name)==\(.version)" else .name end' "$YAML_FILE")
-    else
-        echo "WARN: yq not available; falling back to basic installs (setuptools, wheel)"
-        python3 -m pip install setuptools wheel --quiet
+    if [[ ! -d "$venv_path" ]]; then
+        python3 -m venv "$venv_path"
     fi
 
+    source "$venv_path/bin/activate"
+    echo "Upgrading pip to the latest version..."
+    "$venv_path/bin/python" -m pip install --upgrade pip --quiet
+
+    local -a python_package_specs=()
+
+    while IFS= read -r spec; do
+        [[ -n "$spec" ]] && python_package_specs+=("$spec")
+    done < <(awk '
+        /^[[:space:]]*python_packages:[[:space:]]*$/ { in_list=1; next }
+        in_list && /^[[:space:]]*#/ { next }
+        in_list && NF==0 { next }
+        in_list && /^[[:alnum:]_]/ {
+            if (pending_name != "") {
+                print pending_name
+                pending_name=""
+            }
+            in_list=0
+            next
+        }
+        in_list {
+            if ($1 == "-" && $2 == "url:") {
+                spec=$0
+                sub(/^[[:space:]]*-[[:space:]]+url:[[:space:]]*/, "", spec)
+                gsub(/"/, "", spec)
+                print spec
+                pending_name=""
+                next
+            }
+            if ($1 == "-" && $2 == "name:") {
+                if (pending_name != "") {
+                    print pending_name
+                }
+                spec=$0
+                sub(/^[[:space:]]*-[[:space:]]+name:[[:space:]]*/, "", spec)
+                gsub(/"/, "", spec)
+                pending_name=spec
+                next
+            }
+            if ($1 == "version:") {
+                spec=$0
+                sub(/^[[:space:]]*version:[[:space:]]*/, "", spec)
+                gsub(/"/, "", spec)
+                if (pending_name != "") {
+                    print pending_name "==" spec
+                    pending_name=""
+                }
+                next
+            }
+        }
+        END {
+            if (pending_name != "") {
+                print pending_name
+            }
+        }
+    ' "$YAML_FILE")
+
+    for spec in "${python_package_specs[@]}"; do
+        if [[ -n "$spec" && "$spec" != "null" ]]; then
+            echo "Installing Python package: $spec"
+           "$venv_path/bin/python" -m pip install "$spec" --quiet
+        fi
+    done
+
     echo "Installing Zephyr's base requirements..."
-    python3 -m pip install -r "$REQUIREMENTS_DIR/requirements.txt" --quiet
+    "$venv_path/bin/python" -m pip install -r "$requirements_dir/requirements.txt" --quiet
 }
 
 if [[ $root_packages == true ]]; then
