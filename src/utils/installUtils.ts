@@ -9,6 +9,7 @@ import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from '../constants';
 import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs, getShellExe, classifyShell, normalizePathForShell } from "./execUtils";
+import { ensurePowerShellPolicyForUser } from './powershellPolicy';
 import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSDK } from "./utils";
 import { getZephyrTerminal } from "./zephyrTerminalUtils";
 
@@ -233,8 +234,13 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
         break; 
       }
       case 'win32': {
+        const ok = await ensurePowerShellPolicyForUser();
+        if (!ok) {
+          // User cancelled or policy change failed; stop here.
+          return;
+        }
         installScript = 'install.ps1';
-        installCmd = `powershell -ExecutionPolicy Bypass --% -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        installCmd = `powershell --% -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` -InstallDir ${destDir}`;
         shell = 'powershell.exe';
         // TODO: check if powershell 7 is installed and used by default then use pwsh.exe instead
@@ -345,7 +351,7 @@ export async function installVenv(context: vscode.ExtensionContext) {
       }
       case 'win32': {
         installScript = 'install.ps1';
-        installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        installCmd = `powershell -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` -InstallDir ${destDir}`;
         shell = 'powershell.exe';
         break; 
@@ -399,7 +405,7 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
       }
       case 'win32': {
         installScript = 'install.ps1';
-        installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        installCmd = `powershell -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += `-InstallDir ${destDir}`;
         shell = 'powershell.exe';
         break; 
@@ -454,7 +460,7 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
       }
       case 'win32': {
         installScript = 'install-debug-tools.ps1';
-        installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
+        installCmd = `powershell -File ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
         shell = 'powershell.exe';
         installArgs += ' -Tools ';
         break; 
@@ -513,7 +519,7 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
       }
       case 'win32': {
         installScript = 'create_venv.ps1';
-        installCmd = `powershell -ExecutionPolicy Bypass -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        installCmd = `powershell -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` -InstallDir ${destDir}`;
         shell = 'powershell.exe';
         break; 
@@ -597,7 +603,7 @@ export async function createLocalVenvSPDX(
       installCmd  = `bash ${script} ${dest} ${hostToolsPathNorm}`;
   } else {
     installScript = 'create_venv_spdx.ps1';
-    installCmd    = `powershell -ExecutionPolicy Bypass -File "${vscode.Uri.joinPath(installDirUri, installScript).fsPath}"`;
+    installCmd    = `powershell -File "${vscode.Uri.joinPath(installDirUri, installScript).fsPath}"`;
     installArgs   = ` -InstallDir "${destDir}" -HostToolsDir "${hostToolsDirEsc}"`;
   }
 

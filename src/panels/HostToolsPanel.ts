@@ -147,7 +147,7 @@ export class HostToolsPanel {
       let cmd = '';
       if (process.platform === 'win32') {
         const ps = vscode.Uri.joinPath(scriptsDir, 'install.ps1').fsPath;
-        cmd = `powershell -ExecutionPolicy Bypass -File "${ps}" -OnlyCheck -InstallDir "${destDir}"`;
+        cmd = `powershell -File "${ps}" -OnlyCheck -InstallDir "${destDir}"`;
       } else if (process.platform === 'darwin') {
         const sh = vscode.Uri.joinPath(scriptsDir, 'install-mac.sh').fsPath;
         cmd = `bash "${sh}" --only-check ${destDir}`;
