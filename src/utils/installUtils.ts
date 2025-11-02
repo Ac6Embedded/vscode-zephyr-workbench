@@ -271,14 +271,50 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
       };
       output.show();
       sudo.exec(`${installCmd} --only-root`, options, async (error, stdout, stderr) => {
-        if (error) {
-          output.append(`Error executing installer: ${error.message}`);
-          vscode.window.showErrorMessage(`Error executing installer: ${error.message}`);
-        } else {
-          output.append(`${stdout}`);
-          if (stderr) {
-            output.append(`${stderr}`);
+        const toText = (content?: string | Buffer): string | undefined => {
+          if (typeof content === 'undefined') {
+            return undefined;
           }
+          return typeof content === 'string' ? content : content.toString('utf8');
+        };
+
+        const appendBlock = (header: string, content?: string | Buffer) => {
+          const text = toText(content);
+          if (!text) {
+            return;
+          }
+          const trimmed = text.trim();
+          if (!trimmed) {
+            return;
+          }
+          output.appendLine(`--- ${header} ---`);
+          for (const line of trimmed.split(/\r?\n/)) {
+            output.appendLine(line);
+          }
+        };
+
+        const logOutputs = () => {
+          appendBlock('root stdout', stdout);
+          appendBlock('root stderr', stderr);
+        };
+
+        output.show();
+        if (error) {
+          output.appendLine(`Error executing installer: ${error.message}`);
+          logOutputs();
+          vscode.window.showErrorMessage(`Error executing installer: ${error.message}`, 'Open log').then(selection => {
+            if (selection === 'Open log') {
+              output.show();
+            }
+          });
+        } else {
+          logOutputs();
+          output.appendLine('Root host tools step finished.');
+          vscode.window.showInformationMessage('Host tools root step finished.', 'Open log').then(selection => {
+            if (selection === 'Open log') {
+              output.show();
+            }
+          });
         }
       });
 
