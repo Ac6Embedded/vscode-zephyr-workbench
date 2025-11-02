@@ -69,7 +69,7 @@ if [[ -z "$VERSION" || "$VERSION" == "null" ]]; then
 fi
 
 
-PATH_FOR_YAML="$TOOL_DIR/bin"
+PATH_FOR_YAML="$TOOL_DIR"
 
 # --- Update env.yml ---
 echo "Updating env.yml for tool '$TOOL_NAME' (version: $VERSION)"

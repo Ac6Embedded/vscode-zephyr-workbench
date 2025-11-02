@@ -1,6 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
+
+# --- Check if JLink is installed ---
+if ! command -v JLinkExe &> /dev/null; then
+    echo ""
+    echo "ERROR: JLink is not installed or not in the PATH. Please install JLink first."
+    echo ""
+    exit 1
+fi
+
 # Arguments
 FILE="$1"       # Path to the downloaded archive
 DEST_DIR="$2"   # The main tools directory (.zinstaller/tools)
