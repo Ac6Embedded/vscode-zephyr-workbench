@@ -10,13 +10,14 @@ root_packages=true
 non_root_packages=true
 check_installed_bool=true
 reinstall_venv_bool=false
+# Portable python is not used by default, keep it in case we need it in the future
 portable_python=false
 INSTALL_DIR=""
 
 zinstaller_version="2.0"
 zinstaller_md5=$(md5sum "$BASH_SOURCE")
 tools_yml_md5=$(md5sum "$YAML_FILE")
-
+openssl_lib_bool=false
 # Function to display usage information
 usage() {
     cat << EOF
@@ -259,7 +260,7 @@ if [[ $root_packages == true ]]; then
                 pr_error 3 "Ubuntu version lower than 20.04 are not supported"
                 exit 3
             fi
-            portable_python=true
+            portable_python=false
             sudo apt-get update
             sudo apt-get -y install --no-install-recommends git cmake ninja-build gperf ccache dfu-util device-tree-compiler wget python3-dev python3-pip python3-setuptools python3-tk python3-wheel xz-utils file make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1 unzip
             ;;
@@ -495,7 +496,7 @@ env:
   zi_tools_dir: "\${zi_base_dir}/tools"
 EOF
 
-if [ $openssl_lib_bool = true ]; then
+if [ "$openssl_lib_bool" = true ]; then
 	cat << EOF >> "$ENV_YAML_PATH"
   LD_LIBRARY_PATH: "$openssl_path/usr/local/lib:\$LD_LIBRARY_PATH"
 EOF
@@ -519,8 +520,7 @@ if [ "$portable_python" = true ]; then
 	else
 		PYTHON_VERSION=""
 	fi
-	
-if [ "$portable_python" = true ]; then
+
 	cat << EOF >> "$ENV_YAML_PATH"
 
   python:
@@ -528,27 +528,24 @@ if [ "$portable_python" = true ]; then
       - "\${zi_base_dir}/$PYTHON_FOLDER_NAME/bin"
     version: "$PYTHON_VERSION"
     do_not_use: false
-EOF
-fi
-
-	cat << EOF >> "$ENV_YAML_PATH"
-
   openssl:
     path: "\${zi_tools_dir}/$OPENSSL_FOLDER_NAME/usr/local/bin"
     do_not_use: false
-
-python:
-  global_venv_path: "$INSTALL_DIR/.venv"
-
 EOF
 else
+    cat << EOF >> "$ENV_YAML_PATH"
+
+  python:
+    do_not_use: false
+EOF
+fi
+
 	cat << EOF >> "$ENV_YAML_PATH"
 
 python:
   global_venv_path: "$INSTALL_DIR/.venv"
 
 EOF
-fi
 
 echo "Created environment manifest: $ENV_YAML_PATH"
 
