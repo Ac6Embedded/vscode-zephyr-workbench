@@ -140,6 +140,28 @@ function Install-PythonVenv {
     $pythonPackages = ($pythonPackagesJson -join "`n") | ConvertFrom-Json
 
     foreach ($pkg in $pythonPackages) {
+        # Optional OS gating: if 'os' map exists, require current OS flag to be true
+        $shouldInstall = $true
+        $hasOs = $pkg.PSObject.Properties.Name -contains 'os' -and $null -ne $pkg.os
+        if ($hasOs) {
+            $osMap = $pkg.os
+            $currentOsKey = $SelectedOperatingSystem
+            $hasCurrentOsFlag = $osMap.PSObject.Properties.Name -contains $currentOsKey
+            if ($hasCurrentOsFlag) {
+                try {
+                    $osFlag = [System.Convert]::ToBoolean($osMap.$currentOsKey)
+                } catch {
+                    $osFlag = $false
+                }
+                if (-not $osFlag) { $shouldInstall = $false }
+            } else {
+                # 'os' present but no flag for current OS -> do not install
+                $shouldInstall = $false
+            }
+        }
+
+        if (-not $shouldInstall) { continue }
+
         $hasUrl = $pkg.PSObject.Properties.Name -contains 'url' -and $null -ne $pkg.url -and ($pkg.url.ToString().Trim() -ne '')
         $hasName = $pkg.PSObject.Properties.Name -contains 'name' -and $null -ne $pkg.name -and ($pkg.name.ToString().Trim() -ne '')
         $hasVersion = $pkg.PSObject.Properties.Name -contains 'version' -and $null -ne $pkg.version -and ($pkg.version.ToString().Trim() -ne '')

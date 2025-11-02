@@ -208,54 +208,11 @@ install_python_venv() {
     local -a python_package_specs=()
 
     while IFS= read -r spec; do
-        [[ -n "$spec" ]] && python_package_specs+=("$spec")
-    done < <(awk '
-        /^[[:space:]]*python_packages:[[:space:]]*$/ { in_list=1; next }
-        in_list && /^[[:space:]]*#/ { next }
-        in_list && NF==0 { next }
-        in_list && /^[[:alnum:]_]/ {
-            if (pending_name != "") {
-                print pending_name
-                pending_name=""
-            }
-            in_list=0
-            next
-        }
-        in_list {
-            if ($1 == "-" && $2 == "url:") {
-                spec=$0
-                sub(/^[[:space:]]*-[[:space:]]+url:[[:space:]]*/, "", spec)
-                gsub(/"/, "", spec)
-                print spec
-                pending_name=""
-                next
-            }
-            if ($1 == "-" && $2 == "name:") {
-                if (pending_name != "") {
-                    print pending_name
-                }
-                spec=$0
-                sub(/^[[:space:]]*-[[:space:]]+name:[[:space:]]*/, "", spec)
-                gsub(/"/, "", spec)
-                pending_name=spec
-                next
-            }
-            if ($1 == "version:") {
-                spec=$0
-                sub(/^[[:space:]]*version:[[:space:]]*/, "", spec)
-                gsub(/"/, "", spec)
-                if (pending_name != "") {
-                    print pending_name "==" spec
-                    pending_name=""
-                }
-                next
-            }
-        }
-        END {
-            if (pending_name != "") {
-                print pending_name
-            }
-        }
+        [[ -n "$spec" && "$spec" != "null" ]] && python_package_specs+=("$spec")
+    done < <(SELECTED_OS="$SELECTED_OS" "$YQ" eval -r '
+        .python_packages[]
+        | select(.os == null or (.os[env(SELECTED_OS)] == true or .os[env(SELECTED_OS)] == "true"))
+        | if has("url") then .url elif has("version") then "\(.name)==\(.version)" else .name end
     ' "$YAML_FILE")
 
     for spec in "${python_package_specs[@]}"; do

@@ -122,6 +122,8 @@ zephyr_content:
 python_packages:
   # You can specify just a name
   - name: windows-curses
+    os:
+      windows: true
   - name: anytree
   # Or a name + version (string)
   - name: puncover
@@ -132,3 +134,6 @@ python_packages:
   - name: wheel
   - name: pyelftools
   - name: west
+  - name: toto
+    os:
+      linux: true
