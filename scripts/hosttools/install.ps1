@@ -130,59 +130,38 @@ function Install-PythonVenv {
 	
     python -m venv "$InstallDirectory\.venv"
     . "$InstallDirectory\.venv\Scripts\Activate.ps1"
+    $ParserScript = Join-Path $ScriptDirectory "parse_python_packages.py"
     
     Write-Output "Upgrading pip to the latest version..."
     python -m pip install --upgrade pip --quiet
 
-    # Install Python packages declared in tools.yml -> python_packages using yq
-    # Robust JSON parse and property checks to handle name/version/url
-    $pythonPackagesJson = & $Yq eval -o=json '.python_packages' $YamlFilePath
-    $pythonPackages = ($pythonPackagesJson -join "`n") | ConvertFrom-Json
+    # Ensure PyYAML is available before parsing tools.yml within the venv.
+    & python -c "import yaml" 2>$null 1>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Output "Installing PyYAML into the virtual environment..."
+        & python -m pip install PyYAML --quiet
+    }
 
-    foreach ($pkg in $pythonPackages) {
-        # Optional OS gating: if 'os' map exists, require current OS flag to be true
-        $shouldInstall = $true
-        $hasOs = $pkg.PSObject.Properties.Name -contains 'os' -and $null -ne $pkg.os
-        if ($hasOs) {
-            $osMap = $pkg.os
-            $currentOsKey = $SelectedOperatingSystem
-            $hasCurrentOsFlag = $osMap.PSObject.Properties.Name -contains $currentOsKey
-            if ($hasCurrentOsFlag) {
-                try {
-                    $osFlag = [System.Convert]::ToBoolean($osMap.$currentOsKey)
-                } catch {
-                    $osFlag = $false
-                }
-                if (-not $osFlag) { $shouldInstall = $false }
-            } else {
-                # 'os' present but no flag for current OS -> do not install
-                $shouldInstall = $false
-            }
+    $pythonPackageSpecs = @()
+    if (Test-Path -Path $ParserScript) {
+        # Shared parser yields package specs while honoring per-OS gating.
+        $pythonPackageSpecs = & python $ParserScript $YamlFilePath $SelectedOperatingSystem
+        if ($LASTEXITCODE -ne 0) {
+            Write-Output "WARN: Failed to parse python_packages from $YamlFilePath"
+            $pythonPackageSpecs = @()
         }
+    } else {
+        Write-Output "WARN: Parser script not found: $ParserScript"
+    }
 
-        if (-not $shouldInstall) { continue }
-
-        $hasUrl = $pkg.PSObject.Properties.Name -contains 'url' -and $null -ne $pkg.url -and ($pkg.url.ToString().Trim() -ne '')
-        $hasName = $pkg.PSObject.Properties.Name -contains 'name' -and $null -ne $pkg.name -and ($pkg.name.ToString().Trim() -ne '')
-        $hasVersion = $pkg.PSObject.Properties.Name -contains 'version' -and $null -ne $pkg.version -and ($pkg.version.ToString().Trim() -ne '')
-
-        $spec = $null
-        if ($hasUrl) {
-            $spec = $pkg.url.ToString().Trim()
-        } elseif ($hasName -and $hasVersion) {
-            $spec = "{0}=={1}" -f $pkg.name.ToString().Trim(), $pkg.version.ToString().Trim()
-        } elseif ($hasName) {
-            $spec = $pkg.name.ToString().Trim()
-        }
-
-        if ($spec -and ($spec.Trim() -ne '')) {
-            Write-Output "Installing Python package: $spec"
-            python -m pip install $spec --quiet
-        }
+    foreach ($spec in $pythonPackageSpecs) {
+        if ([string]::IsNullOrWhiteSpace($spec)) { continue }
+        Write-Output "Installing Python package: $spec"
+        & python -m pip install $spec --quiet
     }
 
     Write-Output "Installing Zephyr's base requirements..."
-    python -m pip install -r "$RequirementsBaseUrl/requirements.txt" --quiet
+    & python -m pip install -r "$RequirementsDirectory\requirements.txt" --quiet
 }
 
 

@@ -203,27 +203,46 @@ install_python_venv() {
 
     source "$venv_path/bin/activate"
     echo "Upgrading pip to the latest version..."
-    "$venv_path/bin/python" -m pip install --upgrade pip --quiet
+    python -m pip install --upgrade pip --quiet
 
     local -a python_package_specs=()
+    local parser_script="$SCRIPT_DIR/parse_python_packages.py"
 
-    while IFS= read -r spec; do
-        [[ -n "$spec" && "$spec" != "null" ]] && python_package_specs+=("$spec")
-    done < <(SELECTED_OS="$SELECTED_OS" "$YQ" eval -r '
-        .python_packages[]
-        | select(.os == null or (.os[env(SELECTED_OS)] == true or .os[env(SELECTED_OS)] == "true"))
-        | if has("url") then .url elif has("version") then "\(.name)==\(.version)" else .name end
-    ' "$YAML_FILE")
+    # Ensure PyYAML is present before parsing tools.yml inside the venv.
+    if ! python - <<'PY' >/dev/null 2>&1
+import importlib
+import sys
+
+try:
+    importlib.import_module("yaml")  # type: ignore
+except ModuleNotFoundError:
+    sys.exit(1)
+sys.exit(0)
+PY
+    then
+        echo "Installing PyYAML into the virtual environment..."
+        python -m pip install --quiet pyyaml
+    fi
+
+    if [[ -f "$parser_script" ]]; then
+        # Shared parser emits the specs list, honoring per-OS gating in tools.yml.
+        if ! mapfile -t python_package_specs < <(python "$parser_script" "$YAML_FILE" "$SELECTED_OS"); then
+            echo "Failed to parse python_packages from $YAML_FILE" >&2
+            python_package_specs=()
+        fi
+    else
+        echo "Parser script not found: $parser_script" >&2
+    fi
 
     for spec in "${python_package_specs[@]}"; do
         if [[ -n "$spec" && "$spec" != "null" ]]; then
             echo "Installing Python package: $spec"
-           "$venv_path/bin/python" -m pip install "$spec" --quiet
+            python -m pip install "$spec" --quiet
         fi
     done
 
     echo "Installing Zephyr's base requirements..."
-    "$venv_path/bin/python" -m pip install -r "$requirements_dir/requirements.txt" --quiet
+    python -m pip install -r "$requirements_dir/requirements.txt" --quiet
 }
 
 if [[ $root_packages == true ]]; then

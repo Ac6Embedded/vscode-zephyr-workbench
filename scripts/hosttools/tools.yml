@@ -130,10 +130,12 @@ python_packages:
     version: "0.4.2"
   # Or a direct URL (wheel/sdist)
   # - url: https://files.pythonhosted.org/packages/.../somepkg-1.2.3-py3-none-any.whl
+  # Optional fields:
+  #   os: {windows|linux|darwin: true/false/"true"} to gate installs per platform
+  #   version: pin alongside name, e.g. name+version
+  #   url: direct wheel/sdist with no name needed
+  # If `os` is omitted, the package installs on every platform.
   - name: setuptools
   - name: wheel
   - name: pyelftools
   - name: west
-  - name: toto
-    os:
-      linux: true
