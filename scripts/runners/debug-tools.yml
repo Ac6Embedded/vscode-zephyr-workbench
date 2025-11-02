@@ -180,19 +180,6 @@ debug_tools:
       - "/usr/local/SimplicityCommander*"
     darwin:
       - "/Applications/SimplicityCommander.app/Contents/MacOS"
-- tool: udev-rules
-  name: Udev Rules
-  version: 1.0.0 
-  website:
-  vendor: No
-  type: driver
-  group: STM32
-  root: true
-  no_edit: true
-  os:
-    linux:
-      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/zw-udev-rules-1.0.0.tar.xz
-      sha256: 0cd477139825438cef3e1f15ec01be801c9b9dfcf3085c43d7af284122f862b9
 - tool: pyocd
   name: pyOCD
   version: 0.36.0
@@ -220,13 +207,13 @@ debug_tools:
 packs:
 - pack: stm32
   name: STM32
-  tools: [openocd, stm32cubeprogrammer, jlink, udev-rules]
+  tools: [openocd, stm32cubeprogrammer, jlink]
 - pack: nxp
   name: NXP
   tools: [linkserver, jlink]
 - pack: nordic
   name: Nordic
-  tools: [nrfjprog, nrfutil, jlink]
+  tools: [jlink, nrfutil, nrfjprog]
 - pack: silabs
   name: Silabs
   tools: [simplicity_commander, cp210x, jlink]
