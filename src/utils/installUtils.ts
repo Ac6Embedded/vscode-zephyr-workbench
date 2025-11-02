@@ -7,9 +7,9 @@ import os from 'os';
 import path from "path";
 import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
-import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from '../constants';
+import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
 import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs, getShellExe, classifyShell, normalizePathForShell } from "./execUtils";
-import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSDK } from "./utils";
+import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSDK, getWestWorkspace } from "./utils";
 import { getZephyrTerminal } from "./zephyrTerminalUtils";
 import { ensurePowershellExecutionPolicy } from "./powershellUtils";
 
@@ -508,7 +508,12 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
 }
 
 export async function createLocalVenv(context: vscode.ExtensionContext, workbenchFolder: vscode.WorkspaceFolder): Promise<string | undefined> {
-  let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'venv');
+  // Prefer hosttools installer for Windows to create venv directly; legacy scripts on others
+  let installDirUri = vscode.Uri.joinPath(
+    context.extensionUri,
+    'scripts',
+    process.platform === 'win32' ? 'hosttools' : 'venv'
+  );
   let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
   if(installDirUri && envScript) {
     let installScript: string = "";
@@ -529,9 +534,12 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
       case 'win32': {
         const ok = await ensurePowershellExecutionPolicy();
         if (!ok) { return undefined; }
-        installScript = 'create_venv.ps1';
-        installCmd = `powershell -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += ` -InstallDir ${destDir}`;
+        // Use the hosttools installer with CreateVenv mode
+        installScript = 'install.ps1';
+        const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
+        const venvPath   = path.join(destDir, '.venv');
+        installCmd = `powershell -File "${scriptPath}"`;
+        installArgs = ` -CreateVenv -VenvPath "${venvPath}"`;
         shell = 'powershell.exe';
         break; 
       }
@@ -550,9 +558,20 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
 
     envScript = expandEnvVariables(envScript);
 
+    // Add ZEPHYR_BASE so install scripts can use workspace's Zephyr tree
+    const westWorkspacePath = vscode.workspace
+      .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workbenchFolder)
+      .get<string>(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, '');
+    let zephyrBase = path.join(destDir, 'zephyr');
+    try {
+      if (westWorkspacePath && fileExists(westWorkspacePath)) {
+        zephyrBase = getWestWorkspace(westWorkspacePath).kernelUri.fsPath;
+      }
+    } catch {}
+
     let shellOpts: vscode.ShellExecutionOptions = {
       cwd: os.homedir(),
-      env: { ENV_FILE: envScript },
+      env: { ENV_FILE: envScript, ZEPHYR_BASE: zephyrBase },
       executable: shell,
       shellArgs: getShellArgs(shell),
     };

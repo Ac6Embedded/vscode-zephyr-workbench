@@ -2,6 +2,8 @@ param (
     [string]$InstallDir = "$env:USERPROFILE",
     [switch]$OnlyCheck,
     [switch]$ReinstallVenv,
+    [switch]$CreateVenv,
+    [string]$VenvPath,
     [switch]$Help,
     [switch]$Version
 )
@@ -26,7 +28,9 @@ Options:
   -Help                  Show this help message and exit
   -Version               Show version and hash of the current script
   -OnlyCheck             Perform only a check for required software packages without installing
-  -ReinstallVenv         Remove .venv folder, create a new .venv, install requirements and west
+  -ReinstallVenv         Remove the venv folder (see -VenvPath), create a new one and install Python requirements
+  -CreateVenv            Create a Python venv (see -VenvPath) and install Python requirements; does not remove existing venv
+  -VenvPath              Optional. Full path to the Python virtual environment to create/use. Defaults to '<InstallDir>\.zinstaller\.venv'
 
 Arguments:
   InstallDir             Optional. The directory where the Zephyr environment will be installed. Defaults to '$env:USERPROFILE\.zinstaller'
@@ -36,6 +40,8 @@ Examples:
   install.ps1 "C:\my\install\path"
   install.ps1 -OnlyCheck
   install.ps1 -ReinstallVenv
+  install.ps1 -CreateVenv -VenvPath "D:\zw\.venv"
+  install.ps1 "C:\my\install\path" -ReinstallVenv -VenvPath "C:\my\install\path\.zinstaller\.venv"
   install.ps1 "C:\my\install\path" -OnlyCheck
 "@
     Write-Host $helpText
@@ -62,6 +68,15 @@ if (-not [System.IO.Path]::IsPathRooted($InstallDirectory)) {
 }
 
 Write-Output "Install directory: $InstallDirectory"
+
+# Determine venv path (defaults to <InstallDirectory>\.venv) and normalize to absolute
+if (-not $VenvPath -or [string]::IsNullOrWhiteSpace($VenvPath)) {
+    $VenvPath = Join-Path -Path $InstallDirectory -ChildPath ".venv"
+}
+if (-not [System.IO.Path]::IsPathRooted($VenvPath)) {
+    $VenvPath = Join-Path -Path (Get-Location).Path -ChildPath $VenvPath
+}
+Write-Output "Venv path: $VenvPath"
 
 $TemporaryDirectory = "$InstallDirectory\tmp"
 $ManifestFilePath = "$TemporaryDirectory\manifest.ps1"
@@ -107,29 +122,47 @@ function Print-Warning {
 
 function Install-PythonVenv {
     param (
-        [string]$InstallDirectory
+        [string]$VenvPath
     )
-	
+
     Print-Title "Zephyr Python-Requirements"
-	$RequirementsDirectory = "$TemporaryDirectory\requirements"
-	$RequirementsBaseUrl = "https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
-	
-	New-Item -Path "$RequirementsDirectory" -ItemType Directory -Force > $null 2>&1
-	
-	Download-WithoutCheck "$RequirementsBaseUrl/requirements.txt" "requirements.txt"
-	Download-WithoutCheck "$RequirementsBaseUrl/requirements-run-test.txt" "requirements-run-test.txt"
-	Download-WithoutCheck "$RequirementsBaseUrl/requirements-extras.txt" "requirements-extras.txt"
-	Download-WithoutCheck "$RequirementsBaseUrl/requirements-compliance.txt" "requirements-compliance.txt"
-	Download-WithoutCheck "$RequirementsBaseUrl/requirements-build-test.txt" "requirements-build-test.txt"
-	Download-WithoutCheck "$RequirementsBaseUrl/requirements-base.txt" "requirements-base.txt"
-	Move-Item -Path "$DownloadDirectory/require*.txt" -Destination "$RequirementsDirectory"
-	
-	if (Test-Path -Path "$InstallDirectory\.venv") {
-		Remove-Item -Path "$InstallDirectory\.venv" -Recurse -Force
-	}
-	
-    python -m venv "$InstallDirectory\.venv"
-    . "$InstallDirectory\.venv\Scripts\Activate.ps1"
+    $RequirementsBaseUrl = "https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
+
+    # Decide requirements source
+    $UseZephyrBaseReq = $false
+    $RequirementsFile = $null
+    if ($env:ZEPHYR_BASE -and -not [string]::IsNullOrWhiteSpace($env:ZEPHYR_BASE)) {
+        $Candidate = Join-Path -Path $env:ZEPHYR_BASE -ChildPath "scripts\requirements.txt"
+        if (Test-Path -Path $Candidate) {
+            $UseZephyrBaseReq = $true
+            $RequirementsFile = $Candidate
+            Write-Output "Using ZEPHYR_BASE requirements: $RequirementsFile"
+        } else {
+            Write-Output "WARN: ZEPHYR_BASE is set but requirements file not found at $Candidate. Falling back to downloading."
+        }
+    }
+
+    if (-not $UseZephyrBaseReq) {
+        # Fetch requirements into a temporary folder
+        $RequirementsDirectory = "$TemporaryDirectory\requirements"
+        New-Item -Path "$RequirementsDirectory" -ItemType Directory -Force > $null 2>&1
+
+        Download-WithoutCheck "$RequirementsBaseUrl/requirements.txt" "requirements.txt"
+        Download-WithoutCheck "$RequirementsBaseUrl/requirements-run-test.txt" "requirements-run-test.txt"
+        Download-WithoutCheck "$RequirementsBaseUrl/requirements-extras.txt" "requirements-extras.txt"
+        Download-WithoutCheck "$RequirementsBaseUrl/requirements-compliance.txt" "requirements-compliance.txt"
+        Download-WithoutCheck "$RequirementsBaseUrl/requirements-build-test.txt" "requirements-build-test.txt"
+        Download-WithoutCheck "$RequirementsBaseUrl/requirements-base.txt" "requirements-base.txt"
+        Move-Item -Path "$DownloadDirectory/require*.txt" -Destination "$RequirementsDirectory" -Force
+
+        $RequirementsFile = Join-Path -Path $RequirementsDirectory -ChildPath "requirements.txt"
+        Write-Output "Using downloaded requirements: $RequirementsFile"
+    }
+
+    if (-not (Test-Path -Path $VenvPath)) {
+        python -m venv "$VenvPath"
+    }
+    . "$VenvPath\Scripts\Activate.ps1"
     $ParserScript = Join-Path $ScriptDirectory "parse_python_packages.py"
     
     Write-Output "Upgrading pip to the latest version..."
@@ -161,7 +194,7 @@ function Install-PythonVenv {
     }
 
     Write-Output "Installing Zephyr's base requirements..."
-    & python -m pip install -r "$RequirementsDirectory\requirements.txt" --quiet
+    & python -m pip install -r "$RequirementsFile" --quiet
 }
 
 
@@ -422,13 +455,24 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 		Write-Host "7-Zip installation completed."
     }
 
+	if ($CreateVenv) {
+		Print-Title "Creating Python VENV"
+		if (Test-Path -Path $VenvPath) {
+			Write-Output "VENV already exists at: $VenvPath"
+		} else {
+			Install-PythonVenv -VenvPath $VenvPath
+		}
+		Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
+		exit
+	}
+
 	if ($ReinstallVenv) {
 		Print-Title "Reinstalling Python VENV"
-		if (Test-Path -Path "$InstallDirectory\.venv") {
-            Remove-Item -Path "$InstallDirectory\.venv" -Recurse -Force
+		if (Test-Path -Path $VenvPath) {
+            Remove-Item -Path $VenvPath -Recurse -Force
 		}
 
-		Install-PythonVenv -InstallDirectory $InstallDirectory -WorkDirectory $WorkDirectory
+		Install-PythonVenv -VenvPath $VenvPath
 	    Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
 		exit
 	}
@@ -562,7 +606,7 @@ if (! $OnlyCheck -or $ReinstallVenv) {
       
 	  
     Print-Title "Python VENV"
-    Install-PythonVenv -InstallDirectory $InstallDirectory
+    Install-PythonVenv -VenvPath $VenvPath
 
 # bat script  
 @"
