@@ -151,7 +151,6 @@ export async function verifyInstallScript(): Promise<void> {
  * @param context 
  */
 export async function runInstallHostTools(context: vscode.ExtensionContext, 
-                                          skipSdk: boolean, 
                                           listToolchains: string,
                                           progress: vscode.Progress<{
                                             message?: string | undefined;
@@ -167,7 +166,7 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
   if(await checkHostTools()) {
     progress.report({ message: "Host tools already installed", increment: 100 });
   } else {
-    await installHostTools(context, skipSdk, listToolchains);
+    await installHostTools(context, listToolchains);
   }
 
   progress.report({ message: "Check if environment is well set up", increment: 80 });
@@ -185,7 +184,6 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
 }
 
 export async function forceInstallHostTools(context: vscode.ExtensionContext, 
-                                            skipSdk: boolean, 
                                             listToolchains: string,
                                             progress: vscode.Progress<{
                                             message?: string | undefined;
@@ -197,7 +195,7 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
 
   removeHostTools();
   progress.report({ message: "Reinstalling host tools into user directory" });
-  await installHostTools(context, true, listToolchains);
+  await installHostTools(context, listToolchains);
 
   progress.report({ message: "Check if environment is well set up", increment: 80 });
   if(await checkHostTools()) {
@@ -215,7 +213,7 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
 
 // Removed: getInstallHostToolsArgs (no longer used)
 
-export async function installHostTools(context: vscode.ExtensionContext, skipSdk: boolean = false, listTools: string = "") {
+export async function installHostTools(context: vscode.ExtensionContext, listTools: string = "") {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   if(installDirUri) {
     let installScript: string = "";
@@ -256,9 +254,7 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
       case 'darwin': {
         installScript = 'install-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        if(skipSdk) {
-          installArgs += ' ';
-        } else if(listTools.length > 0) {
+        if(listTools.length > 0) {
           installArgs += ` --select-sdk="${listTools}"`;
         }
         installArgs += ` ${destDir}`;

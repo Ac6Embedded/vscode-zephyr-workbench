@@ -26,7 +26,6 @@ import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
 import { HostToolsPanel } from './panels/HostToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
-import { SDKManagerPanel } from './panels/SDKManagerPanel';
 import { changeToolchainQuickStep } from "./quicksteps/changeToolchainQuickStep";
 import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
@@ -1215,7 +1214,6 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand(
 			"zephyr-workbench.install-host-tools",
 			async (force = false,
-				skipSdk = false,
 				listToolchains = "") => {
 
 				return vscode.window.withProgress(
@@ -1225,14 +1223,14 @@ export function activate(context: vscode.ExtensionContext) {
 						cancellable: true,
 					},
 					async (progress, token) => {
-						SDKManagerPanel.currentPanel?.dispose();
+						// Close deprecated SDK Manager panel if open (no-op as panel removed)
 
 						if (!force) {
 							await runInstallHostTools(
-								context, skipSdk, listToolchains, progress, token);
+								context, listToolchains, progress, token);
 						} else {
 							await forceInstallHostTools(
-								context, skipSdk, listToolchains, progress, token);
+								context, listToolchains, progress, token);
 						}
 
 						zephyrSdkProvider.refresh();
@@ -1276,7 +1274,6 @@ export function activate(context: vscode.ExtensionContext) {
 				return vscode.commands.executeCommand(
 					"zephyr-workbench.install-host-tools",
 					force,
-					true,
 					""
 				);
 			}
