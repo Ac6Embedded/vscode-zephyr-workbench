@@ -269,7 +269,6 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
       const options = {
         name: 'Zephyr Workbench Installer',
       };
-      output.show();
       sudo.exec(`${installCmd} --only-root`, options, async (error, stdout, stderr) => {
         const toText = (content?: string | Buffer): string | undefined => {
           if (typeof content === 'undefined') {
@@ -298,7 +297,6 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
           appendBlock('root stderr', stderr);
         };
 
-        output.show();
         if (error) {
           output.appendLine(`Error executing installer: ${error.message}`);
           logOutputs();

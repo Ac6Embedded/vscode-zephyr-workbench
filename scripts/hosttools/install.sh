@@ -53,7 +53,7 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --only-without-root)
       root_packages=false
-      check_installed_bool=false
+      check_installed_bool=true
       ;;
     --only-check)
       root_packages=false
@@ -261,7 +261,7 @@ if [[ $root_packages == true ]]; then
             fi
             portable_python=true
             sudo apt-get update
-            sudo apt -y install --no-install-recommends git cmake ninja-build gperf ccache dfu-util device-tree-compiler wget python3-dev python3-pip python3-setuptools python3-tk python3-wheel xz-utils file make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1 unzip
+            sudo apt-get -y install --no-install-recommends git cmake ninja-build gperf ccache dfu-util device-tree-compiler wget python3-dev python3-pip python3-setuptools python3-tk python3-wheel xz-utils file make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1 unzip
             ;;
         fedora)
             echo "This is Fedora."
@@ -882,7 +882,7 @@ check_package() {
 			python) version=$(echo "$version" | grep -oP 'Python \K[^\s]+') ;;
 			cmake) version=$(echo "$version" | grep -oP 'cmake version \K[^\s]+') ;;
 			ninja) version=$(echo "$version") ;;
-			openssl) version=$(echo "$version" | grep -oP 'OpenSSL \K[^\s]+') ;;
+			openssl) version=$(echo "$version" | awk '{print $2; exit}') ;; # restrict to first reported version
 			git) version=$(echo "$version" | grep -oP 'git version \K[^\s]+') ;;
 			gperf) version=$(echo "$version" | grep -oP 'GNU gperf \K[^\s]+') ;;
 			ccache) version=$(echo "$version" | grep -oP 'ccache version \K[^\s]+') ;;
