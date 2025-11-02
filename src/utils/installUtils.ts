@@ -1,7 +1,7 @@
 import * as sevenBin from '7zip-bin';
 import { FileDownloader, getApi } from "@microsoft/vscode-file-downloader-api";
-import { ExecException, exec } from "child_process";
 import * as fs from 'fs';
+import { ExecException, exec } from "child_process";
 import * as node7zip from "node-7z";
 import os from 'os';
 import path from "path";
@@ -9,9 +9,9 @@ import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from '../constants';
 import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs, getShellExe, classifyShell, normalizePathForShell } from "./execUtils";
-import { ensurePowerShellPolicyForUser } from './powershellPolicy';
 import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSDK } from "./utils";
 import { getZephyrTerminal } from "./zephyrTerminalUtils";
+import { ensurePowershellExecutionPolicy } from "./powershellUtils";
 
 export let output = vscode.window.createOutputChannel("Installing Host Tools");
 
@@ -234,6 +234,18 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
         break; 
       }
       case 'win32': {
+        // Ensure execution policy permits running our script
+        const ok = await ensurePowershellExecutionPolicy();
+        if (!ok) {
+          const action = 'Install Host Tools';
+          vscode.window.showInformationMessage('Please enable PowerShell script execution (RemoteSigned), then click Install Host Tools.', action)
+            .then(async (sel) => {
+              if (sel === action) {
+                try { await vscode.commands.executeCommand('zephyr-workbench.install-host-tools.open-manager', false); } catch {}
+              }
+            });
+          return;
+        }
         installScript = 'install.ps1';
         installCmd = `powershell --% -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` -InstallDir ${destDir}`;
@@ -345,6 +357,8 @@ export async function installVenv(context: vscode.ExtensionContext) {
         break; 
       }
       case 'win32': {
+        const ok = await ensurePowershellExecutionPolicy();
+        if (!ok) { return; }
         installScript = 'install.ps1';
         installCmd = `powershell -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` -InstallDir ${destDir}`;
@@ -399,6 +413,8 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
         break; 
       }
       case 'win32': {
+        const ok = await ensurePowershellExecutionPolicy();
+        if (!ok) { return; }
         installScript = 'install.ps1';
         installCmd = `powershell -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += `-InstallDir ${destDir}`;
@@ -454,6 +470,8 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
         break; 
       }
       case 'win32': {
+        const ok = await ensurePowershellExecutionPolicy();
+        if (!ok) { return; }
         installScript = 'install-debug-tools.ps1';
         installCmd = `powershell -File ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
         shell = 'powershell.exe';
@@ -513,6 +531,8 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
         break; 
       }
       case 'win32': {
+        const ok = await ensurePowershellExecutionPolicy();
+        if (!ok) { return undefined; }
         installScript = 'create_venv.ps1';
         installCmd = `powershell -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` -InstallDir ${destDir}`;
@@ -597,6 +617,10 @@ export async function createLocalVenvSPDX(
       const hostToolsPathNorm = normalizePathForShell(shellKind, hostToolsPath);
       installCmd  = `bash ${script} ${dest} ${hostToolsPathNorm}`;
   } else {
+    if (process.platform === 'win32') {
+      const ok = await ensurePowershellExecutionPolicy();
+      if (!ok) { return undefined; }
+    }
     installScript = 'create_venv_spdx.ps1';
     installCmd    = `powershell -File "${vscode.Uri.joinPath(installDirUri, installScript).fsPath}"`;
     installArgs   = ` -InstallDir "${destDir}" -HostToolsDir "${hostToolsDirEsc}"`;
@@ -814,25 +838,25 @@ export async function runSetupScript(filePath: string) {
 }
 
 export function execCommand(command: string, options?: { cwd?: string }): Promise<string> {
-	return new Promise((resolve, reject) => {
+  	return new Promise((resolve, reject) => {
 		exec(command, options, (error: ExecException | null, stdout: string | Buffer, stderr: string | Buffer) => {
-			if (error) {
-				reject(error);
-				return;
-			}
-			if (stderr) {
-				reject(new Error(stderr.toString()));
-				return;
-			}
-			resolve(stdout.toString());
+				if (error) {
+					reject(error);
+					return;
+				}
+				if (stderr) {
+					reject(new Error(stderr.toString()));
+					return;
+				}
+				resolve(stdout.toString());
+			});
 		});
-	});
 }
 
 export async function checkHomebrew(): Promise<boolean> {
   const cmd = 'brew --version';
   return new Promise<boolean>((resolve, reject) => {
-    exec(cmd, (error: any, stdout, stderr) => {
+		exec(cmd, (error: ExecException | null, stdout: string | Buffer, stderr: string | Buffer) => {
       if (error) {
         reject('Homebrew not installed in system');
       } else {
