@@ -182,26 +182,37 @@ install_python_venv() {
     local requirements_baseurl="https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
     local requirements_dir="$work_directory/requirements"
     local venv_path="$install_directory/.venv"
-    local requirement_files=(
-        "requirements.txt"
-        "requirements-run-test.txt"
-        "requirements-extras.txt"
-        "requirements-compliance.txt"
-        "requirements-build-test.txt"
-        "requirements-base.txt"
-    )
 
-    mkdir -p "$requirements_dir"
-
-    for requirement in "${requirement_files[@]}"; do
-        download "$requirements_baseurl/$requirement" "$requirement"
-        mv "$DL_DIR/$requirement" "$requirements_dir/$requirement"
-    done
+    # Choose requirements source: honor ZEPHYR_BASE if it points to a Zephyr tree
+    local use_zephyr_base_req=false
+    local requirements_file=""
+    if [[ -n "$ZEPHYR_BASE" && -f "$ZEPHYR_BASE/scripts/requirements.txt" ]]; then
+        use_zephyr_base_req=true
+        requirements_file="$ZEPHYR_BASE/scripts/requirements.txt"
+        echo "Using ZEPHYR_BASE requirements: $requirements_file"
+    else
+        echo "ZEPHYR_BASE not set or requirements not found; downloading requirements"
+        local requirement_files=(
+            "requirements.txt"
+            "requirements-run-test.txt"
+            "requirements-extras.txt"
+            "requirements-compliance.txt"
+            "requirements-build-test.txt"
+            "requirements-base.txt"
+        )
+        mkdir -p "$requirements_dir"
+        for requirement in "${requirement_files[@]}"; do
+            download "$requirements_baseurl/$requirement" "$requirement"
+            mv "$DL_DIR/$requirement" "$requirements_dir/$requirement"
+        done
+        requirements_file="$requirements_dir/requirements.txt"
+    fi
 
     if [[ ! -d "$venv_path" ]]; then
         python3 -m venv "$venv_path"
     fi
 
+    # shellcheck disable=SC1091
     source "$venv_path/bin/activate"
     echo "Upgrading pip to the latest version..."
     python -m pip install --upgrade pip --quiet
@@ -243,7 +254,7 @@ PY
     done
 
     echo "Installing Zephyr's base requirements..."
-    python -m pip install -r "$requirements_dir/requirements.txt" --quiet
+    python -m pip install -r "$requirements_file" --quiet
 }
 
 if [[ $root_packages == true ]]; then
