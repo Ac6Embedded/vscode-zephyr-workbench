@@ -234,11 +234,6 @@ export async function installHostTools(context: vscode.ExtensionContext, skipSdk
         break; 
       }
       case 'win32': {
-        const ok = await ensurePowerShellPolicyForUser();
-        if (!ok) {
-          // User cancelled or policy change failed; stop here.
-          return;
-        }
         installScript = 'install.ps1';
         installCmd = `powershell --% -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` -InstallDir ${destDir}`;
