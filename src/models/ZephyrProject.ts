@@ -213,4 +213,27 @@ export class ZephyrProject {
     return terminal;
   }
 
+  /**
+   * Return west runner names compatible with this project.
+   *
+   * Behavior:
+   * - If a `buildConfigName` is provided and found, use it.
+   * - Else use the active config, or fall back to the first.
+   * - If no configs exist, return an empty list.
+   */
+  async getCompatibleRunners(buildConfigName?: string): Promise<string[]> {
+    if (buildConfigName) {
+      const cfg = this.getBuildConfiguration(buildConfigName);
+      if (cfg) {
+        return await cfg.getCompatibleRunners(this);
+      }
+    }
+
+    const activeCfg = this.configs.find(c => c.active) ?? this.configs[0];
+    if (activeCfg) {
+      return await activeCfg.getCompatibleRunners(this);
+    }
+
+    return [];
+  }
 }

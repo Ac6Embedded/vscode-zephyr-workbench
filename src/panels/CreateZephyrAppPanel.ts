@@ -296,9 +296,9 @@ export class CreateZephyrAppPanel {
                 CreateZephyrAppPanel.currentPanel?.dispose();
               }
               const missing: string[] = [];
-              if (!hasWorkspace) missing.push("workspace");
-              if (!hasBoard) missing.push("board");
-              if (!hasSdk) missing.push("toolchain");
+              if (!hasWorkspace) {missing.push("workspace");}
+              if (!hasBoard) {missing.push("board");}
+              if (!hasSdk) {missing.push("toolchain");}
 
               if (missing.length && missing.length < 3) {
                 vscode.window.showInformationMessage(
