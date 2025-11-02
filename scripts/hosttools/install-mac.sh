@@ -394,7 +394,11 @@ done < "$YAML_FILE"
 
 # --- Activate Python virtual environment if available ---
 default_venv_activate_path="$GLOBAL_VENV_PATH/bin/activate"
-[[ -n "$PYTHON_VENV_ACTIVATE_PATH" ]] && venv_activate_path="$PYTHON_VENV_ACTIVATE_PATH" || venv_activate_path="$default_venv_activate_path"
+if [[ -n "$PYTHON_VENV_PATH" ]]; then
+    venv_activate_path="$PYTHON_VENV_PATH/bin/activate"
+else
+    venv_activate_path="$default_venv_activate_path"
+fi
 
 if [[ -f "$venv_activate_path" ]]; then
     source "$venv_activate_path" >/dev/null 2>&1

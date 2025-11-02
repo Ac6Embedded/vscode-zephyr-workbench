@@ -6,7 +6,7 @@ import { WestWorkspace } from '../models/WestWorkspace';
 import { ZephyrAppProject } from '../models/ZephyrAppProject';
 import { ZephyrBoard } from '../models/ZephyrBoard';
 import { ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
-import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from '../constants';
+import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, getEnvVarFormat, getShell, getShellArgs } from '../utils/execUtils';
 import { getWestWorkspace, getZephyrSDK, findIarEntry, msleep } from '../utils/utils';
 import { addConfig, deleteConfig } from '../utils/zephyrEnvUtils';
@@ -261,9 +261,9 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     const fullCommand = `${cmd} ${args}${sysbuildFlag}`;
 
     const envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-    let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
-    if (!activatePath || activatePath.length === 0) {
-      activatePath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.workspaceFolder.uri).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+    let venvPath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
+    if (!venvPath || venvPath.length === 0) {
+      venvPath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.workspaceFolder.uri).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
     }
 
     if (!envScript) {
@@ -320,9 +320,9 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       options.env = { ...options.env, ...config.getBuildEnvWithVar(project) };
     }
 
-    if (activatePath) {
+    if (venvPath) {
       options.env = {
-        PYTHON_VENV_ACTIVATE_PATH: activatePath,
+        PYTHON_VENV_PATH: venvPath,
         ...options.env
       };
     }

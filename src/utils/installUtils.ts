@@ -585,7 +585,8 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
     };
     
     await execShellCommand('Creating local virtual environment', installCmd + installArgs, shellOpts);
-    return findVenvActivateScript(destDir);
+    const venvDir = path.join(destDir, '.venv');
+    return fileExists(venvDir) ? venvDir : undefined;
 
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");

@@ -7,7 +7,7 @@ import { ZephyrAppProject } from '../models/ZephyrAppProject';
 import { ZephyrProject } from '../models/ZephyrProject';
 import { ZephyrSDK } from '../models/ZephyrSDK';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
-import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from '../constants';
+import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, execShellCommandWithEnv, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
 import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from '../utils/utils'; 
 
@@ -488,12 +488,12 @@ export function execWestCommandWithEnv(
   const rawEnv = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY)!;
-  const activatePath = vscode.workspace
+  const venvPath = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+    .get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
 
   if (!rawEnv) {throw new Error('Missing Zephyr env script');}
-  if (activatePath && !fileExists(activatePath)) {throw new Error('Invalid venv activate path');}
+  if (venvPath && !fileExists(venvPath)) {throw new Error('Invalid venv path');}
 
   // build cwd + env
   const options: any = { env: { ...process.env }, cwd: '' };
@@ -507,7 +507,7 @@ export function execWestCommandWithEnv(
     options.cwd = ws.rootUri.fsPath;
     options.env = { ...options.env, ...ws.buildEnv };
   }
-  if (activatePath) {options.env.PYTHON_VENV_ACTIVATE_PATH = activatePath;}
+  if (venvPath) {options.env.PYTHON_VENV_PATH = venvPath;}
 
   // shell + flags
   const shellExe = getShellExe();
@@ -550,9 +550,9 @@ export function execWestCommandWithEnvAsync(
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
 
-  const activatePath = vscode.workspace
+  const venvPath = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+    .get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
 
   if (!envScript) {
     throw new Error(
@@ -561,18 +561,18 @@ export function execWestCommandWithEnvAsync(
       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
     );
   }
-  if (activatePath && !fileExists(activatePath)) {
+  if (venvPath && !fileExists(venvPath)) {
     throw new Error(
       'Invalid Python virtual environment.\n' +
-      'Go to File > Preferences > Settings > Extensions > Zephyr Workbench > Venv: Activate Path',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}` }
+      'Go to File > Preferences > Settings > Extensions > Zephyr Workbench > Venv: Path',
+      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
     );
   }
 
   let options: ExecOptions = {
     env: {
       ...process.env,
-      ...(activatePath ? { PYTHON_VENV_ACTIVATE_PATH: activatePath } : {})
+      ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {})
     }
   };
 

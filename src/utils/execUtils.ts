@@ -5,7 +5,7 @@ import { compareVersions, fileExists } from './utils';
 import {
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
-  ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY
+  ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY
 } from '../constants';
 import {
   ChildProcess, ExecException, ExecOptions, SpawnOptions,
@@ -415,12 +415,12 @@ export async function execShellCommandWithEnv(
   const rawEnvScript = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  const rawActivatePath = vscode.workspace
+  const rawVenvPath = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+    .get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
 
   const envScript = normalizePathForShell(classifyShell(getShellExe()), rawEnvScript ?? '');
-  const activatePath = rawActivatePath ? normalizePathForShell(classifyShell(getShellExe()), rawActivatePath) : undefined;
+  const venvPath = rawVenvPath ? normalizePathForShell(classifyShell(getShellExe()), rawVenvPath) : undefined;
 
   if (!envScript) {
     throw new Error(
@@ -431,10 +431,10 @@ export async function execShellCommandWithEnv(
   if (!cmd) {
     throw new Error('Missing command to execute', { cause: 'missing.command' });
   }
-  if (activatePath && !fileExists(activatePath)) {
+  if (venvPath && !fileExists(venvPath)) {
     throw new Error(
       'Invalid Python virtual environment.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}` }
+      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
     );
   }
 
@@ -453,7 +453,7 @@ export async function execShellCommandWithEnv(
     ...(needsChere ? { CHERE_INVOKING: '1' } : {}),
     ...getProfileEnv(),
     ...options.env,
-    ...(activatePath ? { PYTHON_VENV_ACTIVATE_PATH: activatePath } : {})
+    ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {})
   };
 
   const redirect = getShellNullRedirect(shellKind);
@@ -469,7 +469,7 @@ export async function execShellCommandWithEnvInteractive(
 
   const cfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY);
   const envScriptRaw = cfg.get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  const venvRaw = cfg.get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+  const venvRaw = cfg.get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
 
   if (!envScriptRaw) {
     throw new Error(
@@ -480,7 +480,7 @@ export async function execShellCommandWithEnvInteractive(
   if (venvRaw && !fileExists(venvRaw)) {
     throw new Error(
       'Invalid Python virtual environment.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}` }
+      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
     );
   }
 
@@ -527,7 +527,7 @@ export async function execShellCommandWithEnvInteractive(
     ...(needsChere ? { CHERE_INVOKING: '1' } : {}),
     ...getProfileEnv(),
     ...options.env,
-    ...(venvPath ? { PYTHON_VENV_ACTIVATE_PATH: venvPath } : {})
+    ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {})
   };
 
   return execShellCommandInteractive(cmdName, fullCmd, {
@@ -546,12 +546,12 @@ export async function execCommandWithEnv(
   const rawEnvScript = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  const rawActivatePath = vscode.workspace
+  const rawVenvPath = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+    .get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
 
   const envScript = normalizePathForShell(classifyShell(getShellExe()), rawEnvScript ?? '');
-  const activatePath = rawActivatePath ? normalizePathForShell(classifyShell(getShellExe()), rawActivatePath) : undefined;
+  const venvPath = rawVenvPath ? normalizePathForShell(classifyShell(getShellExe()), rawVenvPath) : undefined;
 
   if (!envScript) {
     throw new Error(
@@ -559,10 +559,10 @@ export async function execCommandWithEnv(
       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
     );
   }
-  if (activatePath && !fileExists(activatePath)) {
+  if (venvPath && !fileExists(venvPath)) {
     throw new Error(
       'Invalid Python virtual environment.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}` }
+      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
     );
   }
 
@@ -571,7 +571,7 @@ export async function execCommandWithEnv(
     env: {
       ...process.env,
       ...getProfileEnv(),
-      ...(activatePath ? { PYTHON_VENV_ACTIVATE_PATH: activatePath } : {})
+      ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {})
     },
     shell: getShellExe()
   };
@@ -591,9 +591,9 @@ export function execCommandWithEnvCB(
   const envScript = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  const activatePath = vscode.workspace
+  const venvPath2 = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+    .get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
 
   if (!envScript) {
     throw new Error(
@@ -601,17 +601,17 @@ export function execCommandWithEnvCB(
       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
     );
   }
-  if (activatePath && !fileExists(activatePath)) {
+  if (venvPath2 && !fileExists(venvPath2)) {
     throw new Error(
       'Invalid Python virtual environment.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}` }
+      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
     );
   }
 
   options.env = {
     ...getProfileEnv(),
     ...options.env,
-    ...(activatePath ? { PYTHON_VENV_ACTIVATE_PATH: activatePath } : {})
+    ...(venvPath2 ? { PYTHON_VENV_PATH: venvPath2 } : {})
   };
   if (cwd) {
     options.cwd = cwd;
@@ -628,9 +628,9 @@ export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): Ch
   const envScript = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  const activatePath = vscode.workspace
+  const venvPath3 = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+    .get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
 
   if (!envScript) {
     throw new Error(
@@ -638,17 +638,17 @@ export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): Ch
       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
     );
   }
-  if (activatePath && !fileExists(activatePath)) {
+  if (venvPath3 && !fileExists(venvPath3)) {
     throw new Error(
       'Invalid Python virtual environment.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}` }
+      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
     );
   }
 
   options.env = {
     ...getProfileEnv(),
     ...options.env,
-    ...(activatePath ? { PYTHON_VENV_ACTIVATE_PATH: activatePath } : {})
+    ...(venvPath3 ? { PYTHON_VENV_PATH: venvPath3 } : {})
   };
   options.shell = getShellExe();
 

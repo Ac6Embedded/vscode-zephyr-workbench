@@ -62,7 +62,14 @@
           "zephyr-workbench.venv.activatePath": {
             "type": "string",
             "default": "",
-            "description": "Path to your python virtual environment activate script. Enter empty value to use default internal environment",
+            "description": "Deprecated: path to the Python virtual environment activation script.",
+            "markdownDeprecationMessage": "Deprecated. Use 'zephyr-workbench.venv.path' instead.",
+            "scope": "machine-overridable"
+          },
+          "zephyr-workbench.venv.path": {
+            "type": "string",
+            "default": "",
+            "description": "Path to your Python virtual environment directory (root). Leave empty to use the default internal environment.",
             "scope": "machine-overridable"
           },
           "zephyr-workbench.listSDKs": {

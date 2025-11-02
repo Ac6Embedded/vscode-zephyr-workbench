@@ -6,6 +6,7 @@ export const ZEPHYR_WORKBENCH_SETTING_SECTION_KEY = 'zephyr-workbench';
 
 export const ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY = 'pathToEnvScript';
 export const ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY = 'venv.activatePath';
+export const ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY = 'venv.path';
 export const ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY = 'listSDKs';
 export const ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY = "listIARs";
 export const ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY = 'openocd.searchDir';

@@ -641,8 +641,8 @@ set "global_venv_path=%global_venv_path:"=%"
 
 set "DEFAULT_VENV_ACTIVATE_PATH=%global_venv_path%\Scripts\activate.bat"
 
-if defined PYTHON_VENV_ACTIVATE_PATH (
-    set "VENV_ACTIVATE_PATH=%PYTHON_VENV_ACTIVATE_PATH%"
+if defined PYTHON_VENV_PATH (
+    set "VENV_ACTIVATE_PATH=%PYTHON_VENV_PATH%\\Scripts\\activate.bat"
 ) else (
     set "VENV_ACTIVATE_PATH=%DEFAULT_VENV_ACTIVATE_PATH%"
 )
@@ -756,7 +756,11 @@ fi
 
 # --- Activate Python virtual environment if available ---
 default_venv_activate_path="`$global_venv_path/Scripts/activate"
-[[ -n "`$PYTHON_VENV_ACTIVATE_PATH" ]] && venv_activate_path="`$PYTHON_VENV_ACTIVATE_PATH" || venv_activate_path="`$default_venv_activate_path"
+if [[ -n "`$PYTHON_VENV_PATH" ]]; then
+    venv_activate_path="`$(to_unix_path "`$PYTHON_VENV_PATH")/Scripts/activate"
+else
+    venv_activate_path="`$default_venv_activate_path"
+fi
 
 if [[ -f "`$venv_activate_path" ]]; then
     source "`$venv_activate_path" >/dev/null 2>&1
@@ -831,8 +835,8 @@ if (-not `$global_venv_path) {
 # --- Determine venv activation path ---
 `$DefaultVenvActivatePath = Join-Path `$global_venv_path "Scripts\Activate.ps1"
 
-if (`$env:PYTHON_VENV_ACTIVATE_PATH -and `$env:PYTHON_VENV_ACTIVATE_PATH.Trim() -ne "") {
-    `$VenvActivatePath = `$env:PYTHON_VENV_ACTIVATE_PATH
+if (`$env:PYTHON_VENV_PATH -and `$env:PYTHON_VENV_PATH.Trim() -ne "") {
+    `$VenvActivatePath = Join-Path `$env:PYTHON_VENV_PATH "Scripts\Activate.ps1"
 } else {
     `$VenvActivatePath = `$DefaultVenvActivatePath
 }

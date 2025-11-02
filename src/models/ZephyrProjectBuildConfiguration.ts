@@ -6,7 +6,7 @@ import { ZephyrProject } from "./ZephyrProject";
 import { getBuildEnv, loadConfigEnv } from "../utils/zephyrEnvUtils";
 import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalShell, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
 import { fileExists, getBoardFromIdentifier, getConfigValue, getWestWorkspace, getZephyrSDK } from '../utils/utils';
-import { ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from '../constants';
+import { ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 
 export class ZephyrProjectBuildConfiguration {
   name: string;
@@ -180,9 +180,9 @@ export class ZephyrProjectBuildConfiguration {
                    (shellType === 'bash' || shellType === 'zsh' ||
                     shellType === 'dash' || shellType === 'fish');
 
-    let activatePath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
-    if (!activatePath || activatePath.length === 0) {
-      activatePath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.workspaceFolder.uri).get(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY);
+    let venvPath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
+    if (!venvPath || venvPath.length === 0) {
+      venvPath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.workspaceFolder.uri).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
     }
 
     const opts: vscode.TerminalOptions = {
@@ -204,9 +204,9 @@ export class ZephyrProjectBuildConfiguration {
     });
     const printEnvCommand = concatCommands(shellType, ...printEnvCommands);
 
-    if (activatePath) {
+    if (venvPath) {
       opts.env = {
-        PYTHON_VENV_ACTIVATE_PATH: activatePath,
+        PYTHON_VENV_PATH: venvPath,
         ...opts.env
       };
     }

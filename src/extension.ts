@@ -14,7 +14,7 @@ import { checkAndCreateTasksJson, createExtensionsJson, createTasksJson, setDefa
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
-import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
+import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
 import { getRunner, getRunRunners, getFlashRunners, getStaticFlashRunnerNames, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './utils/debugUtils';
 import { execShellTaskWithEnvAndWait, executeTask, getTerminalDefaultProfile, normalizeSlashesIfPath } from './utils/execUtils';
 import { importProjectQuickStep } from './quicksteps/importProjectQuickStep';
@@ -54,6 +54,42 @@ let zephyrDebugConfigurationProvide: vscode.Disposable | undefined;
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+	// Migrate deprecated venv.activatePath to venv.path if present
+	(async () => {
+		const stripActivate = (p: string): string => {
+			const patterns = [
+				/[/\\]Scripts[/\\]activate(?:\.bat)?$/i,
+				/[/\\]Scripts[/\\]Activate\.ps1$/i,
+				/[/\\]bin[/\\]activate(?:\.(?:csh|fish))?$/
+			];
+			for (const rx of patterns) {
+				if (rx.test(p)) { return p.replace(rx, ''); }
+			}
+			return p;
+		};
+
+		// Global scope
+		const globalCfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY);
+		const oldGlobal = globalCfg.get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, '');
+		const newGlobal = globalCfg.get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, '');
+		if (oldGlobal && !newGlobal) {
+			const venvPath = stripActivate(oldGlobal);
+			await globalCfg.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.Global);
+			await globalCfg.update(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, undefined, vscode.ConfigurationTarget.Global);
+		}
+
+		// Per-workspace-folder scope
+		for (const folder of vscode.workspace.workspaceFolders ?? []) {
+			const cfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder);
+			const old = cfg.get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, '');
+			const neu = cfg.get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, '');
+			if (old && !neu) {
+				const venvPath = stripActivate(old);
+				await cfg.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+				await cfg.update(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+			}
+		}
+	})();
 	// Sync env.yml auto-detect entries from debug-tools.yml when versions differ
 	syncAutoDetectEnv(context);
 	// Setup task and debug providers
@@ -730,7 +766,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-app-explorer.set-venv", async (node: ZephyrApplicationTreeItem) => {
-			vscode.commands.executeCommand('workbench.action.openSettings', `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}`);
+			vscode.commands.executeCommand('workbench.action.openSettings', `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}`);
 		})
 	);
 	context.subscriptions.push(
@@ -741,7 +777,7 @@ export function activate(context: vscode.ExtensionContext) {
 				cancellable: false,
 			}, async () => {
 				let venvPath = await createLocalVenv(context, node.project.workspaceFolder);
-				await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+				await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
 			}
 			);
 		})
