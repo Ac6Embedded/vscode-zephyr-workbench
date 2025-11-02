@@ -81,6 +81,16 @@ export class HostToolsPanel {
     }
 
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
+
+    // Also refresh tool versions so the panel shows up-to-date versions
+    // after installs or external changes.
+    try {
+      this._panel.webview.postMessage({ command: 'toggle-spinner', show: true });
+      await this.checkAndPublishToolVersions();
+    } catch {}
+    finally {
+      try { this._panel.webview.postMessage({ command: 'toggle-spinner', show: false }); } catch {}
+    }
   }
 
   public static render(extensionUri: vscode.Uri) {
