@@ -198,10 +198,27 @@ install_python_venv() {
 
     python3 -m venv "$install_directory/.venv"
     source "$install_directory/.venv/bin/activate"
-    python3 -m pip install setuptools wheel west --quiet
-    python3 -m pip install anytree --quiet
+    # Upgrade pip first
+    echo "Upgrading pip to the latest version..."
+    python3 -m pip install --upgrade pip --quiet
+
+    # Install Python packages from tools.yml -> python_packages using yq
+    # Supports entries with: name, name+version, or url
+    if [[ -x "$YQ" ]]; then
+        while IFS= read -r spec; do
+            # Skip empty or null outputs
+            if [[ -n "$spec" && "$spec" != "null" ]]; then
+                echo "Installing Python package: $spec"
+                python3 -m pip install "$spec" --quiet
+            fi
+        done < <("$YQ" eval -r '.python_packages[] | if has("url") then .url elif has("version") then "\(.name)==\(.version)" else .name end' "$YAML_FILE")
+    else
+        echo "WARN: yq not available; falling back to basic installs (setuptools, wheel)"
+        python3 -m pip install setuptools wheel --quiet
+    fi
+
+    echo "Installing Zephyr's base requirements..."
     python3 -m pip install -r "$REQUIREMENTS_DIR/requirements.txt" --quiet
-    python3 -m pip install puncover --quiet
 }
 
 if [[ $root_packages == true ]]; then
