@@ -10,6 +10,9 @@ root_packages=true
 non_root_packages=true
 check_installed_bool=true
 reinstall_venv_bool=false
+create_venv_bool=false
+# Optional custom venv path
+VENV_PATH=""
 # Portable python is not used by default, keep it in case we need it in the future
 portable_python=false
 INSTALL_DIR=""
@@ -29,6 +32,8 @@ OPTIONS:
   --only-without-root       Only install packages that do not require root privileges.
   --only-check              Only check the installation status of the packages without installing them.
   --reinstall-venv          Remove existing virtual environment and create a new one.
+  --create-venv             Create a Python virtual environment and install requirements, then exit.
+  --venv-path <path>        Override venv location (default: <installDir>/.venv)
 
 ARGUMENTS:
   installDir                The directory where the packages should be installed. 
@@ -64,6 +69,15 @@ while [[ "$#" -gt 0 ]]; do
       reinstall_venv_bool=true
       root_packages=false
       check_installed_bool=false
+      ;;
+    --create-venv)
+      create_venv_bool=true
+      root_packages=false
+      check_installed_bool=false
+      ;;
+    --venv-path)
+      shift
+      VENV_PATH="$1"
       ;;
     *)
       if [[ -z "$INSTALL_DIR" ]]; then
@@ -181,7 +195,7 @@ install_python_venv() {
 
     local requirements_baseurl="https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
     local requirements_dir="$work_directory/requirements"
-    local venv_path="$install_directory/.venv"
+    local venv_path="${VENV_PATH:-$install_directory/.venv}"
 
     # Choose requirements source: honor ZEPHYR_BASE if it points to a Zephyr tree
     local use_zephyr_base_req=false
@@ -357,6 +371,17 @@ if [[ $non_root_packages == true ]]; then
     done
 
     source $MANIFEST_FILE
+
+    if [[ $create_venv_bool == true ]]; then
+      pr_title "Creating Python VENV"
+      if [[ -n "$VENV_PATH" && -d "$VENV_PATH" ]]; then
+        echo "VENV already exists at: $VENV_PATH"
+      else
+        install_python_venv "$INSTALL_DIR" "$TMP_DIR"
+      fi
+      rm -rf "$TMP_DIR"
+      exit 0
+    fi
 
     if [[ $reinstall_venv_bool == true ]]; then
       pr_title "Reinstalling Python VENV"

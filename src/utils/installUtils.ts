@@ -525,9 +525,13 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
     destDir = workbenchFolder.uri.fsPath;
     switch(process.platform) {
       case 'linux': {
-        installScript = 'create_venv.sh';
-        installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += ` ${destDir}`;
+        // Use hosttools installer with create-venv and explicit venv path
+        installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
+        installScript = 'install.sh';
+        const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
+        const venvPath   = path.join(destDir, '.venv');
+        installCmd = `bash ${scriptPath}`;
+        installArgs = ` --create-venv --venv-path "${venvPath}" ${destDir}`;
         shell = 'bash';
         break; 
       }
