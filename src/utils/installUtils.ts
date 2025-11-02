@@ -548,9 +548,13 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
         break; 
       }
       case 'darwin': {
-        installScript = 'create_venv.sh';
-        installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += ` ${destDir}`;
+        // Use hosttools mac installer with create-venv and explicit venv path
+        installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
+        installScript = 'install-mac.sh';
+        const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
+        const venvPath   = path.join(destDir, '.venv');
+        installCmd = `bash ${scriptPath}`;
+        installArgs = ` --create-venv --venv-path "${venvPath}" ${destDir}`;
         shell = 'bash';
         break; 
       }

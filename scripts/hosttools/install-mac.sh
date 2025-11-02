@@ -9,8 +9,10 @@ YAML_FILE="$SCRIPT_DIR/tools.yml"
 non_root_packages=true
 check_installed_bool=true
 reinstall_venv_bool=false
+create_venv_bool=false
 portable=false
 INSTALL_DIR=""
+VENV_PATH=""
 
 zinstaller_version="2.0"
 zinstaller_md5=$(md5 -q "$BASH_SOURCE")
@@ -28,6 +30,8 @@ OPTIONS:
   --only-root               Only install packages that require root privileges.
   --only-check              Only check the installation status of the packages without installing them.
   --reinstall-venv          Remove existing virtual environment and create a new one.
+  --create-venv             Create a Python virtual environment and install requirements, then exit.
+  --venv-path <path>        Override venv location (default: <installDir>/.venv)
   --portable                Install portable Python instead of global
 
 ARGUMENTS:
@@ -57,6 +61,14 @@ while [[ "$#" -gt 0 ]]; do
     --reinstall-venv)
       reinstall_venv_bool=true
       check_installed_bool=false
+      ;;
+    --create-venv)
+      create_venv_bool=true
+      check_installed_bool=false
+      ;;
+    --venv-path)
+      shift
+      VENV_PATH="$1"
       ;;
     --portable)
       portable=true
@@ -177,22 +189,29 @@ install_python_venv() {
 
     local requirements_baseurl="https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
     local requirements_dir="$work_directory/requirements"
-    local venv_path="$install_directory/.venv"
-    local requirement_files=(
-        "requirements.txt"
-        "requirements-run-test.txt"
-        "requirements-extras.txt"
-        "requirements-compliance.txt"
-        "requirements-build-test.txt"
-        "requirements-base.txt"
-    )
+    local venv_path="${VENV_PATH:-$install_directory/.venv}"
 
-    mkdir -p "$requirements_dir"
-
-    for requirement in "${requirement_files[@]}"; do
-        download "$requirements_baseurl/$requirement" "$requirement"
-        mv "$DL_DIR/$requirement" "$requirements_dir/$requirement"
-    done
+    # Choose requirements source: honor ZEPHYR_BASE if it points to a Zephyr tree
+    local requirements_file=""
+    if [[ -n "$ZEPHYR_BASE" && -f "$ZEPHYR_BASE/scripts/requirements.txt" ]]; then
+        requirements_file="$ZEPHYR_BASE/scripts/requirements.txt"
+        echo "Using ZEPHYR_BASE requirements: $requirements_file"
+    else
+        local requirement_files=(
+            "requirements.txt"
+            "requirements-run-test.txt"
+            "requirements-extras.txt"
+            "requirements-compliance.txt"
+            "requirements-build-test.txt"
+            "requirements-base.txt"
+        )
+        mkdir -p "$requirements_dir"
+        for requirement in "${requirement_files[@]}"; do
+            download "$requirements_baseurl/$requirement" "$requirement"
+            mv "$DL_DIR/$requirement" "$requirements_dir/$requirement"
+        done
+        requirements_file="$requirements_dir/requirements.txt"
+    fi
 
     if [[ ! -d "$venv_path" ]]; then
         python3 -m venv "$venv_path"
@@ -239,7 +258,7 @@ PY
     done
 
     echo "Installing Zephyr's base requirements..."
-    python -m pip install -r "$requirements_dir/requirements.txt" --quiet
+    python -m pip install -r "$requirements_file" --quiet
 }
 
 if [[ $non_root_packages == true ]]; then
@@ -300,9 +319,22 @@ if [[ $non_root_packages == true ]]; then
 
     source $MANIFEST_FILE
 
+    if [[ $create_venv_bool == true ]]; then
+      pr_title "Creating Python VENV"
+      if [[ -n "$VENV_PATH" && -d "$VENV_PATH" ]]; then
+        echo "VENV already exists at: $VENV_PATH"
+      else
+        install_python_venv "$INSTALL_DIR" "$TMP_DIR"
+      fi
+      rm -rf "$TMP_DIR"
+      exit 0
+    fi
+
     if [[ $reinstall_venv_bool == true ]]; then
       pr_title "Reinstalling Python VENV"
-      if [ -d "$INSTALL_DIR/.venv" ]; then
+      if [[ -n "$VENV_PATH" ]]; then
+        rm -rf "$VENV_PATH"
+      elif [ -d "$INSTALL_DIR/.venv" ]; then
         rm -rf "$INSTALL_DIR/.venv"
       fi
       install_python_venv "$INSTALL_DIR" "$TMP_DIR"
