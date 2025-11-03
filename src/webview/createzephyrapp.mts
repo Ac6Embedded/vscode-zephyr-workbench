@@ -360,6 +360,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const projectParentPathText = document.getElementById("projectParentPath") as TextField;
   const pristineRadioGroup = document.getElementById("pristineMode") as RadioGroup;
   const appTypeGroup = document.getElementById('appTypeGroup') as RadioGroup;
+  const venvRadioGroup = document.getElementById('venvMode') as RadioGroup;
 
   webviewApi.postMessage(
     {
@@ -372,6 +373,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       projectName: projectNameText.value,
       projectParentPath: projectParentPathText.value,
       pristine: pristineRadioGroup.value,
+      venv: venvRadioGroup?.value ?? 'global',
     }
   );
 }

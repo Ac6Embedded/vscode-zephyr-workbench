@@ -193,11 +193,22 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-local", async (projectPath) => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-local", async (projectPath, venvMode = 'global') => {
 			if (projectPath) {
 				CreateWestWorkspacePanel.currentPanel?.dispose();
 				if (ZephyrProject.isZephyrProjectPath(projectPath)) {
 					await addWorkspaceFolder(projectPath);
+					// Optionally create a local venv for the imported project
+					if (venvMode === 'local') {
+						const workspaceFolder = getWorkspaceFolder(projectPath);
+						if (workspaceFolder) {
+							const venvPath = await createLocalVenv(context, workspaceFolder);
+							if (venvPath) {
+								await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+									.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+							}
+						}
+					}
 				} else {
 					vscode.window.showErrorMessage("The folder is not a Zephyr project");
 				}
@@ -1777,7 +1788,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchain, pristineValue = 'auto') => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchain, pristineValue = 'auto', venvMode = 'global') => {
 			if (!westWorkspace) {
 				vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
 				return;
@@ -1832,6 +1843,15 @@ export function activate(context: vscode.ExtensionContext) {
 					await createTasksJson(workspaceFolder);
 					await createExtensionsJson(workspaceFolder);
 					await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
+
+					// Create a local Python venv if requested
+					if (venvMode === 'local') {
+						const venvPath = await createLocalVenv(context, workspaceFolder);
+						if (venvPath) {
+							await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+								.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+						}
+					}
 					CreateZephyrAppPanel.currentPanel?.dispose();
 
 					vscode.window.showInformationMessage(`New Application '${workspaceFolder.name}' created !`);
@@ -1842,7 +1862,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-app", async (projectLoc, westWorkspace, zephyrBoard, zephyrSDK) => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-app", async (projectLoc, westWorkspace, zephyrBoard, zephyrSDK, venvMode = 'global') => {
 			if (!fileExists(projectLoc)) {
 				vscode.window.showInformationMessage(`Project '${projectLoc}' not found !`);
 				return;
@@ -1855,6 +1875,14 @@ export function activate(context: vscode.ExtensionContext) {
 				await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK);
 				await createTasksJson(workspaceFolder);
 				await createExtensionsJson(workspaceFolder);
+				// Optionally create a local venv for the imported project
+				if (venvMode === 'local') {
+					const venvPath = await createLocalVenv(context, workspaceFolder);
+					if (venvPath) {
+						await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+							.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+					}
+				}
 				vscode.window.showInformationMessage(`Importing Application '${workspaceFolder.name}' done`);
 			}
 		})

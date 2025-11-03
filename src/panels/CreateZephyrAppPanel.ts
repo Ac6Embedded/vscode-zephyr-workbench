@@ -218,6 +218,16 @@ export class CreateZephyrAppPanel {
                       <vscode-radio value="never">never</vscode-radio>
                     </vscode-radio-group>
                   </div>
+
+                  <div class="grid-group-div">
+                    <vscode-radio-group id="venvMode" orientation="horizontal">
+                      <label slot="label">Python virtual environment:&nbsp;&nbsp;
+                        <span class="tooltip" data-tooltip="Use global if you are not sure">?</span>
+                      </label>
+                      <vscode-radio value="global" checked>global</vscode-radio>
+                      <vscode-radio value="local">local</vscode-radio>
+                    </vscode-radio-group>
+                  </div>
                 </form>
               </td>
               <td style="text-align: top">
@@ -277,7 +287,7 @@ export class CreateZephyrAppPanel {
               vscode.commands.executeCommand(
                 "zephyr-workbench-app-explorer.create-app",
                 westWorkspace, sample, board, projectLoc,
-                message.projectName, toolchain, message.pristine);
+                message.projectName, toolchain, message.pristine, message.venv);
 
             } else {
               const err = await validateProjectLocation(projectLoc);
@@ -291,7 +301,7 @@ export class CreateZephyrAppPanel {
                 /* local import – nothing else provided */
                 vscode.commands.executeCommand(
                   "zephyr-workbench-app-explorer.import-local",
-                  projectLoc);
+                  projectLoc, message.venv);
                 vscode.window.showInformationMessage("Importing project using existing project configuration.");
                 CreateZephyrAppPanel.currentPanel?.dispose();
               }
@@ -317,7 +327,7 @@ export class CreateZephyrAppPanel {
 
               await vscode.commands.executeCommand(
                 "zephyr-workbench-app-explorer.import-app",
-                projectLoc, westWorkspace, board, toolchain);
+                projectLoc, westWorkspace, board, toolchain, message.venv);
               CreateZephyrAppPanel.currentPanel?.dispose();
               break;
             }
