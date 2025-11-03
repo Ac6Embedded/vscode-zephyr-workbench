@@ -242,7 +242,13 @@ PY
 
     if [[ -f "$parser_script" ]]; then
         # Shared parser emits the specs list, honoring per-OS gating in tools.yml.
-        if ! mapfile -t python_package_specs < <(python "$parser_script" "$YAML_FILE" "$SELECTED_OS"); then
+        local python_output=""
+        if python_output=$(python "$parser_script" "$YAML_FILE" "$SELECTED_OS"); then
+            local line=""
+            while IFS= read -r line; do
+                python_package_specs+=("$line")
+            done <<<"$python_output"
+        else
             echo "Failed to parse python_packages from $YAML_FILE" >&2
             python_package_specs=()
         fi
@@ -439,7 +445,29 @@ global:
 env:
   zi_base_dir: "$INSTALL_DIR"
   zi_tools_dir: "\${zi_base_dir}/tools"
-
+tools:
+  python:
+    do_not_use: false
+  cmake:
+    do_not_use: false
+  ninja:
+    do_not_use: false
+  git:
+    do_not_use: false
+  gperf:
+    do_not_use: false
+  ccache:
+    do_not_use: false
+  dfu-util:
+    do_not_use: false
+  wget:
+    do_not_use: false
+  xz-utils:
+    do_not_use: false
+  file:
+    do_not_use: false
+  make:
+    do_not_use: false
 python:
   global_venv_path: "$INSTALL_DIR/.venv"
 
