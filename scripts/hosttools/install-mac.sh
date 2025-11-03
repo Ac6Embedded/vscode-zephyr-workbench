@@ -782,7 +782,6 @@ check_package() {
 		python) version_command="python3 --version 2>&1" ;;
 		cmake) version_command="cmake --version 2>&1 | head -n 1" ;;
 		ninja) version_command="ninja --version 2>&1" ;;
-		openssl) version_command="openssl version 2>&1" ;;
 		git) version_command="git --version 2>&1" ;;
 		gperf) version_command="gperf --version 2>&1 | head -n 1" ;;
 		ccache) version_command="ccache --version 2>&1 | head -n 1" ;;
@@ -805,7 +804,6 @@ check_package() {
 			python) version=$(echo "$version" | sed -n 's/Python //p' | awk '{print $1}') ;;
 			cmake) version=$(echo "$version" | sed -n 's/cmake version //p' | awk '{print $1}') ;;
 			ninja) version=$(echo "$version") ;;
-			openssl) version=$(echo "$version" | sed -n 's/OpenSSL //p' | awk '{print $1}') ;;
 			git) version=$(echo "$version" | sed -n 's/git version //p' | awk '{print $1}') ;;
 			gperf) version=$(echo "$version" | sed -n 's/GNU gperf //p' | awk '{print $1}') ;;
 			ccache) version=$(echo "$version" | sed -n 's/ccache version //p' | awk '{print $1}') ;;
@@ -827,7 +825,6 @@ check_packages() {
         python
         cmake
         ninja
-        openssl
         git
         gperf
         ccache

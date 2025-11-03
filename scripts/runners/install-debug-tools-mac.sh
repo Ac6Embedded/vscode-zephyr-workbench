@@ -134,6 +134,15 @@ get_tool_group() {
     echo "$group"
 }
 
+has_install_script() {
+    local tool="$1"
+    local group
+    group=$(get_tool_group "$tool")
+    local script_path="$SCRIPT_DIR/$group/${tool}-mac.sh"
+
+    [[ -f "$script_path" ]]
+}
+
 run_install_script() {
     local tool="$1"
     local file="$2"
@@ -156,8 +165,10 @@ install() {
 
     if [[ "$file" == "SCRIPT_ONLY" ]]; then
         run_install_script "$tool" ""
-    elif [[ "$file" =~ \.(tar|gz|bz2|xz|zip|7z)$ ]]; then
-        extract_archive "$DL_DIR/$file" "$dest_folder"
+#    elif has_install_script "$tool"; then
+#        run_install_script "$tool" "$file"
+#    elif [[ "$file" =~ \.(tar|gz|bz2|xz|zip|7z)$ ]]; then
+#        extract_archive "$file" "$dest_folder"
     else
         run_install_script "$tool" "$file"
     fi
@@ -172,35 +183,52 @@ if ! command -v "$YQ" >/dev/null 2>&1; then
 fi
 
 pr_title "Parse tools definitions and generate manifest"
-echo "#!/bin/bash" >"$MANIFEST_FILE"
-echo "declare -A SOURCE_URLS=()" >>"$MANIFEST_FILE"
-echo "declare -A SHA256_HASHES=()" >>"$MANIFEST_FILE"
-
-generate_manifest_entries() {
-    local tool="$1"
-    local os="$2"
-    local manifest="$3"
-
-    local os_node
-    os_node=$($YQ eval ".*[] | select(.tool == \"$tool\") | .os.$os" "$YAML_FILE")
-
-    if [[ "$os_node" == *"source:"* ]]; then
-        local source sha256
-        source=$($YQ eval ".*[] | select(.tool == \"$tool\") | .os.$os.source" "$YAML_FILE")
-        sha256=$($YQ eval ".*[] | select(.tool == \"$tool\") | .os.$os.sha256" "$YAML_FILE")
-        if [[ "$source" != "null" && "$sha256" != "null" ]]; then
-            echo "SOURCE_URLS[$tool]=\"$source\"" >>"$manifest"
-            echo "SHA256_HASHES[$tool]=\"$sha256\"" >>"$manifest"
-        fi
-    elif [[ "$os_node" == "true" ]]; then
-        echo "SOURCE_URLS[$tool]=\"SCRIPT_ONLY\"" >>"$manifest"
-        echo "SHA256_HASHES[$tool]=\"SKIP\"" >>"$manifest"
-    fi
-}
+source_cases=()
+sha_cases=()
 
 for tool in "${TOOLS[@]}"; do
-    generate_manifest_entries "$tool" "$SELECTED_OS" "$MANIFEST_FILE"
+    os_node=$($YQ eval ".*[] | select(.tool == \"$tool\") | .os.$SELECTED_OS" "$YAML_FILE")
+    source_entry=""
+    sha_entry=""
+
+    if [[ "$os_node" == *"source:"* ]]; then
+        source_entry=$($YQ eval ".*[] | select(.tool == \"$tool\") | .os.$SELECTED_OS.source" "$YAML_FILE")
+        sha_entry=$($YQ eval ".*[] | select(.tool == \"$tool\") | .os.$SELECTED_OS.sha256" "$YAML_FILE")
+        if [[ "$source_entry" == "null" || "$sha_entry" == "null" ]]; then
+            source_entry=""
+            sha_entry=""
+        fi
+    elif [[ "$os_node" == "true" ]]; then
+        source_entry="SCRIPT_ONLY"
+        sha_entry="SKIP"
+    fi
+
+    if [[ -n "$source_entry" || -n "$sha_entry" ]]; then
+        source_cases+=("    $(printf %q "$tool")) printf '%s\\n' $(printf %q "$source_entry") ;;")
+        sha_cases+=("    $(printf %q "$tool")) printf '%s\\n' $(printf %q "$sha_entry") ;;")
+    fi
 done
+
+{
+    echo "#!/bin/bash"
+    echo "get_source_url() {"
+    echo "  case \"\$1\" in"
+    if [[ ${#source_cases[@]} -gt 0 ]]; then
+        printf '%s\n' "${source_cases[@]}"
+    fi
+    echo "    *) return 1 ;;"
+    echo "  esac"
+    echo "}"
+    echo
+    echo "get_sha256_hash() {"
+    echo "  case \"\$1\" in"
+    if [[ ${#sha_cases[@]} -gt 0 ]]; then
+        printf '%s\n' "${sha_cases[@]}"
+    fi
+    echo "    *) return 1 ;;"
+    echo "  esac"
+    echo "}"
+} >"$MANIFEST_FILE"
 
 source "$MANIFEST_FILE"
 
@@ -210,7 +238,7 @@ pr_title "Install Tools"
 
 for tool in "${TOOLS[@]}"; do
     pr_title "$tool"
-    local source="${SOURCE_URLS[$tool]}"
+    source=$(get_source_url "$tool" 2>/dev/null || true)
 
     if [[ "$source" == "SCRIPT_ONLY" ]]; then
         pr_info "$tool is script-only (no download needed)."
@@ -218,12 +246,18 @@ for tool in "${TOOLS[@]}"; do
         continue
     fi
 
-    local installer_filename
+    sha256=$(get_sha256_hash "$tool" 2>/dev/null || true)
+
+    if [[ -z "$source" ]]; then
+        pr_error "No source defined for $tool on $SELECTED_OS" 1
+        continue
+    fi
+
     installer_filename=$(get_filename_from_url "$source")
     pr_info "INSTALLER_FILENAME=$installer_filename"
 
-    download_and_check_hash "$source" "${SHA256_HASHES[$tool]}" "$installer_filename"
-    install "$tool" "$installer_filename" "$TOOLS_DIR"
+    download_and_check_hash "$source" "$sha256" "$installer_filename"
+    install "$tool" "$DL_DIR/$installer_filename" "$TOOLS_DIR"
 done
 
 pr_info "Cleaning temporary files..."

@@ -115,9 +115,7 @@ debug_tools:
       - "/usr/local/NXP/LinkServer*"
       - "/opt/linkserver*"
     darwin:
-      - "/Applications/LinkServer.app/Contents/MacOS"
-      - "/Applications/NXP/LinkServer.app/Contents/MacOS"
-      - "/usr/local/LinkServer*"
+      - "/Applications/LinkServer*"
 - tool: nrfjprog
   name: nRF Command Line Tools
   version: 10.24.2
@@ -133,9 +131,9 @@ debug_tools:
     linux:
       source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/nordic/nrfjprog/linux/nrf-command-line-tools-10.24.2_linux-amd64.tar.gz
       sha256: 9d65b0d80fccb567668fa41585c9261947b1740f52eba8d3a368cf6f8fd7b793
-    darwin:
-      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/nordic/nrfjprog/darwin/nrf-command-line-tools-10.24.2-darwin.dmg
-      sha256: c7f24bb4234e3e99e408a3f7cca568898a51779f2f337604c2e8d60466939c2e
+#    darwin:
+#      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/nordic/nrfjprog/darwin/nrf-command-line-tools-10.24.2-darwin.dmg
+#      sha256: c7f24bb4234e3e99e408a3f7cca568898a51779f2f337604c2e8d60466939c2e
 - tool: nrfutil
   name: nRF Util
   version: 8.1.1
@@ -169,9 +167,9 @@ debug_tools:
     linux:
       source: https://www.silabs.com/documents/public/software/SimplicityCommander-Linux.zip
       sha256: SKIP
-#    darwin:
-#      source: https://www.silabs.com/documents/public/software/SimplicityCommander-Mac.zip
-#      sha256: SKIP
+    darwin:
+      source: https://www.silabs.com/documents/public/software/SimplicityCommander-Mac.zip
+      sha256: SKIP
   auto-detect:
     windows:
       - "C:/SiliconLabs/SimplicityCommander*"
@@ -192,7 +190,7 @@ debug_tools:
     linux: true
     darwin: true
 - tool: cp210x
-  name: USB to UART Bridge VCP CP210x Universal Windows Drivers 
+  name: USB to UART Bridge VCP CP210x Universal Drivers 
   version: 11.4.0 
   website: https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers
   vendor: Silicon Labs
