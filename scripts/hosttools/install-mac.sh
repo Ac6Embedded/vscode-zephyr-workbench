@@ -283,7 +283,9 @@ if [[ $non_root_packages == true ]]; then
     brew install "python@$PYTHON_VERSION"
     brew install "python-tk@$PYTHON_VERSION"
     # Update PATH to use the new Python version - both direct binaries and symlinks
-    export PATH="/opt/homebrew/opt/python@$PYTHON_VERSION/libexec/bin:/opt/homebrew/bin:$PATH"
+    BREW_PREFIX=$(brew --prefix 2>/dev/null || echo "/usr/local")
+    PYTHON_PREFIX=$(brew --prefix "python@$PYTHON_VERSION" 2>/dev/null || echo "$BREW_PREFIX/opt/python@$PYTHON_VERSION")
+    export PATH="$PYTHON_PREFIX/libexec/bin:$BREW_PREFIX/bin:$PATH"
 
     echo "Installing other required packages: cmake ninja gperf ccache dtc libmagic wget git yq xz dfu-util"
     brew install cmake ninja gperf ccache dtc libmagic wget git yq xz dfu-util
