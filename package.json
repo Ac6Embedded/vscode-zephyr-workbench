@@ -1,15 +1,15 @@
 {
   "name": "zephyr-workbench",
-  "displayName": "Zephyr Workbench",
-  "description": "Zephyr project support for Visual Studio Code",
+  "displayName": "Workbench for Zephyr",
+  "description": "Zephyr project support for Visual Studio Code - previously Zephyr Workbench",
   "publisher": "Ac6",
   "icon": "res/zephyr-workbench.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
-  "homepage": "https://zephyr-workbench.com",
-  "version": "1.3.37",
+  "homepage": "https://z-workbench.com",
+  "version": "2.0.0",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
