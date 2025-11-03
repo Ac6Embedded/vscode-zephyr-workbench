@@ -9,6 +9,7 @@ import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
 import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs, getShellExe, classifyShell, normalizePathForShell } from "./execUtils";
+import { syncAutoDetectEnv } from "./autoDetectSyncUtils";
 import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSDK, getWestWorkspace } from "./utils";
 import { getZephyrTerminal } from "./zephyrTerminalUtils";
 import { ensurePowershellExecutionPolicy } from "./powershellUtils";
@@ -174,6 +175,7 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
     progress.report({ message: "Successfully Installing host tools", increment: 90 });
     if(await checkEnvFile()) {
       autoSetHostToolsSettings();
+      await syncAutoDetectEnv(context);
       vscode.window.showInformationMessage("Setup Zephyr environment successful");
       progress.report({ message: "Auto-detect environment file", increment: 100 });
     }
@@ -202,6 +204,7 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
     progress.report({ message: "Successfully Installing host tools", increment: 90 });
     if(await checkEnvFile()) {
       autoSetHostToolsSettings();
+      await syncAutoDetectEnv(context);
       vscode.window.showInformationMessage("Setup Zephyr environment successful");
       progress.report({ message: "Auto-detect environment file", increment: 100 });
     }

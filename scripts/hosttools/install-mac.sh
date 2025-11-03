@@ -283,7 +283,9 @@ if [[ $non_root_packages == true ]]; then
     brew install "python@$PYTHON_VERSION"
     brew install "python-tk@$PYTHON_VERSION"
     # Update PATH to use the new Python version - both direct binaries and symlinks
-    export PATH="/opt/homebrew/opt/python@$PYTHON_VERSION/libexec/bin:/opt/homebrew/bin:$PATH"
+    BREW_PREFIX=$(brew --prefix 2>/dev/null || echo "/usr/local")
+    PYTHON_PREFIX=$(brew --prefix "python@$PYTHON_VERSION" 2>/dev/null || echo "$BREW_PREFIX/opt/python@$PYTHON_VERSION")
+    export PATH="$PYTHON_PREFIX/libexec/bin:$BREW_PREFIX/bin:$PATH"
 
     echo "Installing other required packages: cmake ninja gperf ccache dtc libmagic wget git yq xz dfu-util"
     brew install cmake ninja gperf ccache dtc libmagic wget git yq xz dfu-util
@@ -782,7 +784,6 @@ check_package() {
 		python) version_command="python3 --version 2>&1" ;;
 		cmake) version_command="cmake --version 2>&1 | head -n 1" ;;
 		ninja) version_command="ninja --version 2>&1" ;;
-		openssl) version_command="openssl version 2>&1" ;;
 		git) version_command="git --version 2>&1" ;;
 		gperf) version_command="gperf --version 2>&1 | head -n 1" ;;
 		ccache) version_command="ccache --version 2>&1 | head -n 1" ;;
@@ -805,7 +806,6 @@ check_package() {
 			python) version=$(echo "$version" | sed -n 's/Python //p' | awk '{print $1}') ;;
 			cmake) version=$(echo "$version" | sed -n 's/cmake version //p' | awk '{print $1}') ;;
 			ninja) version=$(echo "$version") ;;
-			openssl) version=$(echo "$version" | sed -n 's/OpenSSL //p' | awk '{print $1}') ;;
 			git) version=$(echo "$version" | sed -n 's/git version //p' | awk '{print $1}') ;;
 			gperf) version=$(echo "$version" | sed -n 's/GNU gperf //p' | awk '{print $1}') ;;
 			ccache) version=$(echo "$version" | sed -n 's/ccache version //p' | awk '{print $1}') ;;
@@ -827,7 +827,6 @@ check_packages() {
         python
         cmake
         ninja
-        openssl
         git
         gperf
         ccache
