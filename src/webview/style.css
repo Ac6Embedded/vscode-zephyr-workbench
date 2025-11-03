@@ -541,6 +541,10 @@ vscode-button {
   width: 100%;
 }
 
+.debug-tools-table tr.details-row:not(.extra-details-row) .grid-group-div {
+  align-items: flex-end;
+}
+
 .debug-tools-table .grid-group-div vscode-text-field {
   flex: 1 1 auto;
   min-width: 200px;
