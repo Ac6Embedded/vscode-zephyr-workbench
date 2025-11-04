@@ -214,8 +214,6 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
   }
 }
 
-// Removed: getInstallHostToolsArgs (no longer used)
-
 export async function installHostTools(context: vscode.ExtensionContext, listTools: string = "") {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   if(installDirUri) {

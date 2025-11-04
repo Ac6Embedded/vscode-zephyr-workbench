@@ -9,7 +9,7 @@ import { ZephyrBoard } from "../models/ZephyrBoard";
 import { ZephyrSDK, IARToolchain } from "../models/ZephyrSDK";
 import { ZephyrSample } from "../models/ZephyrSample";
 import { getEnvVarFormat, getShell } from "./execUtils";
-import { checkHostTools } from "./installUtils";
+import { checkHostTools, checkEnvFile } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY, ZINSTALLER_MINIMUM_VERSION } from '../constants';
 import { ZephyrProject } from '../models/ZephyrProject';
 import { getBoardsDirectories, westTmpBuildSystemCommand } from '../commands/WestCommands';
@@ -879,6 +879,25 @@ export function isZinstallerUpdateNeeded(): boolean {
 export async function checkZinstallerVersion(
   context: vscode.ExtensionContext)
 {
+  // Prompt to install when host tools are not installed
+  try {
+    const hasTools = await checkHostTools();
+    const hasEnv = await checkEnvFile();
+    if (!hasTools || !hasEnv) {
+      const installHostToolsItem = 'Install Host Tools';
+      const choice = await vscode.window.showErrorMessage(
+        'Host tools are missing, please install them first',
+        installHostToolsItem
+      );
+      if (choice === installHostToolsItem) {
+        try { await vscode.commands.executeCommand('zephyr-workbench.install-host-tools.open-manager'); } catch {}
+      }
+      return;
+    }
+  } catch {
+    // If detection fails, continue to the version check
+  }
+
   const versionFile = path.join(
     getInternalDirRealPath(),
     "zinstaller_version"
