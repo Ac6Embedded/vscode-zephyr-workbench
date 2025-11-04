@@ -818,7 +818,7 @@ export function readZephyrSettings(buildDir: string): Record<string, string> {
       }
     });
   } catch (e) {
-    console.error(`Cannot read ${filePath}`);
+    console.log(`Cannot read ${filePath}`);
   }
   return settings;
 }
