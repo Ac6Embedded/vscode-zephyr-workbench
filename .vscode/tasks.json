@@ -6,7 +6,23 @@
 		{
 			"type": "npm",
 			"script": "watch",
-			"problemMatcher": "$esbuild-watch",
+			"problemMatcher": {
+				"owner": "esbuild",
+				"fileLocation": ["relative", "${workspaceFolder}"],
+				"pattern": {
+					"regexp": "> (.*):(\\d+):(\\d+): error: (.*)$",
+					"file": 1,
+					"line": 2,
+					"column": 3,
+					"message": 4,
+					"severity": "error"
+				},
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": "\\[watch\\] build started",
+					"endsPattern": "\\[watch\\] build finished"
+				}
+			},
 			"isBackground": true,
 			"presentation": {
 				"reveal": "never"
