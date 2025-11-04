@@ -551,6 +551,30 @@ tools:
   ninja:
     path: "\${zi_tools_dir}/ninja"
     do_not_use: false
+
+  git:
+    do_not_use: false
+
+  gperf:
+    do_not_use: false
+
+  ccache:
+    do_not_use: false
+
+  dfu-util:
+    do_not_use: false
+
+  wget:
+    do_not_use: false
+
+  xz-utils:
+    do_not_use: false
+
+  file:
+    do_not_use: false
+
+  make:
+    do_not_use: false
 EOF
 
 if [ "$portable_python" = true ]; then
@@ -567,9 +591,6 @@ if [ "$portable_python" = true ]; then
     path:
       - "\${zi_base_dir}/$PYTHON_FOLDER_NAME/bin"
     version: "$PYTHON_VERSION"
-    do_not_use: false
-  openssl:
-    path: "\${zi_tools_dir}/$OPENSSL_FOLDER_NAME/usr/local/bin"
     do_not_use: false
 EOF
 else
@@ -919,7 +940,6 @@ check_package() {
 			python) version=$(echo "$version" | grep -oP 'Python \K[^\s]+') ;;
 			cmake) version=$(echo "$version" | grep -oP 'cmake version \K[^\s]+') ;;
 			ninja) version=$(echo "$version") ;;
-			openssl) version=$(echo "$version" | awk '{print $2; exit}') ;; # restrict to first reported version
 			git) version=$(echo "$version" | grep -oP 'git version \K[^\s]+') ;;
 			gperf) version=$(echo "$version" | grep -oP 'GNU gperf \K[^\s]+') ;;
 			ccache) version=$(echo "$version" | grep -oP 'ccache version \K[^\s]+') ;;
@@ -941,7 +961,6 @@ check_packages() {
         python
         cmake
         ninja
-        openssl
         git
         gperf
         ccache
