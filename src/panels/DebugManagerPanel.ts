@@ -42,6 +42,8 @@ export class DebugManagerPanel {
       const panel = vscode.window.createWebviewPanel("debug-manager-panel", "Debug Manager", vscode.ViewColumn.One, {
         // Enable javascript in the webview
         enableScripts: true,
+        // Keep the webview context when hidden to avoid losing state while switching tabs
+        retainContextWhenHidden: true,
         // Restrict the webview to only load resources from the `out` directory
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'out')]
       });
