@@ -131,6 +131,8 @@ export async function westTmpBuildSystemCommand(
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
   const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
 
+  const redirect = getShellNullRedirect(shellKind);
+
   const command  = [
     'west build',
     '-t boards',
@@ -138,6 +140,7 @@ export async function westTmpBuildSystemCommand(
     `--build-dir ${quote(tmpPath)}`,
     quote(normalizePathForShell(shellKind,zephyrProject.folderPath)),
     (westArgs ? ` ${westArgs}` : ''),
+    redirect,
   ].filter(Boolean).join(' ');
 
   const options: vscode.ShellExecutionOptions = {

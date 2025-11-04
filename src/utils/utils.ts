@@ -607,6 +607,19 @@ export async function getSupportedBoards2(westWorkspace: WestWorkspace): Promise
   });
 }
 
+/**
+ * Find all supported boards by looking in known board folders
+ * and reading each board .yaml file.
+ *
+ * If a project and a build config are provided, we also try to detect
+ * extra board folders from the project's build settings (BOARD_ROOT).
+ * To do this we look for a zephyr_settings.txt file:
+ * - If the normal build directory exists, we read it from there.
+ * - Otherwise we run a quick dummy build in a temporary .tmp folder.
+ *   This dummy build is expected to fail; that is fine. The goal is only
+ *   to make the build system generate zephyr_settings.txt so we can read
+ *   BOARD_ROOT. After that, the temporary folder is removed.
+ */
 export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?: ZephyrProject | string, buildConfig?: ZephyrProjectBuildConfiguration | undefined): Promise<ZephyrBoard[]> {
   return new Promise(async (resolve, reject) => {
     let listBoards: ZephyrBoard[] = [];
