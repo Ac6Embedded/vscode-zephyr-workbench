@@ -513,15 +513,21 @@ export async function findLaunchConfiguration(launchJson: any, project: ZephyrPr
   return await findLaunchConfiguration(launchJson, project, buildConfigName);
 }
 
-export async function getLaunchConfiguration(project: ZephyrProject, buildConfigName?: string): Promise<[any, any]> {
-  if(!fs.existsSync(path.join(project.sourceDir, '.vscode', 'launch.json'))) {
-    writeLaunchJson(await createLaunchJson(project, buildConfigName), project);
+export async function getLaunchConfiguration(project: ZephyrProject, buildConfigName?: string, createIfMissing: boolean = false): Promise<[any, any]> {
+  let launchJson: any;
+  const launchPath = path.join(project.sourceDir, '.vscode', 'launch.json');
+
+  if (fs.existsSync(launchPath)) {
+    launchJson = await readLaunchJson(project);
+  } else {
+    // Create new launch.json if requested
+    launchJson = await createLaunchJson(project, buildConfigName);
+    // skip writing to avoid creating launch.json on selection too debug
   }
 
-  let launchJson = await readLaunchJson(project);
-  if(launchJson) {
+  if (launchJson) {
     let configurationJson;
-    if(buildConfigName) {
+    if (buildConfigName) {
       configurationJson = await findLaunchConfiguration(launchJson, project, buildConfigName);
     } else {
       configurationJson = await findLaunchConfiguration(launchJson, project);
