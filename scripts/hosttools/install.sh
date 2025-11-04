@@ -544,6 +544,33 @@ EOF
 fi
 cat << EOF >> "$ENV_YAML_PATH"
 tools:
+EOF
+
+if [ "$portable_python" = true ]; then
+	# Detect the installed Python version (from system or portable)
+	if command -v python3 >/dev/null 2>&1; then
+		PYTHON_VERSION=$(python3 --version 2>&1 | grep -oP 'Python \K[^\s]+')
+	else
+		PYTHON_VERSION=""
+	fi
+
+	cat << EOF >> "$ENV_YAML_PATH"
+
+  python:
+    path:
+      - "\${zi_base_dir}/$PYTHON_FOLDER_NAME/bin"
+    version: "$PYTHON_VERSION"
+    do_not_use: false
+EOF
+else
+    cat << EOF >> "$ENV_YAML_PATH"
+
+  python:
+    do_not_use: false
+EOF
+fi
+
+	cat << EOF >> "$ENV_YAML_PATH"
   cmake:
     path: "\${zi_tools_dir}/$CMAKE_FOLDER_NAME/bin"
     do_not_use: false
@@ -575,33 +602,6 @@ tools:
 
   make:
     do_not_use: false
-EOF
-
-if [ "$portable_python" = true ]; then
-	# Detect the installed Python version (from system or portable)
-	if command -v python3 >/dev/null 2>&1; then
-		PYTHON_VERSION=$(python3 --version 2>&1 | grep -oP 'Python \K[^\s]+')
-	else
-		PYTHON_VERSION=""
-	fi
-
-	cat << EOF >> "$ENV_YAML_PATH"
-
-  python:
-    path:
-      - "\${zi_base_dir}/$PYTHON_FOLDER_NAME/bin"
-    version: "$PYTHON_VERSION"
-    do_not_use: false
-EOF
-else
-    cat << EOF >> "$ENV_YAML_PATH"
-
-  python:
-    do_not_use: false
-EOF
-fi
-
-	cat << EOF >> "$ENV_YAML_PATH"
 
 python:
   global_venv_path: "$INSTALL_DIR/.venv"
