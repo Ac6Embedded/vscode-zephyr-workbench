@@ -594,7 +594,9 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
 
     const toolsCmdArg = listTools.map(tool => tool.tool).join(toolsSeparator);
     const installCmdArgs = `${installArgs} ${toolsCmdArg}`;
-    await execShellCommand('Installing Host debug tools', installCmd + " " + installCmdArgs, shellOpts);
+    // Run in a shell session that sources the configured env script
+    // so pip-based runners install into the managed venv and PATH is consistent.
+    await execShellCommandWithEnv('Installing Host debug tools', installCmd + " " + installCmdArgs, shellOpts);
 
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");
