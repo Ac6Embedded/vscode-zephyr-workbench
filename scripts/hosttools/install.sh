@@ -17,6 +17,9 @@ VENV_PATH=""
 portable_python=false
 INSTALL_DIR=""
 
+# Track if system Python is too old for Zephyr
+PYTHON_TOO_OLD=false
+
 zinstaller_version="2.0"
 zinstaller_md5=$(md5sum "$BASH_SOURCE")
 tools_yml_md5=$(md5sum "$YAML_FILE")
@@ -137,6 +140,42 @@ pr_warn() {
     echo "WARN: $message"
 }
 
+# Check that Python version is >= 3.10 and set PYTHON_TOO_OLD accordingly
+check_python_version_requirement() {
+    local min_major=3
+    local min_minor=10
+
+    local pyexe=""
+    if command -v python3 >/dev/null 2>&1; then
+        pyexe=python3
+    elif command -v python >/dev/null 2>&1; then
+        pyexe=python
+    else
+        pr_warn "Python not found on PATH; Zephyr requires Python >= 3.10"
+        PYTHON_TOO_OLD=true
+        return 1
+    fi
+
+    local ver_str="$($pyexe -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)"
+    if [[ -z "$ver_str" ]]; then
+        pr_warn "Unable to determine Python version; Zephyr requires Python >= 3.10"
+        PYTHON_TOO_OLD=true
+        return 1
+    fi
+
+    local maj="${ver_str%%.*}"
+    local min="${ver_str#*.}"
+
+    if (( maj > min_major )) || (( maj == min_major && min >= min_minor )); then
+        PYTHON_TOO_OLD=false
+        return 0
+    else
+        PYTHON_TOO_OLD=true
+        pr_warn "Detected Python ${ver_str}; Zephyr requires version >= 3.10"
+        return 1
+    fi
+}
+
 # Function to download the file and check its SHA-256 hash
 download_and_check_hash() {
     local source=$1
@@ -190,6 +229,8 @@ download() {
 install_python_venv() {
     local install_directory=$1
     local work_directory=$2
+    # Check Python version requirement
+    check_python_version_requirement || true
 
     pr_title "Zephyr Python Requirements"
 
@@ -205,7 +246,7 @@ install_python_venv() {
         requirements_file="$ZEPHYR_BASE/scripts/requirements.txt"
         echo "Using ZEPHYR_BASE requirements: $requirements_file"
     else
-        echo "ZEPHYR_BASE not set or requirements not found; downloading requirements"
+        echo "ZEPHYR_BASE is not set, so download latest requirements"
         local requirement_files=(
             "requirements.txt"
             "requirements-run-test.txt"
@@ -317,6 +358,9 @@ if [[ $root_packages == true ]]; then
         pr_error 3 "/etc/os-release file not found. Cannot determine distribution."
         exit 3
     fi
+
+    # After installing root packages, check Python version requirement
+    check_python_version_requirement || true
 fi
 
 if [[ $non_root_packages == true ]]; then
@@ -622,7 +666,7 @@ echo "Created environment manifest: $ENV_YAML_PATH"
 	cat << 'EOF' > "$ENV_PY_PATH"
 #!/usr/bin/env python3
 """
-env.py - Parse env.yaml and output environment setup commands
+env.py - Parse env.yml and output environment setup commands
 for PowerShell, CMD (.bat), or POSIX shells (Bash, Zsh, etc.)
 
 Features:
@@ -1009,6 +1053,15 @@ if [[ $check_installed_bool == true ]]; then
     else
         MISSING_PACKAGES=$(( -RETURN_CODE ))
         pr_error $RETURN_CODE "$MISSING_PACKAGES package(s) are not installed."
+    fi
+
+    # Check Python version requirement
+    check_python_version_requirement || true
+
+    # Final reminder about Python if version is too old
+    if [[ "$PYTHON_TOO_OLD" == true ]]; then
+        pr_warn "If you are on older platforms, install a recent Python manually,"
+        pr_warn "add it to the PATH (if needed), and click on Reinstall global venv."
     fi
 
     exit $RETURN_CODE
