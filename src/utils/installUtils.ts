@@ -1,7 +1,7 @@
 import * as sevenBin from '7zip-bin';
 import { FileDownloader, getApi } from "@microsoft/vscode-file-downloader-api";
 import * as fs from 'fs';
-import { ExecException, exec } from "child_process";
+import { ExecException, exec, spawn } from "child_process";
 import * as node7zip from "node-7z";
 import os from 'os';
 import path from "path";
@@ -214,6 +214,63 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
   }
 }
 
+async function runNonRootHostToolsCommand(
+  command: string,
+  shellOpts: vscode.ShellExecutionOptions
+): Promise<void> {
+  const executable = shellOpts.executable ?? getShellExe();
+  const args = [...(shellOpts.shellArgs ?? []), command];
+  const cwd = shellOpts.cwd ?? os.homedir();
+  const env = { ...process.env, ...(shellOpts.env ?? {}) };
+
+  output.appendLine('Starting non-root host tools installation...');
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(executable, args, {
+      cwd,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    child.stdout?.on('data', (data: Buffer) => {
+      output.append(data.toString());
+    });
+
+    child.stderr?.on('data', (data: Buffer) => {
+      output.append(data.toString());
+    });
+
+    child.on('error', (error) => {
+      const message = `Failed to launch non-root installer: ${error.message}`;
+      output.appendLine(message);
+      vscode.window.showErrorMessage(message, 'Open log').then(selection => {
+        if (selection === 'Open log') {
+          output.show();
+        }
+      });
+      reject(error);
+    });
+
+    child.on('close', (code, signal) => {
+      if (code === 0) {
+        output.appendLine('Non-root host tools installation finished.');
+        resolve();
+      } else {
+        const message = code !== null
+          ? `Non-root host tools installation failed with exit code ${code}.`
+          : `Non-root host tools installation was interrupted${signal ? ` (${signal})` : ''}.`;
+        output.appendLine(message);
+        vscode.window.showErrorMessage(message, 'Open log').then(selection => {
+          if (selection === 'Open log') {
+            output.show();
+          }
+        });
+        reject(new Error(message));
+      }
+    });
+  });
+}
+
 export async function installHostTools(context: vscode.ExtensionContext, listTools: string = "") {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   if(installDirUri) {
@@ -340,10 +397,12 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
         return;
       }
 
-      // Wait a bit so we can see the output, or at least notice that there is something
-      await new Promise<void>(resolve => setTimeout(resolve, 3000));
-      await vscode.commands.executeCommand('workbench.action.terminal.focus');
-      await execShellCommand('Installing Host tools', nonRootCommand, shellOpts);
+      await new Promise<void>(resolve => setTimeout(resolve, 2000));
+      try {
+        await runNonRootHostToolsCommand(nonRootCommand, shellOpts);
+      } catch {
+        return;
+      }
     } else {
       await execShellCommand('Installing Host tools', installCmd + " " + installArgs, shellOpts);
     }
