@@ -279,54 +279,71 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
       const options = {
         name: 'Zephyr Workbench Installer',
       };
-      sudo.exec(`${installCmd} --only-root`, options, async (error, stdout, stderr) => {
-        const toText = (content?: string | Buffer): string | undefined => {
-          if (typeof content === 'undefined') {
-            return undefined;
-          }
-          return typeof content === 'string' ? content : content.toString('utf8');
-        };
+      const rootCommand = `${installCmd} --only-root${installArgs}`;
+      const nonRootCommand = `${installCmd} --only-without-root${installArgs}`;
 
-        const appendBlock = (header: string, content?: string | Buffer) => {
-          const text = toText(content);
-          if (!text) {
-            return;
-          }
-          const trimmed = text.trim();
-          if (!trimmed) {
-            return;
-          }
-          output.appendLine(`--- ${header} ---`);
-          for (const line of trimmed.split(/\r?\n/)) {
-            output.appendLine(line);
-          }
-        };
-
-        const logOutputs = () => {
-          appendBlock('root stdout', stdout);
-          appendBlock('root stderr', stderr);
-        };
-
-        if (error) {
-          output.appendLine(`Error executing installer: ${error.message}`);
-          logOutputs();
-          vscode.window.showErrorMessage(`Error executing installer: ${error.message}`, 'Open log').then(selection => {
-            if (selection === 'Open log') {
-              output.show();
-            }
-          });
-        } else {
-          logOutputs();
-          output.appendLine('Root host tools step finished.');
-          vscode.window.showInformationMessage('Host tools root step finished.', 'Open log').then(selection => {
-            if (selection === 'Open log') {
-              output.show();
-            }
-          });
+      output.show(true);
+      output.appendLine('Installing sudo host tools... This might take a while. Root logs will appear once the step completes.');
+      const toText = (content?: string | Buffer): string | undefined => {
+        if (typeof content === 'undefined') {
+          return undefined;
         }
-      });
+        return typeof content === 'string' ? content : content.toString('utf8');
+      };
 
-      await execShellCommand('Installing Host tools', installCmd + " --only-without-root " + installArgs, shellOpts);
+      const appendBlock = (header: string, content?: string | Buffer) => {
+        const text = toText(content);
+        if (!text) {
+          return;
+        }
+        const trimmed = text.trim();
+        if (!trimmed) {
+          return;
+        }
+        output.appendLine(`--- ${header} ---`);
+        for (const line of trimmed.split(/\r?\n/)) {
+          output.appendLine(line);
+        }
+      };
+
+      const logOutputs = (stdout?: string | Buffer, stderr?: string | Buffer) => {
+        appendBlock('root stdout', stdout);
+        appendBlock('root stderr', stderr);
+      };
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          sudo.exec(rootCommand, options, (error, stdout, stderr) => {
+            if (error) {
+              output.appendLine(`Error executing installer: ${error.message}`);
+              logOutputs(stdout, stderr);
+              vscode.window.showErrorMessage(`Error executing installer: ${error.message}`, 'Open log').then(selection => {
+                if (selection === 'Open log') {
+                  output.show();
+                }
+              });
+              reject(error);
+              return;
+            }
+
+            logOutputs(stdout, stderr);
+            output.appendLine('Root host tools step finished.');
+            vscode.window.showInformationMessage('Host tools root step finished.', 'Open log').then(selection => {
+              if (selection === 'Open log') {
+                output.show();
+              }
+            });
+            resolve();
+          });
+        });
+      } catch {
+        return;
+      }
+
+      // Wait a bit so we can see the output, or at least notice that there is something
+      await new Promise<void>(resolve => setTimeout(resolve, 3000));
+      await vscode.commands.executeCommand('workbench.action.terminal.focus');
+      await execShellCommand('Installing Host tools', nonRootCommand, shellOpts);
     } else {
       await execShellCommand('Installing Host tools', installCmd + " " + installArgs, shellOpts);
     }
