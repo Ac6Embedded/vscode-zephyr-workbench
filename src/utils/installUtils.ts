@@ -177,6 +177,31 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
       autoSetHostToolsSettings();
       await syncAutoDetectEnv(context);
       vscode.window.showInformationMessage("Setup Zephyr environment successful");
+      // Prompt user to install debug runners after host tools are ready
+      try {
+        const installRunnersItem = 'Install Runners';
+        const laterItem = 'Later';
+        // Do not await here to allow progress notification to finish
+        vscode.window.showInformationMessage(
+          'Host tools are ready. Install debug/flash runners (e.g., Zephyr OpenOCD, JLink)?',
+          installRunnersItem,
+          laterItem
+        ).then(async (choice) => {
+          if (choice === installRunnersItem) {
+            try { await vscode.commands.executeCommand('zephyr-workbench.install-runners'); } catch {}
+          } else if (choice === undefined) {
+            // If dismissed without choosing, provide a brief status bar action instead
+            try {
+              const sbi = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+              sbi.text = '$(tools) Install Runners';
+              sbi.tooltip = 'Install debug/flash runners (e.g., Zephyr OpenOCD, JLink)';
+              sbi.command = 'zephyr-workbench.install-runners';
+              sbi.show();
+              setTimeout(() => { try { sbi.dispose(); } catch {} }, 15000);
+            } catch {}
+          }
+        });
+      } catch {}
       progress.report({ message: "Auto-detect environment file", increment: 100 });
     }
 
@@ -206,6 +231,31 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
       autoSetHostToolsSettings();
       await syncAutoDetectEnv(context);
       vscode.window.showInformationMessage("Setup Zephyr environment successful");
+      // Prompt user to install debug runners after host tools reinstall
+      try {
+        const installRunnersItem = 'Install Runners';
+        const laterItem = 'Later';
+        // Do not await here to allow progress notification to finish
+        vscode.window.showInformationMessage(
+          'Host tools are ready. Install debug runners (e.g., Zephyr OpenOCD)?',
+          installRunnersItem,
+          laterItem
+        ).then(async (choice) => {
+          if (choice === installRunnersItem) {
+            try { await vscode.commands.executeCommand('zephyr-workbench.install-runners'); } catch {}
+          } else if (choice === undefined) {
+            // If dismissed without choosing, provide a brief status bar action instead
+            try {
+              const sbi = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+              sbi.text = '$(tools) Install Runners';
+              sbi.tooltip = 'Install debug/flash runners (e.g., Zephyr OpenOCD, JLink)';
+              sbi.command = 'zephyr-workbench.install-runners';
+              sbi.show();
+              setTimeout(() => { try { sbi.dispose(); } catch {} }, 15000);
+            } catch {}
+          }
+        });
+      } catch {}
       progress.report({ message: "Auto-detect environment file", increment: 100 });
     }
 
