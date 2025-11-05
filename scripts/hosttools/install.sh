@@ -428,7 +428,7 @@ if [[ $non_root_packages == true ]]; then
     unzip -o "$DL_DIR/$NINJA_ARCHIVE_NAME" -d "$TOOLS_DIR/ninja"
 
     pr_title "CMake"
-    CMAKE_FOLDER_NAME="cmake-3.29.2-linux-x86_64"
+    CMAKE_FOLDER_NAME="cmake-4.1.2-linux-x86_64"
     CMAKE_ARCHIVE_NAME="${CMAKE_FOLDER_NAME}.tar.gz"
     download_and_check_hash ${cmake[source]} ${cmake[sha256]} "$CMAKE_ARCHIVE_NAME"
     tar xf "$DL_DIR/$CMAKE_ARCHIVE_NAME" -C "$TOOLS_DIR"
@@ -449,6 +449,9 @@ if [[ $non_root_packages == true ]]; then
 
     env_script() {
     cat << 'EOF'
+# Please do not manually edit this script, it is intended to be sourced by other scripts to set up the environment.
+# You can add environment variables and paths to env.yml via the Host Tools Manager interface.
+
 #!/bin/bash
 # --- Resolve the directory this script lives in ---
 if [ -n "${BASH_SOURCE-}" ]; then

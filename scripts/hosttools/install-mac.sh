@@ -361,6 +361,9 @@ if [[ $non_root_packages == true ]]; then
 
     env_script() {
     cat << 'EOF'
+# Please do not manually edit this script, it is intended to be sourced by other scripts to set up the environment.
+# You can add environment variables and paths to env.yml via the Host Tools Manager interface.
+
 #!/bin/bash
 # --- Resolve the directory this script lives in ---
 if [ -n "${BASH_SOURCE-}" ]; then

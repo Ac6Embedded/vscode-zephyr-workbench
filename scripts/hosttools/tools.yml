@@ -28,13 +28,13 @@ other_content:
 - tool: zstd
   os:
     windows:
-      source: https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-v1.5.6-win64.zip
-      sha256: 7B4EFF6719990E38ACA93A4844C2E86A1935090625C4611F7E89675E999C56CC
+      source: https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip
+      sha256: acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9
 - tool: msys2_runtime
   os:
     windows:
-      source: https://repo.msys2.org/msys/x86_64/msys2-runtime-3.5.3-4-x86_64.pkg.tar.zst
-      sha256: 838fd8a0a1aca2e5e19eed3155dbb086cc79fa5e701728b58843f2f6b1b1ed1a
+      source: https://repo.msys2.org/msys/x86_64/msys2-runtime-3.6.5-1-x86_64.pkg.tar.zst
+      sha256: 16a1729511b553314bed8d9af6d52ae4489007c35a6b4752205869f321963d9d
 - tool: libyaml
   os:
     windows:
@@ -57,27 +57,27 @@ zephyr_content:
 - tool: cmake
   os:
     linux:
-      source: https://github.com/Kitware/CMake/releases/download/v3.29.2/cmake-3.29.2-linux-x86_64.tar.gz
-      sha256: 0416c70cf88e8f92efcbfe292e181bc09ead7d70e29ab37b697522c01121eab5
+      source: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
+      sha256: 773cc679c3a7395413bd096523f8e5d6c39f8718af4e12eb4e4195f72f35e4ab
     windows:
-      source: https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-windows-x86_64.zip
-      sha256: 671332249bc7cc7424523d6c2b5edd3e3de90a43b8b82e8782f42da4fe4c562d
+      source: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-x86_64.zip
+      sha256: 82730741149681597510a4bc7095da1460b472dac24eaf9c23ad7440f47753ab
     darwin:
       source: xxx
       sha256: xxx
 - tool: ninja
   os:
     linux:
-      source: https://github.com/ninja-build/ninja/releases/download/v1.12.0/ninja-linux.zip
-      sha256: ddc96efa3c7c9d41de733d15e2eda07a8a212555cb43f35d727e080d2ca687ab
+      source: https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux.zip
+      sha256: 0830252db77884957a1a4b87b05a1e2d9b5f658b8367f82999a941884cbe0238
     windows:
-      source: https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip
-      sha256: 524b344a1a9a55005eaf868d991e090ab8ce07fa109f1820d40e74642e289abc
+      source: https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-win.zip
+      sha256: 26a40fa8595694dec2fad4911e62d29e10525d2133c9a4230b66397774ae25bf
 - tool: dtc
   os:
     windows:
-      source: https://repo.msys2.org/msys/x86_64/dtc-1.7.0-1-x86_64.pkg.tar.zst
-      sha256: 9b257c07696aca8b1f509f63280bd47bc6b60f4f679d8823090c5cb477c45429
+      source: https://repo.msys2.org/msys/x86_64/dtc-1.7.2-1-x86_64.pkg.tar.zst
+      sha256: 8d75950a950deb4a1e561461d2f8e3a2ca38701cc36fa34f3a05c5ecf9eb63d5
 - tool: zephyr_sdk
   os:
     windows:
@@ -97,8 +97,8 @@ zephyr_content:
 - tool: git
   os:
     windows:
-      source: https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/PortableGit-2.45.2-64-bit.7z.exe
-      sha256: 851a15074dea6b272785b2a2a4697a72970256de2afe7b8e4a9c5e168c27ccdd
+      source: https://github.com/git-for-windows/git/releases/download/v2.51.2.windows.1/PortableGit-2.51.2-64-bit.7z.exe
+      sha256: f5764d546ff9a2511b50ec4e20424c5f4669de1695abc3fa4128e7f7d4a7b2cd
 - tool: python
   os:
     windows:

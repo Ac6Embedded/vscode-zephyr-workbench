@@ -487,7 +487,7 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$GperfZipName" -DestinationDirectory $GperfInstallDirectory
     
     Print-Title "CMake"
-    $CmakeVersion = "3.28.1"
+    $CmakeVersion = "4.1.2"
     $CmakeZipName = "cmake-${CmakeVersion}-windows-x86_64.zip"
     $CmakeFolderName = "cmake-${CmakeVersion}-windows-x86_64"
     Download-FileWithHashCheck $cmake_array[0] $cmake_array[1] $CmakeZipName
@@ -499,7 +499,7 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     
     Print-Title "Ninja"
     $NinjaZipName = "ninja-win.zip"
-    $NinjaVersion = "1.11.1"
+    $NinjaVersion = "1.13.1"
     Download-FileWithHashCheck $ninja_array[0] $ninja_array[1] $NinjaZipName
     
     $NinjaFolderPath = "$ToolsDirectory\ninja"
@@ -508,15 +508,15 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$NinjaZipName" -DestinationDirectory $NinjaFolderPath
     
     Print-Title "Zstd"
-    $ZstdZipName = "zstd-v1.5.6-win64.zip"
+    $ZstdZipName = "zstd-v1.5.7-win64.zip"
     Download-FileWithHashCheck $zstd_array[0] $zstd_array[1] $ZstdZipName
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$ZstdZipName" -DestinationDirectory $DownloadDirectory
     
-    $ZstdFolderName = "zstd-v1.5.6-win64"
+    $ZstdFolderName = "zstd-v1.5.7-win64"
     $ZstdExecutable = "$DownloadDirectory\$ZstdFolderName\zstd.exe"
     
     Print-Title "DTC"
-    $DtcVersion = "1.7.0-1"
+    $DtcVersion = "1.7.2-1"
     $DtcZstName = "dtc-${DtcVersion}-x86_64.pkg.tar.zst"
     $DtcZstTarName = "dtc-${DtcVersion}-x86_64.pkg.tar"
     Download-FileWithHashCheck $dtc_array[0] $dtc_array[1] $DtcZstName
@@ -528,8 +528,8 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$DtcZstTarName" -DestinationDirectory $DtcFolderPath
     
     Print-Title "msys2"
-    $Msys2ZstName = "msys2-runtime-3.5.3-4-x86_64.pkg.tar.zst"
-    $Msys2ZstTarName = "msys2-runtime-3.5.3-4-x86_64.pkg.tar"
+    $Msys2ZstName = "msys2-runtime-3.6.5-1-x86_64.pkg.tar.zst"
+    $Msys2ZstTarName = "msys2-runtime-3.6.5-1-x86_64.pkg.tar"
     Download-FileWithHashCheck $msys2_runtime_array[0] $msys2_runtime_array[1] $Msys2ZstName
     
     & $ZstdExecutable --quiet -d "$DownloadDirectory\$Msys2ZstName" -o "$DownloadDirectory\$Msys2ZstTarName"
@@ -566,7 +566,7 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     }
     
     Print-Title "Git"
-    $GitVersion = "2.45.2"
+    $GitVersion = "2.51.2"
     $GitSetupFilename = "PortableGit-${GitVersion}-64-bit.7z.exe"
     Download-FileWithHashCheck $git_array[0] $git_array[1] $GitSetupFilename
     
@@ -610,6 +610,9 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 
 # bat script  
 @"
+REM Please do not manually edit this script, it is intended to be sourced by other scripts to set up the environment.
+REM You can add environment variables and paths to env.yml via the Host Tools Manager interface.
+
 @echo off
 
 set "SCRIPT_DIR=%~dp0"
@@ -661,6 +664,8 @@ for /f "usebackq delims=" %%L in (``python "%PY_FILE%" --shell=cmd``) do (
 
 #bash script
 @"
+# Please do not manually run this script, it is intended to be sourced by other scripts to set up the environment.
+# You can add environment variables and paths to env.yml via the Host Tools Manager interface.
 #!/usr/bin/env bash
 
 # --- Resolve the directory this script lives in ---
@@ -782,6 +787,9 @@ fi
 try { & chmod +x "$InstallDirectory\env.sh" } catch { }
 # Powershell script  
 @"
+# Please do not manually edit this script, it is intended to be sourced by other scripts to set up the environment.
+# You can add environment variables and paths to env.yml via the Host Tools Manager interface.
+
 # --- Paths ---
 `$BaseDir = "`$PSScriptRoot"
 `$EnvYamlPath = Join-Path `$BaseDir "env.yml"
@@ -871,7 +879,7 @@ $ToolsDirectorySlashFormat = $ToolsDirectory -replace '\\', '/'
 $SevenZPathSlashFormat = $SevenZPath -replace '\\', '/'
 
 $envYaml = @"
-# env.yaml
+# env.yml
 # ZInstaller Workspace Environment Manifest
 # Defines workspace tools, runners, and Zephyr compatibility metadata
 
@@ -885,6 +893,13 @@ env:
   zi_tools_dir: "${InstallDirectorySlashFormat}/tools"
 
 tools:
+  python:
+    path:
+      - "$ToolsDirectorySlashFormat/python/python"
+      - "$ToolsDirectorySlashFormat/python/python/Scripts"
+    version: ${pythonVersion}
+    do_not_use: false
+
   cmake:
     path: "`${zi_tools_dir}/cmake/bin"
     do_not_use: false
@@ -907,13 +922,6 @@ tools:
 
   7z:
     path: "$SevenZPathSlashFormat"
-    do_not_use: false
-
-  python:
-    path:
-      - "$ToolsDirectorySlashFormat/python/python"
-      - "$ToolsDirectorySlashFormat/python/python/Scripts"
-    version: ${pythonVersion}
     do_not_use: false
 
   wget:
