@@ -271,6 +271,23 @@ async function runNonRootHostToolsCommand(
   });
 }
 
+async function focusInstallerOutputChannel(): Promise<void> {
+  try {
+    await vscode.commands.executeCommand('workbench.action.closePanel');
+  } catch {
+    // Panel may already be closed; ignore.
+  }
+
+  await new Promise<void>(resolve => setTimeout(resolve, 100));
+  output.show(false);
+  try {
+    await vscode.commands.executeCommand('workbench.panel.output.focus');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown error';
+    output.appendLine(`WARN: Unable to focus output panel automatically (${message}).`);
+  }
+}
+
 export async function installHostTools(context: vscode.ExtensionContext, listTools: string = "") {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   if(installDirUri) {
@@ -339,7 +356,7 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
       const rootCommand = `${installCmd} --only-root${installArgs}`;
       const nonRootCommand = `${installCmd} --only-without-root${installArgs}`;
 
-      output.show(true);
+      await focusInstallerOutputChannel();
       output.appendLine('Installing sudo host tools... This might take a while. Root logs will appear once the step completes.');
       const toText = (content?: string | Buffer): string | undefined => {
         if (typeof content === 'undefined') {
