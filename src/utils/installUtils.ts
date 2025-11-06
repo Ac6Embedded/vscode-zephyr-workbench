@@ -715,7 +715,8 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
         const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
         const venvPath   = path.join(destDir, '.venv');
         installCmd = `bash ${scriptPath}`;
-        installArgs = ` --create-venv --venv-path "${venvPath}" ${destDir}`;
+        // Pass the install base dir (zinstaller parent) as the final arg
+        installArgs = ` --create-venv --venv-path "${venvPath}" ${getInstallDirRealPath()}`;
         shell = 'bash';
         break; 
       }
@@ -727,7 +728,8 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
         const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
         const venvPath   = path.join(destDir, '.venv');
         installCmd = `powershell -File "${scriptPath}"`;
-        installArgs = ` -CreateVenv -VenvPath "${venvPath}"`;
+        // Provide the install base dir (zinstaller parent) as positional arg
+        installArgs = ` -CreateVenv -VenvPath "${venvPath}" "${getInstallDirRealPath()}"`;
         shell = 'powershell.exe';
         break; 
       }
@@ -738,7 +740,8 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
         const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
         const venvPath   = path.join(destDir, '.venv');
         installCmd = `bash ${scriptPath}`;
-        installArgs = ` --create-venv --venv-path "${venvPath}" ${destDir}`;
+        // Pass the install base dir (zinstaller parent) as the final arg
+        installArgs = ` --create-venv --venv-path "${venvPath}" ${getInstallDirRealPath()}`;
         shell = 'bash';
         break; 
       }
