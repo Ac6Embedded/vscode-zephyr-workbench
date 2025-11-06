@@ -243,6 +243,7 @@ export class DebugManagerPanel {
               <vscode-button id="resetButton" appearance="secondary" class="finish-input-button">Reset Default</vscode-button>
               <vscode-button id="applyButton" appearance="secondary" class="finish-input-button">Apply</vscode-button>
               <vscode-button id="debugButton" appearance="primary" class="finish-input-button">Debug</vscode-button>
+              <span id="resetSpinner" class="spinner" style="display:none; margin-left:80px;"></span>
             <div>
           </form>
           <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
@@ -479,16 +480,26 @@ export class DebugManagerPanel {
     }
 
     async function resetHandler(message: any) {
-      const projectPath = message.project;
-      const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
+      // Notify reset started
+      webview.postMessage({ command: 'resetStarted' });
 
-      const appProject = await getZephyrProject(projectPath);
-      const buildConfig = appProject.getBuildConfiguration(buildConfigName);
-      if(appProject) {
-        await resetConfiguration(appProject, buildConfig);
+      try{
+        // Perform reset default configuration
+        const projectPath = message.project;
+        const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
+
+        const appProject = await getZephyrProject(projectPath);
+        const buildConfig = appProject.getBuildConfiguration(buildConfigName);
+        if(appProject) {
+          await resetConfiguration(appProject, buildConfig);
+        }
+      }
+      finally{
+        // Notify reset finished
+        webview.postMessage({ command: 'resetFinished' });
       }
     }
-    
+
     async function resetConfiguration(project: ZephyrProject, buildConfig?: ZephyrProjectBuildConfiguration) {
       let config;
       if(buildConfig) {

@@ -13,6 +13,7 @@ function main() {
   initApplicationsDropdown();
   initBuildConfigsDropdown();
   initRunnersDropdown();
+  hideSpinner('resetSpinner');
 
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const browseProgramButton = document.getElementById("browseProgramButton") as Button;
@@ -157,6 +158,14 @@ function setVSCodeMessageListener() {
       case 'updateRunnerDetect': {
         const runnerDetect = event.data.runnerDetect;
         updateRunnerDetect(runnerDetect === 'true' ? true : false);
+        break;
+      }
+      case 'resetStarted': {
+        document.getElementById('resetSpinner')!.style.display = 'inline-block';
+        break;
+      }
+      case 'resetFinished': {
+        document.getElementById('resetSpinner')!.style.display = 'none';
         break;
       }
       case 'fileSelected':
