@@ -239,7 +239,7 @@ export class DebugManagerPanel {
             </fieldset>
 
             <!-- Control buttons -->
-            <div class="grid-group-div">
+            <div class="grid-group-div debug-manager-buttons">
               <vscode-button id="resetButton" appearance="secondary" class="finish-input-button">Reset Default</vscode-button>
               <vscode-button id="applyButton" appearance="secondary" class="finish-input-button">Apply</vscode-button>
               <vscode-button id="debugButton" appearance="primary" class="finish-input-button">Debug</vscode-button>
