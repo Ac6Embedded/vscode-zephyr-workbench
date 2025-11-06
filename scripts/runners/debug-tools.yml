@@ -49,10 +49,10 @@ debug_tools:
   os:
     windows:
       source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/win32/openocd-zephyr-0.12.0-win32-x86_64.7z
-      sha256: 3d7ad3a90721d1455bb633f3a49708ac1cc7ab1f62096c2186b64d98c6f0e301
+      sha256: d5cea76f71872620f6f3e390c7935dce84ff97d4a840677bbc868595f5a10cbf
     linux:
       source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/linux/openocd-zephyr-0.12.0-linux-x86_64.tar.xz
-      sha256: d5cea76f71872620f6f3e390c7935dce84ff97d4a840677bbc868595f5a10cbf
+      sha256: 07fd7b4b7175cea09b413c240ddc42c681f9e4e6cd1e23b1a18f056aad7eb3a6
     darwin:
       source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/darwin/openocd-zephyr-0.12.0-darwin-arm64.tar.xz
       sha256: 3123f6d42454cbb2af03bbea48e5c4f93fe7c556119d64b4372f249e4ba14ee9
