@@ -208,6 +208,12 @@ build_windows() {
   export LDFLAGS="-static"
   export CPPFLAGS="-I${CROSSLIB_DIR}/include"
   export PATH="${CROSSLIB_DIR}/bin:$PATH"
+
+  export LIBUSB1_CFLAGS="-I${CROSSLIB_DIR}/include/libusb-1.0"
+  export LIBUSB1_LIBS="-L${CROSSLIB_DIR}/lib -lusb-1.0"
+  export HIDAPI_CFLAGS="-I${CROSSLIB_DIR}/include/hidapi"
+  export HIDAPI_LIBS="-L${CROSSLIB_DIR}/lib -lhidapi"
+
   "${REPO_DIR}/configure" \
     --host=x86_64-w64-mingw32 \
     --enable-ftdi --enable-cmsis-dap --enable-jlink --enable-stlink \
