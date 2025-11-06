@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# 
-# This Script was used to build OpenOCD for Zephyr
-# It is kept here for reference purposes.
+# SPDX-License-Identifier: GPL-2.0
 #
-# Zephyr OpenOCD build wrapper (self-contained, direct Windows build)
+# Universal Zephyr OpenOCD build wrapper
 #
 # Builds Zephyr OpenOCD for:
 #   - Linux (native)
 #   - Windows (cross from Linux)
-#   - macOS (native, only when run on macOS)
+#   - macOS (native)
 #
 # Output archives:
 #   openocd-zephyr-<version>-<os>-<arch>.<ext>
@@ -17,10 +15,9 @@
 # Usage:
 #   ./build-openocd.sh [linux|windows|mac|all]
 #
-# On linux, it is better to run this from ubuntu20 or later, to maximize compatibility.
-# On macOS, run directly on a macOS host.
-# Dependencies will be installed automatically on Linux (apt-get).
-
+# Recommended hosts:
+#   - Linux: Ubuntu 20.04 or newer
+#   - macOS: 12.0 or newer (with Homebrew installed)
 
 set -euo pipefail
 
@@ -35,7 +32,7 @@ INSTALL_DIR="${SCRIPT_DIR}/install"
 OUTPUT_DIR="${SCRIPT_DIR}/output"
 PKG_DIR="${SCRIPT_DIR}/packages"
 CROSSLIB_DIR="${SCRIPT_DIR}/mingw-root/x86_64-w64-mingw32"
-NUM_JOBS="$(nproc || sysctl -n hw.ncpu || echo 4)"
+NUM_JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu || echo 4)"
 OS_NAME="$(uname -s)"
 
 mkdir -p "${BUILD_DIR}" "${INSTALL_DIR}" "${OUTPUT_DIR}" "${PKG_DIR}"
@@ -49,9 +46,9 @@ elif [[ "$TARGET" != "mac" && "$OS_NAME" != "Linux" ]]; then
   exit 1
 fi
 
-# === Install dependencies (Linux only) ===
+# === Install dependencies ===
 if [[ "$OS_NAME" == "Linux" ]]; then
-  echo ">>> Installing dependencies..."
+  echo ">>> Installing Linux dependencies..."
   if command -v apt-get >/dev/null 2>&1; then
     sudo apt-get update -y
     sudo apt-get install -y \
@@ -59,6 +56,13 @@ if [[ "$OS_NAME" == "Linux" ]]; then
       libusb-1.0-0-dev libhidapi-dev libftdi1-dev \
       mingw-w64 mingw-w64-tools mingw-w64-x86-64-dev p7zip-full wget
   fi
+elif [[ "$OS_NAME" == "Darwin" ]]; then
+  echo ">>> Checking for macOS dependencies..."
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "❌ Homebrew not found. Please install it from https://brew.sh"
+    exit 1
+  fi
+  brew install -q autoconf automake libtool pkg-config hidapi libftdi libusb gettext texinfo cmake || true
 fi
 
 # === Clone or update OpenOCD source ===
@@ -88,6 +92,7 @@ echo ">>> Detected OpenOCD version: ${OPENOCD_VERSION}"
 # === Determine targets ===
 if [[ "$TARGET" == "all" ]]; then
   TARGETS=("linux" "windows")
+  [[ "$OS_NAME" == "Darwin" ]] && TARGETS=("mac")
 else
   TARGETS=("$TARGET")
 fi
@@ -157,7 +162,6 @@ build_cross_libs() {
     wget -q https://www.intra2net.com/en/developer/libftdi/download/libftdi1-1.5.tar.bz2
     tar xf libftdi1-1.5.tar.bz2
     cd libftdi1-1.5
-
     mkdir -p build && cd build
     cmake .. \
       -DCMAKE_SYSTEM_NAME=Windows \
@@ -191,28 +195,24 @@ build_linux() {
   package_output "linux" "${INSTALL_DIR}/linux"
 }
 
-# === Build for Windows directly (no upstream script) ===
+# === Build for Windows (cross) ===
 build_windows() {
   echo ">>> Building OpenOCD for Windows..."
   build_cross_libs
-
   local PREFIX="${INSTALL_DIR}/windows"
   mkdir -p "${BUILD_DIR}/windows"
   cd "${REPO_DIR}"
   ./bootstrap
   cd "${BUILD_DIR}/windows"
-
   export PKG_CONFIG_PATH="${CROSSLIB_DIR}/lib/pkgconfig"
   export LDFLAGS="-static"
   export CPPFLAGS="-I${CROSSLIB_DIR}/include"
   export PATH="${CROSSLIB_DIR}/bin:$PATH"
-
   "${REPO_DIR}/configure" \
     --host=x86_64-w64-mingw32 \
     --enable-ftdi --enable-cmsis-dap --enable-jlink --enable-stlink \
     --disable-doxygen-html --disable-git-update --disable-werror \
     --prefix="${PREFIX}"
-
   make -j"${NUM_JOBS}"
   make install
   package_output "windows" "${PREFIX}"
@@ -221,8 +221,17 @@ build_windows() {
 # === Build for macOS ===
 build_mac() {
   echo ">>> Building OpenOCD for macOS..."
-  echo "⚠️  Use macOS natively for this step."
-  exit 1
+  mkdir -p "${BUILD_DIR}/mac"
+  cd "${REPO_DIR}"
+  ./bootstrap
+  cd "${BUILD_DIR}/mac"
+  "${REPO_DIR}/configure" \
+    --enable-ftdi --enable-cmsis-dap --enable-jlink --enable-stlink \
+    --disable-doxygen-html --disable-git-update --disable-werror \
+    --prefix="${INSTALL_DIR}/mac"
+  make -j"${NUM_JOBS}"
+  make install
+  package_output "mac" "${INSTALL_DIR}/mac"
 }
 
 # === Run builds ===
