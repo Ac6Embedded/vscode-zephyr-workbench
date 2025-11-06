@@ -1437,7 +1437,20 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.open-wizard", async () => {
-			ImportZephyrSDKPanel.render(context.extensionUri);
+			// Mirror the same guard used for creating a West workspace
+			if (await checkHostTools() && await checkEnvFile()) {
+				ImportZephyrSDKPanel.render(context.extensionUri);
+			} else {
+				const installHostToolsItem = 'Install Host Tools';
+				const choice = await vscode.window.showErrorMessage(
+					"Host tools are missing, please install them first",
+					installHostToolsItem
+				);
+				if (choice === installHostToolsItem) {
+					vscode.commands.executeCommand('zephyr-workbench.install-host-tools.open-manager');
+				}
+				return;
+			}
 		})
 	);
 
