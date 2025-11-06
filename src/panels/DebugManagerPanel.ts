@@ -511,7 +511,10 @@ export class DebugManagerPanel {
       }
     
       let newRunnersHTML = '';
-      let compatibleRunners = await config.getCompatibleRunners();
+      let compatibleRunners: string[] = [];
+      if(buildConfig && project) {
+        compatibleRunners = await buildConfig.getCompatibleRunners(project);
+      }
       for(let runner of getDebugRunners()) {
         if(compatibleRunners.includes(runner.name)) {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
