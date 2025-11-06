@@ -78,22 +78,6 @@ zephyr_content:
     windows:
       source: https://repo.msys2.org/msys/x86_64/dtc-1.7.2-1-x86_64.pkg.tar.zst
       sha256: 8d75950a950deb4a1e561461d2f8e3a2ca38701cc36fa34f3a05c5ecf9eb63d5
-- tool: zephyr_sdk
-  os:
-    windows:
-      source: https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_windows-x86_64.7z
-      sha256: EB1B84BBD193761C9E20696B04D326B2CD732DFA3931A68AB0476098C1384E50
-    linux:
-      source: https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-x86_64.tar.xz
-      sha256: cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7dbc6a
-    darwin:
-      source: xxx
-      sha256: xxx
-- tool: openssl
-  os:
-    linux:
-      source: https://www.ac6-tools.com/downloads/zinstaller/tools/linux/openssl-1.1.1t.tar.bz2
-      sha256: 943437123834d29b546a2d097e7eab7157202cd17669a130eea2eea682043a23
 - tool: git
   os:
     windows:
@@ -110,14 +94,8 @@ zephyr_content:
 - tool: python_portable
   os:
     linux:
-      source: https://www.ac6-tools.com/downloads/zinstaller/tools/linux/cpython/cpython-3.13.5-linux-x86_64.tar.gz
-      sha256: fe36195e7a255d835b19d2faed8da42d46b34a79b9f03d69321730a7b19e68b1
-    windows:
-      source: https://github.com/winpython/winpython/releases/download/16.6.20250620final/Winpython64-3.13.5.0dot.exe
-      sha256: 9f9488eca6aba8fbe75cccde84457b6753cb100a66a4c6c9116107907c4df096
-    darwin:
-      source: xxx
-      sha256: xxx
+      source: https://github.com/niess/python-appimage/releases/download/python3.13/python3.13.8-cp313-cp313-manylinux2014_x86_64.AppImage
+      sha256: 443fa6c92d1d7cbd29d6b340d0d8f5ceb43b19a9d2a55c64450c07dadc33d65e
  
 python_packages:
   # You can specify just a name

@@ -113,6 +113,8 @@ MANIFEST_FILE="$TMP_DIR/manifest.sh"
 DL_DIR="$TMP_DIR/downloads"
 TOOLS_DIR="$INSTALL_DIR/tools"
 ENV_FILE="$INSTALL_DIR/env.sh"
+ENV_YAML_PATH="$INSTALL_DIR/env.yml"
+ENV_PY_PATH="$INSTALL_DIR/env.py"
 
 pr_title() {
     local width=40
@@ -140,12 +142,20 @@ pr_warn() {
     echo "WARN: $message"
 }
 
+# Simple debug logger (export ZI_DEBUG=1 to enable)
+debug() {
+    if [[ "${ZI_DEBUG:-0}" != "0" ]]; then
+        echo "DEBUG: $*"
+    fi
+}
+
 # Check that Python version is >= 3.10 and set PYTHON_TOO_OLD accordingly
 check_python_version_requirement() {
     local min_major=3
     local min_minor=10
 
     local pyexe=""
+    debug "Checking Python version requirement"
     if command -v python3 >/dev/null 2>&1; then
         pyexe=python3
     elif command -v python >/dev/null 2>&1; then
@@ -153,13 +163,16 @@ check_python_version_requirement() {
     else
         pr_warn "Python not found on PATH; Zephyr requires Python >= 3.10"
         PYTHON_TOO_OLD=true
+        debug "No python found on PATH"
         return 1
     fi
 
     local ver_str="$($pyexe -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)"
+    debug "Using pyexe: $pyexe, version_str: $ver_str"
     if [[ -z "$ver_str" ]]; then
         pr_warn "Unable to determine Python version; Zephyr requires Python >= 3.10"
         PYTHON_TOO_OLD=true
+        debug "Unable to determine version"
         return 1
     fi
 
@@ -168,10 +181,12 @@ check_python_version_requirement() {
 
     if (( maj > min_major )) || (( maj == min_major && min >= min_minor )); then
         PYTHON_TOO_OLD=false
+        debug "Python OK (>= ${min_major}.${min_minor})"
         return 0
     else
         PYTHON_TOO_OLD=true
         pr_warn "Detected Python ${ver_str}; Zephyr requires version >= 3.10"
+        debug "Python too old: ${ver_str}"
         return 1
     fi
 }
@@ -223,6 +238,49 @@ download() {
     if [ ! -f "$file_path" ]; then
         pr_error 1 "Error: Failed to download the file."
         exit 1
+    fi
+}
+
+prepend_python_paths_from_env() {
+    local env_yaml_path="$1"
+    local yq_bin="$2"
+    # Prepend Python path(s) from env.yml to PATH, if available
+    if [[ -f "$env_yaml_path" && -x "$yq_bin" ]]; then
+        debug "Reading python paths from: $env_yaml_path using yq: $yq_bin"
+        local -a _PY_PATHS=()
+        if mapfile -t _PY_PATHS < <("$yq_bin" eval -o=tsv '.tools.python.path[]?' "$env_yaml_path" 2>/dev/null); then
+            :
+        else
+            _PY_PATHS=()
+        fi
+        local _SINGLE
+        _SINGLE=$("$yq_bin" eval '.tools.python.path // ""' "$env_yaml_path" 2>/dev/null)
+        debug "yq list paths: ${_PY_PATHS[*]} | yq single: $_SINGLE"
+        if [[ ( -z "${_PY_PATHS[*]}" || ${#_PY_PATHS[@]} -eq 0 ) && -n "$_SINGLE" && "$_SINGLE" != "null" ]]; then
+            # sanitize a possible YAML list line like '- <value>'
+            if [[ "$_SINGLE" == -* ]]; then
+                _SINGLE="${_SINGLE#- }"
+            fi
+            _PY_PATHS+=("$_SINGLE")
+        fi
+        for _p in "${_PY_PATHS[@]}"; do
+            if [[ -n "$_p" ]]; then
+                # Expand common variables from env.yml using known runtime values
+                local _resolved="$_p"
+                _resolved="${_resolved//\$\{zi_tools_dir\}/$INSTALL_DIR/tools}"
+                _resolved="${_resolved//\$\{zi_base_dir\}/$INSTALL_DIR}"
+                debug "Resolved Python path: $_p -> $_resolved"
+                if [[ -d "$_resolved" ]]; then
+                    debug "Prepending Python path: $_resolved"
+                    export PATH="$_resolved:$PATH"
+                else
+                    debug "Skipping non-existent path: $_resolved"
+                fi
+            fi
+        done
+        debug "PATH after prepend: $PATH"
+    else
+        debug "env.yml not found or yq not executable: $env_yaml_path | $yq_bin"
     fi
 }
 
@@ -326,26 +384,22 @@ if [[ $root_packages == true ]]; then
                 pr_error 3 "Ubuntu version lower than 20.04 are not supported"
                 exit 3
             fi
-            portable_python=false
             sudo DEBIAN_FRONTEND=noninteractive apt-get update
             sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends git cmake ninja-build gperf ccache dfu-util device-tree-compiler wget python3-dev python3-venv python3-pip python3-setuptools python3-tk python3-wheel xz-utils file make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1 unzip
             ;;
         fedora)
             echo "This is Fedora."
-            portable_python=false
             sudo dnf upgrade -y
             sudo dnf group install -y "Development Tools" "C Development Tools and Libraries"
             sudo dnf install -y cmake ninja-build gperf dfu-util dtc wget which python3-pip python3-tkinter xz file python3-devel SDL2-devel
             ;;
         clear-linux-os)
             echo "This is Clear Linux."
-            portable_python=false
             sudo swupd update
             sudo swupd bundle-add c-basic dev-utils dfu-util dtc os-core-dev python-basic python3-basic python3-tcl
             ;;
         arch)
             echo "This is Arch Linux."
-            portable_python=false
             sudo pacman -Syu --noconfirm
             sudo pacman -S --noconfirm git cmake ninja gperf ccache dfu-util dtc wget python-pip python-setuptools python-wheel tk xz file make
             ;;
@@ -418,6 +472,11 @@ if [[ $non_root_packages == true ]]; then
 
     if [[ $create_venv_bool == true ]]; then
       pr_title "Creating Python VENV"
+      debug "create_venv flow: PATH(before): $PATH"
+      prepend_python_paths_from_env "$ENV_YAML_PATH" "$YQ"
+      # Ensure Python meets requirement (may set PYTHON_TOO_OLD)
+      check_python_version_requirement || true
+      debug "create_venv: python3=$(command -v python3 || echo not-found) | python=$(command -v python || echo not-found) | PYTHON_TOO_OLD=$PYTHON_TOO_OLD"
       if [[ -n "$VENV_PATH" && -d "$VENV_PATH" ]]; then
         echo "VENV already exists at: $VENV_PATH"
       else
@@ -432,37 +491,46 @@ if [[ $non_root_packages == true ]]; then
       if [ -d "$INSTALL_DIR/.venv" ]; then
         rm -rf "$INSTALL_DIR/.venv"
       fi
-      # Prefer portable Python in tools if present; otherwise rely on system python3
-      TOOLS_PY=$(find "$INSTALL_DIR/tools" -maxdepth 2 -type f -name python3 2>/dev/null | head -n 1)
-      if [[ -x "$TOOLS_PY" ]]; then
-        export PATH="$(dirname "$TOOLS_PY"):$PATH"
-      fi
+      debug "reinstall_venv flow: PATH(before): $PATH"
+      prepend_python_paths_from_env "$ENV_YAML_PATH" "$YQ"
+      # Re-check Python version requirement after adjusting PATH
+      check_python_version_requirement || true
+      debug "reinstall_venv: python3=$(command -v python3 || echo not-found) | python=$(command -v python || echo not-found) | PYTHON_TOO_OLD=$PYTHON_TOO_OLD"
       install_python_venv "$INSTALL_DIR" "$TMP_DIR"
       rm -rf "$TMP_DIR"
       exit 0
     fi
 
-	if [ $portable_python = true ]; then
-        openssl_lib_bool=true
-        if [ $openssl_lib_bool = true ]; then
-        pr_title "OpenSSL"
-        OPENSSL_FOLDER_NAME="openssl-1.1.1t"
-        OPENSSL_ARCHIVE_NAME="${OPENSSL_FOLDER_NAME}.tar.bz2"
-        download_and_check_hash ${openssl[source]} ${openssl[sha256]} "$OPENSSL_ARCHIVE_NAME"
-        tar xf "$DL_DIR/$OPENSSL_ARCHIVE_NAME" -C "$TOOLS_DIR"
-        openssl_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME/usr/local/bin"
-        openssl_lib_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME/usr/local/lib"
-        export LD_LIBRARY_PATH="$openssl_lib_path:$LD_LIBRARY_PATH"
-        export PATH="$openssl_path:$PATH"
-        fi
+    # If the system Python is not supported, switch to portable AppImage
+    check_python_version_requirement || true
+    if [[ "$PYTHON_TOO_OLD" == true ]]; then
+        pr_warn "System Python is older than 3.10 or missing."
+        pr_warn "Applying workaround: installing portable Python via AppImage."
+        pr_warn "More info: https://python-appimage.readthedocs.io"
+        debug "Switching to portable Python: PYTHON_TOO_OLD=$PYTHON_TOO_OLD (before portable_python=$portable_python)"
+        portable_python=true
+    fi
 
-        pr_title "Python"
-        PYTHON_FOLDER_NAME="3.13.5"
-        PYTHON_ARCHIVE_NAME="cpython-${PYTHON_FOLDER_NAME}-linux-x86_64.tar.gz"
-        download_and_check_hash ${python_portable[source]} ${python_portable[sha256]} "$PYTHON_ARCHIVE_NAME"
-        tar xf "$DL_DIR/$PYTHON_ARCHIVE_NAME" -C "$TOOLS_DIR"
-        python_path="$INSTALL_DIR/tools/$PYTHON_FOLDER_NAME/bin"
-        export PATH="$python_path:$PATH"
+	if [ $portable_python = true ]; then
+        pr_title "Python (Portable AppImage)"
+        # Download portable Python AppImage as defined in tools.yml
+        PY_APPIMAGE_URL="${python_portable[source]}"
+        PY_APPIMAGE_SHA="${python_portable[sha256]}"
+        PY_APPIMAGE_NAME="$(basename "$PY_APPIMAGE_URL")"
+        download_and_check_hash "$PY_APPIMAGE_URL" "$PY_APPIMAGE_SHA" "$PY_APPIMAGE_NAME"
+
+        # Install under tools/python/ and create symlinks
+        mkdir -p "$TOOLS_DIR/python"
+        mv "$DL_DIR/$PY_APPIMAGE_NAME" "$TOOLS_DIR/python/python.AppImage"
+        chmod +x "$TOOLS_DIR/python/python.AppImage"
+        ln -sf "python.AppImage" "$TOOLS_DIR/python/python"
+        ln -sf "python.AppImage" "$TOOLS_DIR/python/python3"
+        debug "Installed AppImage at $TOOLS_DIR/python/python.AppImage"
+        debug "Symlinks: $(ls -l "$TOOLS_DIR/python" 2>/dev/null | tr -s ' ')"
+
+        # Ensure the shim directory is on PATH
+        export PATH="$TOOLS_DIR/python:$PATH"
+        debug "PATH with portable: $PATH"
     fi
 
     pr_title "Ninja"
@@ -565,8 +633,6 @@ EOF
 	# --------------------------------------------------------------------------
 	# Create environment manifest (env.yml)
 	# --------------------------------------------------------------------------
-
-	ENV_YAML_PATH="$INSTALL_DIR/env.yml"
 	
 	cat << EOF > "$ENV_YAML_PATH"
 # env.yml
@@ -594,9 +660,9 @@ tools:
 EOF
 
 if [ "$portable_python" = true ]; then
-	# Detect the installed Python version (from system or portable)
-	if command -v python3 >/dev/null 2>&1; then
-		PYTHON_VERSION=$(python3 --version 2>&1 | grep -oP 'Python \K[^\s]+')
+	# Detect the installed Python version from the portable shim, if present
+	if [[ -x "$INSTALL_DIR/tools/python/python3" ]]; then
+		PYTHON_VERSION=$("$INSTALL_DIR/tools/python/python3" --version 2>&1 | grep -oP 'Python \K[^\s]+')
 	else
 		PYTHON_VERSION=""
 	fi
@@ -605,7 +671,7 @@ if [ "$portable_python" = true ]; then
 
   python:
     path:
-      - "\${zi_base_dir}/$PYTHON_FOLDER_NAME/bin"
+      - "\${zi_tools_dir}/python"
     version: "$PYTHON_VERSION"
     do_not_use: false
 EOF
@@ -660,8 +726,6 @@ echo "Created environment manifest: $ENV_YAML_PATH"
 	# --------------------------------------------------------------------------
 	# Create python script to parse environement yml (env.py)
 	# --------------------------------------------------------------------------
-
-	ENV_PY_PATH="$INSTALL_DIR/env.py"
 	
 	cat << 'EOF' > "$ENV_PY_PATH"
 #!/usr/bin/env python3
