@@ -18,7 +18,7 @@ import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYS
 import { getRunner, getRunRunners, getFlashRunners, getStaticFlashRunnerNames, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './utils/debugUtils';
 import { execShellTaskWithEnvAndWait, executeTask, getTerminalDefaultProfile, normalizeSlashesIfPath } from './utils/execUtils';
 import { importProjectQuickStep } from './quicksteps/importProjectQuickStep';
-import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools } from './utils/installUtils';
+import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
 import { generateWestManifest } from './utils/manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
@@ -1272,19 +1272,35 @@ export function activate(context: vscode.ExtensionContext) {
 					async (progress, token) => {
 						// Close deprecated SDK Manager panel if open (no-op as panel removed)
 
-						if (!force) {
-							await runInstallHostTools(
-								context, listToolchains, progress, token);
-						} else {
-							await forceInstallHostTools(
-								context, listToolchains, progress, token);
-						}
+                        if (!force) {
+                            await runInstallHostTools(
+                                context, listToolchains, progress, token);
+                        } else {
+                            await forceInstallHostTools(
+                                context, listToolchains, progress, token);
+                        }
 
-						zephyrSdkProvider.refresh();
-						zephyrShortcutProvider.refresh();
-						zephyrToolsCommandProvider.refresh();
-						// If Host Tools Manager is open, refresh its content
-						try { HostToolsPanel.currentPanel?.refresh(); } catch {}
+                        zephyrSdkProvider.refresh();
+                        zephyrShortcutProvider.refresh();
+                        zephyrToolsCommandProvider.refresh();
+                        // If Host Tools Manager is open, refresh its content
+                        try { HostToolsPanel.currentPanel?.refresh(); } catch {}
+
+                        // After host tools progress ends, start a new progress for OpenOCD installation
+                        try {
+                            if (await checkHostTools() && await checkEnvFile()) {
+                                await vscode.window.withProgress(
+                                    {
+                                        location: vscode.ProgressLocation.Notification,
+                                        title: 'Installing OpenOCD runner',
+                                        cancellable: false,
+                                    },
+                                    async () => {
+                                        await installOpenOcdRunnerSilently(context);
+                                    }
+                                );
+                            }
+                        } catch {}
 					}
 				);
 			}

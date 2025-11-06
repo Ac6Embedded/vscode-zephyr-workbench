@@ -8,9 +8,10 @@ import path from "path";
 import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
-import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs, getShellExe, classifyShell, normalizePathForShell } from "./execUtils";
+import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs, getShellExe, classifyShell, normalizePathForShell, execCommandWithEnv } from "./execUtils";
 import { syncAutoDetectEnv } from "./autoDetectSyncUtils";
 import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSDK, getWestWorkspace } from "./utils";
+import { getRunner } from "./debugUtils";
 import { getZephyrTerminal } from "./zephyrTerminalUtils";
 import { ensurePowershellExecutionPolicy } from "./powershellUtils";
 
@@ -153,7 +154,7 @@ export async function verifyInstallScript(): Promise<void> {
  */
 export async function runInstallHostTools(context: vscode.ExtensionContext, 
                                           listToolchains: string,
-                                          progress: vscode.Progress<{
+                                          progress: vscode.Progress<{ 
                                             message?: string | undefined;
                                             increment?: number | undefined;
                                           }>, 
@@ -177,31 +178,7 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
       autoSetHostToolsSettings();
       await syncAutoDetectEnv(context);
       vscode.window.showInformationMessage("Setup Zephyr environment successful");
-      // Prompt user to install debug runners after host tools are ready
-      try {
-        const installRunnersItem = 'Install Runners';
-        const laterItem = 'Later';
-        // Do not await here to allow progress notification to finish
-        vscode.window.showInformationMessage(
-          'Host tools are ready. Install debug/flash runners (e.g., Zephyr OpenOCD, JLink)?',
-          installRunnersItem,
-          laterItem
-        ).then(async (choice) => {
-          if (choice === installRunnersItem) {
-            try { await vscode.commands.executeCommand('zephyr-workbench.install-runners'); } catch {}
-          } else if (choice === undefined) {
-            // If dismissed without choosing, provide a brief status bar action instead
-            try {
-              const sbi = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
-              sbi.text = '$(tools) Install Runners';
-              sbi.tooltip = 'Install debug/flash runners (e.g., Zephyr OpenOCD, JLink)';
-              sbi.command = 'zephyr-workbench.install-runners';
-              sbi.show();
-              setTimeout(() => { try { sbi.dispose(); } catch {} }, 15000);
-            } catch {}
-          }
-        });
-      } catch {}
+      // Host tools done; OpenOCD runner install handled separately with its own progress.
       progress.report({ message: "Auto-detect environment file", increment: 100 });
     }
 
@@ -212,7 +189,7 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
 
 export async function forceInstallHostTools(context: vscode.ExtensionContext, 
                                             listToolchains: string,
-                                            progress: vscode.Progress<{
+                                            progress: vscode.Progress<{ 
                                             message?: string | undefined;
                                             increment?: number | undefined;
                                           }>, 
@@ -231,31 +208,7 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
       autoSetHostToolsSettings();
       await syncAutoDetectEnv(context);
       vscode.window.showInformationMessage("Setup Zephyr environment successful");
-      // Prompt user to install debug runners after host tools reinstall
-      try {
-        const installRunnersItem = 'Install Runners';
-        const laterItem = 'Later';
-        // Do not await here to allow progress notification to finish
-        vscode.window.showInformationMessage(
-          'Host tools are ready. Install debug runners (e.g., Zephyr OpenOCD)?',
-          installRunnersItem,
-          laterItem
-        ).then(async (choice) => {
-          if (choice === installRunnersItem) {
-            try { await vscode.commands.executeCommand('zephyr-workbench.install-runners'); } catch {}
-          } else if (choice === undefined) {
-            // If dismissed without choosing, provide a brief status bar action instead
-            try {
-              const sbi = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
-              sbi.text = '$(tools) Install Runners';
-              sbi.tooltip = 'Install debug/flash runners (e.g., Zephyr OpenOCD, JLink)';
-              sbi.command = 'zephyr-workbench.install-runners';
-              sbi.show();
-              setTimeout(() => { try { sbi.dispose(); } catch {} }, 15000);
-            } catch {}
-          }
-        });
-      } catch {}
+      // Host tools done; OpenOCD runner install handled separately with its own progress.
       progress.report({ message: "Auto-detect environment file", increment: 100 });
     }
 
@@ -650,6 +603,91 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
 
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");
+  }
+}
+
+// Silent variant used for post-host-tools flow: hides terminal/logs and reports only final result.
+export async function installHostDebugToolsSilent(context: vscode.ExtensionContext, listTools: any[]): Promise<void> {
+  const scriptsDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'runners');
+  if (!scriptsDirUri) {
+    vscode.window.showErrorMessage("Cannot find installation script");
+    return;
+  }
+
+  let installScript = '';
+  let installCmd = '';
+  let installArgs = '';
+  let destDir = '';
+  let shell = '';
+
+  destDir = getInstallDirRealPath();
+  installArgs += ` -D ${destDir}`;
+
+  switch(process.platform) {
+    case 'linux': {
+      installScript = 'install-debug-tools.sh';
+      installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
+      shell = 'bash';
+      break;
+    }
+    case 'win32': {
+      const ok = await ensurePowershellExecutionPolicy();
+      if (!ok) { return; }
+      installScript = 'install-debug-tools.ps1';
+      installCmd = `powershell -File ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
+      shell = 'powershell.exe';
+      installArgs += ' -Tools ';
+      break;
+    }
+    case 'darwin': {
+      installScript = 'install-debug-tools-mac.sh';
+      installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
+      shell = 'bash';
+      break;
+    }
+    default: {
+      vscode.window.showErrorMessage("Platform not supported !");
+      return;
+    }
+  }
+
+  // Build tools arg list (comma-separated on Windows, space-separated elsewhere)
+  let toolsSeparator = ' ';
+  if(process.platform === 'win32') {
+    toolsSeparator = ',';
+  }
+  const toolsCmdArg = listTools.map(tool => tool.tool).join(toolsSeparator);
+  const fullCmd = `${installCmd} ${installArgs} ${toolsCmdArg}`.trim();
+
+  // Run via child_process exec with env sourcing to avoid opening any terminal/log panel
+  await new Promise<void>((resolve, reject) => {
+    execCommandWithEnv(fullCmd, undefined, (error) => {
+      if (error) { reject(error); return; }
+      resolve();
+    }).catch(err => reject(err));
+  });
+}
+
+// Install OpenOCD runner silently and show only a success/failure popup
+export async function installOpenOcdRunnerSilently(context: vscode.ExtensionContext): Promise<void> {
+  try {
+    // Run the same installer that the Debug Tools panel uses, but silently
+    await installHostDebugToolsSilent(context, [{ tool: 'openocd' }]);
+
+    // Verify installation by checking expected executable path
+    const runner = getRunner('openocd');
+    let execName = 'openocd';
+    if (runner && runner.executable) { execName = runner.executable; }
+    const exePath = path.join(getInternalDirRealPath(), 'tools', 'openocd', 'bin', execName);
+
+    if (fileExists(exePath)) {
+      vscode.window.showInformationMessage('OpenOCD runner installation successful');
+    } else {
+      vscode.window.showErrorMessage('OpenOCD runner installation failed');
+    }
+  } catch {
+    // On any unexpected error, show a failure popup (no logs)
+    vscode.window.showErrorMessage('OpenOCD runner installation failed');
   }
 }
 
