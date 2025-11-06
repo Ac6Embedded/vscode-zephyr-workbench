@@ -1288,6 +1288,7 @@ export function activate(context: vscode.ExtensionContext) {
 
                         // After host tools progress ends, start a new progress for OpenOCD installation
                         try {
+                            let didOpenOCD = false;
                             if (await checkHostTools() && await checkEnvFile()) {
                                 await vscode.window.withProgress(
                                     {
@@ -1297,9 +1298,33 @@ export function activate(context: vscode.ExtensionContext) {
                                     },
                                     async () => {
                                         await installOpenOcdRunnerSilently(context);
+                                        didOpenOCD = true;
                                     }
                                 );
                             }
+
+                            // When everything finishes, offer quick entry to install more runners.
+                            // Use an information message with an action, and a 10s status bar item fallback.
+                            const action = 'Install Runners';
+                            vscode.window.showInformationMessage(
+                                didOpenOCD
+                                  ? 'OpenOCD is installed. You can install additional runners.'
+                                  : 'You can install additional runners.',
+                                action
+                            ).then(async (choice) => {
+                                if (choice === action) {
+                                    try { await vscode.commands.executeCommand('zephyr-workbench.install-runners'); } catch {}
+                                }
+                            });
+
+                            try {
+                                const sbi = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+                                sbi.text = '$(tools) Install Runners';
+                                sbi.tooltip = 'Open Install Runners manager to install additional runners';
+                                sbi.command = 'zephyr-workbench.install-runners';
+                                sbi.show();
+                                setTimeout(() => { try { sbi.dispose(); } catch {} }, 10000);
+                            } catch {}
                         } catch {}
 					}
 				);
