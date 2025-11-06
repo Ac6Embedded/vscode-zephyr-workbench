@@ -95,11 +95,10 @@ debug_tools:
       - "/opt/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin"
       - "/usr/bin/STM32_Programmer_CLI"
       - "/usr/local/bin/STM32_Programmer_CLI"
+      - "${HOME}/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin"
     darwin:
       - "/Applications/STMicroelectronics/STM32CubeProgrammer/STM32CubeProgrammer.app/Contents/MacOS/bin"
       - "/Applications/STM32CubeProgrammer/STM32CubeProgrammer.app/Contents/MacOS/bin"
-      - "/usr/local/bin/STM32_Programmer_CLI"
-      - "/usr/bin/STM32_Programmer_CLI"
 - tool: linkserver
   name: NXP LinkServer for Microcontrollers
   version: 24.9.75
