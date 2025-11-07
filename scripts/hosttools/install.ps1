@@ -656,6 +656,14 @@ if exist "%VENV_ACTIVATE_PATH%" (
     rem no output for missing venv
 )
 
+REM === Verify venv activation ===
+if not defined VIRTUAL_ENV (
+    echo [ERROR] Failed to activate the Python virtual environment.
+    echo [INFO] Checked path: %VENV_ACTIVATE_PATH%
+    echo [SUGGESTION] You may need to reinstall Host Tools or the global or local virtual environment.
+    exit /b 1
+)
+
 :: === Run env.py and apply its output ===
 for /f "usebackq delims=" %%L in (``python "%PY_FILE%" --shell=cmd``) do (
     if not "%%L"=="" call %%L
@@ -773,6 +781,13 @@ else
     echo "[ERROR] Virtual environment activation script not found: `$venv_activate_path" >&2
 fi
 
+# --- Verify venv activation ---
+if [[ -z "`$VIRTUAL_ENV" ]]; then
+    echo "[ERROR] Failed to activate the Python virtual environment." >&2
+    echo "[INFO] Checked path: `$venv_activate_path" >&2
+    echo "[SUGGESTION] You may need to reinstall Host Tools or the global or local virtual environment." >&2
+fi
+
 # --- Run env.py to load environment variables and paths ---
 if [[ -f "`$PY_FILE" ]]; then
     # We tell env.py to output in POSIX shell mode
@@ -855,6 +870,14 @@ if (Test-Path `$VenvActivatePath) {
     Write-Output "Activated virtual environment at `$VenvActivatePath"
 } else {
     Write-Output "Error: Virtual environment activation script not found at `$VenvActivatePath."
+}
+
+# === Verify venv activation ===
+if (-not `$env:VIRTUAL_ENV) {
+    Write-Host "[ERROR] Failed to activate the Python virtual environment." -ForegroundColor Red
+    Write-Host "[INFO] Checked path: `$VenvActivatePath" -ForegroundColor Yellow
+    Write-Host "[SUGGESTION] You may need to reinstall Host Tools or the global or local virtual environment." -ForegroundColor Cyan
+    exit 1
 }
 
 python `$EnvPyPath --shell=powershell | Out-String | Invoke-Expression

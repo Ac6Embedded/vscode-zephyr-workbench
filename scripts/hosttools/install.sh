@@ -617,6 +617,13 @@ else
     echo "[ERROR] Virtual environment activation script not found: $venv_activate_path" >&2
 fi
 
+# --- Verify venv activation ---
+if [[ -z "$VIRTUAL_ENV" ]]; then
+    echo "[ERROR] Failed to activate the Python virtual environment." >&2
+    echo "[INFO] Checked path: $venv_activate_path" >&2
+    echo "[SUGGESTION] You may need to reinstall Host Tools or the global or local virtual environment." >&2
+fi
+
 # --- Run env.py to load environment variables and paths ---
 if [[ -f "$PY_FILE" ]]; then
     # We tell env.py to output in POSIX shell mode
