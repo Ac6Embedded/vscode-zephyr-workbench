@@ -85,7 +85,7 @@ export class ZephyrSdkTreeItem extends vscode.TreeItem {
 		//this.description = sdk.rootUri.fsPath + (isInternal ? " [Internal]" : "");
 		this.tooltip = `Zephyr SDK ${sdk.version} @ ${sdk.rootUri.fsPath}`;
 		this.contextValue = isInternal ? "zephyr-sdk-internal" : "zephyr-sdk";
-		this.iconPath = new vscode.ThemeIcon("symbol-method");
+		this.iconPath = new vscode.ThemeIcon("folder");
 	  }
 	}
   }
