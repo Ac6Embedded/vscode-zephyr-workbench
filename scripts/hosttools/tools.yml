@@ -18,13 +18,8 @@ other_content:
 - tool: seven_z
   os:
     windows:
-      source: https://7-zip.org/a/7z2408-x64.exe
-      sha256: 67cb9d3452c9dd974b04f4a5fd842dbcba8184f2344ff72e3662d7cdb68b099b
-- tool: seven_z_portable
-  os:
-    windows:
-      source: https://www.ac6-tools.com/downloads/zinstaller/tools/windows/7-Zip-24.08.exe
-      sha256: 07c508289d4dd0a90b8a4622affec1a418f0d61d732dea2a6e7d928cc25a07de
+      source: https://7-zip.org/a/7z2501-x64.exe
+      sha256: 78afa2a1c773caf3cf7edf62f857d2a8a5da55fb0fff5da416074c0d28b2b55f
 - tool: zstd
   os:
     windows:

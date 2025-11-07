@@ -40,7 +40,7 @@ other_content:
 debug_tools:
 - tool: openocd
   name: OpenOCD Zephyr
-  version: 0.11.0
+  version: 0.12.0
   website: https://github.com/zephyrproject-rtos/openocd
   type: debug_server
   group: Common
@@ -48,14 +48,14 @@ debug_tools:
   root: false
   os:
     windows:
-      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/win32/openocd-zephyr-0.11.0-win32-x86_64.7z
-      sha256: 0630ec590266b2f4ee1e83426ca26a4e277afd55b0e33c9a80df9f1ff0b972e4
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/win32/openocd-zephyr-0.12.0-win32-x86_64.7z
+      sha256: d5cea76f71872620f6f3e390c7935dce84ff97d4a840677bbc868595f5a10cbf
     linux:
-      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/openocd-zephyr-0.11.0-linux-x86_64.tar.xz
-      sha256: 8c4ac8edf6039f863a579bfe334e031a8ee13e9915f85d5321e8098064f61ce5
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/linux/openocd-zephyr-0.12.0-linux-x86_64.tar.xz
+      sha256: 07fd7b4b7175cea09b413c240ddc42c681f9e4e6cd1e23b1a18f056aad7eb3a6
     darwin:
-      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/darwin/openocd-zephyr-0.11.0-darwin-aarch64.tar.xz
-      sha256: cf7b0470219de559e5186bf47fa07b797a0564ac157636e37bffd9726b8c3ab0
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/darwin/openocd-zephyr-0.12.0-darwin-arm64.tar.xz
+      sha256: 3123f6d42454cbb2af03bbea48e5c4f93fe7c556119d64b4372f249e4ba14ee9
 - tool: jlink
   name: J-Link Software
   version: 8.78
@@ -95,11 +95,10 @@ debug_tools:
       - "/opt/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin"
       - "/usr/bin/STM32_Programmer_CLI"
       - "/usr/local/bin/STM32_Programmer_CLI"
+      - "${HOME}/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin"
     darwin:
       - "/Applications/STMicroelectronics/STM32CubeProgrammer/STM32CubeProgrammer.app/Contents/MacOS/bin"
       - "/Applications/STM32CubeProgrammer/STM32CubeProgrammer.app/Contents/MacOS/bin"
-      - "/usr/local/bin/STM32_Programmer_CLI"
-      - "/usr/bin/STM32_Programmer_CLI"
 - tool: linkserver
   name: NXP LinkServer for Microcontrollers
   version: 24.9.75
