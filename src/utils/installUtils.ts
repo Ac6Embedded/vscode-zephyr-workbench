@@ -33,18 +33,51 @@ export async function checkHostTools(): Promise<boolean> {
 }
 
 export function removeHostTools() {
-  let tmpPath = path.join(getInternalDirRealPath(), 'tmp');
-  let hostToolsPath = path.join(getInternalDirRealPath(), 'tools');
-  let venvPath = path.join(getInternalDirRealPath(), '.venv');
+  const tmpPath = path.join(getInternalDirRealPath(), 'tmp');
+  const hostToolsPath = path.join(getInternalDirRealPath(), 'tools');
+  const venvPath = path.join(getInternalDirRealPath(), '.venv');
 
-  if(fs.existsSync(tmpPath)) {
-    fs.rmdirSync(tmpPath, { recursive: true });
-  }
-  if(fs.existsSync(hostToolsPath)) {
-    fs.rmdirSync(hostToolsPath, { recursive: true });
-  }
-  if(fs.existsSync(venvPath)) {
-    fs.rmdirSync(venvPath, { recursive: true });
+  type Failed = { path: string; error: unknown };
+  const failed: Failed[] = [];
+
+  const tryRemoveDir = (dirPath: string) => {
+    try {
+      if (fs.existsSync(dirPath)) {
+        fs.rmdirSync(dirPath, { recursive: true });
+      }
+    } catch (error) {
+      failed.push({ path: dirPath, error });
+    }
+  };
+
+  tryRemoveDir(tmpPath);
+  tryRemoveDir(hostToolsPath);
+  tryRemoveDir(venvPath);
+
+  if (failed.length > 0) {
+    try {
+      output.appendLine("WARN: Cleanup encountered errors while removing previous host tools.");
+      failed.forEach(f => {
+        const err = f.error as NodeJS.ErrnoException;
+        const code = err && (err as any).code ? (err as any).code : 'UNKNOWN';
+        const msg = err && err.message ? err.message : String(err);
+        output.appendLine(`  - ${f.path} -> ${code}: ${msg}`);
+      });
+    } catch { /* ignore logging failures */ }
+
+    // Show a simple notification with an action to open the log
+    try {
+      vscode.window
+        .showWarningMessage(
+          'Cleanup encountered errors removing previous host tools. You might need to restart VSCode or your computer and try again.',
+          'Open log'
+        )
+        .then(selection => {
+          if (selection === 'Open log') {
+            try { output.show(); } catch {}
+          }
+        });
+    } catch { /* ignore UI failures */ }
   }
 }
 
