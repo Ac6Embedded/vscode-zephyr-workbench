@@ -610,10 +610,10 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 
 # bat script  
 @"
+@echo off
+
 REM Please do not manually edit this script, it is intended to be sourced by other scripts to set up the environment.
 REM You can add environment variables and paths to env.yml via the Host Tools Manager interface.
-
-@echo off
 
 set "SCRIPT_DIR=%~dp0"
 set "YAML_FILE=%SCRIPT_DIR%env.yml"
