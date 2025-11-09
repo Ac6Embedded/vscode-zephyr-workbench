@@ -170,9 +170,9 @@ To debug in disassembly, right-click on the code then select "Open Disassembly V
 
 More information about [Debugging on VSCODE](https://code.visualstudio.com/docs/editor/debugging)
 
-### Install Debug tools
+### Install Runners
 OpenOCD and STM32CubeProgrammer installers are provided.
-1. Click on the "Install Debug tools" menu
+1. Click on the "Install Runners" menu
 2. The list of supported is displayed here
 3. Click on the "Install" icon to install the tools 
    <or>

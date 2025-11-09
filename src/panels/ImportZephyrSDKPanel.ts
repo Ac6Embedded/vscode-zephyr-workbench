@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { getSdkVersion, listToolchainArch } from "../sdkUtils";
-import { getListZephyrSDKs } from "../utils";
+import { getSdkVersion, listToolchainArch } from "../utils/sdkUtils";
+import { getListZephyrSDKs } from "../utils/utils";
 
 export class ImportZephyrSDKPanel {
   public static currentPanel: ImportZephyrSDKPanel | undefined;
@@ -88,7 +88,7 @@ export class ImportZephyrSDKPanel {
   public dispose() {
     ImportZephyrSDKPanel.currentPanel = undefined;
     this._panel.dispose();
-    while (this._disposables.length) this._disposables.pop()?.dispose();
+    while (this._disposables.length) {this._disposables.pop()?.dispose();}
   }
 
   /*──────────────────────── PRIVATE: HTML ────────────────────────────────*/
@@ -222,9 +222,9 @@ export class ImportZephyrSDKPanel {
     <div class="grid-group-div">
       <div class="grid-header-div">
         <label for="listVersion">Version:</label>
-        <a href="https://github.com/zephyrproject-rtos/sdk-ng/wiki/Zephyr-SDK-Version-Compatibility-Matrix">
+        <a href="https://docs.google.com/spreadsheets/d/1wzGJLRuR6urTgnDFUqKk7pEB8O6vWu6Sxziw_KROxMA">
           <span class="tooltip"
-                data-tooltip="Click for more information on Zephyr SDK version compatibility">?</span>
+                data-tooltip="Compatibility matrix.&#10;Click here...">?</span>
         </a>
       </div>
 

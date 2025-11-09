@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { checkHostTools } from '../installUtils';
+import { checkHostTools } from '../utils/installUtils';
+import { isZinstallerUpdateNeeded } from '../utils/utils';
 
 class MenuItem extends vscode.TreeItem {
   constructor(
@@ -16,56 +17,32 @@ class MenuItem extends vscode.TreeItem {
   }
 }
 
-const reinstallHostToolsMenuItem = new MenuItem(
-  'Reinstall Host Tools',
-  vscode.TreeItemCollapsibleState.None,
-  'desktop-download',
-  {
-    command: 'zephyr-workbench.install-host-tools.open-manager',
-    title: 'Reinstall Host Tools',
-    arguments: ['true']
-  }
-);
-
-const reinstallVenvMenuItem = new MenuItem(
-  'Reinstall Virtual Environment',
-  vscode.TreeItemCollapsibleState.None,
-  'desktop-download',
-  {
-    command: 'zephyr-workbench.reinstall-venv',
-    title: 'Reinstall Virtual Environment',
-  }
-);
-
-const verifyHostToolsMenuItem = new MenuItem(
-  'Verify Host Tools',
-  vscode.TreeItemCollapsibleState.None,
-  'compass',
-  {
-    command: 'zephyr-workbench.verify-host-tools',
-    title: 'Verify Host Tools',
-  }
-);
+// Removed: reinstall/verify actions from the tree menu per request
 
 const installDebugToolsMenuItem = new MenuItem(
-  'Install Debug Tools',
+  'Install Runners',
   vscode.TreeItemCollapsibleState.None,
   'desktop-download',
   {
-    command: 'zephyr-workbench.install-debug-tools',
-    title: 'Install Debug Tools',
+    command: 'zephyr-workbench.install-runners',
+    title: 'Install Runners',
   }
 );
 
-const debugManagerMenuItem = new MenuItem(
-  'Debug Manager',
-  vscode.TreeItemCollapsibleState.None,
-  'bug',
-  {
-    command: 'zephyr-workbench.debug-manager',
-    title: 'Debug Manager',
-  }
-);
+
+function createHostToolsManagerMenuItem(): MenuItem {
+  const needsUpdate = isZinstallerUpdateNeeded();
+  const label = needsUpdate ? 'Host Tools Manager ⚠️ Needs update' : 'Host Tools Manager';
+  return new MenuItem(
+    label,
+    vscode.TreeItemCollapsibleState.None,
+    'wrench',
+    {
+      command: 'zephyr-workbench.host-tools-manager',
+      title: label,
+    }
+  );
+}
 
 export class ZephyrHostToolsCommandProvider implements vscode.TreeDataProvider<MenuItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<MenuItem | undefined> = new vscode.EventEmitter<MenuItem | undefined>();
@@ -80,11 +57,8 @@ export class ZephyrHostToolsCommandProvider implements vscode.TreeDataProvider<M
 
     if(element === undefined) {
       if(await checkHostTools()) {
-        items.push(reinstallHostToolsMenuItem);
-        items.push(reinstallVenvMenuItem);
-        items.push(verifyHostToolsMenuItem);
+        items.push(createHostToolsManagerMenuItem());
         items.push(installDebugToolsMenuItem);
-        items.push(debugManagerMenuItem);
       }
     } 
     return items;

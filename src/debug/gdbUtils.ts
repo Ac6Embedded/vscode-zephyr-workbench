@@ -1,5 +1,5 @@
 import path from "path";
-import { formatWindowsPath } from "../utils";
+import { formatWindowsPath } from "../utils/utils";
 
 export function getSetupCommands(program: string, serverAddress: string | undefined, serverPort: string | undefined, gdbMode: string = 'program'): any[] {
   let basename = path.basename(program);

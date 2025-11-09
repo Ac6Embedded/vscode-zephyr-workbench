@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { fileExists, getBase64, getBoard, getListSamples, getListZephyrSDKs, getListIARs, getIarToolchainForSdk, getSample, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils";
-import { ZephyrSDK, IARToolchain } from '../ZephyrSDK';
+import { fileExists, getBase64, getBoard, getListSamples, getListZephyrSDKs, getListIARs, getIarToolchainForSdk, getSample, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils/utils";
+import { ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
 import path from "path";
 
 export class CreateZephyrAppPanel {
@@ -145,17 +145,20 @@ export class CreateZephyrAppPanel {
                       <label for="listBoards">Select Board:</label>
                     </div>
                     <div id="listBoards" class="combo-dropdown grid-value-div">
-                      <input type="text" id="boardInput" class="combo-dropdown-control" placeholder="Choose your target board..." data-value="">
-                      <div aria-hidden="true" class="indicator" part="indicator">
-                        <slot name="indicator">  
-                          <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                            <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
-                          </svg>
-                          <div class="spinner" id="boardDropdownSpinner" style="display:none;"></div>
-                        </slot>
+                      <div class="combo-dropdown-input">
+                        <input type="text" id="boardInput" class="combo-dropdown-control" placeholder="Choose your target board..." data-value="">
+                        <div aria-hidden="true" class="indicator" part="indicator">
+                          <slot name="indicator">  
+                            <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                              <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                            </svg>
+                          </slot>
+                        </div>
                       </div>
-                      <div id="boardDropdown" class="dropdown-content">
+                      <div class="combo-dropdown-controls">
+                        <div id="boardDropdownSpinner" class="spinner" aria-label="Loading boards"></div>
                       </div>
+                      <div id="boardDropdown" class="dropdown-content"></div>
                     </div>
                   </div>
 
@@ -172,17 +175,20 @@ export class CreateZephyrAppPanel {
                       <label for="listBoards">Select Sample project:</label>
                     </div>
                     <div id="listSamples" class="combo-dropdown grid-value-div">
-                      <input type="text" id="sampleInput" class="combo-dropdown-control" placeholder="Choose a sample as base..." data-value="">
-                      <div aria-hidden="true" class="indicator" part="indicator">
-                        <slot name="indicator">  
-                          <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                            <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
-                          </svg>
-                          <div class="spinner" id="samplesDropdownSpinner" style="display:none;"></div>
-                        </slot>
+                      <div class="combo-dropdown-input">
+                        <input type="text" id="sampleInput" class="combo-dropdown-control" placeholder="Choose a sample as base..." data-value="">
+                        <div aria-hidden="true" class="indicator" part="indicator">
+                          <slot name="indicator">  
+                            <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                              <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                            </svg>
+                          </slot>
+                        </div>
                       </div>
-                      <div id="samplesDropdown" class="dropdown-content">
+                      <div class="combo-dropdown-controls">
+                        <div id="samplesDropdownSpinner" class="spinner" aria-label="Loading samples"></div>
                       </div>
+                      <div id="samplesDropdown" class="dropdown-content"></div>
                     </div>
                   </div>
 
@@ -210,6 +216,16 @@ export class CreateZephyrAppPanel {
                       <vscode-radio value="auto" checked>auto</vscode-radio>
                       <vscode-radio value="always">always</vscode-radio>
                       <vscode-radio value="never">never</vscode-radio>
+                    </vscode-radio-group>
+                  </div>
+
+                  <div class="grid-group-div">
+                    <vscode-radio-group id="venvMode" orientation="horizontal">
+                      <label slot="label">Python virtual environment:&nbsp;&nbsp;
+                        <span class="tooltip" data-tooltip="Use global if you are not sure">?</span>
+                      </label>
+                      <vscode-radio value="global" checked>global</vscode-radio>
+                      <vscode-radio value="local">local</vscode-radio>
                     </vscode-radio-group>
                   </div>
                 </form>
@@ -271,7 +287,7 @@ export class CreateZephyrAppPanel {
               vscode.commands.executeCommand(
                 "zephyr-workbench-app-explorer.create-app",
                 westWorkspace, sample, board, projectLoc,
-                message.projectName, toolchain, message.pristine);
+                message.projectName, toolchain, message.pristine, message.venv);
 
             } else {
               const err = await validateProjectLocation(projectLoc);
@@ -285,14 +301,14 @@ export class CreateZephyrAppPanel {
                 /* local import – nothing else provided */
                 vscode.commands.executeCommand(
                   "zephyr-workbench-app-explorer.import-local",
-                  projectLoc);
+                  projectLoc, message.venv);
                 vscode.window.showInformationMessage("Importing project using existing project configuration.");
                 CreateZephyrAppPanel.currentPanel?.dispose();
               }
               const missing: string[] = [];
-              if (!hasWorkspace) missing.push("workspace");
-              if (!hasBoard) missing.push("board");
-              if (!hasSdk) missing.push("toolchain");
+              if (!hasWorkspace) {missing.push("workspace");}
+              if (!hasBoard) {missing.push("board");}
+              if (!hasSdk) {missing.push("toolchain");}
 
               if (missing.length && missing.length < 3) {
                 vscode.window.showInformationMessage(
@@ -311,7 +327,7 @@ export class CreateZephyrAppPanel {
 
               await vscode.commands.executeCommand(
                 "zephyr-workbench-app-explorer.import-app",
-                projectLoc, westWorkspace, board, toolchain);
+                projectLoc, westWorkspace, board, toolchain, message.venv);
               CreateZephyrAppPanel.currentPanel?.dispose();
               break;
             }
@@ -344,6 +360,26 @@ export class CreateZephyrAppPanel {
 
 async function updateForm(webview: vscode.Webview, workspaceUri: string) {
   if (workspaceUri && workspaceUri.length > 0) {
+    // Start timing discovery (Windows only) and warn if it exceeds 30 seconds
+    let completed = false;
+    let warningTimeout: ReturnType<typeof setTimeout> | undefined;
+    if (process.platform === 'win32') {
+      warningTimeout = setTimeout(() => {
+        if (!completed) {
+          vscode.window
+            .showWarningMessage(
+              'Searching boards is taking so long, this either due to a slow disk or you must add antivirus exclusion to your workspace',
+              'Read more'
+            )
+            .then(choice => {
+              if (choice === 'Read more') {
+                vscode.env.openExternal(vscode.Uri.parse('https://z-workbench.com/docs/documentation/known-issues#slow-builds---exclude-workspace-from-antivirus'));
+              }
+            });
+        }
+      }, 30000);
+    }
+
     let westWorkspace = getWestWorkspace(vscode.Uri.parse(workspaceUri, true).fsPath);
     const boards = await getSupportedBoards(westWorkspace);
     boards.sort((a, b) => {
@@ -385,6 +421,10 @@ async function updateForm(webview: vscode.Webview, workspaceUri: string) {
       newSamplesHTML += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${sample.rootDir.fsPath}</span></div>`;
     }
     webview.postMessage({ command: 'updateSamplesDropdown', samplesHTML: newSamplesHTML });
+
+    // Discovery completed; clear the warning timer
+    completed = true;
+    if (warningTimeout) { clearTimeout(warningTimeout); }
   }
 }
 
@@ -428,4 +468,3 @@ function checkCreateParameters(message: any) {
 
   return true;
 }
-

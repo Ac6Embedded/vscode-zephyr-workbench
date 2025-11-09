@@ -24,6 +24,7 @@ form {
 
 .grid-group-div {
   margin-bottom: 10px;
+  position: relative;
 }
 
 .grid-group-div * {
@@ -75,6 +76,35 @@ form {
   text-align: left;
 }
 
+.debug-tools-table .details-row td {
+  background-color: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent);
+  padding: 6px 8px;
+  vertical-align: top;
+}
+.details-content {
+  color: var(--vscode-descriptionForeground);
+}
+.details-line {
+  font-size: calc(var(--type-ramp-base-font-size) - 1px);
+}
+
+.details-path-field {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.debug-tools-table tr.details-row td:nth-child(2) { 
+  width: 60%;
+}
+.debug-tools-table tr.details-row td:nth-child(3) {
+  width: 12%;
+  padding-top: 24px;
+}
+.debug-tools-table tr.details-row td:nth-child(4) { 
+  width: 18%;
+  padding-top: 24px;
+}
+
 fieldset {
   margin-bottom: 10px;
   width: calc(var(--design-unit)* 140px);
@@ -92,10 +122,7 @@ fieldset.no-border  {
   gap: 10px; 
 }
 
-.toolchains-container vscode-checkbox {
-
-}
-
+.hidden { display: none !important; }
 
 #boardImg {
   min-width: 20vw;
@@ -137,6 +164,10 @@ vscode-button {
   display: inline-block;
   width: calc(var(--design-unit)* 135px);
   min-width: calc(var(--design-unit)* 60px);
+}
+
+#listBoards, #listSamples {
+  display: flex !important;
 }
 
 .combo-dropdown .combo-dropdown-control {
@@ -250,6 +281,52 @@ vscode-button {
   flex: 0 0 auto;
   margin-left: 4px;
 }
+#listBoards, #listSamples {
+  display: flex !important;
+}
+
+#listBoards, #listSamples {
+  display: flex !important;
+  align-items: center;
+  width: calc(var(--design-unit) * 135px + 269px);
+}
+
+#listBoards .combo-dropdown-input,
+#listSamples .combo-dropdown-input {
+  position: relative;
+  flex: 0 0 calc(var(--design-unit) * 135px);
+  max-width: calc(var(--design-unit) * 135px);
+}
+
+#listBoards .combo-dropdown-control,
+#listSamples .combo-dropdown-control {
+  width: 100%;
+  padding-right: 28px;
+}
+
+#listBoards .indicator,
+#listSamples .indicator {
+  right: 7px;
+}
+
+#listBoards .combo-dropdown-controls,
+#listSamples .combo-dropdown-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 22px;
+  width: 22px;
+  margin-left: 4px;
+}
+
+#listBoards .dropdown-content,
+#listSamples .dropdown-content {
+  width: calc(var(--design-unit) * 135px);
+  min-width: calc(var(--design-unit) * 135px);
+  max-width: calc(var(--design-unit) * 135px);
+  left: 0;
+  right: auto;
+}
 
 .dropdown-content {
   display: none;
@@ -319,15 +396,26 @@ vscode-button {
   to { transform: rotate(360deg); }
 }
 
+/* Special animation that preserves a translateY offset while rotating.
+   Used for absolutely positioned spinners where we need to keep vertical
+   centering (avoid animation clobbering the translateY). */
+@keyframes spinner-preserve-translate {
+  from { transform: translateY(-50%) rotate(0deg); }
+  to   { transform: translateY(-50%) rotate(360deg); }
+}
+
 .spinner {
   display: inline-block;
-  visibility: hidden;
-  width: 12px;
-  height: 12px;
-  border: 3px solid rgba(0, 0, 0, 0.3);
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  border: 2px solid rgba(0, 0, 0, 0.2);
   border-top-color: var(--vscode-statusBar-focusBorder);
   border-radius: 50%;
   animation: spinner 0.6s linear infinite;
+  visibility: visible;
+  vertical-align: middle;
 }
 
 .tooltip {
@@ -372,7 +460,8 @@ vscode-button {
 .tooltip[data-tooltip]:hover::after {
   left: 50%;
   transform: translateX(-50%);
-  white-space: normal;
+  /* Preserve explicit line breaks from the attribute */
+  white-space: pre-line;
 }
 
 @media screen and (max-width: 400px) {
@@ -445,3 +534,247 @@ vscode-button {
   align-items: center;
   gap: 8px;
 }
+
+.debug-tools-table .grid-group-div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.debug-tools-table tr.details-row:not(.extra-details-row) .grid-group-div {
+  align-items: flex-end;
+}
+
+.debug-tools-table .grid-group-div vscode-text-field {
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+.debug-tools-table .grid-group-div vscode-button {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.debug-tools-table .grid-group-div vscode-checkbox {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.save-path-button {
+  min-width: 70px;
+  width: 70px;
+  box-sizing: border-box;
+}
+
+.extra-grid-group {
+  align-items: center;
+  gap: 8px;
+}
+
+.extra-grid-group .details-path-field {
+  flex: 1;
+}
+
+.extra-details-row .grid-group-div {
+  align-items: flex-end;
+  width: 55%;
+  min-width: 340px;
+  gap: 8px;
+}
+
+#add-extra-path-btn {
+  margin-top: 13px;
+}
+
+.tooltip-extra {
+  position: relative;
+  background: transparent;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 50%;
+  padding: 0;
+  cursor: help;
+  border: 1px solid var(--vscode-descriptionForeground);
+  color: #aaa;
+  font-size: 13px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.tooltip-extra[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  top: 130%;
+  transform: translateX(-50%);
+  background: #222;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: pre-line;
+  z-index: 100;
+  box-shadow: 0 2px 12px #0008;
+  opacity: 1;
+  pointer-events: none;
+  text-align: center;
+  min-width: 180px;
+}
+
+.title-install-runners {
+  color: #0094ff;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  margin: 6px 0 12px 0;
+  border: 1px solid var(--vscode-tab-border);
+  border-radius: calc(var(--corner-radius-round) * 1px);
+  background: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent);
+}
+
+.summary-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.summary-title {
+  font-size: calc(var(--type-ramp-base-font-size) + 1px);
+}
+
+.actions-title {
+  margin-right: 8px;
+  align-self: center;
+}
+
+.warning-icon { color: #ffcc00; }
+.success-icon { color: #2ecc71; }
+
+.env-table { table-layout: fixed; width: 100%; }
+.env-table { padding: 0; }
+.debug-tools-table.env-table { width: 100% !important; padding-left: 0; padding-right: 0; }
+.env-table th:nth-child(1), .env-table td:nth-child(1) {
+  width: 25%;
+  text-align: left;
+}
+.env-table th:nth-child(2), .env-table td:nth-child(2) {
+  width: 60%;
+  text-align: left;
+}
+.env-table th:nth-child(3), .env-table td:nth-child(3) {
+  width: 15%;
+  text-align: right;
+}
+.env-table td { padding: 6px 8px; }
+.env-table td { border-bottom: 1px solid var(--vscode-tab-border); }
+.env-table td.env-actions-cell { padding-right: 0; }
+.env-table td .env-actions { display: flex; width: 100%; justify-content: flex-end; gap: 6px; white-space: nowrap; }
+.env-table .env-input { width: 100%; max-width: 100%; box-sizing: border-box; }
+.env-table .env-add-row { text-align: left; padding-top: 10px; }
+
+.debug-tools-table.env-table vscode-text-field.env-input {
+  width: 100% !important;
+  min-width: 0 !important;
+  display: block;
+  box-sizing: border-box;
+}
+
+.browse-spinner-inline {
+  position: absolute; 
+  right: 10px; 
+  top: 58%; 
+  transform: translateY(-58%);
+  margin: 0; 
+  display: inline-block; 
+  height: 10px; 
+  width: 10px; 
+  border-width: 1.2px; 
+}
+
+#applicationsDropdownSpinner {
+  position: absolute; 
+  right: -32px;
+  top: 50%; 
+  transform: translateY(-50%) rotate(0deg); 
+  margin: 0; 
+  display: inline-block; 
+  height: 16px; 
+  width: 16px; 
+  border-width: 2px; 
+  border-color: rgba(0, 0, 0, 0.2); 
+  border-top-color: var(--vscode-statusBar-focusBorder);
+  border-radius: 50%; 
+  animation: spinner-preserve-translate 0.6s linear infinite;
+}
+
+#buildConfigDropdownSpinner {
+  position: absolute; 
+  right: -32px;
+  top: 50%; 
+  transform: translateY(-50%) rotate(0deg); 
+  margin: 0; 
+  display: inline-block; 
+  height: 16px; 
+  width: 16px; 
+  border-width: 2px; 
+  border-color: rgba(0, 0, 0, 0.2); 
+  border-top-color: var(--vscode-statusBar-focusBorder);
+  border-radius: 50%; 
+  animation: spinner-preserve-translate 0.6s linear infinite;
+}
+
+.edit-env-button {
+  min-width: 80px;
+  width: 80px;
+  box-sizing: border-box;
+}
+
+.env-name, .env-value {
+  width: 40%;
+  padding: 0 8px;
+}
+.env-value {
+  width: 50%;
+}
+
+.env-add-btn {
+  margin-top: 0;
+  margin-left: 0;
+  min-width: 200px;
+  width: 50%; 
+  max-width: 420px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+.env-actions-cell {
+  width: 10%;
+  text-align: right;
+  padding-right: 8px;
+}
+.env-input {
+  width: 100%;
+  min-width: 80px;
+  box-sizing: border-box;
+  margin-right: 12px; 
+}
+.env-actions {
+  display: inline-flex;
+  gap: 16px; 
+  margin-left: 8px; 
+  vertical-align: middle;
+  align-items: center;
+  justify-content: flex-start;
+}
+

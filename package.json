@@ -1,15 +1,20 @@
 {
   "name": "zephyr-workbench",
-  "displayName": "Zephyr Workbench",
-  "description": "Zephyr project support for Visual Studio Code",
+  "displayName": "Workbench for Zephyr",
+  "description": "Zephyr project support for Visual Studio Code - previously Zephyr Workbench",
   "publisher": "Ac6",
   "icon": "res/zephyr-workbench.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
+<<<<<<< HEAD
   "homepage": "https://zephyr-workbench.com",
   "version": "1.3.38",
+=======
+  "homepage": "https://z-workbench.com",
+  "version": "2.0.0",
+>>>>>>> version-2
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -62,7 +67,14 @@
           "zephyr-workbench.venv.activatePath": {
             "type": "string",
             "default": "",
-            "description": "Path to your python virtual environment activate script. Enter empty value to use default internal environment",
+            "description": "Deprecated: path to the Python virtual environment activation script.",
+            "markdownDeprecationMessage": "Deprecated. Use 'zephyr-workbench.venv.path' instead.",
+            "scope": "machine-overridable"
+          },
+          "zephyr-workbench.venv.path": {
+            "type": "string",
+            "default": "",
+            "description": "Path to your Python virtual environment directory (root). Leave empty to use the default internal environment.",
             "scope": "machine-overridable"
           },
           "zephyr-workbench.listSDKs": {
@@ -170,36 +182,7 @@
             "description": "User additional args to west command",
             "scope": "resource"
           },
-          "zephyr-workbench.debug.openocd.pathExec": {
-            "type": "string",
-            "default": "",
-            "description": "Path to OpenOCD executable",
-            "scope": "machine-overridable"
-          },
-          "zephyr-workbench.debug.linkserver.pathExec": {
-            "type": "string",
-            "default": "",
-            "description": "Path to LinkServer executable",
-            "scope": "machine-overridable"
-          },
-          "zephyr-workbench.debug.jlink.pathExec": {
-            "type": "string",
-            "default": "",
-            "description": "Path to J-Link executable",
-            "scope": "machine-overridable"
-          },
-          "zephyr-workbench.debug.pyocd.pathExec": {
-            "type": "string",
-            "default": "",
-            "description": "Path to pyOCD executable",
-            "scope": "machine-overridable"
-          },
-          "zephyr-workbench.debug.stm32cubeprogrammer.pathExec": {
-            "type": "string",
-            "default": "",
-            "description": "Path to STM32_Programmer_CLI executable",
-            "scope": "machine-overridable"
-          },
+          
           "zephyr-workbench.build.active": {
             "type": "number",
             "default": 0,
@@ -227,6 +210,11 @@
                   "type": "string",
                   "default": "",
                   "description": "The identifier of target board"
+                },
+                "default-runner": {
+                  "type": "string",
+                  "default": "",
+                  "description": "Preferred west runner for this configuration (used for Run/Flash without prompting)"
                 },
                 "west-args": {
                   "type": "string",
@@ -280,9 +268,26 @@
         "category": "Zephyr Workbench"
       },
       {
+        "command": "zephyr-workbench-app-explorer.set-default-runner",
+        "title": "Set Default Runner",
+        "icon": "$(run)",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.change-default-runner",
+        "title": "Change Runner",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
         "command": "zephyr-workbench.install-host-tools.open-manager",
         "title": "Open Host Tools Manager",
         "icon": "$(desktop-download)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.host-tools-manager",
+        "title": "Host Tools Manager",
+        "icon": "$(wrench)",
         "category": "Zephyr Workbench"
       },
       {
@@ -298,8 +303,8 @@
         "category": "Zephyr Workbench"
       },
       {
-        "command": "zephyr-workbench.install-debug-tools",
-        "title": "Install Debug Tools",
+        "command": "zephyr-workbench.install-runners",
+        "title": "Install Runners",
         "icon": "$(desktop-download)",
         "category": "Zephyr Workbench"
       },
@@ -911,6 +916,11 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-board"
         },
         {
+          "command": "zephyr-workbench-app-explorer.set-default-runner",
+          "group": "0@view/item/context@8.1",
+          "when": "view == zephyr-workbench-app-explorer && (viewItem == zephyr-application || viewItem =~ /^zephyr-build-config/)"
+        },
+        {
           "command": "zephyr-workbench-app-explorer.change-west-workspace",
           "group": "0@view/item/context@9",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-workspace"
@@ -979,6 +989,11 @@
           "command": "zephyr-workbench-app-explorer.change-board",
           "group": "0@view/item/context@8",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.change-default-runner",
+          "group": "0@view/item/context@8.2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-default-runner"
         },
         {
           "command": "zephyr-workbench-app-explorer.rename-config",
@@ -1591,6 +1606,7 @@
     "ms-vscode.cpptools",
     "ms-vscode.cpptools-extension-pack",
     "ms-vscode.vscode-serial-monitor",
-    "mindaro-dev.file-downloader"
+    "mindaro-dev.file-downloader",
+    "KyleMicallefBonnici.dts-lsp"
   ]
 }

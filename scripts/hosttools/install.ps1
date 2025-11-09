@@ -2,9 +2,8 @@ param (
     [string]$InstallDir = "$env:USERPROFILE",
     [switch]$OnlyCheck,
     [switch]$ReinstallVenv,
-    [switch]$Portable,
-    [switch]$SkipSdk,
-    [string]$SelectSdk,
+    [switch]$CreateVenv,
+    [string]$VenvPath,
     [switch]$Help,
     [switch]$Version
 )
@@ -15,7 +14,7 @@ $ScriptPath = $MyInvocation.MyCommand.Path
 $ScriptDirectory = Split-Path -Parent $ScriptPath
 $YamlFilePath = "$ScriptDirectory\tools.yml"
 
-$ZinstallerVersion="1.0"
+$ZinstallerVersion="2.0"
 $ZinstallerMd5 = Get-FileHash -Path $ScriptPath -Algorithm MD5 | Select-Object -ExpandProperty Hash
 $ToolsYmlMd5 = Get-FileHash -Path $YamlFilePath -Algorithm MD5 | Select-Object -ExpandProperty Hash
 
@@ -29,11 +28,9 @@ Options:
   -Help                  Show this help message and exit
   -Version               Show version and hash of the current script
   -OnlyCheck             Perform only a check for required software packages without installing
-  -SkipSdk               Skip default SDK download and installation
-  -InstallSdk            Additionally install the SDK after installing the packages
-  -ReinstallVenv         Remove .venv folder, create a new .venv, install requirements and west
-  -Portable              Install portable Python and 7z instead of global
-  -SelectSdk             Specify space-separated SDKs to install. E.g., 'arm aarch64'
+  -ReinstallVenv         Remove the venv folder (see -VenvPath), create a new one and install Python requirements
+  -CreateVenv            Create a Python venv (see -VenvPath) and install Python requirements; does not remove existing venv
+  -VenvPath              Optional. Full path to the Python virtual environment to create/use. Defaults to '<InstallDir>\.zinstaller\.venv'
 
 Arguments:
   InstallDir             Optional. The directory where the Zephyr environment will be installed. Defaults to '$env:USERPROFILE\.zinstaller'
@@ -43,8 +40,9 @@ Examples:
   install.ps1 "C:\my\install\path"
   install.ps1 -OnlyCheck
   install.ps1 -ReinstallVenv
+  install.ps1 -CreateVenv -VenvPath "D:\zw\.venv"
+  install.ps1 "C:\my\install\path" -ReinstallVenv -VenvPath "C:\my\install\path\.zinstaller\.venv"
   install.ps1 "C:\my\install\path" -OnlyCheck
-  install.ps1 -SelectSdk "arm aarch64"
 "@
     Write-Host $helpText
 }
@@ -70,6 +68,15 @@ if (-not [System.IO.Path]::IsPathRooted($InstallDirectory)) {
 }
 
 Write-Output "Install directory: $InstallDirectory"
+
+# Determine venv path (defaults to <InstallDirectory>\.venv) and normalize to absolute
+if (-not $VenvPath -or [string]::IsNullOrWhiteSpace($VenvPath)) {
+    $VenvPath = Join-Path -Path $InstallDirectory -ChildPath ".venv"
+}
+if (-not [System.IO.Path]::IsPathRooted($VenvPath)) {
+    $VenvPath = Join-Path -Path (Get-Location).Path -ChildPath $VenvPath
+}
+Write-Output "Venv path: $VenvPath"
 
 $TemporaryDirectory = "$InstallDirectory\tmp"
 $ManifestFilePath = "$TemporaryDirectory\manifest.ps1"
@@ -115,33 +122,79 @@ function Print-Warning {
 
 function Install-PythonVenv {
     param (
-        [string]$InstallDirectory
+        [string]$VenvPath
     )
-	
+
     Print-Title "Zephyr Python-Requirements"
-	$RequirementsDirectory = "$TemporaryDirectory\requirements"
-	$RequirementsBaseUrl = "https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
-	
-	New-Item -Path "$RequirementsDirectory" -ItemType Directory -Force > $null 2>&1
-	
-	Download-WithoutCheck "$RequirementsBaseUrl/requirements.txt" "requirements.txt"
-	Download-WithoutCheck "$RequirementsBaseUrl/requirements-run-test.txt" "requirements-run-test.txt"
-	Download-WithoutCheck "$RequirementsBaseUrl/requirements-extras.txt" "requirements-extras.txt"
-	Download-WithoutCheck "$RequirementsBaseUrl/requirements-compliance.txt" "requirements-compliance.txt"
-	Download-WithoutCheck "$RequirementsBaseUrl/requirements-build-test.txt" "requirements-build-test.txt"
-	Download-WithoutCheck "$RequirementsBaseUrl/requirements-base.txt" "requirements-base.txt"
-	Move-Item -Path "$DownloadDirectory/require*.txt" -Destination "$RequirementsDirectory"
-	
-	if (Test-Path -Path "$InstallDirectory\.venv") {
-		Remove-Item -Path "$InstallDirectory\.venv" -Recurse -Force
-	}
-	
-    python -m venv "$InstallDirectory\.venv"
-    . "$InstallDirectory\.venv\Scripts\Activate.ps1"
-    python -m pip install setuptools windows-curses west wheel pyelftools --quiet
-    python -m pip install anytree --quiet
-    python -m pip install -r "$RequirementsBaseUrl/requirements.txt" --quiet
-    python -m pip install puncover --quiet
+    $RequirementsBaseUrl = "https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
+
+    # Decide requirements source
+    $UseZephyrBaseReq = $false
+    $RequirementsFile = $null
+    if ($env:ZEPHYR_BASE -and -not [string]::IsNullOrWhiteSpace($env:ZEPHYR_BASE)) {
+        $Candidate = Join-Path -Path $env:ZEPHYR_BASE -ChildPath "scripts\requirements.txt"
+        if (Test-Path -Path $Candidate) {
+            $UseZephyrBaseReq = $true
+            $RequirementsFile = $Candidate
+            Write-Output "Using ZEPHYR_BASE requirements: $RequirementsFile"
+        } else {
+            Write-Output "WARN: ZEPHYR_BASE is set but requirements file not found at $Candidate. Falling back to downloading."
+        }
+    }
+
+    if (-not $UseZephyrBaseReq) {
+        # Fetch requirements into a temporary folder
+        $RequirementsDirectory = "$TemporaryDirectory\requirements"
+        New-Item -Path "$RequirementsDirectory" -ItemType Directory -Force > $null 2>&1
+
+        Download-WithoutCheck "$RequirementsBaseUrl/requirements.txt" "requirements.txt"
+        Download-WithoutCheck "$RequirementsBaseUrl/requirements-run-test.txt" "requirements-run-test.txt"
+        Download-WithoutCheck "$RequirementsBaseUrl/requirements-extras.txt" "requirements-extras.txt"
+        Download-WithoutCheck "$RequirementsBaseUrl/requirements-compliance.txt" "requirements-compliance.txt"
+        Download-WithoutCheck "$RequirementsBaseUrl/requirements-build-test.txt" "requirements-build-test.txt"
+        Download-WithoutCheck "$RequirementsBaseUrl/requirements-base.txt" "requirements-base.txt"
+        Move-Item -Path "$DownloadDirectory/require*.txt" -Destination "$RequirementsDirectory" -Force
+
+        $RequirementsFile = Join-Path -Path $RequirementsDirectory -ChildPath "requirements.txt"
+        Write-Output "Using downloaded requirements: $RequirementsFile"
+    }
+
+    if (-not (Test-Path -Path $VenvPath)) {
+        python -m venv "$VenvPath"
+    }
+    . "$VenvPath\Scripts\Activate.ps1"
+    $ParserScript = Join-Path $ScriptDirectory "parse_python_packages.py"
+    
+    Write-Output "Upgrading pip to the latest version..."
+    python -m pip install --upgrade pip --quiet
+
+    # Ensure PyYAML is available before parsing tools.yml within the venv.
+    & python -c "import yaml" 2>$null 1>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Output "Installing PyYAML into the virtual environment..."
+        & python -m pip install PyYAML --quiet
+    }
+
+    $pythonPackageSpecs = @()
+    if (Test-Path -Path $ParserScript) {
+        # Shared parser yields package specs while honoring per-OS gating.
+        $pythonPackageSpecs = & python $ParserScript $YamlFilePath $SelectedOperatingSystem
+        if ($LASTEXITCODE -ne 0) {
+            Write-Output "WARN: Failed to parse python_packages from $YamlFilePath"
+            $pythonPackageSpecs = @()
+        }
+    } else {
+        Write-Output "WARN: Parser script not found: $ParserScript"
+    }
+
+    foreach ($spec in $pythonPackageSpecs) {
+        if ([string]::IsNullOrWhiteSpace($spec)) { continue }
+        Write-Output "Installing Python package: $spec"
+        & python -m pip install $spec --quiet
+    }
+
+    Write-Output "Installing Zephyr's base requirements..."
+    & python -m pip install -r "$RequirementsFile" --quiet
 }
 
 
@@ -154,6 +207,13 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     New-Item -Path $DownloadDirectory -ItemType Directory -Force > $null 2>&1
     New-Item -Path $WorkDirectory -ItemType Directory -Force > $null 2>&1
     New-Item -Path $ToolsDirectory -ItemType Directory -Force > $null 2>&1
+    
+    # Ensure portable Python is available on PATH early (for reinstall venv)
+    $PortablePythonBin = Join-Path $ToolsDirectory "python\python"
+    $PortablePythonScripts = Join-Path $ToolsDirectory "python\python\Scripts"
+    if (Test-Path -Path $PortablePythonBin) {
+        $env:PATH = "$PortablePythonBin;$PortablePythonScripts;" + $env:PATH
+    }
     
     $UseWget = $false
     
@@ -309,10 +369,23 @@ if (! $OnlyCheck -or $ReinstallVenv) {
             break
         }
     }
-    
+
+    # --- Always download and replace persistent YQ ---
+    $YqFolder = Join-Path -Path $ToolsDirectory -ChildPath "yq"
+    $YqPath = Join-Path -Path $YqFolder -ChildPath $YqExecutable
+
+    # Ensure yq folder exists
+    New-Item -Path $YqFolder -ItemType Directory -Force > $null 2>&1
+
+    # Always download to temporary dir, then move to tools/yq
     Download-FileWithHashCheck $YqSource $YqSha256 $YqExecutable
-    $Yq = Join-Path -Path $DownloadDirectory -ChildPath $YqExecutable
-    Test-FileExistence -FilePath $Yq
+    Move-Item -Path (Join-Path $DownloadDirectory $YqExecutable) -Destination $YqPath -Force
+
+    # Verify yq exists in tools folder
+    Test-FileExistence -FilePath $YqPath
+
+    # Use the persistent copy
+    $Yq = $YqPath
     
     Print-Title "Parse YAML and generate manifest"
     "# Automatically generated by Zinstaller on Powershell" | Out-File -FilePath $ManifestFilePath
@@ -328,8 +401,10 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     # Source manifest to get the array of elements
     . $ManifestFilePath
     
+. $ManifestFilePath
     Print-Title "Wget"
     $WgetExecutableName = "wget.exe"
+    $wgetVersion = "1.21.4"
     Download-FileWithHashCheck $wget_array[0] $wget_array[1] $WgetExecutableName
     Test-FileExistence -FilePath "$DownloadDirectory\$WgetExecutableName"
     
@@ -359,54 +434,52 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 		#if 7z installed in a non default place it will fail, you should use the portable version without -Global
     } else {
         Write-Host "7-Zip is not installed."
-		if($Portable) {
-            Write-Host "Installing now 7z Portable..."
-            $SevenZPortableFolderName = "7-Zip"
-            $SevenZPortableInstallerName = "7-Zip.exe"
-            Download-FileWithHashCheck $seven_z_portable_array[0] $seven_z_portable_array[1] $SevenZPortableInstallerName
-            Start-Process -FilePath "$DownloadDirectory\$SevenZPortableInstallerName" -ArgumentList "-o${ToolsDirectory} -y" -Wait
-
-            $SevenZ = "$ToolsDirectory\$SevenZPortableFolderName\7z.exe"
-			Test-FileExistence -FilePath $SevenZ
-			$SevenZPath = "$ToolsDirectory\$SevenZPortableFolderName"
-		} else {
-            Write-Host "Installing now 7z Global..."
-            $SevenZInstallerName = "7z-installer.exe"
-            Download-FileWithHashCheck $seven_z_array[0] $seven_z_array[1] $SevenZInstallerName
-		
-            $SevenZInstallerPath = Join-Path -Path $DownloadDirectory -ChildPath $SevenZInstallerName
-		
-            Start-Process -FilePath $SevenZInstallerPath -ArgumentList "/S" -Wait
-            Write-Host "7-Zip installation completed."
-            $SevenZInstalled = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object { $_.DisplayName -like "*7-Zip*" }
-            if ($SevenZInstalled) {
-            	Write-Host "7-Zip was installed successfully"
-            } else {
-            	Print-Error 4 "7-Zip was not installed ! Stop here !!"
-            	exit 4
-            }
-            $SevenZ = "C:\Program Files\7-Zip\7z.exe"
-			$SevenZPath = "C:\Program Files\7-Zip"
-			Test-FileExistence -FilePath $SevenZ
-		}
+        Write-Host "Installing now 7z Global..."
+        $SevenZInstallerName = "7z-installer.exe"
+        Download-FileWithHashCheck $seven_z_array[0] $seven_z_array[1] $SevenZInstallerName
+    
+        $SevenZInstallerPath = Join-Path -Path $DownloadDirectory -ChildPath $SevenZInstallerName
+    
+        Start-Process -FilePath $SevenZInstallerPath -ArgumentList "/S" -Wait
+        Write-Host "7-Zip installation completed."
+        $SevenZInstalled = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object { $_.DisplayName -like "*7-Zip*" }
+        if ($SevenZInstalled) {
+            Write-Host "7-Zip was installed successfully"
+        } else {
+            Print-Error 4 "7-Zip was not installed ! Stop here !!"
+            exit 4
+        }
+        $SevenZ = "C:\Program Files\7-Zip\7z.exe"
+        $SevenZPath = "C:\Program Files\7-Zip"
+        Test-FileExistence -FilePath $SevenZ
 		Write-Host "7-Zip installation completed."
     }
 
+	if ($CreateVenv) {
+		Print-Title "Creating Python VENV"
+		if (Test-Path -Path $VenvPath) {
+			Write-Output "VENV already exists at: $VenvPath"
+		} else {
+			Install-PythonVenv -VenvPath $VenvPath
+		}
+		Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
+		exit
+	}
+
 	if ($ReinstallVenv) {
 		Print-Title "Reinstalling Python VENV"
-		if (Test-Path -Path "$InstallDirectory\.venv") {
-            Remove-Item -Path "$InstallDirectory\.venv" -Recurse -Force
+		if (Test-Path -Path $VenvPath) {
+            Remove-Item -Path $VenvPath -Recurse -Force
 		}
 
-		. "$InstallDirectory\env.ps1" *>$null
-
-		Install-PythonVenv -InstallDirectory $InstallDirectory -WorkDirectory $WorkDirectory
+		Install-PythonVenv -VenvPath $VenvPath
 	    Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
 		exit
 	}
 	
     Print-Title "Gperf"
-    $GperfZipName = "gperf-3.0.1-bin.zip"
+    $GperfVersion = "3.0.1"
+    $GperfZipName = "gperf-${GperfVersion}-bin.zip"
     $GperfInstallDirectory = "$ToolsDirectory\gperf"
     Download-FileWithHashCheck $gperf_array[0] $gperf_array[1] $GperfZipName
     
@@ -414,8 +487,9 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$GperfZipName" -DestinationDirectory $GperfInstallDirectory
     
     Print-Title "CMake"
-    $CmakeZipName = "cmake-3.28.1-windows-x86_64.zip"
-    $CmakeFolderName = "cmake-3.28.1-windows-x86_64"
+    $CmakeVersion = "4.1.2"
+    $CmakeZipName = "cmake-${CmakeVersion}-windows-x86_64.zip"
+    $CmakeFolderName = "cmake-${CmakeVersion}-windows-x86_64"
     Download-FileWithHashCheck $cmake_array[0] $cmake_array[1] $CmakeZipName
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$CmakeZipName" -DestinationDirectory $ToolsDirectory
 	if (Test-Path -Path $ToolsDirectory\cmake) {
@@ -425,6 +499,7 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     
     Print-Title "Ninja"
     $NinjaZipName = "ninja-win.zip"
+    $NinjaVersion = "1.13.1"
     Download-FileWithHashCheck $ninja_array[0] $ninja_array[1] $NinjaZipName
     
     $NinjaFolderPath = "$ToolsDirectory\ninja"
@@ -433,16 +508,17 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$NinjaZipName" -DestinationDirectory $NinjaFolderPath
     
     Print-Title "Zstd"
-    $ZstdZipName = "zstd-v1.5.6-win64.zip"
+    $ZstdZipName = "zstd-v1.5.7-win64.zip"
     Download-FileWithHashCheck $zstd_array[0] $zstd_array[1] $ZstdZipName
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$ZstdZipName" -DestinationDirectory $DownloadDirectory
     
-    $ZstdFolderName = "zstd-v1.5.6-win64"
+    $ZstdFolderName = "zstd-v1.5.7-win64"
     $ZstdExecutable = "$DownloadDirectory\$ZstdFolderName\zstd.exe"
     
     Print-Title "DTC"
-    $DtcZstName = "dtc-1.7.0-1-x86_64.pkg.tar.zst"
-    $DtcZstTarName = "dtc-1.7.0-1-x86_64.pkg.tar"
+    $DtcVersion = "1.7.2-1"
+    $DtcZstName = "dtc-${DtcVersion}-x86_64.pkg.tar.zst"
+    $DtcZstTarName = "dtc-${DtcVersion}-x86_64.pkg.tar"
     Download-FileWithHashCheck $dtc_array[0] $dtc_array[1] $DtcZstName
     
     & $ZstdExecutable --quiet -d "$DownloadDirectory\$DtcZstName" -o "$DownloadDirectory\$DtcZstTarName"
@@ -452,8 +528,8 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$DtcZstTarName" -DestinationDirectory $DtcFolderPath
     
     Print-Title "msys2"
-    $Msys2ZstName = "msys2-runtime-3.5.3-4-x86_64.pkg.tar.zst"
-    $Msys2ZstTarName = "msys2-runtime-3.5.3-4-x86_64.pkg.tar"
+    $Msys2ZstName = "msys2-runtime-3.6.5-1-x86_64.pkg.tar.zst"
+    $Msys2ZstTarName = "msys2-runtime-3.6.5-1-x86_64.pkg.tar"
     Download-FileWithHashCheck $msys2_runtime_array[0] $msys2_runtime_array[1] $Msys2ZstName
     
     & $ZstdExecutable --quiet -d "$DownloadDirectory\$Msys2ZstName" -o "$DownloadDirectory\$Msys2ZstTarName"
@@ -490,7 +566,8 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     }
     
     Print-Title "Git"
-    $GitSetupFilename = "PortableGit-2.45.2-64-bit.7z.exe"
+    $GitVersion = "2.51.2"
+    $GitSetupFilename = "PortableGit-${GitVersion}-64-bit.7z.exe"
     Download-FileWithHashCheck $git_array[0] $git_array[1] $GitSetupFilename
     
     $GitInstallDirectory = "$ToolsDirectory\git"
@@ -498,74 +575,23 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     # Extract and wait
     Start-Process -FilePath "$DownloadDirectory\$GitSetupFilename" -ArgumentList "-o`"$ToolsDirectory\git`" -y" -Wait
     
-    if(! $SkipSdk) {
-      Print-Title "Default Zephyr SDK"
-      $SdkVersion = "0.16.8"
-      $SdkName = "zephyr-sdk-${SdkVersion}"
-      if ($SelectSdk) {
-		    $SdkBaseUrl = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SdkVersion}"
-		    $SdkMinimalUrl = "${SdkBaseUrl}/zephyr-sdk-${SdkVersion}_windows-x86_64_minimal.7z"
-		    Write-Host "Installing minimal SDK for $SdkList"
-		    Download-WithoutCheck "${SdkMinimalUrl}" "${SdkName}.7z"
-		    Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\${SdkName}.7z" -DestinationDirectory $InstallDirectory
-
-		    $SdkList = $SelectSdk.Split(" ")
-		    
-		    foreach ($sdk in $SdkList) {
-			    $ToolchainName = "${sdk}-zephyr-elf"
-			    if ($sdk -eq "arm") { $ToolchainName = "${sdk}-zephyr-eabi" }
-			    
-			    $ToolchainUrl = "${SdkBaseUrl}/toolchain_windows-x86_64_${ToolchainName}.7z"
-			    Download-WithoutCheck "${ToolchainUrl}" "${ToolchainName}.7z"
-			    Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\${ToolchainName}.7z" -DestinationDirectory "$InstallDirectory\${SdkName}"
-		    }
-      } else {
-		    $SdkZipName = $SdkName + "_windows-x86_64.7z"
-		    Download-FileWithHashCheck $zephyr_sdk_array[0] $zephyr_sdk_array[1] $SdkZipName
-		    Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$SdkZipName" -DestinationDirectory "$InstallDirectory"
-      }
-      
-      if ($InstallSdk) {
-        Print-Title "Install Default Zephyr SDK"
-        & "$InstallDirectory\$SdkName\setup.cmd" /c
-      }
-    }
-    
     Print-Title "Python"
-    if($Portable) {
-        $WinPythonSetupFilename = "Winpython64.exe"
-        Download-FileWithHashCheck $python_portable_array[0] $python_portable_array[1] $WinPythonSetupFilename
+    $WinPythonSetupFilename = "Winpython64.exe"
+    $pythonVersion = "3.13.5"
+    
+    Download-FileWithHashCheck $python_portable_array[0] $python_portable_array[1] $WinPythonSetupFilename
 
-        $PythonInstallDirectory = "$ToolsDirectory\python"
+    $PythonInstallDirectory = "$ToolsDirectory\python"
 
-        # Extract and wait
-        Start-Process -FilePath "$DownloadDirectory\$WinPythonSetupFilename" -ArgumentList "-o`"$ToolsDirectory`" -y" -Wait
-        if (Test-Path -Path $ToolsDirectory\python) {
-            Remove-Item -Path $ToolsDirectory\python -Recurse -Force
-        }
-        #Rename the folder that starts with WPy64- to python
-        Rename-Item -Path (Get-ChildItem -Directory -Filter "WPy64-*" -Path $ToolsDirectory | Select-Object -First 1).FullName -NewName "python"
-        Copy-Item -Path "$ToolsDirectory\python\python\python.exe" -Destination "$ToolsDirectory\python\python\python3.exe"
-        $PythonPath = "$ToolsDirectory\python\python;$ToolsDirectory\python\python\Scripts"
-    } else {
-        $PythonSetupFilename = "python_installer.exe"
-        Download-FileWithHashCheck $python_array[0] $python_array[1] $PythonSetupFilename
-
-        Start-Process -FilePath "$DownloadDirectory\$PythonSetupFilename" -ArgumentList "/quiet", "PrependPath=1" -Wait
-        
-        #check if python is installed
-        $python = Get-Command python -ErrorAction SilentlyContinue
-        if ($python) {
-            Write-Output "Python is installed. Version: $(python --version)"
-        } else {
-            Write-Output "Python is not installed."
-        }
-        
-        #Python should be added automatically to path thanks to PrependPath=1
-        $PythonPath=""
-	#Reload Path variable
-	$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    # Extract and wait
+    Start-Process -FilePath "$DownloadDirectory\$WinPythonSetupFilename" -ArgumentList "-o`"$ToolsDirectory`" -y" -Wait
+    if (Test-Path -Path $ToolsDirectory\python) {
+        Remove-Item -Path $ToolsDirectory\python -Recurse -Force
     }
+    #Rename the folder that starts with WPy64- to python
+    Rename-Item -Path (Get-ChildItem -Directory -Filter "WPy64-*" -Path $ToolsDirectory | Select-Object -First 1).FullName -NewName "python"
+    Copy-Item -Path "$ToolsDirectory\python\python\python.exe" -Destination "$ToolsDirectory\python\python\python3.exe"
+    $PythonPath = "$ToolsDirectory\python\python;$ToolsDirectory\python\python\Scripts"
 
     # Update path
     $CmakePath = "$ToolsDirectory\cmake\bin"
@@ -580,48 +606,77 @@ if (! $OnlyCheck -or $ReinstallVenv) {
       
 	  
     Print-Title "Python VENV"
-    Install-PythonVenv -InstallDirectory $InstallDirectory
+    Install-PythonVenv -VenvPath $VenvPath
 
 # bat script  
 @"
+REM Please do not manually edit this script, it is intended to be sourced by other scripts to set up the environment.
+REM You can add environment variables and paths to env.yml via the Host Tools Manager interface.
+
 @echo off
-set "BASE_DIR=%~dp0"
-set "TOOLS_DIR=%BASE_DIR%tools"
-set "PYTHON_VENV=%BASE_DIR%.venv"
 
-set "cmake_path=%TOOLS_DIR%\cmake\bin"
-set "dtc_path=%TOOLS_DIR%\dtc\usr\bin"
-set "gperf_path=%TOOLS_DIR%\gperf\bin"
-set "ninja_path=%TOOLS_DIR%\ninja"
-set "wget_path=%TOOLS_DIR%\wget"
-set "git_path=%TOOLS_DIR%\git\bin"
-set "python_path=$PythonPath"
-set "seven_z_path=$SevenZPath"
+set "SCRIPT_DIR=%~dp0"
+set "YAML_FILE=%SCRIPT_DIR%env.yml"
+set "PY_FILE=%SCRIPT_DIR%env.py"
 
-set "PATH=%python_path%;%cmake_path%;%dtc_path%;%gperf_path%;%ninja_path%;%wget_path%;%git_path%;%seven_z_path%;%PATH%"
+if not exist "%YAML_FILE%" (
+    echo [ERROR] File not found: %YAML_FILE%
+    exit /b 1
+)
 
-set "DEFAULT_VENV_ACTIVATE_PATH=%PYTHON_VENV%\Scripts\activate.bat"
+set "in_env=false"
+set "ADDITIONAL_PATHS="
 
-if defined PYTHON_VENV_ACTIVATE_PATH (
-    set "VENV_ACTIVATE_PATH=%PYTHON_VENV_ACTIVATE_PATH%"
+REM Extract global_venv_path from env.yml
+for /f "tokens=1* delims=:" %%A in ('findstr /c:"global_venv_path" "%YAML_FILE%"') do (
+    set "global_venv_path=%%B"
+)
+
+REM Check if global_venv_path was set
+if not defined global_venv_path (
+    echo [ERROR] Failed to extract global_venv_path from %YAML_FILE%
+    exit /b 1
+)
+
+REM Remove leading/trailing spaces and quotes
+set "global_venv_path=%global_venv_path: =%"
+set "global_venv_path=%global_venv_path:"=%"
+
+set "DEFAULT_VENV_ACTIVATE_PATH=%global_venv_path%\Scripts\activate.bat"
+
+if defined PYTHON_VENV_PATH (
+    set "VENV_ACTIVATE_PATH=%PYTHON_VENV_PATH%\\Scripts\\activate.bat"
 ) else (
     set "VENV_ACTIVATE_PATH=%DEFAULT_VENV_ACTIVATE_PATH%"
 )
 
 if exist "%VENV_ACTIVATE_PATH%" (
     call "%VENV_ACTIVATE_PATH%"
-    echo Activated virtual environment at "%VENV_ACTIVATE_PATH%"
 ) else (
-    echo Error: Virtual environment activation script not found at "%VENV_ACTIVATE_PATH%".
+    rem no output for missing venv
 )
-    
+
+REM === Verify venv activation ===
+if not defined VIRTUAL_ENV (
+    echo [ERROR] Failed to activate the Python virtual environment.
+    echo [INFO] Checked path: %VENV_ACTIVATE_PATH%
+    echo [SUGGESTION] You may need to reinstall Host Tools or the global or local virtual environment.
+    exit /b 1
+)
+
+:: === Run env.py and apply its output ===
+for /f "usebackq delims=" %%L in (``python "%PY_FILE%" --shell=cmd``) do (
+    if not "%%L"=="" call %%L
+)
 "@ | Out-File -FilePath "$InstallDirectory\env.bat" -Encoding ASCII
 
 #bash script
 @"
+# Please do not manually run this script, it is intended to be sourced by other scripts to set up the environment.
+# You can add environment variables and paths to env.yml via the Host Tools Manager interface.
 #!/usr/bin/env bash
 
-# Resolve the directory this script lives in, even when sourced from zsh
+# --- Resolve the directory this script lives in ---
 if [ -n "`${BASH_SOURCE-}" ]; then
     _src="`${BASH_SOURCE[0]}"
 elif [ -n "`${ZSH_VERSION-}" ]; then
@@ -630,85 +685,202 @@ else
     _src="`$0"
 fi
 base_dir="`$(cd -- "`$(dirname -- "`${_src}")" && pwd -P)"
-echo "Base directory: `$base_dir"
 tools_dir="`$base_dir/tools"
+YAML_FILE="`$base_dir/env.yml"
+PY_FILE="`$base_dir/env.py"
 
-cmake_path="`$tools_dir/cmake/bin"
-dtc_path="`$tools_dir/dtc/usr/bin"
-gperf_path="`$tools_dir/gperf/bin"
-ninja_path="`$tools_dir/ninja"
-wget_path="`$tools_dir/wget"
-git_path="`$tools_dir/git/bin"
-python_path="`$tools_dir/python/python"
-seven_z_path="`$tools_dir/7-Zip"
+[[ ! -f "`$YAML_FILE" ]] && { echo "[ERROR] File not found: `$YAML_FILE" >&2; exit 1; }
 
-# keep whatever python_path was, but blank it out if the dir isn't there
-if [[ ! -d "`${python_path}" ]]; then
-    python_path=""
+GLOBAL_VENV_PATH=""
+
+# --- Detect shell environment once (Git Bash / WSL / etc.) ---
+detect_shell_env() {
+    local uname_s
+    uname_s="`$(uname -s 2>/dev/null)"
+
+    if grep -qi "microsoft" /proc/version 2>/dev/null; then
+        echo "WSL"
+    elif [[ "`$uname_s" == CYGWIN* ]]; then
+        echo "CYGWIN"
+    elif [[ "`$uname_s" == MINGW64* ]]; then
+        echo "MSYS2-MINGW64"
+    elif [[ "`$uname_s" == MINGW32* ]]; then
+        echo "MSYS2-MINGW32"
+    elif [[ "`$uname_s" == MSYS* ]]; then
+        if [[ "`$MSYSTEM" == "MINGW64" || "`$MSYSTEM" == "MINGW32" ]]; then
+            echo "MSYS2"
+        else
+            echo "MSYS/GitBash"
+        fi
+    else
+        echo "UNKNOWN"
+    fi
+}
+
+# Cache environment type so detect_shell_env runs only once
+ENV_TYPE="`$(detect_shell_env)"
+
+# --- Convert Windows path to Unix path ---
+to_unix_path() {
+    local input="`$1"
+    case "`$ENV_TYPE" in
+        CYGWIN)
+            cygpath -u "`$input"
+            ;;
+        MSYS*|MINGW*)
+            cygpath -u "`$input" 2>/dev/null || \
+            echo "`$input" | sed 's|\\|/|g; s|^\([A-Za-z]\):|/\L\1|'
+            ;;
+        WSL)
+            echo "`$input" | sed 's|\\|/|g; s|^\([A-Za-z]\):|/mnt/\L\1|'
+            ;;
+        *)
+            echo "`$input" | tr '\\' '/'
+            ;;
+    esac
+}
+
+# --- Helper: Trim spaces without xargs ---
+trim() {
+    local var="`$1"
+    var="`${var#"`${var%%[![:space:]]*}"}"
+    var="`${var%"`${var##*[![:space:]]}"}"
+    echo "`$var"
+}
+
+# --- Parse env.yml ---
+while IFS= read -r line || [[ -n "`$line" ]]; do
+  line="`${line#"`${line%%[![:space:]]*}"}"
+  line="`${line%"`${line##*[![:space:]]}"}"
+  [[ -z "`$line" || "`$line" =~ ^# ]] && continue
+  if [[ "`$line" =~ ^global_venv_path: ]]; then
+    venv="`${line#global_venv_path:}"
+    venv="`${venv//\"/}"
+    venv="`$(trim "`$venv")"
+    GLOBAL_VENV_PATH="`$venv"
+  fi
+done < "`$YAML_FILE"
+
+# --- Expand and normalize GLOBAL_VENV_PATH ---
+if [[ -n "`$GLOBAL_VENV_PATH" ]]; then
+  unix_venv="`$(to_unix_path "`$GLOBAL_VENV_PATH")"
+  export global_venv_path="`$unix_venv"
 fi
 
-if [[ ! -d "`${seven_z_path}" ]]; then
-    python_path=""
-fi
-
-export PATH="`$python_path:`$git_path:`$wget_path:`$ninja_path:`$gperf_path:`$dtc_path:`$cmake_path:`$seven_z_path:`$PATH"
-
-# Default virtual environment activation script path
-default_venv_activate_path="`$base_dir/.venv/Scripts/activate"
-
-# Use the provided PYTHON_VENV_ACTIVATE_PATH if set and not empty, otherwise use the default path
-if [[ -n "`$PYTHON_VENV_ACTIVATE_PATH" ]]; then
-    venv_activate_path="`$PYTHON_VENV_ACTIVATE_PATH"
+# --- Activate Python virtual environment if available ---
+default_venv_activate_path="`$global_venv_path/Scripts/activate"
+if [[ -n "`$PYTHON_VENV_PATH" ]]; then
+    venv_activate_path="`$(to_unix_path "`$PYTHON_VENV_PATH")/Scripts/activate"
 else
     venv_activate_path="`$default_venv_activate_path"
 fi
 
-# Check if the activation script exists at the specified path
 if [[ -f "`$venv_activate_path" ]]; then
-    # Source the virtual environment activation script
-    source "`$venv_activate_path"
-    echo "Activated virtual environment at `$venv_activate_path"
+    source "`$venv_activate_path" >/dev/null 2>&1
 else
-    echo "Error: Virtual environment activation script not found at `$venv_activate_path."
+    echo "[ERROR] Virtual environment activation script not found: `$venv_activate_path" >&2
 fi
+
+# --- Verify venv activation ---
+if [[ -z "`$VIRTUAL_ENV" ]]; then
+    echo "[ERROR] Failed to activate the Python virtual environment." >&2
+    echo "[INFO] Checked path: `$venv_activate_path" >&2
+    echo "[SUGGESTION] You may need to reinstall Host Tools or the global or local virtual environment." >&2
+fi
+
+# --- Run env.py to load environment variables and paths ---
+if [[ -f "`$PY_FILE" ]]; then
+    # We tell env.py to output in POSIX shell mode
+    eval "`$(python "`$PY_FILE" --shell=sh)"
+else
+    echo "[ERROR] Python environment loader not found: `$PY_FILE" >&2
+fi
+
 "@ | Out-File -FilePath "$InstallDirectory\env.sh" -Encoding ASCII
 
 # (optional) make it executable for WSL, Git-Bash, etc.
 try { & chmod +x "$InstallDirectory\env.sh" } catch { }
-
 # Powershell script  
 @"
-`$BaseDir = `"$`PSScriptRoot`"
-`$ToolsDir = `"$`BaseDir\tools`"
+# Please do not manually edit this script, it is intended to be sourced by other scripts to set up the environment.
+# You can add environment variables and paths to env.yml via the Host Tools Manager interface.
 
-`$cmake_path = `"$`ToolsDir\cmake\bin`"
-`$dtc_path = `"$`ToolsDir\dtc\usr\bin`"
-`$gperf_path = `"$`ToolsDir\gperf\bin`"
-`$ninja_path = `"$`ToolsDir\ninja`"
-`$git_path = `"$`ToolsDir\git\bin`"
-`$seven_z_path = `"$SevenZPath`"
-`$python_path = `"$PythonPath`"
-`$wget_path = `"$`ToolsDir\wget`"
+# --- Paths ---
+`$BaseDir = "`$PSScriptRoot"
+`$EnvYamlPath = Join-Path `$BaseDir "env.yml"
+`$EnvPyPath = Join-Path `$BaseDir "env.py"
 
-`$env:PATH = `"`$cmake_path;`$dtc_path;`$gperf_path;`$ninja_path;`$python_path;`$wget_path;`$git_path;`$seven_z_path;`" + `$env:PATH
+if (-not (Test-Path `$EnvYamlPath)) {
+    Write-Error "YAML file not found at: `$EnvYamlPath"
+    exit 1
+}
 
-`$DefaultVenvActivatePath = `"`$BaseDir\.venv\Scripts\Activate.ps1`"
+# --- Parse YAML manually using PowerShell ---
+# Simple YAML parser for basic key/value and nested sections
+`$Yaml = @{}
+`$CurrentSection = `$null
 
-if (`$env:PYTHON_VENV_ACTIVATE_PATH -and `$env:PYTHON_VENV_ACTIVATE_PATH.Trim() -ne "") {
-    `$VenvActivatePath = `$env:PYTHON_VENV_ACTIVATE_PATH
+Get-Content `$EnvYamlPath | ForEach-Object {
+    `$Line = `$_.Trim()
+
+    # Skip comments and empty lines
+    if (`$Line -match '^(#|$)') { return }
+
+    # Section header (e.g. "python:")
+    if (`$Line -match '^([A-Za-z0-9_]+):\s*$') {
+        `$CurrentSection = `$matches[1]
+        if (-not `$Yaml.ContainsKey(`$CurrentSection)) {
+            `$Yaml[`$CurrentSection] = @{}
+        }
+        return
+    }
+
+    # Key-value pairs (e.g. "global_venv_path: "C:/path"")
+    if (`$Line -match '^\s*([A-Za-z0-9_]+):\s*"?([^"#]+?)"?\s*$') {
+        `$Key = `$matches[1]
+        `$Value = `$matches[2].Trim()
+        if (`$CurrentSection) {
+            `$Yaml[`$CurrentSection][`$Key] = `$Value
+        } else {
+            `$Yaml[`$Key] = `$Value
+        }
+    }
+}
+
+# --- Extract the venv path ---
+`$global_venv_path = `$Yaml["python"]["global_venv_path"]
+
+if (-not `$global_venv_path) {
+    Write-Error "global_venv_path not found in YAML file."
+    exit 1
+}
+
+# --- Determine venv activation path ---
+`$DefaultVenvActivatePath = Join-Path `$global_venv_path "Scripts\Activate.ps1"
+
+if (`$env:PYTHON_VENV_PATH -and `$env:PYTHON_VENV_PATH.Trim() -ne "") {
+    `$VenvActivatePath = Join-Path `$env:PYTHON_VENV_PATH "Scripts\Activate.ps1"
 } else {
     `$VenvActivatePath = `$DefaultVenvActivatePath
 }
 
-# Check if the activation script exists at the specified path
+# --- Activate venv ---
 if (Test-Path `$VenvActivatePath) {
-    # Source the virtual environment activation script
-    . `"`$VenvActivatePath`"
-    Write-Output `"Activated virtual environment at `$VenvActivatePath`"
+    . "`$VenvActivatePath"
+    Write-Output "Activated virtual environment at `$VenvActivatePath"
 } else {
-    Write-Output `"Error: Virtual environment activation script not found at `$VenvActivatePath.`"
+    Write-Output "Error: Virtual environment activation script not found at `$VenvActivatePath."
 }
 
+# === Verify venv activation ===
+if (-not `$env:VIRTUAL_ENV) {
+    Write-Host "[ERROR] Failed to activate the Python virtual environment." -ForegroundColor Red
+    Write-Host "[INFO] Checked path: `$VenvActivatePath" -ForegroundColor Yellow
+    Write-Host "[SUGGESTION] You may need to reinstall Host Tools or the global or local virtual environment." -ForegroundColor Cyan
+    exit 1
+}
+
+python `$EnvPyPath --shell=powershell | Out-String | Invoke-Expression
 "@ | Out-File -FilePath "$InstallDirectory\env.ps1" -Encoding ASCII
 
 @"
@@ -725,95 +897,356 @@ tools.yml MD5: $ToolsYmlMd5
 # --------------------------------------------------------------------------
 
 $EnvYamlPath = "$InstallDirectory\env.yml"
+$InstallDirectorySlashFormat = $InstallDirectory -replace '\\', '/'
+$ToolsDirectorySlashFormat = $ToolsDirectory -replace '\\', '/'
+$SevenZPathSlashFormat = $SevenZPath -replace '\\', '/'
 
 $envYaml = @"
-# env.yaml
+# env.yml
 # ZInstaller Workspace Environment Manifest
 # Defines workspace tools, runners, and Zephyr compatibility metadata
 
 global:
-  version: "1.0"
+  version: 1.0
   description: "Host tools configuration for Zephyr Workbench"
 
 # Any variable here will be added as environment variables
 env:
-  zi_base_dir: "${InstallDirectory}"
-  zi_tools_dir: "${InstallDirectory}/tools"
+  zi_base_dir: "${InstallDirectorySlashFormat}"
+  zi_tools_dir: "${InstallDirectorySlashFormat}/tools"
 
 tools:
+  python:
+    path:
+      - "$ToolsDirectorySlashFormat/python/python"
+      - "$ToolsDirectorySlashFormat/python/python/Scripts"
+    version: ${pythonVersion}
+    do_not_use: false
+
   cmake:
     path: "`${zi_tools_dir}/cmake/bin"
-    version: "3.28.1"
-    z_min_version: ""
-    z_max_version: ""
     do_not_use: false
-    args: []
 
   dtc:
     path: "`${zi_tools_dir}/dtc/usr/bin"
-    version: "1.7.0"
-    z_min_version: ""
-    z_max_version: ""
     do_not_use: false
-    args: []
 
   gperf:
     path: "`${zi_tools_dir}/gperf/bin"
-    version: "3.0.1"
-    z_min_version: ""
-    z_max_version: ""
     do_not_use: false
-    args: []
 
   ninja:
     path: "`${zi_tools_dir}/ninja"
-    version: "1.11.1"
-    z_min_version: ""
-    z_max_version: ""
     do_not_use: false
-    args: []
 
   git:
     path: "`${zi_tools_dir}/git/bin"
-    version: "2.45.2.windows.1"
-    z_min_version: ""
-    z_max_version: ""
     do_not_use: false
-    args: []
 
-  seven_zip:
-    path: "$SevenZPath"
-    version: "24.08"
-    z_min_version: ""
-    z_max_version: ""
+  7z:
+    path: "$SevenZPathSlashFormat"
     do_not_use: false
-    args: []
-
-  python:
-    path:
-      - "$ToolsDirectory/python/python"
-      - "$ToolsDirectory/python/python/Scripts"
-    version: ""
-    z_min_version: ""
-    z_max_version: ""
-    do_not_use: false
-    args: []
 
   wget:
     path: "`${zi_tools_dir}/wget"
-    version: "1.21.4"
-    z_min_version: ""
-    z_max_version: ""
+    version: $wgetVersion
     do_not_use: false
-    args: []
 
 python:
-  global_venv_activate: "`${zi_base_dir}/.venv/Scripts/Activate.ps1"
+  global_venv_path: "${InstallDirectorySlashFormat}/.venv"
+
 "@
 
 	$envYaml | Out-File -FilePath $EnvYamlPath -Encoding UTF8
 
 	Write-Output "Created environment manifest: $EnvYamlPath"
+
+# --------------------------------------------------------------------------
+# Create python script to parse environement yml (env.py)
+# --------------------------------------------------------------------------
+
+$EnvPyPath = "$InstallDirectory\env.py"
+
+$envPy = @"
+#!/usr/bin/env python3
+"""
+env.py - Parse env.yaml and output environment setup commands
+for PowerShell, CMD (.bat), or POSIX shells (Bash, Zsh, etc.)
+
+Features:
+  - Cross-platform: Windows, Linux, macOS, WSL, MSYS2, Cygwin
+  - Converts Windows paths to Unix-style under WSL/MSYS2/Cygwin
+  - Expands `${VAR}, * and ? wildcards
+  - Sets both `$env:VAR and `$VAR in PowerShell
+  - Prepends project paths; appends auto-detect paths
+"""
+
+import os
+import sys
+import yaml
+import re
+import platform
+import glob
+
+
+# -----------------------------
+# YAML parsing helpers
+# -----------------------------
+def load_yaml(path):
+    """Load YAML safely."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        sys.stderr.write(f"Error reading {path}: {e}\n")
+        sys.exit(1)
+
+
+def expand_vars(value, env_vars):
+    """Expand `${var} using YAML env vars or system env."""
+    if not isinstance(value, str):
+        return value
+    pattern = re.compile(r"\$\{([^}]+)\}")
+    return pattern.sub(lambda m: env_vars.get(m.group(1), os.environ.get(m.group(1), m.group(0))), value)
+
+
+# -----------------------------
+# Environment detection and path conversion
+# -----------------------------
+def detect_env_type():
+    """Detect whether running under MSYS2, Cygwin, or WSL (quiet and safe)."""
+    env = os.environ
+    if "MSYSTEM" in env:
+        return "MSYS2"
+    if "CYGWIN" in env.get("OSTYPE", "").upper() or "CYGWIN" in env.get("TERM", "").upper():
+        return "CYGWIN"
+    if "WSL_DISTRO_NAME" in env or "WSL_INTEROP" in env:
+        return "WSL"
+    if platform.system() != "Windows":
+        return "POSIX"
+
+    try:
+        with os.popen("uname -s 2>/dev/null") as proc:
+            uname = proc.read().strip().upper()
+        if "CYGWIN" in uname:
+            return "CYGWIN"
+        if "MINGW" in uname or "MSYS" in uname:
+            return "MSYS2"
+        if "LINUX" in uname:
+            with open("/proc/version", "r", encoding="utf-8") as f:
+                if "MICROSOFT" in f.read().upper():
+                    return "WSL"
+    except Exception:
+        pass
+
+    return "WINDOWS"
+
+
+def detect_platform():
+    """Return simplified platform key for auto-detect section."""
+    system = platform.system().lower()
+    if "windows" in system:
+        return "windows"
+    if "darwin" in system or "mac" in system:
+        return "darwin"
+    if "linux" in system:
+        return "linux"
+    return "unknown"
+
+
+def to_unix_path(path: str, env_type: str = None) -> str:
+    """Convert Windows paths to Unix-style; keep POSIX unchanged."""
+    if not path:
+        return path
+    if platform.system() != "Windows":
+        return path.replace("\\", "/")
+
+    env_type = env_type or detect_env_type()
+    norm = path.replace("\\", "/")
+
+    if len(norm) >= 2 and norm[1] == ":":
+        drive = norm[0].lower()
+        rest = norm[2:]
+        if env_type == "WSL":
+            norm = f"/mnt/{drive}{rest}"
+        else:  # MSYS2 / Cygwin
+            norm = f"/{drive}{rest}"
+
+    return norm
+
+
+# -----------------------------
+# Data collection from YAML
+# -----------------------------
+def collect_paths(data, env_vars):
+    """Collect active paths from tools, runners, other, and auto-detect."""
+    paths = []
+    autodetect_paths = []
+
+    def add_path(val, target_list):
+        """Expand variables, wildcards, and append to target list."""
+        if isinstance(val, list):
+            for p in val:
+                add_path(p, target_list)
+            return
+
+        expanded_value = expand_vars(val, env_vars)
+        if not isinstance(expanded_value, str):
+            return
+
+        # Expand * and ? wildcards (glob)
+        if "*" in expanded_value or "?" in expanded_value:
+            matches = sorted(glob.glob(expanded_value), reverse=True)
+            if matches:
+                target_list.extend(matches)
+            else:
+                target_list.append(expanded_value)  # keep literal if no match
+        else:
+            target_list.append(expanded_value)
+
+    # Tools
+    for t in data.get("tools", {}).values():
+        if isinstance(t, dict) and not t.get("do_not_use", False):
+            add_path(t.get("path"), paths)
+
+    # Runners
+    for r in data.get("runners", {}).values():
+        if isinstance(r, dict) and not r.get("do_not_use", False):
+            add_path(r.get("path"), paths)
+
+    # Other
+    for o in data.get("other", {}).values():
+        if isinstance(o, dict):
+            add_path(o.get("path"), paths)
+
+    # --- Auto-detect section ---
+    ad = data.get("auto-detect", {})
+    if isinstance(ad, dict):
+        platform_key = detect_platform()
+        for name, group in ad.items():
+            if isinstance(group, dict):
+                os_paths = group.get(platform_key)
+                if os_paths:
+                    add_path(os_paths, autodetect_paths)
+
+    return paths, autodetect_paths
+
+
+# -----------------------------
+# Shell detection and output emitters
+# -----------------------------
+def detect_shell():
+    """Detect or override the target shell."""
+    for arg in sys.argv:
+        if arg.startswith("--shell="):
+            return arg.split("=", 1)[1].lower()
+
+    if platform.system() != "Windows":
+        return "sh"
+
+    parent_proc = os.environ.get("ComSpec", "").lower()
+    if "cmd.exe" in parent_proc:
+        return "cmd"
+
+    if os.environ.get("PSExecutionPolicyPreference") or os.environ.get("PSModulePath"):
+        return "powershell"
+
+    return "powershell"
+
+
+def output_powershell(env_vars, paths, autodetect_paths):
+    """Emit PowerShell commands (prepends normal paths, appends autodetect)."""
+    for k, v in env_vars.items():
+        expanded = expand_vars(v, env_vars)
+        print(f"`$env:{k} = \"{expanded}\"")
+        print(f"`${k} = \"{expanded}\"")
+
+    # Prepend normal paths
+    for p in paths:
+        norm = os.path.normpath(p)
+        print(f"`$env:PATH = \"{norm};`$env:PATH\"")
+
+    # Append autodetect paths
+    for p in autodetect_paths:
+        norm = os.path.normpath(p)
+        print(f"`$env:PATH = \"`$env:PATH;{norm}\"")
+
+    print("Write-Output 'Environment variables and paths loaded from env.yml.'")
+
+
+def output_cmd(env_vars, paths, autodetect_paths):
+    """Emit CMD-compatible commands."""
+    for k, v in env_vars.items():
+        expanded = expand_vars(v, env_vars)
+        print(f"set \"{k}={expanded}\"")
+
+    # Prepend normal paths
+    for p in paths:
+        norm = os.path.normpath(p)
+        print(f"set \"PATH={norm};%PATH%\"")
+
+    # Append autodetect paths
+    for p in autodetect_paths:
+        norm = os.path.normpath(p)
+        print(f"set \"PATH=%PATH%;{norm}\"")
+
+    print("echo Environment variables and paths loaded from env.yml.")
+
+
+def output_sh(env_vars, paths, autodetect_paths):
+    """Emit Bash/Zsh-compatible exports with Unix-style paths (fast)."""
+    env_type = detect_env_type()
+
+    for k, v in env_vars.items():
+        expanded = expand_vars(v, env_vars)
+        expanded = to_unix_path(expanded, env_type)
+        print(f"export {k}='{expanded}'")
+
+    # Prepend normal paths
+    for p in paths:
+        norm = to_unix_path(os.path.normpath(p), env_type)
+        print(f"export PATH=\"{norm}:`${{PATH:+`$PATH:}}\"")
+
+    # Append autodetect paths
+    for p in autodetect_paths:
+        norm = to_unix_path(os.path.normpath(p), env_type)
+        print(f"export PATH=\"`${{PATH:+`$PATH:}}{norm}\"")
+
+    print("echo Environment variables and paths loaded from env.yml.")
+
+
+# -----------------------------
+# Main entry point
+# -----------------------------
+def main():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    yaml_path = os.path.join(base_dir, "env.yaml")
+    if not os.path.exists(yaml_path):
+        yaml_path = os.path.join(base_dir, "env.yml")
+    if not os.path.exists(yaml_path):
+        sys.stderr.write("Error: env.yaml or env.yml not found.\n")
+        sys.exit(1)
+
+    data = load_yaml(yaml_path)
+    env_vars = data.get("env", {})
+    paths, autodetect_paths = collect_paths(data, env_vars)
+
+    shell = detect_shell()
+    if shell == "powershell":
+        output_powershell(env_vars, paths, autodetect_paths)
+    elif shell == "cmd":
+        output_cmd(env_vars, paths, autodetect_paths)
+    else:
+        output_sh(env_vars, paths, autodetect_paths)
+
+
+if __name__ == "__main__":
+    main()
+"@
+
+	$envPy | Out-File -FilePath $EnvPyPath -Encoding ASCII
+
+	Write-Output "Created py script to parse yml: $EnvPyPath"
 
     Print-Title "Clean up"
     Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue

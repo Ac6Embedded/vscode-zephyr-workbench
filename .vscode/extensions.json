@@ -4,6 +4,6 @@
 		"ms-vscode.cpptools-themes",
 		"ms-vscode.cmake-tools", 
 		"dbaeumer.vscode-eslint",
-    "ms-vscode.extension-test-runner"
+        "ms-vscode.extension-test-runner"
 	]
 }

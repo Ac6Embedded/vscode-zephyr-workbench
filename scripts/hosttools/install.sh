@@ -9,16 +9,21 @@ YAML_FILE="$SCRIPT_DIR/tools.yml"
 root_packages=true
 non_root_packages=true
 check_installed_bool=true
-skip_sdk_bool=false
-install_sdk_bool=false
 reinstall_venv_bool=false
-portable=false
+create_venv_bool=false
+# Optional custom venv path
+VENV_PATH=""
+# Portable python is not used by default, keep it in case we need it in the future
+portable_python=false
 INSTALL_DIR=""
 
-zinstaller_version="1.0"
+# Track if system Python is too old for Zephyr
+PYTHON_TOO_OLD=false
+
+zinstaller_version="2.0"
 zinstaller_md5=$(md5sum "$BASH_SOURCE")
 tools_yml_md5=$(md5sum "$YAML_FILE")
-
+openssl_lib_bool=false
 # Function to display usage information
 usage() {
     cat << EOF
@@ -29,11 +34,9 @@ OPTIONS:
   --only-root               Only install packages that require root privileges.
   --only-without-root       Only install packages that do not require root privileges.
   --only-check              Only check the installation status of the packages without installing them.
-  --skip-sdk                Skip default SDK download
-  --install-sdk             Additionally install the SDK after installing the packages.
   --reinstall-venv          Remove existing virtual environment and create a new one.
-  --portable                Install portable Python instead of global
-  --select-sdk="SDK1 SDK2"  Specify space-separated SDKs to install. E.g., 'arm aarch64'
+  --create-venv             Create a Python virtual environment and install requirements, then exit.
+  --venv-path <path>        Override venv location (default: <installDir>/.venv)
 
 ARGUMENTS:
   installDir                The directory where the packages should be installed. 
@@ -41,7 +44,7 @@ ARGUMENTS:
 
 DESCRIPTION:
   This script installs host dependencies for Zephyr project on your system.
-  By default, it installs all necessary packages without installing the SDK globally.
+  By default, it installs all necessary packages.
   If no installDir is specified, the default directory is used.
 EOF
 }
@@ -59,28 +62,25 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --only-without-root)
       root_packages=false
-      check_installed_bool=false
+      check_installed_bool=true
       ;;
     --only-check)
       root_packages=false
       non_root_packages=false
-      ;;
-    --skip-sdk)
-      skip_sdk_bool=true
-      ;;
-    --install-sdk)
-      install_sdk_bool=true
       ;;
     --reinstall-venv)
       reinstall_venv_bool=true
       root_packages=false
       check_installed_bool=false
       ;;
-    --portable)
-      portable=true
+    --create-venv)
+      create_venv_bool=true
+      root_packages=false
+      check_installed_bool=false
       ;;
-    --select-sdk=*)
-      selected_sdk_list="${1#*=}"
+    --venv-path)
+      shift
+      VENV_PATH="$1"
       ;;
     *)
       if [[ -z "$INSTALL_DIR" ]]; then
@@ -113,6 +113,8 @@ MANIFEST_FILE="$TMP_DIR/manifest.sh"
 DL_DIR="$TMP_DIR/downloads"
 TOOLS_DIR="$INSTALL_DIR/tools"
 ENV_FILE="$INSTALL_DIR/env.sh"
+ENV_YAML_PATH="$INSTALL_DIR/env.yml"
+ENV_PY_PATH="$INSTALL_DIR/env.py"
 
 pr_title() {
     local width=40
@@ -138,6 +140,55 @@ pr_error() {
 pr_warn() {
     local message="$1"
     echo "WARN: $message"
+}
+
+# Simple debug logger (export ZI_DEBUG=1 to enable)
+debug() {
+    if [[ "${ZI_DEBUG:-0}" != "0" ]]; then
+        echo "DEBUG: $*"
+    fi
+}
+
+# Check that Python version is >= 3.10 and set PYTHON_TOO_OLD accordingly
+check_python_version_requirement() {
+    local min_major=3
+    local min_minor=10
+
+    local pyexe=""
+    debug "Checking Python version requirement"
+    if command -v python3 >/dev/null 2>&1; then
+        pyexe=python3
+    elif command -v python >/dev/null 2>&1; then
+        pyexe=python
+    else
+        pr_warn "Python not found on PATH; Zephyr requires Python >= 3.10"
+        PYTHON_TOO_OLD=true
+        debug "No python found on PATH"
+        return 1
+    fi
+
+    local ver_str="$($pyexe -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)"
+    debug "Using pyexe: $pyexe, version_str: $ver_str"
+    if [[ -z "$ver_str" ]]; then
+        pr_warn "Unable to determine Python version; Zephyr requires Python >= 3.10"
+        PYTHON_TOO_OLD=true
+        debug "Unable to determine version"
+        return 1
+    fi
+
+    local maj="${ver_str%%.*}"
+    local min="${ver_str#*.}"
+
+    if (( maj > min_major )) || (( maj == min_major && min >= min_minor )); then
+        PYTHON_TOO_OLD=false
+        debug "Python OK (>= ${min_major}.${min_minor})"
+        return 0
+    else
+        PYTHON_TOO_OLD=true
+        pr_warn "Detected Python ${ver_str}; Zephyr requires version >= 3.10"
+        debug "Python too old: ${ver_str}"
+        return 1
+    fi
 }
 
 # Function to download the file and check its SHA-256 hash
@@ -190,48 +241,137 @@ download() {
     fi
 }
 
+prepend_python_paths_from_env() {
+    local env_yaml_path="$1"
+    local yq_bin="$2"
+    # Prepend Python path(s) from env.yml to PATH, if available
+    if [[ -f "$env_yaml_path" && -x "$yq_bin" ]]; then
+        debug "Reading python paths from: $env_yaml_path using yq: $yq_bin"
+        local -a _PY_PATHS=()
+        if mapfile -t _PY_PATHS < <("$yq_bin" eval -o=tsv '.tools.python.path[]?' "$env_yaml_path" 2>/dev/null); then
+            :
+        else
+            _PY_PATHS=()
+        fi
+        local _SINGLE
+        _SINGLE=$("$yq_bin" eval '.tools.python.path // ""' "$env_yaml_path" 2>/dev/null)
+        debug "yq list paths: ${_PY_PATHS[*]} | yq single: $_SINGLE"
+        if [[ ( -z "${_PY_PATHS[*]}" || ${#_PY_PATHS[@]} -eq 0 ) && -n "$_SINGLE" && "$_SINGLE" != "null" ]]; then
+            # sanitize a possible YAML list line like '- <value>'
+            if [[ "$_SINGLE" == -* ]]; then
+                _SINGLE="${_SINGLE#- }"
+            fi
+            _PY_PATHS+=("$_SINGLE")
+        fi
+        for _p in "${_PY_PATHS[@]}"; do
+            if [[ -n "$_p" ]]; then
+                # Expand common variables from env.yml using known runtime values
+                local _resolved="$_p"
+                _resolved="${_resolved//\$\{zi_tools_dir\}/$INSTALL_DIR/tools}"
+                _resolved="${_resolved//\$\{zi_base_dir\}/$INSTALL_DIR}"
+                debug "Resolved Python path: $_p -> $_resolved"
+                if [[ -d "$_resolved" ]]; then
+                    debug "Prepending Python path: $_resolved"
+                    export PATH="$_resolved:$PATH"
+                else
+                    debug "Skipping non-existent path: $_resolved"
+                fi
+            fi
+        done
+        debug "PATH after prepend: $PATH"
+    else
+        debug "env.yml not found or yq not executable: $env_yaml_path | $yq_bin"
+    fi
+}
+
 install_python_venv() {
     local install_directory=$1
     local work_directory=$2
+    # Check Python version requirement
+    check_python_version_requirement || true
 
     pr_title "Zephyr Python Requirements"
 
-    REQUIREMENTS_DIR="$TMP_DIR/requirements"
-    REQUIREMENTS_BASEURL="https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
-    
-    mkdir -p "$REQUIREMENTS_DIR"
+    local requirements_baseurl="https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
+    local requirements_dir="$work_directory/requirements"
+    local venv_path="${VENV_PATH:-$install_directory/.venv}"
 
-    download "$REQUIREMENTS_BASEURL/requirements.txt" "requirements.txt"
-    download "$REQUIREMENTS_BASEURL/requirements-run-test.txt" "requirements-run-test.txt"
-    download "$REQUIREMENTS_BASEURL/requirements-extras.txt" "requirements-extras.txt"
-    download "$REQUIREMENTS_BASEURL/requirements-compliance.txt" "requirements-compliance.txt"
-    download "$REQUIREMENTS_BASEURL/requirements-build-test.txt" "requirements-build-test.txt"
-    download "$REQUIREMENTS_BASEURL/requirements-base.txt" "requirements-base.txt"
-    mv "$DL_DIR/requirements.txt" "$REQUIREMENTS_DIR"
-    mv "$DL_DIR/requirements-run-test.txt" "$REQUIREMENTS_DIR"
-    mv "$DL_DIR/requirements-extras.txt" "$REQUIREMENTS_DIR"
-    mv "$DL_DIR/requirements-compliance.txt" "$REQUIREMENTS_DIR"
-    mv "$DL_DIR/requirements-build-test.txt" "$REQUIREMENTS_DIR"
-    mv "$DL_DIR/requirements-base.txt" "$REQUIREMENTS_DIR"
+    # Choose requirements source: honor ZEPHYR_BASE if it points to a Zephyr tree
+    local use_zephyr_base_req=false
+    local requirements_file=""
+    if [[ -n "$ZEPHYR_BASE" && -f "$ZEPHYR_BASE/scripts/requirements.txt" ]]; then
+        use_zephyr_base_req=true
+        requirements_file="$ZEPHYR_BASE/scripts/requirements.txt"
+        echo "Using ZEPHYR_BASE requirements: $requirements_file"
+    else
+        echo "ZEPHYR_BASE is not set, so download latest requirements"
+        local requirement_files=(
+            "requirements.txt"
+            "requirements-run-test.txt"
+            "requirements-extras.txt"
+            "requirements-compliance.txt"
+            "requirements-build-test.txt"
+            "requirements-base.txt"
+        )
+        mkdir -p "$requirements_dir"
+        for requirement in "${requirement_files[@]}"; do
+            download "$requirements_baseurl/$requirement" "$requirement"
+            mv "$DL_DIR/$requirement" "$requirements_dir/$requirement"
+        done
+        requirements_file="$requirements_dir/requirements.txt"
+    fi
 
-    python3 -m venv "$install_directory/.venv"
-    source "$install_directory/.venv/bin/activate"
-    python3 -m pip install setuptools wheel west --quiet
-    python3 -m pip install anytree --quiet
-    python3 -m pip install -r "$REQUIREMENTS_DIR/requirements.txt" --quiet
-    python3 -m pip install puncover --quiet
+    if [[ ! -d "$venv_path" ]]; then
+        python3 -m venv "$venv_path"
+    fi
+
+    # shellcheck disable=SC1091
+    source "$venv_path/bin/activate"
+    echo "Upgrading pip to the latest version..."
+    python -m pip install --upgrade pip --quiet
+
+    local -a python_package_specs=()
+    local parser_script="$SCRIPT_DIR/parse_python_packages.py"
+
+    # Ensure PyYAML is present before parsing tools.yml inside the venv.
+    if ! python - <<'PY' >/dev/null 2>&1
+import importlib
+import sys
+
+try:
+    importlib.import_module("yaml")  # type: ignore
+except ModuleNotFoundError:
+    sys.exit(1)
+sys.exit(0)
+PY
+    then
+        echo "Installing PyYAML into the virtual environment..."
+        python -m pip install --quiet pyyaml
+    fi
+
+    if [[ -f "$parser_script" ]]; then
+        # Shared parser emits the specs list, honoring per-OS gating in tools.yml.
+        if ! mapfile -t python_package_specs < <(python "$parser_script" "$YAML_FILE" "$SELECTED_OS"); then
+            echo "Failed to parse python_packages from $YAML_FILE" >&2
+            python_package_specs=()
+        fi
+    else
+        echo "Parser script not found: $parser_script" >&2
+    fi
+
+    for spec in "${python_package_specs[@]}"; do
+        if [[ -n "$spec" && "$spec" != "null" ]]; then
+            echo "Installing Python package: $spec"
+            python -m pip install "$spec" --quiet
+        fi
+    done
+
+    echo "Installing Zephyr's base requirements..."
+    python -m pip install -r "$requirements_file" --quiet
 }
 
 if [[ $root_packages == true ]]; then
     pr_title "Install non portable tools"
-
-    # Install Python3 & OpenSSL as packages if not portable 
-    python_pkg=""
-    openssl_pkg=""
-    if [ $portable = false ]; then
-      python_pkg="python3"
-      openssl_pkg="openssl"
-    fi
 
     if [[ -f /etc/os-release ]]; then
         . /etc/os-release
@@ -244,24 +384,26 @@ if [[ $root_packages == true ]]; then
                 pr_error 3 "Ubuntu version lower than 20.04 are not supported"
                 exit 3
             fi
-            sudo apt-get update
-            sudo apt -y install --no-install-recommends git gperf ccache dfu-util wget xz-utils unzip file make libsdl2-dev libmagic1 ${python_pkg} ${openssl_pkg}
+            sudo DEBIAN_FRONTEND=noninteractive apt-get update
+            sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends git cmake ninja-build gperf ccache dfu-util device-tree-compiler wget python3-dev python3-venv python3-pip python3-setuptools python3-tk python3-wheel xz-utils file make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1 unzip
+            # Install HIDAPI libraries for USB device access
+            sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends libhidapi-hidraw0 libhidapi-libusb0
             ;;
         fedora)
             echo "This is Fedora."
-            sudo dnf upgrade
-            sudo dnf group install "Development Tools" "C Development Tools and Libraries"
-            sudo dnf install gperf dfu-util wget which xz file SDL2-devel ${python_pkg}
+            sudo dnf upgrade -y
+            sudo dnf group install -y "Development Tools" "C Development Tools and Libraries"
+            sudo dnf install -y cmake ninja-build gperf dfu-util dtc wget which python3-pip python3-tkinter xz file python3-devel SDL2-devel
             ;;
         clear-linux-os)
             echo "This is Clear Linux."
             sudo swupd update
-            sudo swupd bundle-add c-basic dev-utils dfu-util dtc os-core-dev ${python_pkg}
+            sudo swupd bundle-add c-basic dev-utils dfu-util dtc os-core-dev python-basic python3-basic python3-tcl
             ;;
         arch)
             echo "This is Arch Linux."
-            sudo pacman -Syu
-            sudo pacman -S git cmake ninja gperf ccache dfu-util dtc wget xz file make ${python_pkg}
+            sudo pacman -Syu --noconfirm
+            sudo pacman -S --noconfirm git cmake ninja gperf ccache dfu-util dtc wget python-pip python-setuptools python-wheel tk xz file make
             ;;
         *)
             pr_error 3 "Distribution is not recognized."
@@ -272,6 +414,9 @@ if [[ $root_packages == true ]]; then
         pr_error 3 "/etc/os-release file not found. Cannot determine distribution."
         exit 3
     fi
+
+    # After installing root packages, check Python version requirement
+    check_python_version_requirement || true
 fi
 
 if [[ $non_root_packages == true ]]; then
@@ -280,12 +425,20 @@ if [[ $non_root_packages == true ]]; then
     mkdir -p "$TOOLS_DIR"
 
     pr_title "YQ"
-    YQ="yq"
+    YQ_FILENAME="yq"
     YQ_SOURCE=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'source' | awk -F": " '{print $2}')
     YQ_SHA256=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'sha256' | awk -F": " '{print $2}')
-    download_and_check_hash "$YQ_SOURCE" "$YQ_SHA256" "$YQ"
-    YQ="$DL_DIR/$YQ"
-    chmod +x $YQ
+
+    # Download and verify
+    download_and_check_hash "$YQ_SOURCE" "$YQ_SHA256" "$YQ_FILENAME"
+
+    # Install it permanently in tools/yq/
+    mkdir -p "$TOOLS_DIR/yq"
+    mv "$DL_DIR/$YQ_FILENAME" "$TOOLS_DIR/yq/yq"
+    chmod +x "$TOOLS_DIR/yq/yq"
+
+    # Update variable for later usage
+    YQ="$TOOLS_DIR/yq/yq"
 
     # Start generating the manifest file
     echo "#!/bin/bash" > $MANIFEST_FILE
@@ -319,35 +472,67 @@ if [[ $non_root_packages == true ]]; then
 
     source $MANIFEST_FILE
 
+    if [[ $create_venv_bool == true ]]; then
+      pr_title "Creating Python VENV"
+      debug "create_venv flow: PATH(before): $PATH"
+      prepend_python_paths_from_env "$ENV_YAML_PATH" "$YQ"
+      # Ensure Python meets requirement (may set PYTHON_TOO_OLD)
+      check_python_version_requirement || true
+      debug "create_venv: python3=$(command -v python3 || echo not-found) | python=$(command -v python || echo not-found) | PYTHON_TOO_OLD=$PYTHON_TOO_OLD"
+      if [[ -n "$VENV_PATH" && -d "$VENV_PATH" ]]; then
+        echo "VENV already exists at: $VENV_PATH"
+      else
+        install_python_venv "$INSTALL_DIR" "$TMP_DIR"
+      fi
+      rm -rf "$TMP_DIR"
+      exit 0
+    fi
+
     if [[ $reinstall_venv_bool == true ]]; then
       pr_title "Reinstalling Python VENV"
       if [ -d "$INSTALL_DIR/.venv" ]; then
         rm -rf "$INSTALL_DIR/.venv"
       fi
-      source "$ENV_FILE" &> /dev/null
+      debug "reinstall_venv flow: PATH(before): $PATH"
+      prepend_python_paths_from_env "$ENV_YAML_PATH" "$YQ"
+      # Re-check Python version requirement after adjusting PATH
+      check_python_version_requirement || true
+      debug "reinstall_venv: python3=$(command -v python3 || echo not-found) | python=$(command -v python || echo not-found) | PYTHON_TOO_OLD=$PYTHON_TOO_OLD"
       install_python_venv "$INSTALL_DIR" "$TMP_DIR"
-	    rm -rf $TMP_DIR
+      rm -rf "$TMP_DIR"
       exit 0
     fi
 
-	if [ $portable = true ]; then
-      pr_title "OpenSSL"
-      OPENSSL_FOLDER_NAME="openssl-1.1.1t"
-      OPENSSL_ARCHIVE_NAME="${OPENSSL_FOLDER_NAME}.tar.bz2"
-      download_and_check_hash ${openssl[source]} ${openssl[sha256]} "$OPENSSL_ARCHIVE_NAME"
-      tar xf "$DL_DIR/$OPENSSL_ARCHIVE_NAME" -C "$TOOLS_DIR"
-      openssl_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME/usr/local/bin"
-      openssl_lib_path="$INSTALL_DIR/tools/$OPENSSL_FOLDER_NAME/usr/local/lib"
-      export LD_LIBRARY_PATH="$openssl_lib_path:$LD_LIBRARY_PATH"
-      export PATH="$openssl_path:$PATH"
+    # If the system Python is not supported, switch to portable AppImage
+    check_python_version_requirement || true
+    if [[ "$PYTHON_TOO_OLD" == true ]]; then
+        pr_warn "System Python is older than 3.10 or missing."
+        pr_warn "Applying workaround: installing portable Python via AppImage."
+        pr_warn "More info: https://python-appimage.readthedocs.io"
+        debug "Switching to portable Python: PYTHON_TOO_OLD=$PYTHON_TOO_OLD (before portable_python=$portable_python)"
+        portable_python=true
+    fi
 
-      pr_title "Python"
-      PYTHON_FOLDER_NAME="3.13.5"
-      PYTHON_ARCHIVE_NAME="cpython-${PYTHON_FOLDER_NAME}-linux-x86_64.tar.gz"
-      download_and_check_hash ${python_portable[source]} ${python_portable[sha256]} "$PYTHON_ARCHIVE_NAME"
-      tar xf "$DL_DIR/$PYTHON_ARCHIVE_NAME" -C "$TOOLS_DIR"
-      python_path="$INSTALL_DIR/tools/$PYTHON_FOLDER_NAME/bin"
-      export PATH="$python_path:$PATH"
+	if [ $portable_python = true ]; then
+        pr_title "Python (Portable AppImage)"
+        # Download portable Python AppImage as defined in tools.yml
+        PY_APPIMAGE_URL="${python_portable[source]}"
+        PY_APPIMAGE_SHA="${python_portable[sha256]}"
+        PY_APPIMAGE_NAME="$(basename "$PY_APPIMAGE_URL")"
+        download_and_check_hash "$PY_APPIMAGE_URL" "$PY_APPIMAGE_SHA" "$PY_APPIMAGE_NAME"
+
+        # Install under tools/python/ and create symlinks
+        mkdir -p "$TOOLS_DIR/python"
+        mv "$DL_DIR/$PY_APPIMAGE_NAME" "$TOOLS_DIR/python/python.AppImage"
+        chmod +x "$TOOLS_DIR/python/python.AppImage"
+        ln -sf "python.AppImage" "$TOOLS_DIR/python/python"
+        ln -sf "python.AppImage" "$TOOLS_DIR/python/python3"
+        debug "Installed AppImage at $TOOLS_DIR/python/python.AppImage"
+        debug "Symlinks: $(ls -l "$TOOLS_DIR/python" 2>/dev/null | tr -s ' ')"
+
+        # Ensure the shim directory is on PATH
+        export PATH="$TOOLS_DIR/python:$PATH"
+        debug "PATH with portable: $PATH"
     fi
 
     pr_title "Ninja"
@@ -357,50 +542,10 @@ if [[ $non_root_packages == true ]]; then
     unzip -o "$DL_DIR/$NINJA_ARCHIVE_NAME" -d "$TOOLS_DIR/ninja"
 
     pr_title "CMake"
-    CMAKE_FOLDER_NAME="cmake-3.29.2-linux-x86_64"
+    CMAKE_FOLDER_NAME="cmake-4.1.2-linux-x86_64"
     CMAKE_ARCHIVE_NAME="${CMAKE_FOLDER_NAME}.tar.gz"
     download_and_check_hash ${cmake[source]} ${cmake[sha256]} "$CMAKE_ARCHIVE_NAME"
     tar xf "$DL_DIR/$CMAKE_ARCHIVE_NAME" -C "$TOOLS_DIR"
-
-    if [ $skip_sdk_bool = false ]; then
-      pr_title "Zephyr SDK"
-      SDK_VERSION="0.16.8"
-      ZEPHYR_SDK_FOLDER_NAME="zephyr-sdk-${SDK_VERSION}"
-      if [ -n "$selected_sdk_list" ]; then
-        # If --select-sdk was used, download and extract the minimal SDK and specified toolchains
-	    
-        SDK_BASE_URL="https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SDK_VERSION}"
-        SDK_MINIMAL_URL="${SDK_BASE_URL}/zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz"
-        MINIMAL_ARCHIVE_NAME="zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz"
-      
-        echo "Installing minimal SDK for $selected_sdk_list"
-        wget --no-check-certificate -q -O "$DL_DIR/$MINIMAL_ARCHIVE_NAME" "$SDK_MINIMAL_URL"
-        tar xf "$DL_DIR/$MINIMAL_ARCHIVE_NAME" -C "$INSTALL_DIR"
-      
-        # Loop through the selected SDKs and download/extract each toolchain
-        IFS=' ' read -r -a sdk_array <<< "$selected_sdk_list"
-        for sdk in "${sdk_array[@]}"; do
-          toolchain_name="${sdk}-zephyr-elf"
-          [ "$sdk" = "arm" ] && toolchain_name="${sdk}-zephyr-eabi"
-      
-          toolchain_url="${SDK_BASE_URL}/toolchain_linux-x86_64_${toolchain_name}.tar.xz"
-          toolchain_archive_name="toolchain_linux-x86_64_${toolchain_name}.tar.xz"
-      
-          echo "Downloading and extracting $toolchain_name"
-          wget --no-check-certificate -q -O "$DL_DIR/$toolchain_archive_name" "$toolchain_url"
-          tar xf "$DL_DIR/$toolchain_archive_name" -C "$INSTALL_DIR/$ZEPHYR_SDK_FOLDER_NAME"
-        done
-      else
-        ZEPHYR_SDK_ARCHIVE_NAME="zephyr-sdk-${SDK_VERSION}_linux-x86_64.tar.xz"
-        download_and_check_hash ${zephyr_sdk[source]} ${zephyr_sdk[sha256]} "$ZEPHYR_SDK_ARCHIVE_NAME"
-        tar xf "$DL_DIR/$ZEPHYR_SDK_ARCHIVE_NAME" -C "$INSTALL_DIR"
-      fi
-      
-      if [[ $install_sdk_bool == true ]]; then
-          pr_title "Install Zephyr SDK"
-          yes | bash "$INSTALL_DIR/$ZEPHYR_SDK_FOLDER_NAME/setup.sh"
-      fi
-    fi
 	
     cmake_path="$INSTALL_DIR/tools/$CMAKE_FOLDER_NAME/bin"
     ninja_path="$INSTALL_DIR/tools/ninja"
@@ -417,56 +562,89 @@ if [[ $non_root_packages == true ]]; then
     fi
 
     env_script() {
-    cat << EOF
+    cat << 'EOF'
+# Please do not manually edit this script, it is intended to be sourced by other scripts to set up the environment.
+# You can add environment variables and paths to env.yml via the Host Tools Manager interface.
+
 #!/bin/bash
-
-base_dir="\$(dirname "\$(realpath "\${BASH_SOURCE[0]}")")"
-cmake_path="\$base_dir/tools/$CMAKE_FOLDER_NAME/bin"
-python_path="\$base_dir/tools/$PYTHON_FOLDER_NAME/bin"
-ninja_path="\$base_dir/tools/ninja"
-openssl_path="\$base_dir/tools/$OPENSSL_FOLDER_NAME"
-
-export PATH="\$python_path:\$ninja_path:\$cmake_path:\$openssl_path/usr/local/bin:\$PATH"
-export LD_LIBRARY_PATH="\$openssl_path/usr/local/lib:\$LD_LIBRARY_PATH"
-
-# Default virtual environment activation script path
-default_venv_activate_path="\$base_dir/.venv/bin/activate"
-
-# Use the provided PYTHON_VENV_ACTIVATE_PATH if set and not empty, otherwise use the default path
-if [[ -n "\$PYTHON_VENV_ACTIVATE_PATH" ]]; then
-    venv_activate_path="\$PYTHON_VENV_ACTIVATE_PATH"
+# --- Resolve the directory this script lives in ---
+if [ -n "${BASH_SOURCE-}" ]; then
+    _src="${BASH_SOURCE[0]}"
+elif [ -n "${ZSH_VERSION-}" ]; then
+    _src="${(%):-%N}"
 else
-    venv_activate_path="\$default_venv_activate_path"
+    _src="$0"
+fi
+base_dir="$(cd -- "$(dirname -- "${_src}")" && pwd -P)"
+tools_dir="$base_dir/tools"
+YAML_FILE="$base_dir/env.yml"
+PY_FILE="$base_dir/env.py"
+
+[[ ! -f "$YAML_FILE" ]] && { echo "[ERROR] File not found: $YAML_FILE" >&2; exit 1; }
+
+GLOBAL_VENV_PATH=""
+
+# --- Helper: Trim spaces without xargs ---
+trim() {
+    local var="$1"
+    var="${var#"${var%%[![:space:]]*}"}"
+    var="${var%"${var##*[![:space:]]}"}"
+    echo "$var"
+}
+
+# --- Parse env.yml ---
+while IFS= read -r line || [[ -n "$line" ]]; do
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+  [[ -z "$line" || "$line" =~ ^# ]] && continue
+  if [[ "$line" =~ ^global_venv_path: ]]; then
+    venv="${line#global_venv_path:}"
+    venv="${venv//\"/}"
+    venv="$(trim "$venv")"
+    GLOBAL_VENV_PATH="$venv"
+  fi
+done < "$YAML_FILE"
+
+# --- Activate Python virtual environment if available ---
+default_venv_activate_path="$GLOBAL_VENV_PATH/bin/activate"
+if [[ -n "$PYTHON_VENV_PATH" ]]; then
+    venv_activate_path="$PYTHON_VENV_PATH/bin/activate"
+else
+    venv_activate_path="$default_venv_activate_path"
 fi
 
-# Check if the activation script exists at the specified path
-if [[ -f "\$venv_activate_path" ]]; then
-    # Source the virtual environment activation script
-    source "\$venv_activate_path"
-    echo "Activated virtual environment at \$venv_activate_path"
+if [[ -f "$venv_activate_path" ]]; then
+    source "$venv_activate_path" >/dev/null 2>&1
 else
-    echo "Error: Virtual environment activation script not found at \$venv_activate_path."
+    echo "[ERROR] Virtual environment activation script not found: $venv_activate_path" >&2
 fi
 
-if ! command -v west &> /dev/null; then
-   echo "West is not available. Something is wrong !!"
+# --- Verify venv activation ---
+if [[ -z "$VIRTUAL_ENV" ]]; then
+    echo "[ERROR] Failed to activate the Python virtual environment." >&2
+    echo "[INFO] Checked path: $venv_activate_path" >&2
+    echo "[SUGGESTION] You may need to reinstall Host Tools or the global or local virtual environment." >&2
+fi
+
+# --- Run env.py to load environment variables and paths ---
+if [[ -f "$PY_FILE" ]]; then
+    # We tell env.py to output in POSIX shell mode
+    eval "$(python "$PY_FILE" --shell=sh)"
 else
-   echo "West is available."
+    echo "[ERROR] Python environment loader not found: $PY_FILE" >&2
 fi
 
 EOF
-    }
+}
 
     env_script > $ENV_FILE
 	
 	# --------------------------------------------------------------------------
 	# Create environment manifest (env.yml)
 	# --------------------------------------------------------------------------
-
-	ENV_YAML_PATH="$INSTALL_DIR/env.yml"
 	
 	cat << EOF > "$ENV_YAML_PATH"
-# env.yaml
+# env.yml
 # ZInstaller Workspace Environment Manifest
 # Defines workspace tools and Python environment metadata for Zephyr Workbench
 
@@ -478,61 +656,365 @@ global:
 env:
   zi_base_dir: "$INSTALL_DIR"
   zi_tools_dir: "\${zi_base_dir}/tools"
-
-tools:
-  cmake:
-    path: "\${zi_tools_dir}/$CMAKE_FOLDER_NAME/bin"
-    version: "3.29.2"
-    z_min_version: ""
-    z_max_version: ""
-    do_not_use: false
-    args: []
-
-  ninja:
-    path: "\${zi_tools_dir}/ninja"
-    version: "1.12.1"
-    z_min_version: ""
-    z_max_version: ""
-    do_not_use: false
-    args: []
 EOF
 
-if [ "$portable" = true ]; then
-	# Detect the installed Python version (from system or portable)
-	if command -v python3 >/dev/null 2>&1; then
-		PYTHON_VERSION=$(python3 --version 2>&1 | grep -oP 'Python \K[^\s]+')
+if [ "$openssl_lib_bool" = true ]; then
+	cat << EOF >> "$ENV_YAML_PATH"
+  LD_LIBRARY_PATH: "$openssl_path/usr/local/lib:\$LD_LIBRARY_PATH"
+EOF
+
+fi
+cat << EOF >> "$ENV_YAML_PATH"
+tools:
+EOF
+
+if [ "$portable_python" = true ]; then
+	# Detect the installed Python version from the portable shim, if present
+	if [[ -x "$INSTALL_DIR/tools/python/python3" ]]; then
+		PYTHON_VERSION=$("$INSTALL_DIR/tools/python/python3" --version 2>&1 | grep -oP 'Python \K[^\s]+')
 	else
 		PYTHON_VERSION=""
 	fi
-	
+
 	cat << EOF >> "$ENV_YAML_PATH"
 
   python:
     path:
-      - "\${zi_tools_dir}/$PYTHON_FOLDER_NAME/bin"
+      - "\${zi_tools_dir}/python"
     version: "$PYTHON_VERSION"
-    z_min_version: ""
-    z_max_version: ""
     do_not_use: false
-    args: []
+EOF
+else
+    cat << EOF >> "$ENV_YAML_PATH"
+
+  python:
+    do_not_use: false
 EOF
 fi
 
 	cat << EOF >> "$ENV_YAML_PATH"
-
-  openssl:
-    path: "\${zi_tools_dir}/$OPENSSL_FOLDER_NAME/usr/local/bin"
-    version: "1.1.1t"
-    z_min_version: ""
-    z_max_version: ""
+  cmake:
+    path: "\${zi_tools_dir}/$CMAKE_FOLDER_NAME/bin"
     do_not_use: false
-    args: []
+
+  ninja:
+    path: "\${zi_tools_dir}/ninja"
+    do_not_use: false
+
+  git:
+    do_not_use: false
+
+  gperf:
+    do_not_use: false
+
+  ccache:
+    do_not_use: false
+
+  dfu-util:
+    do_not_use: false
+
+  wget:
+    do_not_use: false
+
+  xz-utils:
+    do_not_use: false
+
+  file:
+    do_not_use: false
+
+  make:
+    do_not_use: false
 
 python:
-  global_venv_activate: "\${zi_base_dir}/.venv/bin/activate"
+  global_venv_path: "$INSTALL_DIR/.venv"
+
 EOF
 
 echo "Created environment manifest: $ENV_YAML_PATH"
+
+	# --------------------------------------------------------------------------
+	# Create python script to parse environement yml (env.py)
+	# --------------------------------------------------------------------------
+	
+	cat << 'EOF' > "$ENV_PY_PATH"
+#!/usr/bin/env python3
+"""
+env.py - Parse env.yml and output environment setup commands
+for PowerShell, CMD (.bat), or POSIX shells (Bash, Zsh, etc.)
+
+Features:
+  - Cross-platform: Windows, Linux, macOS, WSL, MSYS2, Cygwin
+  - Converts Windows paths to Unix-style under WSL/MSYS2/Cygwin
+  - Expands ${VAR}, * and ? wildcards
+  - Sets both $env:VAR and $VAR in PowerShell
+  - Prepends project paths; appends auto-detect paths
+"""
+
+import os
+import sys
+import yaml
+import re
+import platform
+import glob
+
+
+# -----------------------------
+# YAML parsing helpers
+# -----------------------------
+def load_yaml(path):
+    """Load YAML safely."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        sys.stderr.write(f"Error reading {path}: {e}\n")
+        sys.exit(1)
+
+
+def expand_vars(value, env_vars):
+    """Expand ${var} using YAML env vars or system env."""
+    if not isinstance(value, str):
+        return value
+    pattern = re.compile(r"\$\{([^}]+)\}")
+    return pattern.sub(lambda m: env_vars.get(m.group(1), os.environ.get(m.group(1), m.group(0))), value)
+
+
+# -----------------------------
+# Environment detection and path conversion
+# -----------------------------
+def detect_env_type():
+    """Detect whether running under MSYS2, Cygwin, or WSL (quiet and safe)."""
+    env = os.environ
+    if "MSYSTEM" in env:
+        return "MSYS2"
+    if "CYGWIN" in env.get("OSTYPE", "").upper() or "CYGWIN" in env.get("TERM", "").upper():
+        return "CYGWIN"
+    if "WSL_DISTRO_NAME" in env or "WSL_INTEROP" in env:
+        return "WSL"
+    if platform.system() != "Windows":
+        return "POSIX"
+
+    try:
+        with os.popen("uname -s 2>/dev/null") as proc:
+            uname = proc.read().strip().upper()
+        if "CYGWIN" in uname:
+            return "CYGWIN"
+        if "MINGW" in uname or "MSYS" in uname:
+            return "MSYS2"
+        if "LINUX" in uname:
+            with open("/proc/version", "r", encoding="utf-8") as f:
+                if "MICROSOFT" in f.read().upper():
+                    return "WSL"
+    except Exception:
+        pass
+
+    return "WINDOWS"
+
+
+def detect_platform():
+    """Return simplified platform key for auto-detect section."""
+    system = platform.system().lower()
+    if "windows" in system:
+        return "windows"
+    if "darwin" in system or "mac" in system:
+        return "darwin"
+    if "linux" in system:
+        return "linux"
+    return "unknown"
+
+
+def to_unix_path(path: str, env_type: str = None) -> str:
+    """Convert Windows paths to Unix-style; keep POSIX unchanged."""
+    if not path:
+        return path
+    if platform.system() != "Windows":
+        return path.replace("\\", "/")
+
+    env_type = env_type or detect_env_type()
+    norm = path.replace("\\", "/")
+
+    if len(norm) >= 2 and norm[1] == ":":
+        drive = norm[0].lower()
+        rest = norm[2:]
+        if env_type == "WSL":
+            norm = f"/mnt/{drive}{rest}"
+        else:  # MSYS2 / Cygwin
+            norm = f"/{drive}{rest}"
+
+    return norm
+
+
+# -----------------------------
+# Data collection from YAML
+# -----------------------------
+def collect_paths(data, env_vars):
+    """Collect active paths from tools, runners, other, and auto-detect."""
+    paths = []
+    autodetect_paths = []
+
+    def add_path(val, target_list):
+        """Expand variables, wildcards, and append to target list."""
+        if isinstance(val, list):
+            for p in val:
+                add_path(p, target_list)
+            return
+
+        expanded_value = expand_vars(val, env_vars)
+        if not isinstance(expanded_value, str):
+            return
+
+        # Expand * and ? wildcards (glob)
+        if "*" in expanded_value or "?" in expanded_value:
+            matches = sorted(glob.glob(expanded_value), reverse=True)
+            if matches:
+                target_list.extend(matches)
+            else:
+                target_list.append(expanded_value)  # keep literal if no match
+        else:
+            target_list.append(expanded_value)
+
+    # Tools
+    for t in data.get("tools", {}).values():
+        if isinstance(t, dict) and not t.get("do_not_use", False):
+            add_path(t.get("path"), paths)
+
+    # Runners
+    for r in data.get("runners", {}).values():
+        if isinstance(r, dict) and not r.get("do_not_use", False):
+            add_path(r.get("path"), paths)
+
+    # Other
+    for o in data.get("other", {}).values():
+        if isinstance(o, dict):
+            add_path(o.get("path"), paths)
+
+    # --- Auto-detect section ---
+    ad = data.get("auto-detect", {})
+    if isinstance(ad, dict):
+        platform_key = detect_platform()
+        for name, group in ad.items():
+            if isinstance(group, dict):
+                os_paths = group.get(platform_key)
+                if os_paths:
+                    add_path(os_paths, autodetect_paths)
+
+    return paths, autodetect_paths
+
+
+# -----------------------------
+# Shell detection and output emitters
+# -----------------------------
+def detect_shell():
+    """Detect or override the target shell."""
+    for arg in sys.argv:
+        if arg.startswith("--shell="):
+            return arg.split("=", 1)[1].lower()
+
+    if platform.system() != "Windows":
+        return "sh"
+
+    parent_proc = os.environ.get("ComSpec", "").lower()
+    if "cmd.exe" in parent_proc:
+        return "cmd"
+
+    if os.environ.get("PSExecutionPolicyPreference") or os.environ.get("PSModulePath"):
+        return "powershell"
+
+    return "powershell"
+
+
+def output_powershell(env_vars, paths, autodetect_paths):
+    """Emit PowerShell commands (prepends normal paths, appends autodetect)."""
+    for k, v in env_vars.items():
+        expanded = expand_vars(v, env_vars)
+        print(f"$env:{k} = \"{expanded}\"")
+        print(f"${k} = \"{expanded}\"")
+
+    # Prepend normal paths
+    for p in paths:
+        norm = os.path.normpath(p)
+        print(f"$env:PATH = \"{norm};$env:PATH\"")
+
+    # Append autodetect paths
+    for p in autodetect_paths:
+        norm = os.path.normpath(p)
+        print(f"$env:PATH = \"$env:PATH;{norm}\"")
+
+    print("Write-Output 'Environment variables and paths loaded from env.yml.'")
+
+
+def output_cmd(env_vars, paths, autodetect_paths):
+    """Emit CMD-compatible commands."""
+    for k, v in env_vars.items():
+        expanded = expand_vars(v, env_vars)
+        print(f"set \"{k}={expanded}\"")
+
+    # Prepend normal paths
+    for p in paths:
+        norm = os.path.normpath(p)
+        print(f"set \"PATH={norm};%PATH%\"")
+
+    # Append autodetect paths
+    for p in autodetect_paths:
+        norm = os.path.normpath(p)
+        print(f"set \"PATH=%PATH%;{norm}\"")
+
+    print("echo Environment variables and paths loaded from env.yml.")
+
+
+def output_sh(env_vars, paths, autodetect_paths):
+    """Emit Bash/Zsh-compatible exports with Unix-style paths (fast)."""
+    env_type = detect_env_type()
+
+    for k, v in env_vars.items():
+        expanded = expand_vars(v, env_vars)
+        expanded = to_unix_path(expanded, env_type)
+        print(f"export {k}='{expanded}'")
+
+    # Prepend normal paths
+    for p in paths:
+        norm = to_unix_path(os.path.normpath(p), env_type)
+        print(f"export PATH=\"{norm}:${{PATH:+$PATH:}}\"")
+
+    # Append autodetect paths
+    for p in autodetect_paths:
+        norm = to_unix_path(os.path.normpath(p), env_type)
+        print(f"export PATH=\"${{PATH:+$PATH:}}{norm}\"")
+
+    print("echo Environment variables and paths loaded from env.yml.")
+
+
+# -----------------------------
+# Main entry point
+# -----------------------------
+def main():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    yaml_path = os.path.join(base_dir, "env.yaml")
+    if not os.path.exists(yaml_path):
+        yaml_path = os.path.join(base_dir, "env.yml")
+    if not os.path.exists(yaml_path):
+        sys.stderr.write("Error: env.yaml or env.yml not found.\n")
+        sys.exit(1)
+
+    data = load_yaml(yaml_path)
+    env_vars = data.get("env", {})
+    paths, autodetect_paths = collect_paths(data, env_vars)
+
+    shell = detect_shell()
+    if shell == "powershell":
+        output_powershell(env_vars, paths, autodetect_paths)
+    elif shell == "cmd":
+        output_cmd(env_vars, paths, autodetect_paths)
+    else:
+        output_sh(env_vars, paths, autodetect_paths)
+
+
+if __name__ == "__main__":
+    main()
+
+EOF
+
+    echo "Created py script to parse yml: $ENV_PY_PATH"
 
     cat <<EOF > "$INSTALL_DIR/zinstaller_version"
 Script Version: $zinstaller_version
@@ -578,7 +1060,6 @@ check_package() {
 			python) version=$(echo "$version" | grep -oP 'Python \K[^\s]+') ;;
 			cmake) version=$(echo "$version" | grep -oP 'cmake version \K[^\s]+') ;;
 			ninja) version=$(echo "$version") ;;
-			openssl) version=$(echo "$version" | grep -oP 'OpenSSL \K[^\s]+') ;;
 			git) version=$(echo "$version" | grep -oP 'git version \K[^\s]+') ;;
 			gperf) version=$(echo "$version" | grep -oP 'GNU gperf \K[^\s]+') ;;
 			ccache) version=$(echo "$version" | grep -oP 'ccache version \K[^\s]+') ;;
@@ -600,7 +1081,6 @@ check_packages() {
         python
         cmake
         ninja
-        openssl
         git
         gperf
         ccache
@@ -646,6 +1126,15 @@ if [[ $check_installed_bool == true ]]; then
     else
         MISSING_PACKAGES=$(( -RETURN_CODE ))
         pr_error $RETURN_CODE "$MISSING_PACKAGES package(s) are not installed."
+    fi
+
+    # Check Python version requirement
+    check_python_version_requirement || true
+
+    # Final reminder about Python if version is too old
+    if [[ "$PYTHON_TOO_OLD" == true ]]; then
+        pr_warn "If you are on older platforms, install a recent Python manually,"
+        pr_warn "add it to the PATH (if needed), and click on Reinstall global venv."
     fi
 
     exit $RETURN_CODE

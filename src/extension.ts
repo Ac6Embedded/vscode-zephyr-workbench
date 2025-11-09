@@ -3,46 +3,48 @@
 import path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { westBoardsCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBuildCommand, execWestCommandWithEnvAsync, westConfigCommand } from './WestCommands';
-import { WestWorkspace } from './WestWorkspace';
-import { ZephyrAppProject } from './ZephyrAppProject';
-import { ZephyrDebugConfigurationProvider } from './ZephyrDebugConfigurationProvider';
-import { ZephyrProject } from './ZephyrProject';
-import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
-import { ZephyrSDK, IARToolchain } from './ZephyrSDK';
-import { createExtensionsJson, createTasksJson, setDefaultProjectSettings, updateTasks, ZephyrTaskProvider } from './ZephyrTaskProvider';
-import { changeBoardQuickStep } from './changeBoardQuickStep';
-import { changeEnvVarQuickStep, toggleSysbuild } from './changeEnvVarQuickStep';
-import { changeWestWorkspaceQuickStep } from './changeWestWorkspaceQuickStep';
-import { ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY } from './constants';
-import { getRunner, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './debugUtils';
-import { execShellTaskWithEnvAndWait, executeTask, getTerminalDefaultProfile, normalizeSlashesIfPath } from './execUtils';
-import { importProjectQuickStep } from './importProjectQuickStep';
-import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools } from './installUtils';
-import { generateWestManifest } from './manifestUtils';
+import { westBoardsCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBuildCommand, execWestCommandWithEnvAsync, westConfigCommand } from './commands/WestCommands';
+import { WestWorkspace } from './models/WestWorkspace';
+import { ZephyrAppProject } from './models/ZephyrAppProject';
+import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
+import { ZephyrProject } from './models/ZephyrProject';
+import { ZephyrProjectBuildConfiguration } from './models/ZephyrProjectBuildConfiguration';
+import { ZephyrSDK, IARToolchain } from './models/ZephyrSDK';
+import { checkAndCreateTasksJson, createExtensionsJson, createTasksJson, setDefaultProjectSettings, updateTasks, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
+import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
+import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVarQuickStep';
+import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
+import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
+import { getRunner, getRunRunners, getFlashRunners, getStaticFlashRunnerNames, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './utils/debugUtils';
+import { execShellTaskWithEnvAndWait, executeTask, getTerminalDefaultProfile, normalizeSlashesIfPath } from './utils/execUtils';
+import { importProjectQuickStep } from './quicksteps/importProjectQuickStep';
+import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
+import { generateWestManifest } from './utils/manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
 import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
+import { HostToolsPanel } from './panels/HostToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
-import { SDKManagerPanel } from './panels/SDKManagerPanel';
-import { changeToolchainQuickStep } from "./changeToolchainQuickStep";
-import { pickApplicationQuickStep } from './pickApplicationQuickStep';
-import { pickBuildConfigQuickStep } from './pickBuildConfigQuickStep';
+import { changeToolchainQuickStep } from "./quicksteps/changeToolchainQuickStep";
+import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep';
+import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
 import { WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
-import { ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem } from './providers/ZephyrApplicationProvider';
+import { ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigDefaultRunnerTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem } from './providers/ZephyrApplicationProvider';
 import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsCommandProvider';
 import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
-import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain } from './sdkUtils';
-import { setConfigQuickStep } from './setConfigQuickStep';
-import { showPristineQuickPick } from './setupBuildPristineQuickStep';
-import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfigTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder, checkZinstallerVersion } from './utils';
-import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './zephyrEnvUtils';
-import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './zephyrTerminalUtils';
-import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './SPDXCommands';
+import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain } from './utils/sdkUtils';
+import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
+import { showPristineQuickPick } from './quicksteps/setupBuildPristineQuickStep';
+import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfigTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
+import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './utils/zephyrEnvUtils';
+import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyrTerminalUtils';
+import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
 import { exec } from 'child_process';
+import { syncAutoDetectEnv } from './utils/autoDetectSyncUtils';
+import { initDtsIntegration } from './utils/dtsIntegration';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
@@ -52,6 +54,44 @@ let zephyrDebugConfigurationProvide: vscode.Disposable | undefined;
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+	// Migrate deprecated venv.activatePath to venv.path if present
+	(async () => {
+		const stripActivate = (p: string): string => {
+			const patterns = [
+				/[/\\]Scripts[/\\]activate(?:\.bat)?$/i,
+				/[/\\]Scripts[/\\]Activate\.ps1$/i,
+				/[/\\]bin[/\\]activate(?:\.(?:csh|fish))?$/
+			];
+			for (const rx of patterns) {
+				if (rx.test(p)) { return p.replace(rx, ''); }
+			}
+			return p;
+		};
+
+		// Global scope
+		const globalCfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY);
+		const oldGlobal = globalCfg.get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, '');
+		const newGlobal = globalCfg.get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, '');
+		if (oldGlobal && !newGlobal) {
+			const venvPath = stripActivate(oldGlobal);
+			await globalCfg.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.Global);
+			await globalCfg.update(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, undefined, vscode.ConfigurationTarget.Global);
+		}
+
+		// Per-workspace-folder scope
+		for (const folder of vscode.workspace.workspaceFolders ?? []) {
+			const cfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder);
+			const old = cfg.get<string>(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, '');
+			const neu = cfg.get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, '');
+			if (old && !neu) {
+				const venvPath = stripActivate(old);
+				await cfg.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+				await cfg.update(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+			}
+		}
+	})();
+	// Sync env.yml auto-detect entries from debug-tools.yml when versions differ
+	syncAutoDetectEnv(context);
 	// Setup task and debug providers
 	zephyrTaskProvider = vscode.tasks.registerTaskProvider(ZephyrTaskProvider.ZephyrType, new ZephyrTaskProvider());
 	zephyrDebugConfigurationProvide = vscode.debug.registerDebugConfigurationProvider('cppdbg', new ZephyrDebugConfigurationProvider());
@@ -85,6 +125,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const zephyrResourcesCommandProvider = new ZephyrOtherResourcesCommandProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-other-resources', zephyrResourcesCommandProvider);
+
+	// Initialize DTS-LSP integration: creates contexts on .overlay/.dts opens
+	initDtsIntegration(context);
 
 	// Register commands
 	// TODO: Could be refactored / Optimized
@@ -150,11 +193,22 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-local", async (projectPath) => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-local", async (projectPath, venvMode = 'global') => {
 			if (projectPath) {
 				CreateWestWorkspacePanel.currentPanel?.dispose();
 				if (ZephyrProject.isZephyrProjectPath(projectPath)) {
 					await addWorkspaceFolder(projectPath);
+					// Optionally create a local venv for the imported project
+					if (venvMode === 'local') {
+						const workspaceFolder = getWorkspaceFolder(projectPath);
+						if (workspaceFolder) {
+							const venvPath = await createLocalVenv(context, workspaceFolder);
+							if (venvPath) {
+								await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+									.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+							}
+						}
+					}
 				} else {
 					vscode.window.showErrorMessage("The folder is not a Zephyr project");
 				}
@@ -342,10 +396,96 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.run-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			await executeConfigTask('West Flash', node);
-		})
-	);
+    vscode.commands.registerCommand('zephyr-workbench-app-explorer.set-default-runner', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | ZephyrConfigDefaultRunnerTreeItem) => {
+			let project: ZephyrProject | undefined;
+			let targetConfig: ZephyrProjectBuildConfiguration | undefined;
+
+			if (node instanceof ZephyrApplicationTreeItem) {
+				project = node.project;
+				// For single-config apps, use that config; for multi, ask which active? else pick
+				if (project.configs.length === 1) {
+					targetConfig = project.configs[0];
+				} else if (project.configs.length > 1) {
+					const picked = await pickBuildConfigQuickStep(project);
+					if (picked) {
+						targetConfig = project.getBuildConfiguration(picked);
+					}
+				}
+      } else if (node instanceof ZephyrConfigTreeItem) {
+        project = node.project;
+        targetConfig = node.buildConfig;
+      } else if (node instanceof ZephyrConfigDefaultRunnerTreeItem) {
+        project = node.project;
+        targetConfig = node.config;
+      }
+
+			if (!project || !targetConfig) {
+				vscode.window.showErrorMessage('Unable to determine target configuration to set default runner.');
+				return;
+			}
+
+    // Compute pick list from west flash -H, marking those available in runners.yaml as compatible
+    // Only use the label (white text). Avoid detail/description to prevent a second grey line.
+    let items: vscode.QuickPickItem[] = [];
+    try {
+      // Show busy progress while west builds and fetches flash runners
+      const info = await vscode.window.withProgress<{ all: string[]; available: string[]; def?: string; output: string }>(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Collecting flash runners (this may take a while)…',
+          cancellable: false,
+        },
+        async () => {
+          return await getFlashRunners(project as ZephyrAppProject, targetConfig);
+        }
+      );
+      const all: string[] = info.all;
+      const compatible: string[] = info.available;
+      const defRunner: string | undefined = info.def; // default runner from runners.yaml
+      // Sort compatible first, then alphabetical
+      const sorted = all.slice().sort((a: string, b: string) => {
+        const ac = compatible.includes(a) ? 0 : 1;
+        const bc = compatible.includes(b) ? 0 : 1;
+        return ac - bc || a.localeCompare(b);
+      });
+      // If west reports a default runner, put it first
+      const ordered = defRunner && sorted.includes(defRunner)
+        ? [defRunner, ...sorted.filter(n => n !== defRunner)]
+        : sorted;
+      items = ordered.map((name: string) => ({
+        label: name + (compatible.includes(name) ? ' (compatible)' : ''),
+        picked: name === targetConfig?.defaultRunner,
+      }));
+    } catch (e: any) {
+      const msg = e?.message ? String(e.message) : 'Unknown error while collecting flash runners.';
+      vscode.window.showWarningMessage(`Zephyr Workbench: Using fallback flash runner list. ${msg}`);
+      const names = getStaticFlashRunnerNames();
+      items = names.map((name: string) => ({
+        label: name,
+        picked: name === targetConfig?.defaultRunner,
+      }));
+    }
+			const selection = await vscode.window.showQuickPick(items, { placeHolder: 'Select default runner' });
+			if (!selection) { return; }
+			const chosenRunner = (selection.label || '').replace(' (compatible)', '');
+
+			await saveConfigSetting(project.workspaceFolder, targetConfig.name, ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, chosenRunner);
+			vscode.commands.executeCommand('zephyr-workbench-app-explorer.refresh');
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('zephyr-workbench-app-explorer.change-default-runner', async (node: any) => {
+      // Reuse the same implementation as set-default-runner
+      vscode.commands.executeCommand('zephyr-workbench-app-explorer.set-default-runner', node);
+    })
+  );
+
+  context.subscriptions.push(
+      vscode.commands.registerCommand('zephyr-workbench-app-explorer.run-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
+        await executeConfigTask('West Flash', node);
+      })
+  );
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.debug-app', async (
 			node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder | vscode.Uri
@@ -637,7 +777,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-app-explorer.set-venv", async (node: ZephyrApplicationTreeItem) => {
-			vscode.commands.executeCommand('workbench.action.openSettings', `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY}`);
+			vscode.commands.executeCommand('workbench.action.openSettings', `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}`);
 		})
 	);
 	context.subscriptions.push(
@@ -648,7 +788,7 @@ export function activate(context: vscode.ExtensionContext) {
 				cancellable: false,
 			}, async () => {
 				let venvPath = await createLocalVenv(context, node.project.workspaceFolder);
-				await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+				await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.workspaceFolder).update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
 			}
 			);
 		})
@@ -1121,7 +1261,6 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand(
 			"zephyr-workbench.install-host-tools",
 			async (force = false,
-				skipSdk = false,
 				listToolchains = "") => {
 
 				return vscode.window.withProgress(
@@ -1131,19 +1270,62 @@ export function activate(context: vscode.ExtensionContext) {
 						cancellable: true,
 					},
 					async (progress, token) => {
-						SDKManagerPanel.currentPanel?.dispose();
+						// Close deprecated SDK Manager panel if open (no-op as panel removed)
 
-						if (!force) {
-							await runInstallHostTools(
-								context, skipSdk, listToolchains, progress, token);
-						} else {
-							await forceInstallHostTools(
-								context, skipSdk, listToolchains, progress, token);
-						}
+                        if (!force) {
+                            await runInstallHostTools(
+                                context, listToolchains, progress, token);
+                        } else {
+                            await forceInstallHostTools(
+                                context, listToolchains, progress, token);
+                        }
 
-						zephyrSdkProvider.refresh();
-						zephyrShortcutProvider.refresh();
-						zephyrToolsCommandProvider.refresh();
+                        zephyrSdkProvider.refresh();
+                        zephyrShortcutProvider.refresh();
+                        zephyrToolsCommandProvider.refresh();
+                        // If Host Tools Manager is open, refresh its content
+                        try { HostToolsPanel.currentPanel?.refresh(); } catch {}
+
+                        // After host tools progress ends, start a new progress for OpenOCD installation
+                        try {
+                            let didOpenOCD = false;
+                            if (await checkHostTools() && await checkEnvFile()) {
+                                await vscode.window.withProgress(
+                                    {
+                                        location: vscode.ProgressLocation.Notification,
+                                        title: 'Installing OpenOCD runner',
+                                        cancellable: false,
+                                    },
+                                    async () => {
+                                        await installOpenOcdRunnerSilently(context);
+                                        didOpenOCD = true;
+                                    }
+                                );
+                            }
+
+                            // When everything finishes, offer quick entry to install more runners.
+                            // Use an information message with an action, and a 10s status bar item fallback.
+                            const action = 'Install Runners';
+                            vscode.window.showInformationMessage(
+                                didOpenOCD
+                                  ? 'OpenOCD is installed. You can install additional runners.'
+                                  : 'You can install additional runners.',
+                                action
+                            ).then(async (choice) => {
+                                if (choice === action) {
+                                    try { await vscode.commands.executeCommand('zephyr-workbench.install-runners'); } catch {}
+                                }
+                            });
+
+                            try {
+                                const sbi = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+                                sbi.text = '$(tools) Install Runners';
+                                sbi.tooltip = 'Open Install Runners manager to install additional runners';
+                                sbi.command = 'zephyr-workbench.install-runners';
+                                sbi.show();
+                                setTimeout(() => { try { sbi.dispose(); } catch {} }, 10000);
+                            } catch {}
+                        } catch {}
 					}
 				);
 			}
@@ -1180,9 +1362,17 @@ export function activate(context: vscode.ExtensionContext) {
 				return vscode.commands.executeCommand(
 					"zephyr-workbench.install-host-tools",
 					force,
-					true,
 					""
 				);
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench.host-tools-manager",
+			async () => {
+				HostToolsPanel.render(context.extensionUri);
 			}
 		)
 	);
@@ -1208,6 +1398,8 @@ export function activate(context: vscode.ExtensionContext) {
 			}, async () => {
 				try {
 					await verifyHostTools(context);
+					// Refresh Host Tools Manager to reflect parsed versions from check output
+					try { HostToolsPanel.currentPanel?.refresh(); } catch {}
 				} catch (error) {
 
 					if (error instanceof Error) {
@@ -1227,7 +1419,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench.install-debug-tools", async () => {
+		vscode.commands.registerCommand("zephyr-workbench.install-runners", async () => {
 			DebugToolsPanel.render(context.extensionUri);
 		})
 	);
@@ -1277,13 +1469,29 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 					panel.webview.postMessage({ command: 'exec-done', tool: `${tool.tool}` });
 				}
+
+				// Notify webview that the whole install batch has finished (single or pack)
+				panel.webview.postMessage({ command: 'exec-install-finished' });
 			});
 		})
 	);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.open-wizard", async () => {
-			ImportZephyrSDKPanel.render(context.extensionUri);
+			// Mirror the same guard used for creating a West workspace
+			if (await checkHostTools() && await checkEnvFile()) {
+				ImportZephyrSDKPanel.render(context.extensionUri);
+			} else {
+				const installHostToolsItem = 'Install Host Tools';
+				const choice = await vscode.window.showErrorMessage(
+					"Host tools are missing, please install them first",
+					installHostToolsItem
+				);
+				if (choice === installHostToolsItem) {
+					vscode.commands.executeCommand('zephyr-workbench.install-host-tools.open-manager');
+				}
+				return;
+			}
 		})
 	);
 
@@ -1511,7 +1719,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.delete", async (node: ZephyrSdkTreeItem) => {
-			if (!node.sdk) return;
+			if (!node.sdk) {return;}
 
 			if (await showConfirmMessage(`Delete ${node.sdk.name} permanently?`)) {
 				if (node.sdk instanceof ZephyrSDK) {
@@ -1542,7 +1750,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand(
 			"zephyr-workbench-sdk-explorer.remove-iar",
 			async (node: ZephyrSdkTreeItem) => {
-				if (!node.sdk || !(node.sdk instanceof IARToolchain)) return;
+				if (!node.sdk || !(node.sdk instanceof IARToolchain)) {return;}
 
 				if (await showConfirmMessage(`Remove ${node.sdk.name} from workspace?`)) {
 					await unregisterIARToolchain(node.sdk.iarPath);
@@ -1634,7 +1842,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchain, pristineValue = 'auto') => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchain, pristineValue = 'auto', venvMode = 'global') => {
 			if (!westWorkspace) {
 				vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
 				return;
@@ -1689,6 +1897,15 @@ export function activate(context: vscode.ExtensionContext) {
 					await createTasksJson(workspaceFolder);
 					await createExtensionsJson(workspaceFolder);
 					await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
+
+					// Create a local Python venv if requested
+					if (venvMode === 'local') {
+						const venvPath = await createLocalVenv(context, workspaceFolder);
+						if (venvPath) {
+							await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+								.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+						}
+					}
 					CreateZephyrAppPanel.currentPanel?.dispose();
 
 					vscode.window.showInformationMessage(`New Application '${workspaceFolder.name}' created !`);
@@ -1699,7 +1916,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-app", async (projectLoc, westWorkspace, zephyrBoard, zephyrSDK) => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-app", async (projectLoc, westWorkspace, zephyrBoard, zephyrSDK, venvMode = 'global') => {
 			if (!fileExists(projectLoc)) {
 				vscode.window.showInformationMessage(`Project '${projectLoc}' not found !`);
 				return;
@@ -1712,6 +1929,14 @@ export function activate(context: vscode.ExtensionContext) {
 				await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK);
 				await createTasksJson(workspaceFolder);
 				await createExtensionsJson(workspaceFolder);
+				// Optionally create a local venv for the imported project
+				if (venvMode === 'local') {
+					const venvPath = await createLocalVenv(context, workspaceFolder);
+					if (venvPath) {
+						await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+							.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+					}
+				}
 				vscode.window.showInformationMessage(`Importing Application '${workspaceFolder.name}' done`);
 			}
 		})
@@ -1943,8 +2168,8 @@ export async function showConfirmMessage(message: string): Promise<boolean> {
 }
 
 export async function executeConfigTask(taskName: string, node: any, configName?: string): Promise<vscode.TaskExecution[] | undefined> {
-	let context: ZephyrProject | undefined = undefined;
-	let folder: vscode.WorkspaceFolder | undefined = undefined;
+  let context: ZephyrProject | undefined = undefined;
+  let folder: vscode.WorkspaceFolder | undefined = undefined;
 	if (node instanceof ZephyrApplicationTreeItem) {
 		if (node.project) {
 			context = node.project;
@@ -1963,15 +2188,19 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 			configName = undefined;
 		}
 	}
-	else {
-		context = await getZephyrProject(node.uri.fsPath);
-		folder = node;
-	}
+  else {
+    context = await getZephyrProject(node.uri.fsPath);
+    folder = node;
+  }
 
-	// Get list of task to execute
-	let listTasks: vscode.Task[] = [];
-	if (context && folder) {
-		// IF: In configuration name is provided execute it
+  // Get list of task to execute
+  let listTasks: vscode.Task[] = [];
+  if (context && folder) {
+    // Ensure tasks.json exists for this workspace (avoids "Cannot find task" on fresh/migrated projects)
+    await checkAndCreateTasksJson(folder);
+    // Give VS Code a brief moment to pick up new tasks.json on first run
+    await msleep(100);
+    // IF: In configuration name is provided execute it
 		// ELSE IF : run active if multiple build configurations
 		// ELSE IF : run task if only one build configuration 
 		if (configName) {

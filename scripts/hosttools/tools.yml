@@ -18,23 +18,18 @@ other_content:
 - tool: seven_z
   os:
     windows:
-      source: https://7-zip.org/a/7z2408-x64.exe
-      sha256: 67cb9d3452c9dd974b04f4a5fd842dbcba8184f2344ff72e3662d7cdb68b099b
-- tool: seven_z_portable
-  os:
-    windows:
-      source: https://www.ac6-tools.com/downloads/zinstaller/tools/windows/7-Zip-24.08.exe
-      sha256: 07c508289d4dd0a90b8a4622affec1a418f0d61d732dea2a6e7d928cc25a07de
+      source: https://7-zip.org/a/7z2501-x64.exe
+      sha256: 78afa2a1c773caf3cf7edf62f857d2a8a5da55fb0fff5da416074c0d28b2b55f
 - tool: zstd
   os:
     windows:
-      source: https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-v1.5.6-win64.zip
-      sha256: 7B4EFF6719990E38ACA93A4844C2E86A1935090625C4611F7E89675E999C56CC
+      source: https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip
+      sha256: acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9
 - tool: msys2_runtime
   os:
     windows:
-      source: https://repo.msys2.org/msys/x86_64/msys2-runtime-3.5.3-4-x86_64.pkg.tar.zst
-      sha256: 838fd8a0a1aca2e5e19eed3155dbb086cc79fa5e701728b58843f2f6b1b1ed1a
+      source: https://repo.msys2.org/msys/x86_64/msys2-runtime-3.6.5-1-x86_64.pkg.tar.zst
+      sha256: 16a1729511b553314bed8d9af6d52ae4489007c35a6b4752205869f321963d9d
 - tool: libyaml
   os:
     windows:
@@ -57,65 +52,58 @@ zephyr_content:
 - tool: cmake
   os:
     linux:
-      source: https://github.com/Kitware/CMake/releases/download/v3.29.2/cmake-3.29.2-linux-x86_64.tar.gz
-      sha256: 0416c70cf88e8f92efcbfe292e181bc09ead7d70e29ab37b697522c01121eab5
+      source: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
+      sha256: 773cc679c3a7395413bd096523f8e5d6c39f8718af4e12eb4e4195f72f35e4ab
     windows:
-      source: https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-windows-x86_64.zip
-      sha256: 671332249bc7cc7424523d6c2b5edd3e3de90a43b8b82e8782f42da4fe4c562d
+      source: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-x86_64.zip
+      sha256: 82730741149681597510a4bc7095da1460b472dac24eaf9c23ad7440f47753ab
     darwin:
       source: xxx
       sha256: xxx
 - tool: ninja
   os:
     linux:
-      source: https://github.com/ninja-build/ninja/releases/download/v1.12.0/ninja-linux.zip
-      sha256: ddc96efa3c7c9d41de733d15e2eda07a8a212555cb43f35d727e080d2ca687ab
+      source: https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux.zip
+      sha256: 0830252db77884957a1a4b87b05a1e2d9b5f658b8367f82999a941884cbe0238
     windows:
-      source: https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip
-      sha256: 524b344a1a9a55005eaf868d991e090ab8ce07fa109f1820d40e74642e289abc
+      source: https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-win.zip
+      sha256: 26a40fa8595694dec2fad4911e62d29e10525d2133c9a4230b66397774ae25bf
 - tool: dtc
   os:
     windows:
-      source: https://repo.msys2.org/msys/x86_64/dtc-1.7.0-1-x86_64.pkg.tar.zst
-      sha256: 9b257c07696aca8b1f509f63280bd47bc6b60f4f679d8823090c5cb477c45429
-- tool: zephyr_sdk
-  os:
-    windows:
-      source: https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_windows-x86_64.7z
-      sha256: EB1B84BBD193761C9E20696B04D326B2CD732DFA3931A68AB0476098C1384E50
-    linux:
-      source: https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-x86_64.tar.xz
-      sha256: cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7dbc6a
-    darwin:
-      source: xxx
-      sha256: xxx
-- tool: openssl
-  os:
-    linux:
-      source: https://www.ac6-tools.com/downloads/zinstaller/tools/linux/openssl-1.1.1t.tar.bz2
-      sha256: 943437123834d29b546a2d097e7eab7157202cd17669a130eea2eea682043a23
+      source: https://repo.msys2.org/msys/x86_64/dtc-1.7.2-1-x86_64.pkg.tar.zst
+      sha256: 8d75950a950deb4a1e561461d2f8e3a2ca38701cc36fa34f3a05c5ecf9eb63d5
 - tool: git
   os:
     windows:
-      source: https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/PortableGit-2.45.2-64-bit.7z.exe
-      sha256: 851a15074dea6b272785b2a2a4697a72970256de2afe7b8e4a9c5e168c27ccdd
-- tool: python
-  os:
-    windows:
-      source: https://github.com/winpython/winpython/releases/download/16.6.20250620final/Winpython64-3.13.5.0dot.exe
-      sha256: 9f9488eca6aba8fbe75cccde84457b6753cb100a66a4c6c9116107907c4df096
-    darwin:
-      source: xxx
-      sha256: xxx
+      source: https://github.com/git-for-windows/git/releases/download/v2.51.2.windows.1/PortableGit-2.51.2-64-bit.7z.exe
+      sha256: f5764d546ff9a2511b50ec4e20424c5f4669de1695abc3fa4128e7f7d4a7b2cd
 - tool: python_portable
   os:
     linux:
-      source: https://www.ac6-tools.com/downloads/zinstaller/tools/linux/cpython/cpython-3.13.5-linux-x86_64.tar.gz
-      sha256: fe36195e7a255d835b19d2faed8da42d46b34a79b9f03d69321730a7b19e68b1
+      source: https://github.com/niess/python-appimage/releases/download/python3.13/python3.13.8-cp313-cp313-manylinux2014_x86_64.AppImage
+      sha256: 443fa6c92d1d7cbd29d6b340d0d8f5ceb43b19a9d2a55c64450c07dadc33d65e
     windows:
       source: https://github.com/winpython/winpython/releases/download/16.6.20250620final/Winpython64-3.13.5.0dot.exe
       sha256: 9f9488eca6aba8fbe75cccde84457b6753cb100a66a4c6c9116107907c4df096
-    darwin:
-      source: xxx
-      sha256: xxx
-      
+
+python_packages:
+  # You can specify just a name
+  - name: windows-curses
+    os:
+      windows: true
+  - name: anytree
+  # Or a name + version (string)
+  - name: puncover
+    version: "0.4.2"
+  # Or a direct URL (wheel/sdist)
+  # - url: https://files.pythonhosted.org/packages/.../somepkg-1.2.3-py3-none-any.whl
+  # Optional fields:
+  #   os: {windows|linux|darwin: true/false/"true"} to gate installs per platform
+  #   version: pin alongside name, e.g. name+version
+  #   url: direct wheel/sdist with no name needed
+  # If `os` is omitted, the package installs on every platform.
+  - name: setuptools
+  - name: wheel
+  - name: pyelftools
+  - name: west

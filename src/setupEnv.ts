@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { CancellationToken, Terminal } from "vscode";
-import { getZephyrTerminal, runCommandTerminal } from "./zephyrTerminalUtils";
+import { getZephyrTerminal, runCommandTerminal } from "./utils/zephyrTerminalUtils";
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "./constants";
 
 // export let output = vscode.window.createOutputChannel("Zephyr West Buildsystem");

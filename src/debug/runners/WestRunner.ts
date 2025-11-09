@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import path from "path";
 import { ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
-import { execCommandWithEnv } from '../../execUtils';
-import { formatWindowsPath } from '../../utils';
+import { execCommandWithEnv } from '../../utils/execUtils';
+import { formatWindowsPath } from '../../utils/utils';
 
 export const ZEPHYR_WORKBENCH_DEBUG_PATH_SETTING_KEY = 'pathExec';
 
@@ -72,18 +72,16 @@ export class WestRunner {
   }
 
   loadSettings() {
-    let pathExec: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(this.getSettingKey('pathExec'));
-    if(pathExec) {
-      this.serverPath = pathExec;
-    }
+    // No-op: runner paths are detected from environment; settings removed
   }
 
   async updateSettings() {
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(this.getSettingKey('pathExec'), this.serverPath, vscode.ConfigurationTarget.Global);
+    // No-op: do not persist runner path to settings
   }
 
   getSetting(key: string): string | undefined {
-    return vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(this.getSettingKey(key));
+    // Settings for debug runner paths are no longer used
+    return undefined;
   }
 
   async updateSetting(key: string, value: string) {
@@ -94,8 +92,6 @@ export class WestRunner {
     let execPath = '';
     if(this.serverPath) {
       execPath = this.serverPath;
-    } else if(this.getSetting('pathExec')) {
-      execPath = this.getSetting('pathExec') as string;
     } else if(this.executable) {
       execPath = this.executable;
     }
@@ -127,8 +123,6 @@ export class WestRunner {
     let execPath = '';
     if(this.serverPath) {
       execPath = this.serverPath;
-    } else if(this.getSetting('pathExec')) {
-      execPath = this.getSetting('pathExec') as string;
     } else if(this.executable) {
       execPath = this.executable;
     }
@@ -138,22 +132,22 @@ export class WestRunner {
     }
 
     let versionCmd = `${execPath} --version`;
-    return new Promise<string | undefined>((resolve, reject) => {
-      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
+    return new Promise<string | undefined>((resolve) => {
+      execCommandWithEnv(versionCmd, undefined, (error: any, stdout: string, stderr: string) => {
         if (error) {
           resolve(undefined);
-        } else if (stderr) {
-          resolve(undefined);
-        } else {
-          if(this.versionRegex) {
-            const versionMatch = stdout.match(this.versionRegex);
-            if (versionMatch) {
-                resolve(versionMatch[1]);
-            }
-          } 
-          reject(undefined);
+          return;
         }
 
+        // Merge both outputs, since some tools (e.g., OpenOCD) print version info to stderr
+        const output = `${stdout}\n${stderr}`;
+
+        const match = output.match(this.versionRegex);
+        if (match) {
+          resolve(match[1]);
+        } else {
+          resolve(undefined);
+        }
       });
     });
   }

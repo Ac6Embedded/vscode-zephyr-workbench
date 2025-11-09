@@ -1,12 +1,12 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../debugUtils";
-import { ZephyrAppProject } from "../ZephyrAppProject";
-import { getZephyrProject } from '../utils';
+import { createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugUtils";
+import { ZephyrAppProject } from "../models/ZephyrAppProject";
+import { getZephyrProject } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
-import { ZephyrProject } from '../ZephyrProject';
-import { ZephyrProjectBuildConfiguration } from '../ZephyrProjectBuildConfiguration';
+import { ZephyrProject } from '../models/ZephyrProject';
+import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { getGdbMode, getSetupCommands } from '../debug/gdbUtils';
 
 export class DebugManagerPanel {
@@ -16,6 +16,7 @@ export class DebugManagerPanel {
   private _disposables: vscode.Disposable[] = [];
   public project: ZephyrProject | undefined;
   public buildConfig: ZephyrProjectBuildConfiguration | undefined;
+  private _loadApplicationsAsync: (wv: vscode.Webview) => void = () => {};
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -29,6 +30,9 @@ export class DebugManagerPanel {
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
     this._setWebviewMessageListener(this._panel.webview);
     this._setDefaultSelection(this._panel.webview);
+    // Trigger async applications discovery post-render
+    this._panel.webview.postMessage({ command: 'applicationsLoading' });
+    this._loadApplicationsAsync(this._panel.webview);
   }
 
   public static render(extensionUri: vscode.Uri, project?: ZephyrProject | undefined, buildConfig?: ZephyrProjectBuildConfiguration | undefined) {
@@ -38,6 +42,8 @@ export class DebugManagerPanel {
       const panel = vscode.window.createWebviewPanel("debug-manager-panel", "Debug Manager", vscode.ViewColumn.One, {
         // Enable javascript in the webview
         enableScripts: true,
+        // Keep the webview context when hidden to avoid losing state while switching tabs
+        retainContextWhenHidden: true,
         // Restrict the webview to only load resources from the `out` directory
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'out')]
       });
@@ -83,16 +89,8 @@ export class DebugManagerPanel {
     const codiconUri = getUri(webview, extensionUri, ["out", "codicon.css"]);
     const nonce = getNonce();
 
+    // Defer fetching applications until after the panel renders
     let applicationsHTML: string = '';
-
-    if(vscode.workspace.workspaceFolders) {
-      for(let workspaceFolder of vscode.workspace.workspaceFolders) {
-        if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
-          const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-          applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.sourceDir}" data-label="${appProject.folderName}">${appProject.folderName} <span class="description">${appProject.sourceDir}</span></div>`);
-        }
-      }
-    }
 
     // Init runners
     let runnersHTML: string = '';
@@ -149,6 +147,7 @@ export class DebugManagerPanel {
                     <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
                       <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
                     </svg>
+                    <div class="spinner" id="buildConfigDropdownSpinner" style="display:none;"></div>
                   </slot>
                 </div>
                 <div id="buildConfigDropdown" class="dropdown-content" style="display: none;">
@@ -162,6 +161,7 @@ export class DebugManagerPanel {
               <div class="grid-group-div">
                 <vscode-text-field class="browse-field" size="50" type="text" id="programPath" value="">Program Path:</vscode-text-field>
                 <vscode-button id="browseProgramButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+                <span class="browse-spinner-inline"><span id="programPathSpinner" class="spinner" aria-label="Loading program path" style="display:none;"></span></span>
               </div>
               <div class="grid-group-div">
                 <vscode-text-field class="browse-field" size="50" type="text" id="svdPath" value="" placeholder="(Optional)" >SVD File:</vscode-text-field>
@@ -179,6 +179,7 @@ export class DebugManagerPanel {
               <div class="grid-group-div">
                 <vscode-text-field class="browse-field" size="50" type="text" id="gdbPath" value="">GDB Path:</vscode-text-field>
                 <vscode-button id="browseGdbButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+                <span class="browse-spinner-inline"><span id="gdbPathSpinner" class="spinner" aria-label="Loading GDB path" style="display:none;"></span></span>
               </div>
 
               <div class="grid-group-div">
@@ -229,6 +230,7 @@ export class DebugManagerPanel {
               <div class="grid-group-div">
                 <vscode-text-field class="browse-field" size="50" type="text" id="runnerPath" value="">Runner Path:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Enter to debug server's location if not found automatically in PATH">?</span>&nbsp;&nbsp;&nbsp;<span id="runnerDetect"></span></vscode-text-field>
                 <vscode-button id="browseRunnerButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
+                <span class="browse-spinner-inline"><span id="runnerPathSpinner" class="spinner" aria-label="Loading runner path" style="display:none;"></span></span>
               </div>
             
               <div class="grid-group-div">
@@ -280,7 +282,14 @@ export class DebugManagerPanel {
             const buildConfig = appProject.getBuildConfiguration(buildConfigName);
 
             if(appProject && buildConfig) {
-              await updateConfiguration(appProject, buildConfig);
+              await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: 'Debug Manager',
+                cancellable: false,
+              }, async (progress) => {
+                progress.report({ message: 'Preparing build configuration' });
+                await updateConfiguration(appProject, buildConfig);
+              });
             }
             break;
           }
@@ -324,7 +333,7 @@ export class DebugManagerPanel {
             break;
           }
           case 'install': {
-            vscode.commands.executeCommand('zephyr-workbench.install-debug-tools');
+            vscode.commands.executeCommand('zephyr-workbench.install-runners');
           }
           case 'reset': {
             await resetHandler(message);
@@ -352,6 +361,24 @@ export class DebugManagerPanel {
       this._disposables
     );
 
+    // Helper to load applications asynchronously and update the webview
+    async function loadApplications(webview: vscode.Webview) {
+      let applicationsHTML = '';
+      if(vscode.workspace.workspaceFolders) {
+        for(const workspaceFolder of vscode.workspace.workspaceFolders) {
+          try {
+            if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
+              const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
+              applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.sourceDir}" data-label="${appProject.folderName}">${appProject.folderName} <span class="description">${appProject.sourceDir}</span></div>`);
+            }
+          } catch {}
+        }
+      }
+      webview.postMessage({ command: 'updateApplications', applicationsHTML: `${applicationsHTML}` });
+    }
+  
+    // Expose as bound method wrapper
+    this._loadApplicationsAsync = (wv: vscode.Webview) => { loadApplications(wv); };
     function updateBuildConfigs(project: ZephyrProject) {
       let newBuildConfigsHTML = '';
       for(let config of project.configs) {
@@ -579,5 +606,3 @@ export class DebugManagerPanel {
     }
   }  
 }
-
-
