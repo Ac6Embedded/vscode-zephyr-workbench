@@ -201,10 +201,27 @@ debug_tools:
     windows:
       source: https://www.silabs.com/documents/public/software/CP210x_Universal_Windows_Driver.zip
       sha256: SKIP
+    linux: false
+    darwin: false
+- tool: udev-rules
+  name: Udev Rules for STLink, JLink and libUSB
+  version: 1.0.0 
+  website:
+  vendor: No
+  type: driver
+  group: Common
+  root: true
+  no_edit: true
+  os:
+    linux:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/tools/linux/zw-udev-rules-1.0.0.tar.xz
+      sha256: 0cd477139825438cef3e1f15ec01be801c9b9dfcf3085c43d7af284122f862b9
+    windows: false
+    darwin: false
 packs:
 - pack: stm32
   name: STM32
-  tools: [openocd, stm32cubeprogrammer, jlink]
+  tools: [openocd, stm32cubeprogrammer, jlink, udev-rules]
 - pack: nxp
   name: NXP
   tools: [linkserver, jlink]
