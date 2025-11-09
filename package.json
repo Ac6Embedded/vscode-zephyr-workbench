@@ -8,13 +8,8 @@
     "type": "git",
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
-<<<<<<< HEAD
-  "homepage": "https://zephyr-workbench.com",
-  "version": "1.3.38",
-=======
   "homepage": "https://z-workbench.com",
-  "version": "2.0.0",
->>>>>>> version-2
+  "version": "2.0.1",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
