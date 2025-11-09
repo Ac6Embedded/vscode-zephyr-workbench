@@ -4,6 +4,37 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.0.0]
+
+### DTS
+- Support DTS LSP (Kyle Bonnici) out of the box
+
+### Host Tools
+- Add Host Tools panel to check, manage, and add custom host tools
+- Update host tools packages and platform support; clarify Python/venv guidance
+- Provide cross-OS environment management via `env.yml` (Windows/macOS/Linux) with global/local env
+- Install portable Python on Linux when system Python is below minimum
+
+### Runners
+- Rename "Install Debug Tools" to "Install Runners" with a dedicated management panel
+- Improve Install Runners panel UX and performance; auto-detect runners from common paths
+- Support Nordic runners: nrfjprog and nrfutil
+- Support Silicon Labs Simplicity Commander
+- Simplify adding custom runners and tools via Extra Runners
+
+### Debug
+- Improve Debug Manager performance, UX and error reporting
+
+### UI & Performance
+- Add spinners across panels and auto-detected fields to indicate long operations
+- Improve panel content parsing for faster load times
+
+### Misc
+- Reorganize sources into subfolders
+- Improve error reporting and stability
+- Update Zephyr OpenOCD and cross-platform build scripts; bump zinstaller to v2.0
+- Refine PowerShell policy, try to avoid powershell resctrictions on windows
+
 ## [1.3.37]
 
 - Fix west_wrapper generation
@@ -428,3 +459,5 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [Unreleased]
 
 - Initial release
+
+[2.0.0]: https://github.com/Ac6Embedded/vscode-zephyr-workbench/compare/v1.3.38...version-2
