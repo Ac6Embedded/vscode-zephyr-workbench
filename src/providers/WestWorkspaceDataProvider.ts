@@ -81,8 +81,8 @@ export class WestWorkspaceTreeItem extends vscode.TreeItem {
 
 	//iconPath = new vscode.ThemeIcon('symbol-misc');
   iconPath = {
-    light: path.join(__filename, '..', '..', 'res', 'icons', 'zephyr.svg'),
-    dark: path.join(__filename, '..', '..', 'res', 'icons', 'zephyr.svg')
+    light: path.join(__filename, '..', '..', 'res', 'icons','zephyr.svg'),
+    dark: path.join(__filename, '..', '..', 'res', 'icons','zephyr.svg')
   };
 	contextValue = 'west-workspace';
 }

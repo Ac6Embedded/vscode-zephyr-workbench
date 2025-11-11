@@ -48,6 +48,12 @@ export class DebugManagerPanel {
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'out')]
       });
 
+      // Set the icon for the panel in Debug Manager
+      panel.iconPath = {
+        light: vscode.Uri.joinPath(extensionUri,  'res','icons','light','bug.svg'),
+        dark: vscode.Uri.joinPath(extensionUri, 'res','icons', 'dark', 'bug.svg')
+      };
+
       DebugManagerPanel.currentPanel = new DebugManagerPanel(panel, extensionUri);
       DebugManagerPanel.currentPanel.createContent(project, buildConfig);
     }
@@ -239,10 +245,11 @@ export class DebugManagerPanel {
             </fieldset>
 
             <!-- Control buttons -->
-            <div class="grid-group-div">
+            <div class="grid-group-div debug-manager-buttons">
               <vscode-button id="resetButton" appearance="secondary" class="finish-input-button">Reset Default</vscode-button>
               <vscode-button id="applyButton" appearance="secondary" class="finish-input-button">Apply</vscode-button>
               <vscode-button id="debugButton" appearance="primary" class="finish-input-button">Debug</vscode-button>
+              <span id="resetSpinner" class="spinner" style="display:none; margin-left:80px;"></span>
             <div>
           </form>
           <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
@@ -479,16 +486,26 @@ export class DebugManagerPanel {
     }
 
     async function resetHandler(message: any) {
-      const projectPath = message.project;
-      const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
+      // Notify reset started
+      webview.postMessage({ command: 'resetStarted' });
 
-      const appProject = await getZephyrProject(projectPath);
-      const buildConfig = appProject.getBuildConfiguration(buildConfigName);
-      if(appProject) {
-        await resetConfiguration(appProject, buildConfig);
+      try{
+        // Perform reset default configuration
+        const projectPath = message.project;
+        const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
+
+        const appProject = await getZephyrProject(projectPath);
+        const buildConfig = appProject.getBuildConfiguration(buildConfigName);
+        if(appProject) {
+          await resetConfiguration(appProject, buildConfig);
+        }
+      }
+      finally{
+        // Notify reset finished
+        webview.postMessage({ command: 'resetFinished' });
       }
     }
-    
+
     async function resetConfiguration(project: ZephyrProject, buildConfig?: ZephyrProjectBuildConfiguration) {
       let config;
       if(buildConfig) {
@@ -511,7 +528,10 @@ export class DebugManagerPanel {
       }
     
       let newRunnersHTML = '';
-      let compatibleRunners = await config.getCompatibleRunners();
+      let compatibleRunners: string[] = [];
+      if(buildConfig && project) {
+        compatibleRunners = await buildConfig.getCompatibleRunners(project);
+      }
       for(let runner of getDebugRunners()) {
         if(compatibleRunners.includes(runner.name)) {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
