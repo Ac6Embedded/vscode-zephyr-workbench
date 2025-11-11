@@ -342,8 +342,14 @@ export class DebugManagerPanel {
           case 'install': {
             vscode.commands.executeCommand('zephyr-workbench.install-runners');
           }
+          case 'refreshApplications': {
+            webview.postMessage({ command: 'applicationsLoading' });
+            await loadApplications(webview);
+            break;
+          }
           case 'reset': {
             await resetHandler(message);
+            break;
           }
           case 'apply': {
             await applyHandler(message);
