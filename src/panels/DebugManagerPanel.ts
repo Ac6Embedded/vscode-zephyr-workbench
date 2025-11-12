@@ -38,6 +38,21 @@ export class DebugManagerPanel {
   public static render(extensionUri: vscode.Uri, project?: ZephyrProject | undefined, buildConfig?: ZephyrProjectBuildConfiguration | undefined) {
     if (DebugManagerPanel.currentPanel) {
       DebugManagerPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
+      // Update content
+      DebugManagerPanel.currentPanel.project = project;
+      // Update build config
+      DebugManagerPanel.currentPanel.buildConfig = buildConfig;
+      // Update selection field
+      DebugManagerPanel.currentPanel._setDefaultSelection(DebugManagerPanel.currentPanel._panel.webview);
+      const projectPath = project ? project.workspaceFolder.uri.fsPath : '';
+      // Notify webview about project change
+      if (projectPath.length > 0) {
+        DebugManagerPanel.currentPanel._panel.webview.postMessage({ command: 'projectChanged', project: projectPath });
+        if (buildConfig?.name) {
+          // Notify webview about build config change
+          DebugManagerPanel.currentPanel._panel.webview.postMessage({ command: 'buildConfigChanged', project: projectPath, buildConfig: buildConfig.name });
+        }
+      }
     } else {
       const panel = vscode.window.createWebviewPanel("debug-manager-panel", "Debug Manager", vscode.ViewColumn.One, {
         // Enable javascript in the webview
@@ -271,6 +286,13 @@ export class DebugManagerPanel {
       async (message: any) => {
         const command = message.command;
         switch (command) {
+          case 'webviewReady': {
+            // Send initial selection and load applications
+            this._setDefaultSelection(webview);
+            webview.postMessage({ command: 'applicationsLoading' });
+            await loadApplications(webview);
+            break;
+          }
           case 'projectChanged': {
             const projectPath = message.project;
             const appProject = await getZephyrProject(projectPath);
