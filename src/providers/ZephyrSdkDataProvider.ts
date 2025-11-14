@@ -75,13 +75,13 @@ export class ZephyrSdkTreeItem extends vscode.TreeItem {
 	  super(sdk.name, collapsibleState);
   
 	  if (sdk instanceof IARToolchain) {
-		this.label = sdk.name;
+		this.label = `✚ ${sdk.name}`;
 		//this.description = sdk.iarPath;
 		this.tooltip = `IAR Toolchain @ ${sdk.iarPath}`;
 		this.contextValue = "iar-toolchain";
 		this.iconPath = path.join(__filename, '..', '..', 'res', 'icons', 'iar-logo.jpg');
 	  } else {
-		this.label = `Zephyr SDK ${sdk.version}`;
+		this.label = `✚ Zephyr SDK ${sdk.version}`;
 		//this.description = sdk.rootUri.fsPath + (isInternal ? " [Internal]" : "");
 		this.tooltip = `Zephyr SDK ${sdk.version} @ ${sdk.rootUri.fsPath}`;
 		this.contextValue = isInternal ? "zephyr-sdk-internal" : "zephyr-sdk";
