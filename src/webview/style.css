@@ -782,3 +782,16 @@ vscode-button {
   margin-left: 10px;    
 }
 
+.browse-spinner-inline-sdk {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.browse-spinner-inline-sdk .spinner {
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+}
+
