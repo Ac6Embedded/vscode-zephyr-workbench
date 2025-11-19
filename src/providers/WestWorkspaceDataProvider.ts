@@ -73,7 +73,7 @@ export class WestWorkspaceTreeItem extends vscode.TreeItem {
 		public readonly westWorkspace: WestWorkspace,
 		public readonly collapsibleState: vscode.TreeItemCollapsibleState,
 	) {
-    super(`✚ ${westWorkspace.name}`, collapsibleState);
+    super(`${westWorkspace.name}`, collapsibleState);
 
 		this.tooltip = `${this.westWorkspace.rootUri.fsPath}`;
 		this.description = `[${this.westWorkspace.version}]`;
