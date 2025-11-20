@@ -75,7 +75,7 @@ export class ZephyrSdkTreeItem extends vscode.TreeItem {
 	  super(sdk.name, collapsibleState);
   
 	  if (sdk instanceof IARToolchain) {
-		this.label = sdk.name;
+		this.label = `${sdk.name}`;
 		//this.description = sdk.iarPath;
 		this.tooltip = `IAR Toolchain @ ${sdk.iarPath}`;
 		this.contextValue = "iar-toolchain";
@@ -85,7 +85,10 @@ export class ZephyrSdkTreeItem extends vscode.TreeItem {
 		//this.description = sdk.rootUri.fsPath + (isInternal ? " [Internal]" : "");
 		this.tooltip = `Zephyr SDK ${sdk.version} @ ${sdk.rootUri.fsPath}`;
 		this.contextValue = isInternal ? "zephyr-sdk-internal" : "zephyr-sdk";
-		this.iconPath = new vscode.ThemeIcon("symbol-method");
+		this.iconPath = {
+          light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'toolchain_icon_light.svg'),
+          dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'toolchain_icon_dark.svg')
+        };
 	  }
 	}
   }
