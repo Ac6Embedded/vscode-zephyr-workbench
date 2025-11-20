@@ -142,6 +142,34 @@ pr_warn() {
     echo "WARN: $message"
 }
 
+# Minimum host tools required when automatic install is unavailable
+MINIMUM_PACKAGES=(
+    "git"
+    "cmake"
+    "ninja-build (or ninja)"
+    "gperf"
+    "ccache"
+    "dfu-util"
+    "device-tree-compiler (dtc)"
+    "wget or curl"
+    "python3 (>= 3.10) with pip, venv, setuptools, wheel, tk"
+    "xz-utils / xz"
+    "file"
+    "make"
+    "gcc and g++ (with multilib/32-bit support)"
+    "libsdl2-dev / SDL2-devel"
+    "libmagic / libmagic1"
+    "unzip"
+    "hidapi (hidraw and libusb backends)"
+)
+
+pr_minimum_packages_note() {
+    echo "Minimum packages needed (install manually via your package manager):"
+    for pkg in "${MINIMUM_PACKAGES[@]}"; do
+        echo "  - $pkg"
+    done
+}
+
 # Simple debug logger (export ZI_DEBUG=1 to enable)
 debug() {
     if [[ "${ZI_DEBUG:-0}" != "0" ]]; then
@@ -381,8 +409,9 @@ if [[ $root_packages == true ]]; then
             if [ $(lsb_release -rs | awk -F. '{print $1$2}') -ge 2004 ]; then
                 echo "Ubuntu version is equal to or higher than 20.04"
             else
-                pr_error 3 "Ubuntu version lower than 20.04 are not supported"
-                exit 3
+                pr_warn "Ubuntu versions lower than 20.04 are not officially supported."
+                pr_minimum_packages_note
+                echo "Attempting install anyway..."
             fi
             sudo DEBIAN_FRONTEND=noninteractive apt-get update
             sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends git cmake ninja-build gperf ccache dfu-util device-tree-compiler wget python3-dev python3-venv python3-pip python3-setuptools python3-tk python3-wheel xz-utils file make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1 unzip
@@ -406,13 +435,13 @@ if [[ $root_packages == true ]]; then
             sudo pacman -S --noconfirm git cmake ninja gperf ccache dfu-util dtc wget python-pip python-setuptools python-wheel tk xz file make
             ;;
         *)
-            pr_error 3 "Distribution is not recognized."
-            exit 3
+            pr_warn "Distribution is not recognized; skipping automatic root package install."
+            pr_minimum_packages_note
             ;;
         esac
-        else
-        pr_error 3 "/etc/os-release file not found. Cannot determine distribution."
-        exit 3
+    else
+        pr_warn "/etc/os-release file not found. Cannot determine distribution; skipping automatic root package install."
+        pr_minimum_packages_note
     fi
 
     # After installing root packages, check Python version requirement
