@@ -1,3 +1,5 @@
+// Zephyr Workbench task provider and helpers.
+// Centralizes task definitions plus tasks.json load/merge/save logic to avoid overwriting user content.
 import * as fs from 'fs';
 import * as fsPromise from 'fs/promises';
 import * as path from 'path';
@@ -198,6 +200,102 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [puncoverTask.label, puncoverTask]
 ]);
 
+type TasksJsonConfig = TaskConfig & { inputs?: any[] };
+
+const runnerPickInput = {
+  id: "west.runner",
+  type: "pickString",
+  description: "Override default runner. Runners can flash and/or debug Zephyr programs.",
+  options: [
+    "",
+    ...getStaticFlashRunnerNames().map(n => `--runner ${n}`)
+  ],
+  default: ""
+};
+
+// Load tasks.json (if it exists) into a normalized structure and keep the serialized
+// version so we can avoid rewriting the file when nothing changed.
+async function ensureTasksFile(workspaceFolder: vscode.WorkspaceFolder): Promise<{ config: TasksJsonConfig, tasksJsonPath: string, serialized?: string }> {
+  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
+  const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
+
+  await fsPromise.mkdir(vscodeFolderPath, { recursive: true });
+
+  let config: TasksJsonConfig = { version: "2.0.0", tasks: [] };
+  let serialized: string | undefined;
+
+  if (fs.existsSync(tasksJsonPath)) {
+    try {
+      serialized = await fsPromise.readFile(tasksJsonPath, 'utf8');
+      const parsed = JSON.parse(serialized);
+      config = {
+        version: typeof parsed.version === 'string' ? parsed.version : "2.0.0",
+        tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
+        ...parsed
+      };
+      if (!Array.isArray(config.tasks)) {
+        config.tasks = [];
+      }
+    } catch {
+      // Keep default config on parse errors or unreadable files
+    }
+  }
+
+  if (!config.inputs || !Array.isArray(config.inputs)) {
+    config.inputs = [];
+  }
+
+  if (!Array.isArray(config.tasks)) {
+    config.tasks = [];
+  }
+
+  return { config, tasksJsonPath, serialized };
+}
+
+// Make sure the runner pick input exists once; return true if we touched the config.
+function ensureRunnerInput(config: TasksJsonConfig): boolean {
+  let changed = false;
+
+  if (!config.inputs || !Array.isArray(config.inputs)) {
+    config.inputs = [];
+    changed = true;
+  }
+
+  const hasRunnerInput = config.inputs.some(input => input && input.id === runnerPickInput.id);
+  if (!hasRunnerInput) {
+    config.inputs.push({ ...runnerPickInput });
+    changed = true;
+  }
+
+  return changed;
+}
+
+// Add any missing Zephyr Workbench tasks without disturbing user-defined tasks.
+function ensureTasks(config: TasksJsonConfig, tasks: ZephyrTaskDefinition[]): boolean {
+  let changed = false;
+
+  for (const task of tasks) {
+    const exists = config.tasks.some(existing => existing.label === task.label && existing.type === task.type);
+    if (!exists) {
+      config.tasks.push({ ...task, args: [...task.args] });
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+// Persist only when content actually differs to avoid clobbering timestamps/formatting needlessly.
+async function writeTasksJson(tasksJsonPath: string, config: TasksJsonConfig, previousSerialized?: string): Promise<boolean> {
+  const nextSerialized = JSON.stringify(config, null, 2);
+  if (nextSerialized === previousSerialized) {
+    return false;
+  }
+
+  await fsPromise.writeFile(tasksJsonPath, nextSerialized, 'utf8');
+  return true;
+}
+
 export class ZephyrTaskProvider implements vscode.TaskProvider {
   static ZephyrType: string = 'zephyr-workbench';
 
@@ -359,89 +457,56 @@ export async function checkAndCreateTasksJson(workspaceFolder: vscode.WorkspaceF
 }
 
 export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
-  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
-  const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
-
-  if (!fs.existsSync(vscodeFolderPath)) {
-    fs.mkdirSync(vscodeFolderPath);
-  }
-
   const project = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-  const buildDir = path.join('${workspaceFolder}', 'build', '${config:zephyr-workbench.board}');
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
   const activeSdk = getZephyrSDK(project.sdkPath);
 
-  if (westWorkspace && activeSdk) {
-    const tasksJsonContent: {
-      version: string;
-      tasks: ZephyrTaskDefinition[];
-      inputs: {
-        id: string;
-        type: string;
-        description: string;
-        options: string[];
-        default: string;
-      }[];
-    } = {
-      version: "2.0.0",
-      tasks: [],
-      inputs: [
-        {
-          id: "west.runner",
-          type: "pickString",
-          description: "Override default runner. Runners can flash and/or debug Zephyr programs.",
-          options: [
-            "",
-            ...getStaticFlashRunnerNames().map(n => `--runner ${n}`)
-          ],
-          default: ""
-        }
-      ]
-    };
+  if (!westWorkspace || !activeSdk) {
+    return;
+  }
 
-    tasksJsonContent.tasks.push(
-      westBuildTask,
-      rebuildTask,
-      guiConfigTask,
-      menuconfigTask,
-      hardenConfigTask,
-      spdxInitTask,
-      flashTask,
-      ramReportTask,
-      romReportTask,
-      puncoverTask
-    );
+  const { config, tasksJsonPath, serialized } = await ensureTasksFile(workspaceFolder);
 
-    // Write tasks.json file
-    fs.writeFileSync(tasksJsonPath, JSON.stringify(tasksJsonContent, null, 2));
+  let changed = false;
+
+  if (!config.version) {
+    config.version = "2.0.0";
+    changed = true;
+  }
+
+  changed = ensureRunnerInput(config) || changed;
+  changed = ensureTasks(config, Array.from(tasksMap.values())) || changed;
+
+  if (changed) {
+    await writeTasksJson(tasksJsonPath, config, serialized);
   }
 }
 
 export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder, taskName: string): Promise<boolean> {
-  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
-  const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
+  const { config, tasksJsonPath, serialized } = await ensureTasksFile(workspaceFolder);
 
-  try {
-    const data = await fsPromise.readFile(tasksJsonPath, 'utf8');
-    const config: TaskConfig = JSON.parse(data);
-    const taskExists = config.tasks.some(task => task.label === taskName);
-    if (taskExists) {
-      return true;
-    } else {
-      const task = tasksMap.get(taskName);
-      if (task) {
-        config.tasks.push(task);
-        await fsPromise.writeFile(tasksJsonPath, JSON.stringify(config, null, 2), 'utf8');
-        // Sleep to let VS Code time to reload the tasks.json
-        await msleep(500);
-        return true;
-      }
-    }
+  const taskExists = config.tasks.some(task => task.label === taskName && task.type === ZephyrTaskProvider.ZephyrType);
+  if (taskExists) {
+    return true;
+  }
 
-  } catch (err) {
+  const task = tasksMap.get(taskName);
+  if (!task) {
     return false;
   }
-  return false;
+
+  if (!config.version) {
+    config.version = "2.0.0";
+  }
+  ensureRunnerInput(config);
+
+  config.tasks.push({ ...task, args: [...task.args] });
+  const wrote = await writeTasksJson(tasksJsonPath, config, serialized);
+  if (wrote) {
+    // Sleep to let VS Code time to reload the tasks.json
+    await msleep(500);
+  }
+  return true;
 }
 
 /**
@@ -452,34 +517,47 @@ export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder,
  * @returns 
  */
 export async function updateTasks(workspaceFolder: vscode.WorkspaceFolder, activeConfigName: string, activeIndex: number) {
-  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
-  const tasksJsonPath = path.join(vscodeFolderPath, 'tasks.json');
-  try {
-    const data = await fsPromise.readFile(tasksJsonPath, 'utf8');
-    const config: TaskConfig = JSON.parse(data);
-    const regex = /\${config:zephyr-workbench\.build\.configurations\.(\d+)\./;
-    const newTasks = config.tasks.map(task => {
-      if (task.type === "zephyr-workbench") {
-        // Change active configuration
-        task.config = activeConfigName;
-        // Update arguments value
-        task.args = task.args.map((arg: string) => {
-          return arg.replace(regex, (match, p1) => {
-            return match.replace(p1, activeIndex.toString());
-          });
-        });
-      }
-      return task;
-    });
-    config.tasks = newTasks;
-    await fsPromise.writeFile(tasksJsonPath, JSON.stringify(config, null, 2), 'utf8');
-    // Sleep to let VS Code time to reload the tasks.json
-    await msleep(500);
+  const { config, tasksJsonPath, serialized } = await ensureTasksFile(workspaceFolder);
+  const regex = /\${config:zephyr-workbench\.build\.configurations\.(\d+)\./;
 
-  } catch (err) {
-    return false;
+  let changed = false;
+  const updatedTasks = config.tasks.map(task => {
+    if (task.type !== ZephyrTaskProvider.ZephyrType) {
+      return task;
+    }
+
+    const updatedTask: any = { ...task };
+
+    if (updatedTask.config !== activeConfigName) {
+      updatedTask.config = activeConfigName;
+      changed = true;
+    }
+
+    if (Array.isArray(updatedTask.args)) {
+      updatedTask.args = updatedTask.args.map((arg: string) => {
+        const newArg = typeof arg === 'string'
+          ? arg.replace(regex, (match, p1) => match.replace(p1, activeIndex.toString()))
+          : arg;
+        if (newArg !== arg) {
+          changed = true;
+        }
+        return newArg;
+      });
+    }
+
+    return updatedTask;
+  });
+
+  if (changed) {
+    config.tasks = updatedTasks;
+    const wrote = await writeTasksJson(tasksJsonPath, config, serialized);
+    if (wrote) {
+      // Sleep to let VS Code time to reload the tasks.json
+      await msleep(500);
+    }
   }
-  return false;
+
+  return changed;
 }
 
 export async function createExtensionsJson(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
