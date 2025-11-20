@@ -48,6 +48,12 @@ export class DebugManagerPanel {
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'out')]
       });
 
+      // Set the icon for the panel in Debug Manager
+      panel.iconPath = {
+        light: vscode.Uri.joinPath(extensionUri,  'res','icons','light','bug.svg'),
+        dark: vscode.Uri.joinPath(extensionUri, 'res','icons', 'dark', 'bug.svg')
+      };
+      
       DebugManagerPanel.currentPanel = new DebugManagerPanel(panel, extensionUri);
       DebugManagerPanel.currentPanel.createContent(project, buildConfig);
     }
