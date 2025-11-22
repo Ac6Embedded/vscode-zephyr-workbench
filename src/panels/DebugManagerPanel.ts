@@ -68,7 +68,7 @@ export class DebugManagerPanel {
         light: vscode.Uri.joinPath(extensionUri,  'res','icons','light','bug.svg'),
         dark: vscode.Uri.joinPath(extensionUri, 'res','icons', 'dark', 'bug.svg')
       };
-
+      
       DebugManagerPanel.currentPanel = new DebugManagerPanel(panel, extensionUri);
       DebugManagerPanel.currentPanel.createContent(project, buildConfig);
     }
