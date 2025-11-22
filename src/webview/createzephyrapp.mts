@@ -115,6 +115,10 @@ function main() {
     if (boardDropdown) {
       boardDropdown.style.display = 'block';
     }
+    const samplesDropdown = document.getElementById('samplesDropdown') as HTMLElement;
+    if (samplesDropdown) {
+      samplesDropdown.style.display = 'none';
+    }
   });
 
   boardInput.addEventListener('focusout', function () {
@@ -126,6 +130,10 @@ function main() {
   boardInput.addEventListener('click', function (event) {
     if (boardDropdown) {
       boardDropdown.style.display = 'block';
+    }
+    const samplesDropdown = document.getElementById('samplesDropdown') as HTMLElement;
+    if (samplesDropdown) {
+      samplesDropdown.style.display = 'none';
     }
   });
 
@@ -155,6 +163,10 @@ function main() {
     if (samplesDropdown) {
       samplesDropdown.style.display = 'block';
     }
+    const boardDropdown = document.getElementById('boardDropdown') as HTMLElement;
+    if (boardDropdown) {
+      boardDropdown.style.display = 'none';
+    }
   });
 
   sampleInput.addEventListener('focusout', function () {
@@ -166,6 +178,10 @@ function main() {
   sampleInput.addEventListener('click', function (event) {
     if (samplesDropdown) {
       samplesDropdown.style.display = 'block';
+    }
+    const boardDropdown = document.getElementById('boardDropdown') as HTMLElement;
+    if (boardDropdown) {
+      boardDropdown.style.display = 'none';
     }
   });
 
@@ -268,12 +284,20 @@ async function westWorkspaceChanged(selectedWorkspaceUri: string) {
   const samplesDropdownSpinner = document.getElementById('samplesDropdownSpinner') as HTMLElement;
   const boardInput = document.getElementById('boardInput') as HTMLInputElement;
   const boardDropdown = document.getElementById('boardDropdown') as HTMLElement;
+  const sampleInput = document.getElementById('sampleInput') as HTMLInputElement;
+  const samplesDropdown = document.getElementById('samplesDropdown') as HTMLElement;
   
   if (boardInput) {
     boardInput.disabled = true;
   }
   if (boardDropdown) {
     boardDropdown.style.display = 'none';
+  }
+  if (sampleInput) {
+    sampleInput.disabled = true;
+  }
+  if (samplesDropdown) {
+    samplesDropdown.style.display = 'none';
   }
   boardDropdownSpinner.style.display = 'block';
   boardDropdownSpinner.style.visibility = 'visible';
@@ -319,10 +343,21 @@ async function updateSamplesDropdown(samplesHTML: string) {
   const samplesDropdown = document.getElementById('samplesDropdown') as HTMLElement;
   const sampleInput = document.getElementById('sampleInput') as HTMLInputElement;
   const samplesDropdownSpinner = document.getElementById('samplesDropdownSpinner') as HTMLElement;
+
+  sampleInput.disabled = true;
+  samplesDropdown.style.display = 'none';
+  samplesDropdownSpinner.style.display = 'block';
+  samplesDropdownSpinner.style.visibility = 'visible';
+
+  await new Promise(resolve => setTimeout(resolve, 300));
+
   samplesDropdown.innerHTML = samplesHTML;
   addDropdownItemEventListeners(samplesDropdown, sampleInput);
+
   samplesDropdownSpinner.style.display = 'none';
   samplesDropdownSpinner.style.visibility = 'hidden';
+  samplesDropdown.style.display = 'none';
+  sampleInput.disabled = false;
 }
 
 function setVSCodeMessageListener() {

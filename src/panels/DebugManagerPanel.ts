@@ -38,6 +38,21 @@ export class DebugManagerPanel {
   public static render(extensionUri: vscode.Uri, project?: ZephyrProject | undefined, buildConfig?: ZephyrProjectBuildConfiguration | undefined) {
     if (DebugManagerPanel.currentPanel) {
       DebugManagerPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
+      // Update content
+      DebugManagerPanel.currentPanel.project = project;
+      // Update build config
+      DebugManagerPanel.currentPanel.buildConfig = buildConfig;
+      // Update selection field
+      DebugManagerPanel.currentPanel._setDefaultSelection(DebugManagerPanel.currentPanel._panel.webview);
+      const projectPath = project ? project.workspaceFolder.uri.fsPath : '';
+      // Notify webview about project change
+      if (projectPath.length > 0) {
+        DebugManagerPanel.currentPanel._panel.webview.postMessage({ command: 'projectChanged', project: projectPath });
+        if (buildConfig?.name) {
+          // Notify webview about build config change
+          DebugManagerPanel.currentPanel._panel.webview.postMessage({ command: 'buildConfigChanged', project: projectPath, buildConfig: buildConfig.name });
+        }
+      }
     } else {
       const panel = vscode.window.createWebviewPanel("debug-manager-panel", "Debug Manager", vscode.ViewColumn.One, {
         // Enable javascript in the webview
@@ -245,10 +260,11 @@ export class DebugManagerPanel {
             </fieldset>
 
             <!-- Control buttons -->
-            <div class="grid-group-div">
+            <div class="grid-group-div debug-manager-buttons">
               <vscode-button id="resetButton" appearance="secondary" class="finish-input-button">Reset Default</vscode-button>
               <vscode-button id="applyButton" appearance="secondary" class="finish-input-button">Apply</vscode-button>
               <vscode-button id="debugButton" appearance="primary" class="finish-input-button">Debug</vscode-button>
+              <span id="resetSpinner" class="spinner" style="display:none; margin-left:80px;"></span>
             <div>
           </form>
           <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
@@ -270,6 +286,13 @@ export class DebugManagerPanel {
       async (message: any) => {
         const command = message.command;
         switch (command) {
+          case 'webviewReady': {
+            // Send initial selection and load applications
+            this._setDefaultSelection(webview);
+            webview.postMessage({ command: 'applicationsLoading' });
+            await loadApplications(webview);
+            break;
+          }
           case 'projectChanged': {
             const projectPath = message.project;
             const appProject = await getZephyrProject(projectPath);
@@ -341,8 +364,14 @@ export class DebugManagerPanel {
           case 'install': {
             vscode.commands.executeCommand('zephyr-workbench.install-runners');
           }
+          case 'refreshApplications': {
+            webview.postMessage({ command: 'applicationsLoading' });
+            await loadApplications(webview);
+            break;
+          }
           case 'reset': {
             await resetHandler(message);
+            break;
           }
           case 'apply': {
             await applyHandler(message);
@@ -485,16 +514,26 @@ export class DebugManagerPanel {
     }
 
     async function resetHandler(message: any) {
-      const projectPath = message.project;
-      const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
+      // Notify reset started
+      webview.postMessage({ command: 'resetStarted' });
 
-      const appProject = await getZephyrProject(projectPath);
-      const buildConfig = appProject.getBuildConfiguration(buildConfigName);
-      if(appProject) {
-        await resetConfiguration(appProject, buildConfig);
+      try{
+        // Perform reset default configuration
+        const projectPath = message.project;
+        const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
+
+        const appProject = await getZephyrProject(projectPath);
+        const buildConfig = appProject.getBuildConfiguration(buildConfigName);
+        if(appProject) {
+          await resetConfiguration(appProject, buildConfig);
+        }
+      }
+      finally{
+        // Notify reset finished
+        webview.postMessage({ command: 'resetFinished' });
       }
     }
-    
+
     async function resetConfiguration(project: ZephyrProject, buildConfig?: ZephyrProjectBuildConfiguration) {
       let config;
       if(buildConfig) {
@@ -517,7 +556,10 @@ export class DebugManagerPanel {
       }
     
       let newRunnersHTML = '';
-      let compatibleRunners = await config.getCompatibleRunners();
+      let compatibleRunners: string[] = [];
+      if(buildConfig && project) {
+        compatibleRunners = await buildConfig.getCompatibleRunners(project);
+      }
       for(let runner of getDebugRunners()) {
         if(compatibleRunners.includes(runner.name)) {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
