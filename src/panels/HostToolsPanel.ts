@@ -112,8 +112,8 @@ export class HostToolsPanel {
         }
       );
       panel.iconPath = {
-        light: vscode.Uri.joinPath(extensionUri, "res", "icons", "light", "desktop-download.svg"),
-        dark: vscode.Uri.joinPath(extensionUri, "res", "icons", "dark", "desktop-download.svg"),
+        light: vscode.Uri.joinPath(extensionUri, "res", "icons", "light", "symbol-property-light.svg"),
+        dark: vscode.Uri.joinPath(extensionUri, "res", "icons", "dark", "symbol-property-dark.svg"),
       };
 
       HostToolsPanel.currentPanel = new HostToolsPanel(panel, extensionUri);
