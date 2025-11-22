@@ -47,7 +47,12 @@ export class HostToolsPanel {
 
     this._panel.onDidChangeViewState(async () => {
       if (this._panel.visible) {
-        this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
+       try {
+          this._panel.webview.postMessage({ command: 'toggle-spinner', show: true });
+          await this.checkAndPublishToolVersions();
+        } finally {
+          this._panel.webview.postMessage({ command: 'toggle-spinner', show: false });
+        }
       }
     }, null, this._disposables);
 
