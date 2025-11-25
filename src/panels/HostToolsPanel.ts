@@ -9,6 +9,7 @@ import { execCommandWithEnv } from "../utils/execUtils";
 import { ZINSTALLER_MINIMUM_VERSION } from "../constants";
 import { formatYml } from "../utilities/formatYml";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
+import { checkPathSpace } from "../utils/utils";
 
 export class HostToolsPanel {
   public static currentPanel: HostToolsPanel | undefined;
@@ -502,6 +503,9 @@ export class HostToolsPanel {
               const prevKey: string = (message.prevKey ?? '').toString();
               const newKey: string = (message.newKey ?? '').toString().trim();
               const newValue: string = (message.newValue ?? '').toString();
+
+              checkPathSpace(newValue, true);
+
               if (!newKey) {
                 vscode.window.showErrorMessage('Please provide a variable name');
                 webview.postMessage({ command: 'env-var-updated', idx, success: false });
