@@ -42,14 +42,6 @@ export class ImportZephyrSDKPanel {
             id: targetId,
           });
         }
-        else{
-          this._panel.webview.postMessage({
-            command: "folderSelected",
-            folderUri: "",
-            id: targetId,
-            canceled: true,
-          });
-        }
       });
   }
 
@@ -314,7 +306,6 @@ export class ImportZephyrSDKPanel {
       <vscode-text-field id="workspacePath" size="50">Location:</vscode-text-field>
       <vscode-button id="browseLocationButton"
                      class="browse-input-button">Browse…</vscode-button>
-      <span class="browse-spinner-inline-sdk"><span id="browseLocationSpinner" class="spinner" style="display:none;"></span></span>
     </div>
   </form>
 

@@ -3,6 +3,8 @@ import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { execCommandWithEnv, getGitTags, getGitBranches } from "../utils/execUtils";
 import { listHals } from "../utils/manifestUtils";
+import * as path from "path";
+import * as fs from "fs";
 
 export class CreateWestWorkspacePanel {
   public static currentPanel: CreateWestWorkspacePanel | undefined;
@@ -64,6 +66,11 @@ export class CreateWestWorkspacePanel {
       }).then(uri => {
         if (uri && uri.length > 0) {
           const selectedFolderUri = uri[0].fsPath;
+          this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: selectedFolderUri, id: 'workspacePath'});
+          if (fs.existsSync(path.join(selectedFolderUri, 'deps')) || fs.existsSync(path.join(selectedFolderUri, 'manifest'))|| fs.existsSync(path.join(selectedFolderUri, '.west'))) {
+            vscode.window.showWarningMessage('The selected folder already contains a west workspace. Please select an empty folder.');
+            return;
+          }
           // Send the selected file URI back to the webview
           this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: selectedFolderUri, id: 'workspacePath'});
         }
@@ -280,6 +287,12 @@ export class CreateWestWorkspacePanel {
             workspacePath = message.workspacePath;
             manifestPath = message.manifestPath;
             templateHal = message.templateHal;
+
+            this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: workspacePath, id: 'workspacePath'});
+            if (fs.existsSync(path.join(workspacePath, 'deps')) || fs.existsSync(path.join(workspacePath, 'manifest')) || fs.existsSync(path.join(workspacePath, '.west'))) {
+              vscode.window.showWarningMessage('The selected folder already contains a west workspace. Please select an empty folder.');
+              return;
+            }
 
             if(srcType === 'remote') {
               vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath);

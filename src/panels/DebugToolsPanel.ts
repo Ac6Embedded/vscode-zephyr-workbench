@@ -11,6 +11,8 @@ import { formatYml } from "../utilities/formatYml";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
 
 export class DebugToolsPanel {
+
+  private _envWatcher: fs.FSWatcher | undefined;
 	
   public static currentPanel: DebugToolsPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
@@ -36,6 +38,11 @@ export class DebugToolsPanel {
         this.envData = yaml.parse(envYaml);
         // Preserve the parsed Document so we can update only specific nodes later
         this.envYamlDoc = yaml.parseDocument(envYaml);
+        // Add watcher to auto-reload when env.yml was changed externally (installed from extension or manually edited)
+        this._envWatcher = fs.watch(envYamlPath, async () => {
+          this.reloadEnvYaml();
+          this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
+        });
       }
     } catch (e) {
       // Ignore if not found or invalid; details will show fallback
@@ -122,6 +129,11 @@ export class DebugToolsPanel {
 
   public dispose() {
     DebugToolsPanel.currentPanel = undefined;
+
+    if (this._envWatcher) {
+      this._envWatcher.close();
+      this._envWatcher = undefined;
+    }
 
     this._panel.dispose();
 
@@ -745,6 +757,23 @@ export class DebugToolsPanel {
       return true;
     } catch {
       return false;
+    }
+  }
+  
+  private reloadEnvYaml(): void {
+    try {
+      const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+      if (!fs.existsSync(envYamlPath)) {
+        this.envData = undefined;
+        this.envYamlDoc = undefined;
+        return;
+      }
+      const envYaml = fs.readFileSync(envYamlPath, 'utf8');
+      this.envData = yaml.parse(envYaml);
+      this.envYamlDoc = yaml.parseDocument(envYaml);
+    } catch {
+      this.envData = undefined;
+      this.envYamlDoc = undefined;
     }
   }
 }

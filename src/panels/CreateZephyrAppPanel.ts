@@ -34,8 +34,8 @@ export class CreateZephyrAppPanel {
       });
 
       panel.iconPath = {
-        light: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'light', 'folder.svg'),
-        dark: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'dark', 'folder.svg')
+        light: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'light', 'application_icon_light.svg'),
+        dark: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'dark', 'application_icon_dark.svg')
       };
 
       CreateZephyrAppPanel.currentPanel = new CreateZephyrAppPanel(panel, extensionUri);

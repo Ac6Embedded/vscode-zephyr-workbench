@@ -45,8 +45,6 @@ window.addEventListener("load", () => {
   initVersionsDropdown();
   initIarSdkDropdown();
 
-  const initialSpinner = document.getElementById("browseLocationSpinner");
-  if (initialSpinner) { (initialSpinner as HTMLElement).style.display = "none"; }
 
   /* category / sub‑choice listeners */
   const sourceCat  = getEl<RadioGroup>("sourceCategory");
@@ -66,8 +64,6 @@ window.addEventListener("load", () => {
   /* browse + import */
   getEl<Button>("browseLocationButton")
     .addEventListener("click", () => {
-      const spinner = document.getElementById("browseLocationSpinner");
-      if (spinner) spinner.style.display = "inline-block";
       vscode.postMessage({ command: "openLocationDialog", id: "workspacePath" });
     });
 
@@ -93,8 +89,6 @@ function setVSCodeMessageListener(): void {
       case "workspacePath": {
         (getEl<TextField>("workspacePath") as unknown as { value: string }).value =
           event.data.folderUri;
-        const spinner = document.getElementById("browseLocationSpinner");
-        if (spinner) spinner.style.display = "none";
         break;
       }
       case "iarPath": {
