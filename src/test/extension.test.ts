@@ -48,7 +48,42 @@ ${debugServerCommand}
     return { wrapperPath, wrapperScript };
 }
 
+// Function to get the environment script filename based on the shell
+// from utils.ts and line 75
 
+export function getShell(): string {
+  if (process.platform === 'win32') {
+    return 'cmd.exe';
+  }
+  return 'bash';
+}
+
+function getEnvScriptFilename(getShell: () => string): string {
+  let scriptName: string = "";
+  switch (getShell()) {
+	case 'bash': {
+	  scriptName = 'env.sh';
+	  break;
+	}
+	case 'powershell.exe': {
+	  scriptName = 'env.ps1';
+	  break;
+	}
+	case 'pwsh.exe':{
+	  scriptName = 'env.ps1';
+	  break;
+	}
+	case 'cmd.exe': {
+	  scriptName = 'env.bat';
+	  break;
+	}
+	default: {
+	  scriptName = 'env.sh';
+	  break;
+	}
+  }
+  return scriptName;
+}
 
 describe('Extension Test Suite', () => {
     it('Sample test', () => {
@@ -85,5 +120,9 @@ describe('Extension Test Suite', () => {
         // Cleanup again
         fs.unlinkSync(wrapperPath);
         fs.rmdirSync(buildDir);
+    });
+	it('should return correct env script filename for pwsh', () => {
+        const scriptName = getEnvScriptFilename(() => 'pwsh.exe');
+        assert.strictEqual(scriptName, 'env.ps1');
     });
 });
