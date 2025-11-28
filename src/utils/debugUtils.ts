@@ -221,6 +221,9 @@ export function createWestWrapper(project: ZephyrProject, buildConfigName?: stri
     case 'powershell.exe':
       westCmd = 'west $args';
       break;
+    case 'pwsh.exe':
+      westCmd = 'west $args';
+      break;  
     default:
       westCmd = 'west "$@"';
       break;
@@ -257,6 +260,9 @@ export function createWestWrapper(project: ZephyrProject, buildConfigName?: stri
       case 'powershell.exe':
         envVarsCommands += `$env:${key} = "${value}"\n`;
         break;
+      case 'pwsh.exe':
+        envVarsCommands += `$env:${key} = "${value}"\n`;
+        break; 
       default:
         envVarsCommands += `export ${key}="${value}"\n`;
         break;
@@ -304,6 +310,15 @@ ${debugServerCommand}
 # Source environment and execute West
 ${debugServerCommand}
 `;
+      wrapperPath = path.join(buildDir, 'west_wrapper.ps1');
+      fs.writeFileSync(wrapperPath, wrapperScript);
+      break;
+    case 'pwsh.exe':
+      wrapperScript = `${envVarsCommands}
+
+# Source environment and execute West
+${debugServerCommand}
+`;  
       wrapperPath = path.join(buildDir, 'west_wrapper.ps1');
       fs.writeFileSync(wrapperPath, wrapperScript);
       break;
@@ -375,6 +390,9 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
       wrapperFile = 'west_wrapper.bat';
       break;
     case 'powershell.exe':
+      wrapperFile = 'west_wrapper.ps1';
+      break;
+    case 'pwsh.exe':
       wrapperFile = 'west_wrapper.ps1';
       break;
     default:
