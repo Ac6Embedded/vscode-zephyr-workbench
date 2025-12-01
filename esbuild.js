@@ -114,6 +114,14 @@ const webviewNewModuleConfig = {
   outfile: "./out/newmodule.js",
 };
 
+const webviewEclairManagerConfig = {
+  ...baseConfig,
+  target: "es2020",
+  format: "esm",
+  entryPoints: ["./src/webview/eclairmanager.mts"],
+  outfile: "./out/eclairmanager.js",
+};
+
 (async () => {
   const args = process.argv.slice(2);
   try {
@@ -133,6 +141,7 @@ const webviewNewModuleConfig = {
         ...webviewDebugManagerConfig,
         ...webviewHostToolsConfig,
         ...webviewSdkManagerConfig,
+        ...webviewEclairManagerConfig,
         ...watchConfig,
       });
       console.log("[watch] build finished");
@@ -147,6 +156,7 @@ const webviewNewModuleConfig = {
       await build(webviewDebugManagerConfig);
       await build(webviewHostToolsConfig);
       await build(webviewSdkManagerConfig);
+      await build(webviewEclairManagerConfig);
       console.log("build complete");
     }
   } catch (err) {

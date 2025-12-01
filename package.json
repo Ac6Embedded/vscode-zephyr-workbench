@@ -264,6 +264,12 @@
         "category": "Zephyr Workbench"
       },
       {
+        "command": "zephyr-workbench.eclair-manager.open",
+        "title": "Eclair Manager",
+        "icon": "$(beaker)",
+        "category": "Zephyr Workbench"
+      },
+      {
         "command": "zephyr-workbench-app-explorer.set-default-runner",
         "title": "Set Default Runner",
         "icon": "$(run)",
@@ -840,6 +846,16 @@
         {
           "command": "zephyr-workbench.explorer.terminal",
           "group": "zephyr@999"
+        },
+        {
+          "command": "zephyr-workbench.eclair-manager.open",
+          "group": "zephyr@995"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "zephyr-workbench.eclair-manager.open",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -1122,6 +1138,16 @@
           "command": "zephyr-workbench-sdk-explorer.remove-iar",
           "group": "inline@0",
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == iar-toolchain"
+        },
+        {
+          "command": "zephyr-workbench.eclair-manager.open",
+          "group": "0@view/item/context@13",
+          "when": "view == zephyr-workbench-app-explorer && (viewItem == zephyr-application || viewItem =~ /^zephyr-build-config/)"
+        },
+        {
+          "command": "zephyr-workbench.eclair-manager.open",
+          "group": "inline@10",
+          "when": "view == zephyr-workbench-app-explorer && (viewItem == zephyr-application || viewItem =~ /^zephyr-build-config/)"
         }
       ],
       "zephyr-workbench-app-explorer.clean": [

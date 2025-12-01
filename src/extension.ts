@@ -26,6 +26,7 @@ import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
 import { HostToolsPanel } from './panels/HostToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
+import { EclairManagerPanel } from './panels/EclairManagerPanel';
 import { changeToolchainQuickStep } from "./quicksteps/changeToolchainQuickStep";
 import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
@@ -176,6 +177,12 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.env.openExternal(url);
 		}
 	});
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench.eclair-manager.open', async () => {
+			EclairManagerPanel.render(context.extensionUri);
+		})
+	);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-west-workspace.open-wizard', async () => {
