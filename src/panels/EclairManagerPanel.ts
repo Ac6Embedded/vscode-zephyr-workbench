@@ -18,6 +18,7 @@ export class EclairManagerPanel {
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _disposables: vscode.Disposable[] = [];
+  private _didInitialProbe = false;
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -60,7 +61,27 @@ export class EclairManagerPanel {
   private async createContent() {
     this._panel.webview.html = this.getHtml(this._panel.webview);
     this.setMessageListener(this._panel.webview);
-    setTimeout(() => this.runEclairProbe(), 100);
+
+    this._panel.onDidChangeViewState(async () => {
+      if (this._panel.visible) {
+        try {
+          this._panel.webview.postMessage({ command: "toggle-spinner", show: true });
+          await this.runEclairProbe();
+        } finally {
+          this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
+        }
+      }
+    }, null, this._disposables);
+
+    if (!this._didInitialProbe) {
+      this._didInitialProbe = true;
+      try {
+        this._panel.webview.postMessage({ command: "toggle-spinner", show: true });
+        await this.runEclairProbe();
+      } finally {
+        this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
+      }
+    }
   }
 
   private setMessageListener(webview: vscode.Webview) {
@@ -69,6 +90,15 @@ export class EclairManagerPanel {
         case "open-license":
           vscode.env.openExternal(vscode.Uri.parse("https://docs.zephyrproject.org/latest/develop/sca/eclair.html"));
           break;
+        case "refresh-status": {
+          try {
+            this._panel.webview.postMessage({ command: "toggle-spinner", show: true });
+            await this.runEclairProbe();
+          } finally {
+            this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
+          }
+          break;
+        }
         case "browse-install-path": {
           const pick = await vscode.window.showOpenDialog({
             canSelectFiles: false,
@@ -188,27 +218,40 @@ h1 { margin-top:0; }
 .inline { display:flex; gap:6px; align-items:center; }
 .report-group, .ruleset-group { columns:2; }
 .cmd-box { background:#1e1e1e; color:#dcdcdc; padding:8px; font-family:monospace; white-space:pre-wrap; border:1px solid #444; }
-.status-installed { color:#4caf50; }
-.status-missing { color:#d9534f; }
+.warning-icon { color: #ffcc00; }
+.success-icon { color: #2ecc71; }
+.summary { display:flex; flex-direction:column; gap:8px; padding:12px 14px; margin:6px 0 12px 0; border:1px solid var(--vscode-tab-border); border-radius: calc(var(--corner-radius-round) * 1px); background: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent); }
+.summary-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.summary-title { font-size: calc(var(--type-ramp-base-font-size) + 1px); }
+.actions-title { margin-right: 8px; align-self: center; }
+.hidden { display: none !important; }
+/* Align browse buttons with text fields consistently */
+.grid-group-div { display: flex; gap: 6px; align-items: center; }
+.grid-group-div vscode-button { margin: 0; }
+.grid-group-div vscode-text-field { flex: 1 1 auto; }
 </style>
 </head>
 <body>
 <h1>Eclair Manager</h1>
 
-<div class="section">
-  <h2>Status</h2>
-  <div id="status-line">Checking...</div>
-  <div class="inline">
+<div class="summary">
+  <div class="summary-title"><strong>Eclair</strong></div>
+  <div>
+    <strong>Installed:</strong> <span id="eclair-version">Unknown</span>
+    &nbsp;|&nbsp;
+    <strong>Status:</strong> <span id="eclair-status-icon" class="codicon"></span> <span id="eclair-status-text">Checking</span>
+    <span id="em-spinner" class="codicon codicon-loading codicon-modifier-spin hidden" title="Detecting Eclair"></span>
+  </div>
+  <div class="summary-actions">
+    <div class="actions-title"><strong>Actions</strong></div>
+    <vscode-button id="btn-refresh-status" appearance="primary">Refresh status</vscode-button>
+    <vscode-button id="check-license" appearance="primary">Check License</vscode-button>
+    <vscode-button id="manage-license" appearance="primary">Manage License</vscode-button>
+  </div>
+  <div class="grid-group-div">
     <vscode-text-field id="install-path" placeholder="Path to installation (optional)" size="50">PATH:</vscode-text-field>
     <vscode-button id="browse-install" appearance="secondary"><span class="codicon codicon-folder"></span></vscode-button>
-    <vscode-button id="probe-btn" appearance="primary">Detect</vscode-button>
   </div>
-</div>
-
-<div class="section">
-  <h2>License</h2>
-  <vscode-button id="check-license" appearance="primary">Check License</vscode-button>
-  <vscode-button id="manage-license" appearance="secondary">Manage License</vscode-button>
 </div>
 
 <div class="section">
@@ -252,7 +295,7 @@ h1 { margin-top:0; }
 
 <div class="section">
   <h2>Additional Configuration (.ecl)</h2>
-  <div class="inline">
+  <div class="grid-group-div">
     <vscode-text-field id="extra-config" placeholder="path/to/config.ecl" size="50">CONFIG:</vscode-text-field>
     <vscode-button id="browse-config" appearance="secondary"><span class="codicon codicon-folder"></span></vscode-button>
   </div>
@@ -268,6 +311,44 @@ h1 { margin-top:0; }
 </div>
 
 <script nonce="${nonce}" type="module" src="${scriptUri}"></script>
+<script nonce="${nonce}">
+  const webviewApi = acquireVsCodeApi();
+  window.addEventListener('load', () => {
+    // Top actions
+    const btnRefresh = document.getElementById('btn-refresh-status');
+    if (btnRefresh) btnRefresh.addEventListener('click', () => webviewApi.postMessage({ command: 'refresh-status' }));
+    const browseInstall = document.getElementById('browse-install');
+    if (browseInstall) browseInstall.addEventListener('click', () => webviewApi.postMessage({ command: 'browse-install-path' }));
+
+    window.addEventListener('message', (event) => {
+      const cmd = event.data.command;
+      if (cmd === 'toggle-spinner') {
+        const show = !!event.data.show;
+        const sp = document.getElementById('em-spinner');
+        if (sp) { if (show) sp.classList.remove('hidden'); else sp.classList.add('hidden'); }
+      }
+      if (cmd === 'eclair-status') {
+        const installed = !!event.data.installed;
+        const ver = event.data.version || '';
+        const verSpan = document.getElementById('eclair-version');
+        if (verSpan) verSpan.textContent = ver || 'Unknown';
+        const icon = document.getElementById('eclair-status-icon');
+        const text = document.getElementById('eclair-status-text');
+        if (icon && text) {
+          icon.classList.add('codicon');
+          icon.classList.remove('codicon-warning', 'warning-icon', 'codicon-check', 'success-icon');
+          if (installed) {
+            icon.classList.add('codicon-check', 'success-icon');
+            text.textContent = 'Installed';
+          } else {
+            icon.classList.add('codicon-warning', 'warning-icon');
+            text.textContent = 'Not installed';
+          }
+        }
+      }
+    });
+  });
+</script>
 </body>
 </html>`;
   }
