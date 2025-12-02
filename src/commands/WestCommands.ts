@@ -10,7 +10,6 @@ import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildCon
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, execShellCommandWithEnv, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
 import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from '../utils/utils'; 
-// Avoid direct coupling to the provider; use VS Code command instead
 
 function quote(p: string): string {
   return /\s/.test(p) ? `"${p}"` : p;
