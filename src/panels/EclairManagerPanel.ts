@@ -41,8 +41,8 @@ export class EclairManagerPanel {
       }
     );
     panel.iconPath = {
-      light: vscode.Uri.joinPath(extensionUri, "res", "icons", "light", "symbol-property-light.svg"),
-      dark: vscode.Uri.joinPath(extensionUri, "res", "icons", "dark", "symbol-property-dark.svg"),
+      light: vscode.Uri.joinPath(extensionUri, "res", "icons", "light", "eclair.svg"),
+      dark: vscode.Uri.joinPath(extensionUri, "res", "icons", "dark", "eclair.svg"),
     };
 
     EclairManagerPanel.currentPanel = new EclairManagerPanel(panel, extensionUri);
