@@ -181,20 +181,33 @@ export class EclairManagerPanel {
   }
 
   private async runEclairProbe() {
-    try {
-      const proc = await execCommandWithEnv("eclair --version");
-      let out = "";
-      await new Promise<void>((resolve) => {
-        proc.stdout?.on("data", c => out += c.toString());
-        proc.stderr?.on("data", c => out += c.toString());
-        proc.on("close", () => resolve());
-        proc.on("error", () => resolve());
-      });
-      const m = out.match(/ECLAIR\s+version\s+([0-9.]+)/i);
-      this._panel.webview.postMessage({ command: "eclair-status", installed: !!m, version: m ? m[1] : "" });
-    } catch {
-      this._panel.webview.postMessage({ command: "eclair-status", installed: false, version: "" });
-    }
+    const tryProbe = async (cmd: string): Promise<string | undefined> => {
+      try {
+        const proc = await execCommandWithEnv(cmd);
+        let out = "";
+        await new Promise<void>((resolve) => {
+          proc.stdout?.on("data", c => out += c.toString());
+          proc.stderr?.on("data", c => out += c.toString());
+          proc.on("close", () => resolve());
+          proc.on("error", () => resolve());
+        });
+        // Accept formats like:
+        //  - "ECLAIR version 3.14.0"
+        //  - "3.14.0"
+        //  - "ECLAIR 3.14.0"
+        const m1 = out.match(/ECLAIR\s+version\s+([0-9]+(?:\.[0-9]+)*)/i);
+        const m2 = out.match(/\b([0-9]+(?:\.[0-9]+)*)\b/);
+        const ver = (m1?.[1] || m2?.[1] || "").trim();
+        if (ver) { return ver; }
+        return undefined;
+      } catch {
+        return undefined;
+      }
+    };
+
+    const version = await tryProbe("eclair -version")
+
+    this._panel.webview.postMessage({ command: "eclair-status", installed: !!version, version: version || "" });
   }
 
   private getHtml(webview: vscode.Webview): string {
@@ -253,7 +266,7 @@ h1 { margin-top:0; }
 <div class="summary">
   <div class="summary-title"><strong>Eclair</strong></div>
   <div>
-    <strong>Installed:</strong> <span id="eclair-version">Unknown</span>
+    <strong>Version:</strong> <span id="eclair-version">Checking</span>
     &nbsp;|&nbsp;
     <strong>Status:</strong> <span id="eclair-status-icon" class="codicon"></span> <span id="eclair-status-text">Checking</span>
     <span id="em-spinner" class="codicon codicon-loading codicon-modifier-spin hidden" title="Detecting Eclair"></span>
