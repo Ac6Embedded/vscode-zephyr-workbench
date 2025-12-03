@@ -88,7 +88,7 @@ export class EclairManagerPanel {
     webview.onDidReceiveMessage(async (m: any) => {
       switch (m.command) {
         case "check-license":
-          vscode.env.openExternal(vscode.Uri.parse("https://docs.zephyrproject.org/latest/develop/sca/eclair.html"));
+          vscode.env.openExternal(vscode.Uri.parse("https://www.bugseng.com/eclair-request-trial/"));
           break;
         case "refresh-status": {
           try {
