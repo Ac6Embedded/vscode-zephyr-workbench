@@ -87,7 +87,7 @@ export class EclairManagerPanel {
   private setMessageListener(webview: vscode.Webview) {
     webview.onDidReceiveMessage(async (m: any) => {
       switch (m.command) {
-        case "open-license":
+        case "check-license":
           vscode.env.openExternal(vscode.Uri.parse("https://docs.zephyrproject.org/latest/develop/sca/eclair.html"));
           break;
         case "refresh-status": {
@@ -262,7 +262,6 @@ h1 { margin-top:0; }
     <div class="actions-title"><strong>Actions</strong></div>
     <vscode-button id="btn-refresh-status" appearance="primary">Refresh status</vscode-button>
     <vscode-button id="check-license" appearance="primary">Check License</vscode-button>
-    <vscode-button id="manage-license" appearance="primary">Manage License</vscode-button>
   </div>
   <div class="grid-group-div">
     <vscode-text-field id="install-path" placeholder="Path to installation (optional)" size="50">PATH:</vscode-text-field>
@@ -331,6 +330,8 @@ h1 { margin-top:0; }
     if (btnRefresh) btnRefresh.addEventListener('click', () => webviewApi.postMessage({ command: 'refresh-status' }));
     const browseInstall = document.getElementById('browse-install');
     if (browseInstall) browseInstall.addEventListener('click', () => webviewApi.postMessage({ command: 'browse-install-path' }));
+    const checkLicense = document.getElementById('check-license');
+    if (checkLicense) checkLicense.addEventListener('click', () => webviewApi.postMessage({ command: 'check-license' }));
 
     window.addEventListener('message', (event) => {
       const cmd = event.data.command;

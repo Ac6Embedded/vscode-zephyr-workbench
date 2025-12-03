@@ -94,10 +94,7 @@ function main() {
     webviewApi.postMessage({ command: "run-command", data: collectConfig() });
   });
   document.getElementById("check-license")?.addEventListener("click", () => {
-    webviewApi.postMessage({ command: "open-license" });
-  });
-  document.getElementById("manage-license")?.addEventListener("click", () => {
-    webviewApi.postMessage({ command: "open-license" });
+    webviewApi.postMessage({ command: "check-license" });
   });
   document.getElementById("probe-btn")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "probe-eclair" });
