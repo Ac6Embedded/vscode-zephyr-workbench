@@ -216,7 +216,23 @@ export class EclairManagerPanel {
 h1 { margin-top:0; }
 .grid { display:grid; gap:8px; }
 .inline { display:flex; gap:6px; align-items:center; }
-.report-group, .ruleset-group { columns:2; }
+.report-group { 
+  display: grid; 
+  grid-template-columns: 1fr 1fr; 
+  gap: 8px 16px; 
+  align-items: start; 
+  justify-items: start; 
+}
+.ruleset-group { 
+  display: grid; 
+  grid-template-columns: 1fr; 
+  gap: 8px; 
+  align-items: start; 
+  justify-items: start; 
+}
+.report-item, .ruleset-item { display: block; }
+.report-item vscode-checkbox,
+.ruleset-item vscode-radio { display: block; max-width: 100%; }
 .cmd-box { background:#1e1e1e; color:#dcdcdc; padding:8px; font-family:monospace; white-space:pre-wrap; border:1px solid #444; }
 .warning-icon { color: #ffcc00; }
 .success-icon { color: #2ecc71; }
@@ -258,18 +274,14 @@ h1 { margin-top:0; }
   <h2>Rulesets</h2>
   <div class="ruleset-group">
     ${[
-      "ECLAIR_RULESET_FIRST_ANALYSIS",
-      "ECLAIR_RULESET_STU",
-      "ECLAIR_RULESET_STU_HEAVY",
-      "ECLAIR_RULESET_WP",
-      "ECLAIR_RULESET_STD_LIB",
-      "ECLAIR_RULESET_ZEPHYR_GUIDELINES",
-      "USER"
-    ].map(r => `<vscode-radio id="rs-${r}" name="ruleset" value="${r}" ${r==="ECLAIR_RULESET_FIRST_ANALYSIS"?"checked":""}>${r==="USER"?"user defined":r}</vscode-radio>`).join("")}
-  </div>
-  <div id="user-ruleset-fields" class="grid" style="margin-top:8px; display:none;">
-    <vscode-text-field id="user-ruleset-name" placeholder="Nome do ruleset">USER NAME:</vscode-text-field>
-    <vscode-text-field id="user-ruleset-path" placeholder="Arquivo ruleset / diretório">USER PATH:</vscode-text-field>
+        "ECLAIR_RULESET_FIRST_ANALYSIS",
+        "ECLAIR_RULESET_STU",
+        "ECLAIR_RULESET_STU_HEAVY",
+        "ECLAIR_RULESET_WP",
+        "ECLAIR_RULESET_STD_LIB",
+        "ECLAIR_RULESET_ZEPHYR_GUIDELINES",
+        "USER"
+      ].map(r => `<div class="ruleset-item"><vscode-radio id="rs-${r}" name="ruleset" value="${r}" ${r === "ECLAIR_RULESET_FIRST_ANALYSIS" ? "checked" : ""}>${r === "USER" ? "user defined" : r}</vscode-radio></div>`).join("")}
   </div>
 </div>
 
@@ -277,19 +289,19 @@ h1 { margin-top:0; }
   <h2>Reports</h2>
   <div class="report-group">
     ${[
-      "ALL",
-      "ECLAIR_METRICS_TAB",
-      "ECLAIR_REPORTS_TAB",
-      "ECLAIR_REPORTS_SARIF",
-      "ECLAIR_SUMMARY_TXT",
-      "ECLAIR_SUMMARY_DOC",
-      "ECLAIR_SUMMARY_ODT",
-      "ECLAIR_SUMMARY_HTML",
-      "ECLAIR_FULL_TXT",
-      "ECLAIR_FULL_DOC",
-      "ECLAIR_FULL_ODT",
-      "ECLAIR_FULL_HTML"
-    ].map(r => `<vscode-checkbox class="report-chk" value="${r}" ${r==="ALL"?"checked":""}>${r}</vscode-checkbox>`).join("")}
+        "ALL",
+        "ECLAIR_METRICS_TAB",
+        "ECLAIR_REPORTS_TAB",
+        "ECLAIR_REPORTS_SARIF",
+        "ECLAIR_SUMMARY_TXT",
+        "ECLAIR_SUMMARY_DOC",
+        "ECLAIR_SUMMARY_ODT",
+        "ECLAIR_SUMMARY_HTML",
+        "ECLAIR_FULL_TXT",
+        "ECLAIR_FULL_DOC",
+        "ECLAIR_FULL_ODT",
+        "ECLAIR_FULL_HTML"
+      ].map(r => `<div class="report-item"><vscode-checkbox class="report-chk" value="${r}" ${r === "ALL" ? "checked" : ""}>${r}</vscode-checkbox></div>`).join("")}
   </div>
 </div>
 
