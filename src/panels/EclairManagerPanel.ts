@@ -272,7 +272,7 @@ h1 { margin-top:0; }
 
 <div class="section">
   <h2>Rulesets</h2>
-  <div class="ruleset-group">
+  <vscode-radio-group id="ruleset-group" orientation="vertical" value="ECLAIR_RULESET_FIRST_ANALYSIS" class="ruleset-group">
     ${[
         "ECLAIR_RULESET_FIRST_ANALYSIS",
         "ECLAIR_RULESET_STU",
@@ -281,8 +281,8 @@ h1 { margin-top:0; }
         "ECLAIR_RULESET_STD_LIB",
         "ECLAIR_RULESET_ZEPHYR_GUIDELINES",
         "USER"
-      ].map(r => `<div class="ruleset-item"><vscode-radio id="rs-${r}" name="ruleset" value="${r}" ${r === "ECLAIR_RULESET_FIRST_ANALYSIS" ? "checked" : ""}>${r === "USER" ? "user defined" : r}</vscode-radio></div>`).join("")}
-  </div>
+      ].map(r => `<vscode-radio id="rs-${r}" value="${r}">${r === "USER" ? "user defined" : r}</vscode-radio>`).join("")}
+  </vscode-radio-group>
 </div>
 
 <div class="section">
