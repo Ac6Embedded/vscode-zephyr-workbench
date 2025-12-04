@@ -4,6 +4,32 @@ provideVSCodeDesignSystem().register(allComponents);
 
 const webviewApi = acquireVsCodeApi();
 
+function setEditMode(inputEl: HTMLInputElement | null, browseBtn: HTMLElement | null, editBtn: HTMLElement | null, editing: boolean) {
+  if (!inputEl || !browseBtn || !editBtn) return;
+  (inputEl as any).disabled = !editing;
+  (browseBtn as any).disabled = !editing;
+  (editBtn as any).textContent = editing ? 'Done' : 'Edit';
+  if (editing) inputEl.focus();
+}
+
+function toggleInstallEdit() {
+  const input = document.getElementById('install-path') as HTMLInputElement | null;
+  const browse = document.getElementById('browse-install') as HTMLElement | null;
+  const editBtn = document.getElementById('edit-install') as HTMLElement | null;
+  if (!input || !browse || !editBtn) return;
+  const isEdit = (editBtn.textContent || '') === 'Edit';
+  setEditMode(input, browse, editBtn, isEdit);
+}
+
+function toggleConfigEdit() {
+  const input = document.getElementById('extra-config') as HTMLInputElement | null;
+  const browse = document.getElementById('browse-config') as HTMLElement | null;
+  const editBtn = document.getElementById('edit-config') as HTMLElement | null;
+  if (!input || !browse || !editBtn) return;
+  const isEdit = (editBtn.textContent || '') === 'Edit';
+  setEditMode(input, browse, editBtn, isEdit);
+}
+
 function collectConfig() {
   const installPath = (document.getElementById("install-path") as any)?.value?.trim?.() || "";
   const extraConfig = (document.getElementById("extra-config") as any)?.value?.trim?.() || "";
@@ -91,11 +117,17 @@ function setVSCodeMessageListener() {
       case "set-install-path": {
         const f = document.getElementById("install-path") as any;
         if (f) f.value = msg.path || "";
+        const browse = document.getElementById('browse-install') as HTMLElement | null;
+        const editBtn = document.getElementById('edit-install') as HTMLElement | null;
+        setEditMode(f as HTMLInputElement, browse, editBtn, false);
         break;
       }
       case "set-extra-config": {
         const f = document.getElementById("extra-config") as any;
         if (f) f.value = msg.path || "";
+        const browse = document.getElementById('browse-config') as HTMLElement | null;
+        const editBtn = document.getElementById('edit-config') as HTMLElement | null;
+        setEditMode(f as HTMLInputElement, browse, editBtn, false);
         break;
       }
     }
@@ -127,11 +159,26 @@ function main() {
   document.getElementById("probe-btn")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "probe-eclair" });
   });
-  document.getElementById("browse-install")?.addEventListener("click", () => {
-    webviewApi.postMessage({ command: "browse-install-path" });
+  document.getElementById('edit-install')?.addEventListener('click', () => toggleInstallEdit());
+  document.getElementById('browse-install')?.addEventListener('click', () => {
+    webviewApi.postMessage({ command: 'browse-install-path' });
   });
-  document.getElementById("browse-config")?.addEventListener("click", () => {
-    webviewApi.postMessage({ command: "browse-extra-config" });
+  document.getElementById('edit-config')?.addEventListener('click', () => toggleConfigEdit());
+  document.getElementById('browse-config')?.addEventListener('click', () => {
+    webviewApi.postMessage({ command: 'browse-extra-config' });
+  });
+
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key !== 'Enter') return;
+    const active = document.activeElement as HTMLElement | null;
+    if (!active) return;
+    if (active.id === 'install-path') {
+      const btn = document.getElementById('edit-install') as HTMLElement | null;
+      if (btn && btn.textContent === 'Done') { e.preventDefault(); (btn as any).click(); }
+    } else if (active.id === 'extra-config') {
+      const btn = document.getElementById('edit-config') as HTMLElement | null;
+      if (btn && btn.textContent === 'Done') { e.preventDefault(); (btn as any).click(); }
+    }
   });
 
   updateUserRulesetVisibility();

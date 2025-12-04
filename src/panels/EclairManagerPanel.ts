@@ -268,8 +268,9 @@ export class EclairManagerPanel {
     <vscode-button id="check-license" appearance="primary">Check License</vscode-button>
   </div>
   <div class="grid-group-div">
-    <vscode-text-field id="install-path" placeholder="Path to installation (optional)" size="50">PATH:</vscode-text-field>
-    <vscode-button id="browse-install" appearance="secondary"><span class="codicon codicon-folder"></span></vscode-button>
+    <vscode-text-field id="install-path" placeholder="Path to installation (optional)" size="50" disabled>Path:</vscode-text-field>
+    <vscode-button id="browse-install" class="browse-input-button" appearance="secondary" disabled><span class="codicon codicon-folder"></span></vscode-button>
+    <vscode-button id="edit-install" class="save-path-button" appearance="primary">Edit</vscode-button>
   </div>
   
 </div>
@@ -316,8 +317,9 @@ export class EclairManagerPanel {
 <div class="section">
   <h2>Additional Configuration (.ecl)</h2>
   <div class="grid-group-div">
-    <vscode-text-field id="extra-config" placeholder="path/to/config.ecl" size="50">CONFIG:</vscode-text-field>
-    <vscode-button id="browse-config" appearance="secondary"><span class="codicon codicon-folder"></span></vscode-button>
+    <vscode-text-field id="extra-config" placeholder="path/to/config.ecl" size="50" disabled>CONFIG:</vscode-text-field>
+    <vscode-button id="browse-config" class="browse-extra-input-button" appearance="secondary" disabled><span class="codicon codicon-folder"></span></vscode-button>
+    <vscode-button id="edit-config" class="save-config-button" appearance="primary">Edit</vscode-button>
   </div>
 </div>
 
@@ -331,23 +333,6 @@ export class EclairManagerPanel {
 </div>
 
 <script nonce="${nonce}" type="module" src="${scriptUri}"></script>
-<script nonce="${nonce}">
-  window.addEventListener('message', (event) => {
-    const m = event.data;
-    if (m && m.command === 'set-path-status') {
-      const el = document.getElementById('install-path-status');
-      if (el) {
-        el.textContent = m.text || '';
-      }
-    }
-    if (m && m.command === 'set-install-path-placeholder') {
-      const tf = document.getElementById('install-path');
-      if (tf) {
-        tf.setAttribute('placeholder', m.text || '');
-      }
-    }
-  });
-</script>
 </body>
 </html>`;
   }
