@@ -91,11 +91,10 @@ function setVSCodeMessageListener() {
       }
       case "eclair-status": {
         const installed = !!msg.installed;
-        const ver = String(msg.version || "");
         const verSpan = document.getElementById('eclair-version');
-        if (verSpan) (verSpan as HTMLElement).textContent = ver || 'Unknown';
         const icon = document.getElementById('eclair-status-icon');
         const text = document.getElementById('eclair-status-text');
+        if (verSpan) (verSpan as HTMLElement).textContent = installed ? (String(msg.version || '').trim() || 'Unknown') : 'Unknown';
         if (icon && text) {
           icon.classList.add('codicon');
           icon.classList.remove('codicon-warning', 'warning-icon', 'codicon-check', 'success-icon');
@@ -116,7 +115,10 @@ function setVSCodeMessageListener() {
       }
       case "set-install-path": {
         const f = document.getElementById("install-path") as any;
-        if (f) f.value = msg.path || "";
+        if (f) {
+          const p = (msg.path ?? '').toString().trim();
+          f.value = p.length > 0 ? p : 'Not installed';
+        }
         const browse = document.getElementById('browse-install') as HTMLElement | null;
         const editBtn = document.getElementById('edit-install') as HTMLElement | null;
         setEditMode(f as HTMLInputElement, browse, editBtn, false);
@@ -128,6 +130,22 @@ function setVSCodeMessageListener() {
         const browse = document.getElementById('browse-config') as HTMLElement | null;
         const editBtn = document.getElementById('edit-config') as HTMLElement | null;
         setEditMode(f as HTMLInputElement, browse, editBtn, false);
+        break;
+      }
+      case "set-path-status": {
+        const f = document.getElementById("install-path") as any;
+        if (f) {
+          const t = (msg.text ?? '').toString();
+          f.value = t;
+        }
+        break;
+      }
+      case "set-install-path-placeholder": {
+        const f = document.getElementById("install-path") as any;
+        if (f) {
+          const t = (msg.text ?? '').toString();
+          f.placeholder = t;
+        }
         break;
       }
     }
