@@ -182,7 +182,8 @@ export class EclairManagerPanel {
 
   private async runEclair() {
     this._panel.webview.postMessage({ command: "toggle-spinner", show: true });
-    this._panel.webview.postMessage({ command: "set-install-path", path: "checking" });
+    this._panel.webview.postMessage({ command: "set-path-status", text: "Checking..." });
+    this._panel.webview.postMessage({ command: "set-install-path-placeholder", text: "Checking..." });
 
     let exePath: string | undefined;
     try {
@@ -223,9 +224,13 @@ export class EclairManagerPanel {
     this._panel.webview.postMessage({ command: 'eclair-status', installed: !!version, version: version || '' });
     if (exePath) {
       this._panel.webview.postMessage({ command: 'set-install-path', path: exePath });
+      this._panel.webview.postMessage({ command: 'set-path-status', text: exePath });
+      this._panel.webview.postMessage({ command: 'set-install-path-placeholder', text: exePath });
     }
     else{
-      this._panel.webview.postMessage({ command: 'set-install-path', path: "Path not found" });
+      this._panel.webview.postMessage({ command: 'set-path-status', text: "Path not found" });
+      this._panel.webview.postMessage({ command: 'set-install-path', path: "" });
+      this._panel.webview.postMessage({ command: 'set-install-path-placeholder', text: "Path not found" });
     }
     this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
 
@@ -326,6 +331,23 @@ export class EclairManagerPanel {
 </div>
 
 <script nonce="${nonce}" type="module" src="${scriptUri}"></script>
+<script nonce="${nonce}">
+  window.addEventListener('message', (event) => {
+    const m = event.data;
+    if (m && m.command === 'set-path-status') {
+      const el = document.getElementById('install-path-status');
+      if (el) {
+        el.textContent = m.text || '';
+      }
+    }
+    if (m && m.command === 'set-install-path-placeholder') {
+      const tf = document.getElementById('install-path');
+      if (tf) {
+        tf.setAttribute('placeholder', m.text || '');
+      }
+    }
+  });
+</script>
 </body>
 </html>`;
   }
