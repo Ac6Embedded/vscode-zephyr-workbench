@@ -58,9 +58,9 @@ export class EclairManagerPanel {
     }
   }
 
-  private async createContent() {
-    this._panel.webview.html = this.getHtml(this._panel.webview);
-    this.setMessageListener(this._panel.webview);
+  public async createContent() {
+    this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
+    this._setWebviewMessageListener(this._panel.webview);
 
     this._panel.onDidChangeViewState(async () => {
       if (this._panel.visible) {
@@ -84,7 +84,7 @@ export class EclairManagerPanel {
     }
   }
 
-  private setMessageListener(webview: vscode.Webview) {
+  private _setWebviewMessageListener(webview: vscode.Webview) {
     webview.onDidReceiveMessage(async (m: any) => {
       switch (m.command) {
         case "check-license":
@@ -210,55 +210,20 @@ export class EclairManagerPanel {
     this._panel.webview.postMessage({ command: "eclair-status", installed: !!version, version: version || "" });
   }
 
-  private getHtml(webview: vscode.Webview): string {
+  private async _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): Promise<string> {
     const nonce = getNonce();
-    const scriptUri = getUri(webview, this._extensionUri, ["out", "eclairmanager.js"]);
-    const styleUri = getUri(webview, this._extensionUri, ["out", "style.css"]);
-    const codiconUri = getUri(webview, this._extensionUri, ["out", "codicon.css"]);
+    const scriptUri = getUri(webview, extensionUri, ["out", "eclairmanager.js"]);
+    const styleUri = getUri(webview, extensionUri, ["out", "style.css"]);
+    const codiconUri = getUri(webview, extensionUri, ["out", "codicon.css"]);
 
     return `<!DOCTYPE html>
-<html lang="pt-br">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; img-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <link rel="stylesheet" nonce="${nonce}" href="${styleUri}">
 <link rel="stylesheet" nonce="${nonce}" href="${codiconUri}">
-<title>ECLAIR MANAGER</title>
-<style nonce="${nonce}">
-.section { border:1px solid var(--vscode-panel-border); padding:12px; margin-bottom:14px; }
-h1 { margin-top:0; }
-.grid { display:grid; gap:8px; }
-.inline { display:flex; gap:6px; align-items:center; }
-.report-group { 
-  display: grid; 
-  grid-template-columns: 1fr 1fr; 
-  gap: 8px 16px; 
-  align-items: start; 
-  justify-items: start; 
-}
-.ruleset-group { 
-  display: grid; 
-  grid-template-columns: 1fr; 
-  gap: 8px; 
-  align-items: start; 
-  justify-items: start; 
-}
-.report-item, .ruleset-item { display: block; }
-.report-item vscode-checkbox,
-.ruleset-item vscode-radio { display: block; max-width: 100%; }
-.cmd-box { background:#1e1e1e; color:#dcdcdc; padding:8px; font-family:monospace; white-space:pre-wrap; border:1px solid #444; }
-.warning-icon { color: #ffcc00; }
-.success-icon { color: #2ecc71; }
-.summary { display:flex; flex-direction:column; gap:8px; padding:12px 14px; margin:6px 0 12px 0; border:1px solid var(--vscode-tab-border); border-radius: calc(var(--corner-radius-round) * 1px); background: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent); }
-.summary-actions { display:flex; gap:8px; flex-wrap:wrap; }
-.summary-title { font-size: calc(var(--type-ramp-base-font-size) + 1px); }
-.actions-title { margin-right: 8px; align-self: center; }
-.hidden { display: none !important; }
-/* Align browse buttons with text fields consistently */
-.grid-group-div { display: flex; gap: 6px; align-items: center; }
-.grid-group-div vscode-button { margin: 0; }
-.grid-group-div vscode-text-field { flex: 1 1 auto; }
-</style>
+<title>Eclair Manager</title>
 </head>
 <body>
 <h1>Eclair Manager</h1>
@@ -280,6 +245,7 @@ h1 { margin-top:0; }
     <vscode-text-field id="install-path" placeholder="Path to installation (optional)" size="50">PATH:</vscode-text-field>
     <vscode-button id="browse-install" appearance="secondary"><span class="codicon codicon-folder"></span></vscode-button>
   </div>
+  
 </div>
 
 <div class="section">
@@ -293,8 +259,12 @@ h1 { margin-top:0; }
         "ECLAIR_RULESET_STD_LIB",
         "ECLAIR_RULESET_ZEPHYR_GUIDELINES",
         "USER"
-      ].map(r => `<vscode-radio id="rs-${r}" value="${r}">${r === "USER" ? "user defined" : r}</vscode-radio>`).join("")}
+      ].map(r => `<vscode-radio id="rs-${r}" name="ruleset" value="${r}">${r === "USER" ? "user defined" : r}</vscode-radio>`).join("")}
   </vscode-radio-group>
+  <div id="user-ruleset-fields" class="grid-group-div hidden">
+    <vscode-text-field id="user-ruleset-name" placeholder="User ruleset name" size="40">Name:</vscode-text-field>
+    <vscode-text-field id="user-ruleset-path" placeholder="Path to ruleset" size="50">Path:</vscode-text-field>
+  </div>
 </div>
 
 <div class="section">
@@ -327,54 +297,14 @@ h1 { margin-top:0; }
 
 <div class="section">
   <h2>Command</h2>
-  <div class="inline">
+  <div class="grid-group-div">
     <vscode-button id="generate-cmd" appearance="primary">Generate</vscode-button>
     <vscode-button id="run-cmd" appearance="secondary">Run</vscode-button>
   </div>
-  <div id="cmd-output" class="cmd-box" style="margin-top:8px;"></div>
+  <div id="cmd-output" class="details-line"></div>
 </div>
 
 <script nonce="${nonce}" type="module" src="${scriptUri}"></script>
-<script nonce="${nonce}">
-  const webviewApi = acquireVsCodeApi();
-  window.addEventListener('load', () => {
-    // Top actions
-    const btnRefresh = document.getElementById('btn-refresh-status');
-    if (btnRefresh) btnRefresh.addEventListener('click', () => webviewApi.postMessage({ command: 'refresh-status' }));
-    const browseInstall = document.getElementById('browse-install');
-    if (browseInstall) browseInstall.addEventListener('click', () => webviewApi.postMessage({ command: 'browse-install-path' }));
-    const checkLicense = document.getElementById('check-license');
-    if (checkLicense) checkLicense.addEventListener('click', () => webviewApi.postMessage({ command: 'check-license' }));
-
-    window.addEventListener('message', (event) => {
-      const cmd = event.data.command;
-      if (cmd === 'toggle-spinner') {
-        const show = !!event.data.show;
-        const sp = document.getElementById('em-spinner');
-        if (sp) { if (show) sp.classList.remove('hidden'); else sp.classList.add('hidden'); }
-      }
-      if (cmd === 'eclair-status') {
-        const installed = !!event.data.installed;
-        const ver = event.data.version || '';
-        const verSpan = document.getElementById('eclair-version');
-        if (verSpan) verSpan.textContent = ver || 'Unknown';
-        const icon = document.getElementById('eclair-status-icon');
-        const text = document.getElementById('eclair-status-text');
-        if (icon && text) {
-          icon.classList.add('codicon');
-          icon.classList.remove('codicon-warning', 'warning-icon', 'codicon-check', 'success-icon');
-          if (installed) {
-            icon.classList.add('codicon-check', 'success-icon');
-            text.textContent = 'Installed';
-          } else {
-            icon.classList.add('codicon-warning', 'warning-icon');
-            text.textContent = 'Not installed';
-          }
-        }
-      }
-    });
-  });
-</script>
 </body>
 </html>`;
   }

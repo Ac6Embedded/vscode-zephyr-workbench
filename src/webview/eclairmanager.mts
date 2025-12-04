@@ -23,8 +23,12 @@ function updateUserRulesetVisibility() {
   const selected = (radios.find(r => (r as any).checked) as any)?.value;
   const div = document.getElementById("user-ruleset-fields") as HTMLElement | null;
   if (!div) return;
-  if (selected === "USER") div.style.display = "grid";
-  else div.style.display = "none";
+  const isUser = selected === "USER";
+  if (isUser) {
+    div.classList.remove('hidden');
+  } else {
+    div.classList.add('hidden');
+  }
 }
 
 function handleReportsAllToggle() {
@@ -50,11 +54,32 @@ function setVSCodeMessageListener() {
   window.addEventListener("message", (ev: MessageEvent) => {
     const msg: any = ev.data;
     switch (msg.command) {
+      case "toggle-spinner": {
+        const show = !!msg.show;
+        const sp = document.getElementById('em-spinner');
+        if (sp) {
+          if (show) sp.classList.remove('hidden');
+          else sp.classList.add('hidden');
+        }
+        break;
+      }
       case "eclair-status": {
-        const line = document.getElementById("status-line");
-        if (line) {
-          if (msg.installed) line.innerHTML = `Eclair: <span class="status-installed">Installed</span> (version ${msg.version})`;
-          else line.innerHTML = `Eclair: <span class="status-missing">Not installed version</span>`;
+        const installed = !!msg.installed;
+        const ver = String(msg.version || "");
+        const verSpan = document.getElementById('eclair-version');
+        if (verSpan) (verSpan as HTMLElement).textContent = ver || 'Unknown';
+        const icon = document.getElementById('eclair-status-icon');
+        const text = document.getElementById('eclair-status-text');
+        if (icon && text) {
+          icon.classList.add('codicon');
+          icon.classList.remove('codicon-warning', 'warning-icon', 'codicon-check', 'success-icon');
+          if (installed) {
+            icon.classList.add('codicon-check', 'success-icon');
+            (text as HTMLElement).textContent = 'Installed';
+          } else {
+            icon.classList.add('codicon-warning', 'warning-icon');
+            (text as HTMLElement).textContent = 'Not installed';
+          }
         }
         break;
       }
@@ -95,6 +120,9 @@ function main() {
   });
   document.getElementById("check-license")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "check-license" });
+  });
+  document.getElementById("btn-refresh-status")?.addEventListener("click", () => {
+    webviewApi.postMessage({ command: "refresh-status" });
   });
   document.getElementById("probe-btn")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "probe-eclair" });
