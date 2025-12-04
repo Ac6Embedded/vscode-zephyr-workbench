@@ -181,6 +181,9 @@ export class EclairManagerPanel {
   }
 
   private async runEclair() {
+    this._panel.webview.postMessage({ command: "toggle-spinner", show: true });
+    this._panel.webview.postMessage({ command: "set-install-path", path: "checking" });
+
     let exePath: string | undefined;
     try {
       let cmd = process.platform === "win32"
@@ -221,6 +224,11 @@ export class EclairManagerPanel {
     if (exePath) {
       this._panel.webview.postMessage({ command: 'set-install-path', path: exePath });
     }
+    else{
+      this._panel.webview.postMessage({ command: 'set-install-path', path: "Path not found" });
+    }
+    this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
+
   }
 
   private async _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): Promise<string> {
