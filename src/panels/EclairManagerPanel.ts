@@ -264,7 +264,7 @@ export class EclairManagerPanel {
   </div>
   <div class="summary-actions">
     <div class="actions-title"><strong>Actions</strong></div>
-    <vscode-button id="btn-refresh-status" appearance="primary">Refresh status</vscode-button>
+    <vscode-button id="btn-refresh-status" appearance="primary">Refresh Status</vscode-button>
     <vscode-button id="check-license" appearance="primary">Check License</vscode-button>
   </div>
   <div class="grid-group-div">
