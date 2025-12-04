@@ -66,7 +66,7 @@ export class EclairManagerPanel {
       if (this._panel.visible) {
         try {
           this._panel.webview.postMessage({ command: "toggle-spinner", show: true });
-          await this.runEclairProbe();
+          await this.runEclair();
         } finally {
           this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
         }
@@ -77,7 +77,7 @@ export class EclairManagerPanel {
       this._didInitialProbe = true;
       try {
         this._panel.webview.postMessage({ command: "toggle-spinner", show: true });
-        await this.runEclairProbe();
+        await this.runEclair();
       } finally {
         this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
       }
@@ -93,7 +93,7 @@ export class EclairManagerPanel {
         case "refresh-status": {
           try {
             this._panel.webview.postMessage({ command: "toggle-spinner", show: true });
-            await this.runEclairProbe();
+            await this.runEclair();
           } finally {
             this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
           }
@@ -139,7 +139,7 @@ export class EclairManagerPanel {
           break;
         }
         case "probe-eclair":
-          this.runEclairProbe();
+          this.runEclair();
           break;
       }
     }, undefined, this._disposables);
@@ -180,34 +180,47 @@ export class EclairManagerPanel {
     return parts.join(" ");
   }
 
-  private async runEclairProbe() {
-    const tryProbe = async (cmd: string): Promise<string | undefined> => {
-      try {
-        const proc = await execCommandWithEnv(cmd);
-        let out = "";
-        await new Promise<void>((resolve) => {
-          proc.stdout?.on("data", c => out += c.toString());
-          proc.stderr?.on("data", c => out += c.toString());
-          proc.on("close", () => resolve());
-          proc.on("error", () => resolve());
-        });
-        // Accept formats like:
-        //  - "ECLAIR version 3.14.0"
-        //  - "3.14.0"
-        //  - "ECLAIR 3.14.0"
-        const m1 = out.match(/ECLAIR\s+version\s+([0-9]+(?:\.[0-9]+)*)/i);
-        const m2 = out.match(/\b([0-9]+(?:\.[0-9]+)*)\b/);
-        const ver = (m1?.[1] || m2?.[1] || "").trim();
-        if (ver) { return ver; }
-        return undefined;
-      } catch {
-        return undefined;
-      }
-    };
+  private async runEclair() {
+    let exePath: string | undefined;
+    try {
+      let cmd = process.platform === "win32"
+        ? 'powershell -NoProfile -Command "(Get-Command eclair).Source"'
+        : 'which eclair';
+      const proc = await execCommandWithEnv(cmd);
+      let out = "";
+      await new Promise<void>((resolve) => {
+        proc.stdout?.on("data", c => out += c.toString());
+        proc.stderr?.on("data", c => out += c.toString());
+        proc.on("close", () => resolve());
+        proc.on("error", () => resolve());
+      });
+      const lines = out.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      exePath = lines[0];
+    } catch {
+      exePath = undefined;
+    }
 
-    const version = await tryProbe("eclair -version")
+    let version: string | undefined;
+    try {
+      const proc = await execCommandWithEnv("eclair -version");
+      let out = "";
+      await new Promise<void>((resolve) => {
+        proc.stdout?.on("data", c => out += c.toString());
+        proc.stderr?.on("data", c => out += c.toString());
+        proc.on("close", () => resolve());
+        proc.on("error", () => resolve());
+      });
+      const m1 = out.match(/ECLAIR\s+version\s+([0-9]+(?:\.[0-9]+)*)/i);
+      const m2 = out.match(/\b([0-9]+(?:\.[0-9]+)*)\b/);
+      version = (m1?.[1] || m2?.[1] || "").trim();
+    } catch {
+      version = undefined;
+    }
 
-    this._panel.webview.postMessage({ command: "eclair-status", installed: !!version, version: version || "" });
+    this._panel.webview.postMessage({ command: 'eclair-status', installed: !!version, version: version || '' });
+    if (exePath) {
+      this._panel.webview.postMessage({ command: 'set-install-path', path: exePath });
+    }
   }
 
   private async _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): Promise<string> {
