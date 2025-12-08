@@ -31,6 +31,10 @@ form {
   vertical-align: bottom;
 }
 
+.command-actions {
+  margin-top: 12px;
+}
+
 .grid-header-div , .grid-value-div {
   display: block;
 }

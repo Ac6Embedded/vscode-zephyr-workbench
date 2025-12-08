@@ -131,12 +131,6 @@ export class EclairManagerPanel {
           }
           break;
         }
-        case "generate-command": {
-          const cfg: IEclairConfig = m.data || {};
-          const cmd = this.buildCmd(cfg);
-          webview.postMessage({ command: "show-command", cmd });
-          break;
-        }
         case "save-sca-config": {
           const cfg: IEclairConfig = m.data || {};
           await this.saveScaConfig(cfg);
@@ -388,21 +382,19 @@ export class EclairManagerPanel {
 </div>
 
 <div class="section">
+  <div class="grid-group-div command-actions">
+    <vscode-button id="generate-cmd" appearance="primary">Set configuration</vscode-button>
+    <vscode-button id="run-cmd" appearance="secondary">Run Eclair</vscode-button>
+  </div>
+</div>
+
+<div class="section">
   <h2>Additional Configuration (.ecl)</h2>
   <div class="grid-group-div">
     <vscode-text-field id="extra-config" placeholder="path/to/config.ecl" size="50" disabled>CONFIG:</vscode-text-field>
     <vscode-button id="browse-config" class="browse-extra-input-button" appearance="secondary" disabled><span class="codicon codicon-folder"></span></vscode-button>
     <vscode-button id="edit-config" class="save-config-button" appearance="primary">Edit</vscode-button>
   </div>
-</div>
-
-<div class="section">
-  <h2>Command</h2>
-  <div class="grid-group-div">
-    <vscode-button id="generate-cmd" appearance="primary">Generate</vscode-button>
-    <vscode-button id="run-cmd" appearance="secondary">Run</vscode-button>
-  </div>
-  <div id="cmd-output" class="details-line"></div>
 </div>
 
 <script nonce="${nonce}" type="module" src="${scriptUri}"></script>

@@ -108,11 +108,6 @@ function setVSCodeMessageListener() {
         }
         break;
       }
-      case "show-command": {
-        const box = document.getElementById("cmd-output");
-        if (box) (box as HTMLElement).textContent = msg.cmd || "";
-        break;
-      }
       case "set-install-path": {
         const f = document.getElementById("install-path") as any;
         if (f) {
@@ -164,7 +159,6 @@ function main() {
 
   document.getElementById("generate-cmd")?.addEventListener("click", () => {
     const cfg = collectConfig();
-    webviewApi.postMessage({ command: "generate-command", data: cfg });
     webviewApi.postMessage({ command: "save-sca-config", data: cfg });
   });
   document.getElementById("run-cmd")?.addEventListener("click", () => {
