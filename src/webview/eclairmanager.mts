@@ -163,7 +163,9 @@ function main() {
   });
 
   document.getElementById("generate-cmd")?.addEventListener("click", () => {
-    webviewApi.postMessage({ command: "generate-command", data: collectConfig() });
+    const cfg = collectConfig();
+    webviewApi.postMessage({ command: "generate-command", data: cfg });
+    webviewApi.postMessage({ command: "save-sca-config", data: cfg });
   });
   document.getElementById("run-cmd")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "run-command", data: collectConfig() });

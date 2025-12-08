@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import path from "path";
+import { promises as fs } from "fs";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { execCommandWithEnv } from "../utils/execUtils";
@@ -17,17 +18,23 @@ export class EclairManagerPanel {
   public static currentPanel: EclairManagerPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
+  private _workspaceFolder: vscode.WorkspaceFolder | undefined;
+  private _settingsRoot: string | undefined;
   private _disposables: vscode.Disposable[] = [];
   private _didInitialProbe = false;
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, workspaceFolder?: vscode.WorkspaceFolder, settingsRoot?: string) {
     this._panel = panel;
     this._extensionUri = extensionUri;
+    this._workspaceFolder = workspaceFolder;
+    this._settingsRoot = settingsRoot;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
   }
 
-  public static render(extensionUri: vscode.Uri) {
+  public static render(extensionUri: vscode.Uri, workspaceFolder?: vscode.WorkspaceFolder, settingsRoot?: string) {
     if (EclairManagerPanel.currentPanel) {
+      EclairManagerPanel.currentPanel._workspaceFolder = workspaceFolder;
+      EclairManagerPanel.currentPanel._settingsRoot = settingsRoot;
       EclairManagerPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
       return;
     }
@@ -45,7 +52,7 @@ export class EclairManagerPanel {
       dark: vscode.Uri.joinPath(extensionUri, "res", "icons", "dark", "eclair.svg"),
     };
 
-    EclairManagerPanel.currentPanel = new EclairManagerPanel(panel, extensionUri);
+    EclairManagerPanel.currentPanel = new EclairManagerPanel(panel, extensionUri, workspaceFolder, settingsRoot);
     EclairManagerPanel.currentPanel.createContent();
   }
 
@@ -130,6 +137,11 @@ export class EclairManagerPanel {
           webview.postMessage({ command: "show-command", cmd });
           break;
         }
+        case "save-sca-config": {
+          const cfg: IEclairConfig = m.data || {};
+          await this.saveScaConfig(cfg);
+          break;
+        }
         case "run-command": {
           const cfg: IEclairConfig = m.data || {};
           const cmd = this.buildCmd(cfg);
@@ -151,8 +163,15 @@ export class EclairManagerPanel {
     if (cfg.installPath) {
       const resolved = cfg.installPath.trim();
       if (resolved) {
-        const candidate = path.join(resolved, "eclair");
-        bin = process.platform === "win32" ? candidate + ".exe" : candidate;
+        const ext = path.extname(resolved).toLowerCase();
+        const base = path.basename(resolved).toLowerCase();
+        const looksLikeExe = ext === ".exe" || base === "eclair";
+        if (looksLikeExe) {
+          bin = resolved;
+        } else {
+          const candidate = path.join(resolved, "eclair");
+          bin = process.platform === "win32" ? candidate + ".exe" : candidate;
+        }
       }
     }
     parts.push(`"${bin}"`);
@@ -178,6 +197,44 @@ export class EclairManagerPanel {
     }
 
     return parts.join(" ");
+  }
+
+  private async saveScaConfig(cfg: IEclairConfig) {
+    const folder = this._settingsRoot || this._workspaceFolder?.uri.fsPath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!folder) return;
+
+    const settingsPath = path.join(folder, ".vscode", "settings.json");
+    let json: any = {};
+
+    try {
+      const raw = await fs.readFile(settingsPath, "utf8");
+      json = raw.trim() ? JSON.parse(raw) : {};
+    } catch {
+      json = {};
+    }
+
+    if (!Array.isArray(json["zephyr-workbench.build.configurations"])) {
+      json["zephyr-workbench.build.configurations"] = [];
+    }
+
+    const configs: any[] = json["zephyr-workbench.build.configurations"];
+    const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
+    const idx = activeIdx >= 0 ? activeIdx : 0;
+    if (!configs[idx]) {
+      configs[idx] = { name: "primary", active: true };
+    }
+
+    const reports = cfg.reports && cfg.reports.length > 0 ? cfg.reports : ["ALL"];
+    configs[idx].sca = {
+      name: "eclair",
+      //installPath: cfg.installPath || "",
+      ruleset: cfg.ruleset || "ECLAIR_RULESET_FIRST_ANALYSIS",
+      reports,
+      //extraConfig: cfg.extraConfig || ""
+    };
+
+    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.writeFile(settingsPath, JSON.stringify(json, null, 2), "utf8");
   }
 
   private async runEclair() {

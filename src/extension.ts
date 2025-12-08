@@ -179,8 +179,9 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench.eclair-manager.open', async () => {
-			EclairManagerPanel.render(context.extensionUri);
+		vscode.commands.registerCommand('zephyr-workbench.eclair-manager.open', async (node?: any) => {
+			const { workspaceFolder, settingsRoot } = resolveWorkspaceFolderForEclair(node);
+			EclairManagerPanel.render(context.extensionUri, workspaceFolder, settingsRoot);
 		})
 	);
 
@@ -2160,6 +2161,15 @@ export function activate(context: vscode.ExtensionContext) {
 	checkZinstallerVersion(context).catch(console.error);
 
 	setDefaultSettings();
+}
+
+function resolveWorkspaceFolderForEclair(node?: any): { workspaceFolder?: vscode.WorkspaceFolder, settingsRoot?: string } {
+	if ((node as vscode.Uri)?.fsPath) {
+		const wf = vscode.workspace.getWorkspaceFolder(node as vscode.Uri) || undefined;
+		return { workspaceFolder: wf, settingsRoot: (node as vscode.Uri).fsPath };
+	}
+	const fallback = getCurrentWorkspaceFolder() ?? vscode.workspace.workspaceFolders?.[0];
+	return { workspaceFolder: fallback, settingsRoot: fallback?.uri.fsPath };
 }
 
 function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
