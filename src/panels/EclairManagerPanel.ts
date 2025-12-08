@@ -185,18 +185,23 @@ export class EclairManagerPanel {
     this._panel.webview.postMessage({ command: "set-path-status", text: "Checking" });
     this._panel.webview.postMessage({ command: "set-install-path-placeholder", text: "Checking" });
 
+    const readStdout = async (proc: any) => {
+      let out = "";
+      await new Promise<void>((resolve) => {
+        proc.stdout?.on("data", (c: Buffer) => out += c.toString());
+        proc.on("close", () => resolve());
+        proc.on("error", () => resolve());
+      });
+      return out;
+    };
+
     let exePath: string | undefined;
     try {
       const cmd = process.platform === "win32"
         ? 'powershell -NoProfile -Command "$c=Get-Command eclair -ErrorAction SilentlyContinue; if ($c) { $c.Source }"'
         : 'which eclair';
       const proc = await execCommandWithEnv(cmd);
-      let outStd = "";
-      await new Promise<void>((resolve) => {
-        proc.stdout?.on("data", c => outStd += c.toString());
-        proc.on("close", () => resolve());
-        proc.on("error", () => resolve());
-      });
+      const outStd = await readStdout(proc);
       const lines = outStd.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       exePath = lines[0];
     } catch {
@@ -206,12 +211,7 @@ export class EclairManagerPanel {
     let version: string | undefined;
     try {
       const proc = await execCommandWithEnv(exePath ? `"${exePath}" -version` : "eclair -version");
-      let out = "";
-      await new Promise<void>((resolve) => {
-        proc.stdout?.on("data", c => out += c.toString());
-        proc.on("close", () => resolve());
-        proc.on("error", () => resolve());
-      });
+      const out = await readStdout(proc);
       const m1 = out.match(/ECLAIR\s+version\s+([0-9]+(?:\.[0-9]+)*)/i);
       const m2 = out.match(/\b([0-9]+(?:\.[0-9]+)*)\b/);
       version = (m1?.[1] || m2?.[1] || "").trim() || undefined;
@@ -224,20 +224,19 @@ export class EclairManagerPanel {
     if (installed && !exePath) {
       try {
         const fallbackCmd = process.platform === "win32"
-          ? 'where eclair'
+          ? 'where.exe eclair'
           : 'command -v eclair';
         const proc2 = await execCommandWithEnv(fallbackCmd);
-        let out2 = "";
-        await new Promise<void>((resolve) => {
-          proc2.stdout?.on("data", c => out2 += c.toString());
-          proc2.on("close", () => resolve());
-          proc2.on("error", () => resolve());
-        });
+        const out2 = await readStdout(proc2);
         const lines2 = out2.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
         exePath = lines2[0] || exePath;
       } catch {
         // ignore
       }
+    }
+
+    if (installed && !exePath) {
+      exePath = process.platform === "win32" ? "eclair.exe" : "eclair";
     }
     this._panel.webview.postMessage({ command: 'eclair-status', installed, version: installed ? version! : 'unknown' });
     if (installed && exePath) {
