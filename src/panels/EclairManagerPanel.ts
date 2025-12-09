@@ -94,8 +94,11 @@ export class EclairManagerPanel {
   private _setWebviewMessageListener(webview: vscode.Webview) {
     webview.onDidReceiveMessage(async (m: any) => {
       switch (m.command) {
-        case "check-license":
+        case "request-trial":
           vscode.env.openExternal(vscode.Uri.parse("https://www.bugseng.com/eclair-request-trial/"));
+          break;
+        case "about-eclair":
+          vscode.env.openExternal(vscode.Uri.parse("https://www.bugseng.com/eclair-static-analysis-tool/"));
           break;
         case "refresh-status": {
           try {
@@ -333,7 +336,8 @@ export class EclairManagerPanel {
   <div class="summary-actions">
     <div class="actions-title"><strong>Actions</strong></div>
     <vscode-button id="btn-refresh-status" appearance="primary">Refresh Status</vscode-button>
-    <vscode-button id="check-license" appearance="primary">Check License</vscode-button>
+    <vscode-button id="about-eclair" appearance="primary">About Eclair</vscode-button>
+    <vscode-button id="request-trial" appearance="primary">Request Trial License</vscode-button>
   </div>
   <div class="grid-group-div">
     <vscode-text-field id="install-path" placeholder="Path to installation (optional)" size="50" disabled>Path:</vscode-text-field>

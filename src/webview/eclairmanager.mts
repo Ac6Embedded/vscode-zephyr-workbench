@@ -164,8 +164,11 @@ function main() {
   document.getElementById("run-cmd")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "run-command", data: collectConfig() });
   });
-  document.getElementById("check-license")?.addEventListener("click", () => {
-    webviewApi.postMessage({ command: "check-license" });
+  document.getElementById("request-trial")?.addEventListener("click", () => {
+    webviewApi.postMessage({ command: "request-trial" });
+  });
+  document.getElementById("about-eclair")?.addEventListener("click", () => {
+    webviewApi.postMessage({ command: "about-eclair" });
   });
   document.getElementById("btn-refresh-status")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "refresh-status" });
