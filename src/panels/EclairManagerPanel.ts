@@ -391,14 +391,14 @@ export class EclairManagerPanel {
   <div class="grid-group-div">
     <vscode-text-field id="extra-config" placeholder="path/to/config.ecl" size="50" disabled>Path:</vscode-text-field>
     <vscode-button id="browse-config" class="browse-extra-input-button" appearance="secondary" disabled><span class="codicon codicon-folder"></span></vscode-button>
-    <vscode-button id="edit-config" class="save-config-button" appearance="primary">Edit</vscode-button>
+    <vscode-button id="edit-config" class="save-path-button" appearance="primary">Edit</vscode-button>
   </div>
 </div>
 
 <div class="section">
   <div class="grid-group-div command-actions">
     <vscode-button id="generate-cmd" appearance="secondary">Apply configuration</vscode-button>
-    <vscode-button id="run-cmd" appearance="primary">Run Eclair</vscode-button>
+    <vscode-button id="run-cmd" appearance="primary">Run Analysis</vscode-button>
   </div>
 </div>
 
