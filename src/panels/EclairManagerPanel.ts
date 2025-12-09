@@ -219,13 +219,14 @@ export class EclairManagerPanel {
     }
 
     const reports = cfg.reports && cfg.reports.length > 0 ? cfg.reports : ["ALL"];
-    configs[idx].sca = {
-      name: "eclair",
-      //installPath: cfg.installPath || "",
+    
+    const scaArray: any = {
+      name: "eclair-sca",
       ruleset: cfg.ruleset || "ECLAIR_RULESET_FIRST_ANALYSIS",
       reports,
-      //extraConfig: cfg.extraConfig || ""
     };
+
+    configs[idx].sca = [scaArray];
 
     await fs.mkdir(path.dirname(settingsPath), { recursive: true });
     await fs.writeFile(settingsPath, JSON.stringify(json, null, 2), "utf8");
