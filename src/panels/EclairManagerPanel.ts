@@ -368,7 +368,7 @@ export class EclairManagerPanel {
 
 <div class="section">
   <h2>Reports</h2>
-  <div class="report-group">
+  <div class="checkbox-grid">
     ${[
         "ALL",
         "ECLAIR_METRICS_TAB",
@@ -382,7 +382,7 @@ export class EclairManagerPanel {
         "ECLAIR_FULL_DOC",
         "ECLAIR_FULL_ODT",
         "ECLAIR_FULL_HTML"
-      ].map(r => `<div class="report-item"><vscode-checkbox class="report-chk" value="${r}" ${r === "ALL" ? "checked" : ""}>${r}</vscode-checkbox></div>`).join("")}
+      ].map(r => `<label><vscode-checkbox class="report-chk" value="${r}" ${r === "ALL" ? "checked" : ""}>${r}</vscode-checkbox></label>`).join("")}
   </div>
 </div>
 
