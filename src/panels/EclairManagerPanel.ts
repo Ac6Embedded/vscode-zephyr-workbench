@@ -1,11 +1,11 @@
 import * as vscode from "vscode";
 import path from "path";
-import { promises as fs } from "fs";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { execCommandWithEnv } from "../utils/execUtils";
 import { getZephyrTerminal } from "../utils/zephyrTerminalUtils";
 import { accessSync } from "fs";
+import { getExtraPaths, normalizePath, setExtraPath } from "../utils/envYamlUtils";
 
 interface IEclairConfig {
   installPath?: string;
@@ -65,6 +65,28 @@ export class EclairManagerPanel {
       const d = this._disposables.pop();
       if (d) d.dispose();
     }
+  }
+
+  private toInstallDir(p?: string): string | undefined {
+    if (!p) return undefined;
+    const trimmed = p.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.toLowerCase().endsWith("eclair.exe")) {
+      const d = path.dirname(trimmed);
+      if (d === "." || d === "") return undefined;
+      return d;
+    }
+    return trimmed;
+  }
+
+  private saveEclairPathToEnv(installPath?: string) {
+    const dir = this.toInstallDir(installPath);
+    if (!dir) return;
+    const normalized = normalizePath(dir);
+    if (!/[\\/]/.test(normalized)) return; // ignore plain executable names
+    const current = getExtraPaths("EXTRA_TOOLS").map(normalizePath);
+    if (current.includes(normalized)) return;
+    setExtraPath("EXTRA_TOOLS", current.length, normalized);
   }
 
   public async createContent() {
@@ -231,6 +253,10 @@ export class EclairManagerPanel {
     const folder = this._settingsRoot || this._workspaceFolder?.uri.fsPath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!folder) return;
 
+    if (cfg.installPath) {
+      this.saveEclairPathToEnv(cfg.installPath);
+    }
+
     const folderUri = vscode.Uri.file(folder);
     const config = vscode.workspace.getConfiguration(undefined, folderUri);
     const existing = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
@@ -244,7 +270,7 @@ export class EclairManagerPanel {
     const reports = cfg.reports && cfg.reports.length > 0 ? cfg.reports : ["ALL"];
     
     const scaArray: any = {
-      name: "eclair-sca",
+      name: "eclair",
       ruleset: cfg.ruleset || "ECLAIR_RULESET_FIRST_ANALYSIS",
       reports,
     };
@@ -313,11 +339,19 @@ export class EclairManagerPanel {
     if (installed && !exePath) {
       exePath = process.platform === "win32" ? "eclair.exe" : "eclair";
     }
+
+    const installDir = exePath ? this.toInstallDir(exePath) : undefined;
+    if (installed && installDir) {
+      this.saveEclairPathToEnv(installDir);
+    }
+
+    const displayPath = installDir || exePath;
+
     this._panel.webview.postMessage({ command: 'eclair-status', installed, version: installed ? version! : 'unknown' });
-    if (installed && exePath) {
-      this._panel.webview.postMessage({ command: 'set-install-path', path: exePath });
-      this._panel.webview.postMessage({ command: 'set-path-status', text: exePath });
-      this._panel.webview.postMessage({ command: 'set-install-path-placeholder', text: exePath });
+    if (installed && displayPath) {
+      this._panel.webview.postMessage({ command: 'set-install-path', path: displayPath });
+      this._panel.webview.postMessage({ command: 'set-path-status', text: displayPath });
+      this._panel.webview.postMessage({ command: 'set-install-path-placeholder', text: displayPath });
     } else {
       this._panel.webview.postMessage({ command: 'set-install-path', path: 'Not found' });
       this._panel.webview.postMessage({ command: 'set-path-status', text: 'Not found' });
