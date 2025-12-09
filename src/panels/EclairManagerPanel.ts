@@ -4,6 +4,8 @@ import { promises as fs } from "fs";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { execCommandWithEnv } from "../utils/execUtils";
+import { getZephyrTerminal } from "../utils/zephyrTerminalUtils";
+import { accessSync } from "fs";
 
 interface IEclairConfig {
   installPath?: string;
@@ -147,7 +149,12 @@ export class EclairManagerPanel {
             this._settingsRoot ||
             this._workspaceFolder?.uri.fsPath ||
             vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-          const term = vscode.window.createTerminal({ name: "Eclair", cwd });
+
+          const term = await getZephyrTerminal();
+
+          if (cwd) {
+            term.sendText(`cd "${cwd}"`);
+          }
           term.show();
           term.sendText(cmd);
           break;
@@ -161,41 +168,60 @@ export class EclairManagerPanel {
 
   private buildCmd(cfg: IEclairConfig): string {
     const parts: string[] = [];
-    let bin = "eclair";
-    if (cfg.installPath) {
-      const resolved = cfg.installPath.trim();
-      if (resolved) {
-        const ext = path.extname(resolved).toLowerCase();
-        const base = path.basename(resolved).toLowerCase();
-        const looksLikeExe = ext === ".exe" || base === "eclair";
-        if (looksLikeExe) {
-          bin = resolved;
-        } else {
-          const candidate = path.join(resolved, "eclair");
-          bin = process.platform === "win32" ? candidate + ".exe" : candidate;
-        }
+    let westCmd = "west";
+    if (process.platform === "win32") {
+      const westFromInstaller = path.join(
+        process.env.USERPROFILE ?? "",
+        ".zinstaller",
+        ".venv",
+        "Scripts",
+        "west.exe"
+      );
+      try {
+        accessSync(westFromInstaller);
+          westCmd = `& "${westFromInstaller}"`;
+      } catch {
+          westCmd = "west";
       }
     }
-    parts.push(`"${bin}"`);
+
+    parts.push(westCmd, "build", "--", "-DZEPHYR_SCA_VARIANT=eclair");
 
     if (cfg.ruleset === "USER") {
+      parts.push("-DECLAIR_RULESET_USER=ON");
       const name = (cfg.userRulesetName || "").trim();
       const p = (cfg.userRulesetPath || "").trim();
-      if (p) parts.push(`--ruleset "${p}"`);
-      if (name) parts.push(`--user-ruleset-name "${name}"`);
+      if (name) parts.push(`-DECLAIR_USER_RULESET_NAME=\"${name}\"`);
+      if (p)    parts.push(`-DECLAIR_USER_RULESET_PATH=\"${p}\"`);
     } else if (cfg.ruleset) {
-      parts.push(`--ruleset ${cfg.ruleset}`);
+      parts.push(`-D${cfg.ruleset}=ON`);
+    } else {
+      parts.push("-DECLAIR_RULESET_FIRST_ANALYSIS=ON");
     }
 
-    const reports = cfg.reports || [];
-    if (reports.includes("ALL")) {
-      parts.push(`--reports ALL`);
-    } else if (reports.length > 0) {
-      parts.push(`--reports ${reports.join(",")}`);
+    const allReports = [
+      "ECLAIR_METRICS_TAB",
+      "ECLAIR_REPORTS_TAB",
+      "ECLAIR_REPORTS_SARIF",
+      "ECLAIR_SUMMARY_TXT",
+      "ECLAIR_SUMMARY_DOC",
+      "ECLAIR_SUMMARY_ODT",
+      "ECLAIR_SUMMARY_HTML",
+      "ECLAIR_FULL_TXT",
+      "ECLAIR_FULL_DOC",
+      "ECLAIR_FULL_ODT",
+      "ECLAIR_FULL_HTML",
+    ];
+    const selected = (cfg.reports || []).includes("ALL")
+      ? allReports
+      : (cfg.reports || []).filter(r => r !== "ALL");
+
+    for (const r of selected) {
+      parts.push(`-D${r}=ON`);
     }
 
     if (cfg.extraConfig) {
-      parts.push(`--config "${cfg.extraConfig.trim()}"`);
+      parts.push(`-DECLAIR_OPTIONS_FILE=\"${cfg.extraConfig.trim()}\"`);
     }
 
     return parts.join(" ");
