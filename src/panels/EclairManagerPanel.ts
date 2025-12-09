@@ -141,8 +141,13 @@ export class EclairManagerPanel {
         }
         case "run-command": {
           const cfg: IEclairConfig = m.data || {};
+          await this.saveScaConfig(cfg); 
           const cmd = this.buildCmd(cfg);
-          const term = vscode.window.createTerminal("Eclair");
+          const cwd =
+            this._settingsRoot ||
+            this._workspaceFolder?.uri.fsPath ||
+            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          const term = vscode.window.createTerminal({ name: "Eclair", cwd });
           term.show();
           term.sendText(cmd);
           break;
@@ -200,21 +205,10 @@ export class EclairManagerPanel {
     const folder = this._settingsRoot || this._workspaceFolder?.uri.fsPath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!folder) return;
 
-    const settingsPath = path.join(folder, ".vscode", "settings.json");
-    let json: any = {};
-
-    try {
-      const raw = await fs.readFile(settingsPath, "utf8");
-      json = raw.trim() ? JSON.parse(raw) : {};
-    } catch {
-      json = {};
-    }
-
-    if (!Array.isArray(json["zephyr-workbench.build.configurations"])) {
-      json["zephyr-workbench.build.configurations"] = [];
-    }
-
-    const configs: any[] = json["zephyr-workbench.build.configurations"];
+    const folderUri = vscode.Uri.file(folder);
+    const config = vscode.workspace.getConfiguration(undefined, folderUri);
+    const existing = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
+    const configs: any[] = Array.isArray(existing) ? [...existing] : [];
     const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
     const idx = activeIdx >= 0 ? activeIdx : 0;
     if (!configs[idx]) {
@@ -231,8 +225,8 @@ export class EclairManagerPanel {
 
     configs[idx].sca = [scaArray];
 
-    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-    await fs.writeFile(settingsPath, JSON.stringify(json, null, 2), "utf8");
+    const target = this._workspaceFolder ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Workspace;
+    await config.update("zephyr-workbench.build.configurations", configs, target);
   }
 
   private async runEclair() {
