@@ -205,6 +205,20 @@ export class EclairManagerPanel {
         } finally {
           this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
         }
+        try {
+          const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+          const config = vscode.workspace.getConfiguration(undefined, folderUri);
+          const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
+          const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
+          const idx = activeIdx >= 0 ? activeIdx : 0;
+          let extraConfigPath = "";
+          if (configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0) {
+            extraConfigPath = configs[idx].sca[0].eclairConfigPath || configs[idx].sca[0].extraConfig || configs[idx].sca[0].path || "";
+          }
+          this._panel.webview.postMessage({ command: "set-extra-config", path: extraConfigPath });
+        } catch {
+          this._panel.webview.postMessage({ command: "set-extra-config", path: "" });
+        }
       }
     }, null, this._disposables);
 
@@ -287,14 +301,13 @@ export class EclairManagerPanel {
         }
         case "browse-extra-config": {
           const pick = await vscode.window.showOpenDialog({
-            canSelectFiles: true,
-            canSelectFolders: false,
+            canSelectFiles: false,
+            canSelectFolders: true,
             canSelectMany: false,
-            filters: { "Eclair Config": ["ecl"] },
-            title: "Select .ecl file"
+            title: "Select folder for additional config"
           });
           if (pick && pick[0]) {
-            const chosen = pick[0].fsPath;
+            const chosen = pick[0].fsPath.trim();
             webview.postMessage({ command: "set-extra-config", path: chosen });
             await this.saveExtraConfigToActiveSca(chosen);
           }
@@ -622,8 +635,8 @@ export class EclairManagerPanel {
 <div class="section">
   <h2>Additional Configuration (.ecl)</h2>
   <div class="grid-group-div">
-    <vscode-text-field id="extra-config" placeholder="path/to/config.ecl" size="50" disabled>Path:</vscode-text-field>
-    <vscode-button id="browse-config" class="browse-extra-input-button" appearance="secondary" disabled><span class="codicon codicon-folder"></span></vscode-button>
+    <vscode-text-field id="extra-config" placeholder="path/to/config" size="50">Path:</vscode-text-field>
+    <vscode-button id="browse-config" class="browse-extra-input-button" appearance="secondary"><span class="codicon codicon-folder"></span></vscode-button>
     <vscode-button id="edit-config" class="save-path-button" appearance="primary">Edit</vscode-button>
   </div>
 </div>
