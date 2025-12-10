@@ -345,10 +345,25 @@ export class EclairManagerPanel {
       this.saveEclairPathToEnv(installDir);
     }
 
-    const displayPath = installDir || exePath;
+    // Prefer path from env.yml (EXTRA_TOOLS) if present and exists
+    const envPaths = getExtraPaths("EXTRA_TOOLS").map(normalizePath);
+    let envEclair = envPaths.find(p => /eclair/i.test(path.basename(p)) || /eclair/i.test(p));
+    if (envEclair && !(require('fs').existsSync(envEclair))) {
+      // If the path doesn't exist, try to find a valid one in the parent directory
+      const parentDir = path.dirname(envEclair);
+      const candidate = path.join(parentDir, "bin");
+      if (require('fs').existsSync(candidate)) {
+        envEclair = candidate;
+      } else {
+        envEclair = undefined;
+      }
+    }
+    const envCandidate = (envEclair && require('fs').existsSync(envEclair)) ? envEclair : envPaths.find(p => require('fs').existsSync(p));
+
+    const displayPath = envCandidate || installDir || exePath;
 
     this._panel.webview.postMessage({ command: 'eclair-status', installed, version: installed ? version! : 'unknown' });
-    if (installed && displayPath) {
+    if (displayPath) {
       this._panel.webview.postMessage({ command: 'set-install-path', path: displayPath });
       this._panel.webview.postMessage({ command: 'set-path-status', text: displayPath });
       this._panel.webview.postMessage({ command: 'set-install-path-placeholder', text: displayPath });
@@ -395,8 +410,6 @@ export class EclairManagerPanel {
   </div>
   <div class="grid-group-div">
     <vscode-text-field id="install-path" placeholder="Path to installation (optional)" size="50" disabled>Path:</vscode-text-field>
-    <vscode-button id="browse-install" class="browse-input-button" appearance="secondary" disabled><span class="codicon codicon-folder"></span></vscode-button>
-    <vscode-button id="edit-install" class="save-path-button" appearance="primary">Edit</vscode-button>
   </div>
   
 </div>
