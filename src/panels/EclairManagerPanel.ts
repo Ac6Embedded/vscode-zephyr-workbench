@@ -2,9 +2,8 @@ import * as vscode from "vscode";
 import path from "path";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
-import { execCommandWithEnv } from "../utils/execUtils";
-import { getZephyrTerminal } from "../utils/zephyrTerminalUtils";
-import { accessSync } from "fs";
+import { execCommandWithEnv, execShellCommandWithEnv, getOutputChannel, classifyShell, getShellExe, concatCommands } from "../utils/execUtils";
+import { accessSync, existsSync } from "fs";
 import { getExtraPaths, normalizePath, setExtraPath } from "../utils/envYamlUtils";
 
 interface IEclairConfig {
@@ -172,13 +171,66 @@ export class EclairManagerPanel {
             this._workspaceFolder?.uri.fsPath ||
             vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
-          const term = await getZephyrTerminal();
-
-          if (cwd) {
-            term.sendText(`cd "${cwd}"`);
+          // Compose PATH using configured SDK, tools and west venv if present
+          const extraPaths: string[] = [];
+          const sdk = process.env.ZEPHYR_SDK_INSTALL_DIR;
+          if (sdk) {
+            extraPaths.push(path.join(sdk, "arm-zephyr-eabi", "bin"));
+            extraPaths.push(path.join(sdk, "cmake", "bin"));
+            extraPaths.push(path.join(sdk, "ninja"));
           }
-          term.show();
-          term.sendText(cmd);
+
+          const westFromInstaller = path.join(
+            process.env.USERPROFILE ?? "",
+            ".zinstaller",
+            ".venv",
+            "Scripts"
+          );
+          if (existsSync(westFromInstaller)) {
+            extraPaths.push(westFromInstaller);
+          }
+
+          for (const p of getExtraPaths("EXTRA_TOOLS")) {
+            if (p && existsSync(p)) {
+              extraPaths.push(p);
+            }
+          }
+
+          const mergedPath =
+            (extraPaths.length ? extraPaths.join(path.delimiter) + path.delimiter : "") +
+            (process.env.PATH || "");
+
+          const mergedEnv: Record<string, string> = {};
+          for (const [k, v] of Object.entries(process.env)) {
+            if (typeof v === "string") {
+              mergedEnv[k] = v;
+            }
+          }
+          mergedEnv.PATH = mergedPath;
+          if (sdk) {
+            mergedEnv.ZEPHYR_SDK_INSTALL_DIR = sdk;
+          }
+          if (process.env.ZEPHYR_TOOLCHAIN_VARIANT) {
+            mergedEnv.ZEPHYR_TOOLCHAIN_VARIANT = process.env.ZEPHYR_TOOLCHAIN_VARIANT;
+          }
+
+          const out = getOutputChannel();
+          out.appendLine(`[Eclair] cmd: ${cmd}`);
+
+          const shellKind = classifyShell(getShellExe());
+          const echoCmd = shellKind === "powershell.exe" || shellKind === "pwsh.exe"
+            ? `Write-Output @'\n${cmd}\n'@`
+            : `echo ${cmd}`;
+          const cmdWithEcho = concatCommands(shellKind, echoCmd, cmd);
+
+          try {
+            await execShellCommandWithEnv("Eclair Analysis", cmdWithEcho, {
+              cwd,
+              env: mergedEnv,
+            });
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`Failed to run Eclair: ${err}`);
+          }
           break;
         }
         case "probe-eclair":
@@ -410,6 +462,8 @@ export class EclairManagerPanel {
   </div>
   <div class="grid-group-div">
     <vscode-text-field id="install-path" placeholder="Path to installation (optional)" size="50" disabled>Path:</vscode-text-field>
+    <vscode-button id="browse-install" class="browse-input-button" appearance="secondary" disabled><span class="codicon codicon-folder"></span></vscode-button>
+    <vscode-button id="edit-install" class="save-path-button" appearance="primary">Edit</vscode-button>
   </div>
   
 </div>
