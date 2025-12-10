@@ -798,3 +798,13 @@ vscode-button {
 .debug-manager-buttons #resetSpinner {
   margin-left: 10px;    
 }
+
+#details-path-input-eclair {
+  max-width: 480px !important;
+  width: 480px !important;
+}
+
+#extra-config {
+  max-width: 480px !important;
+  width: 480px !important;
+}

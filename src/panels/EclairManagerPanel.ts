@@ -1,9 +1,11 @@
 import * as vscode from "vscode";
+import fs, { accessSync, existsSync } from "fs";
 import path from "path";
+import yaml from "yaml";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { execCommandWithEnv, execShellCommandWithEnv, getOutputChannel, classifyShell, getShellExe, concatCommands } from "../utils/execUtils";
-import { accessSync, existsSync } from "fs";
+import { getInternalDirRealPath } from "../utils/utils";
 import { getExtraPaths, normalizePath, setExtraPath } from "../utils/envYamlUtils";
 
 interface IEclairConfig {
@@ -23,6 +25,9 @@ export class EclairManagerPanel {
   private _settingsRoot: string | undefined;
   private _disposables: vscode.Disposable[] = [];
   private _didInitialProbe = false;
+  private _envWatcher: fs.FSWatcher | undefined;
+  private envData: any | undefined;
+  private envYamlDoc: any | undefined;
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, workspaceFolder?: vscode.WorkspaceFolder, settingsRoot?: string) {
     this._panel = panel;
@@ -30,6 +35,10 @@ export class EclairManagerPanel {
     this._workspaceFolder = workspaceFolder;
     this._settingsRoot = settingsRoot;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+
+    // Load env.yml and watch for external edits so the path field stays in sync
+    this.loadEnvYaml();
+    this.startEnvWatcher();
   }
 
   public static render(extensionUri: vscode.Uri, workspaceFolder?: vscode.WorkspaceFolder, settingsRoot?: string) {
@@ -59,6 +68,9 @@ export class EclairManagerPanel {
 
   public dispose() {
     EclairManagerPanel.currentPanel = undefined;
+    if (this._envWatcher) {
+      try { this._envWatcher.close(); } catch { /* ignore */ }
+    }
     this._panel.dispose();
     while (this._disposables.length) {
       const d = this._disposables.pop();
@@ -78,14 +90,76 @@ export class EclairManagerPanel {
     return trimmed;
   }
 
+  private loadEnvYaml() {
+    try {
+      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
+      if (fs.existsSync(envYamlPath)) {
+        const envYaml = fs.readFileSync(envYamlPath, "utf8");
+        this.envData = yaml.parse(envYaml);
+        this.envYamlDoc = yaml.parseDocument(envYaml);
+      }
+    } catch {
+      this.envData = undefined;
+      this.envYamlDoc = undefined;
+    }
+  }
+
+  private startEnvWatcher() {
+    if (this._envWatcher) return;
+    const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
+    if (!fs.existsSync(envYamlPath)) return;
+
+    this._envWatcher = fs.watch(envYamlPath, async () => {
+      this.loadEnvYaml();
+      if (this._panel.visible) {
+        const eclairInfo = this.getEclairPathFromEnv();
+        const path = eclairInfo?.path || "";
+        this._panel.webview.postMessage({ command: "set-install-path", path });
+        this._panel.webview.postMessage({ command: "set-path-status", text: path });
+        this._panel.webview.postMessage({ command: "set-install-path-placeholder", text: path });
+      }
+    });
+  }
+
+  private getEclairPathFromEnv(): { path: string | undefined, index: number } {
+    try {
+      const arr = (this.envData as any)?.other?.EXTRA_TOOLS?.path;
+      if (Array.isArray(arr) && arr.length > 0) {
+        // Sempre retorna o último path salvo
+        const idx = arr.length - 1;
+        return { path: normalizePath(arr[idx]), index: idx };
+      }
+    } catch {
+      // ignore
+    }
+    // Fallback: read directly from env.yml helpers in case in-memory parse failed
+    const arr = getExtraPaths("EXTRA_TOOLS");
+    if (arr.length > 0) {
+      const idx = arr.length - 1;
+      return { path: normalizePath(arr[idx]), index: idx };
+    }
+    return { path: undefined, index: -1 };
+  }
+
   private saveEclairPathToEnv(installPath?: string) {
     const dir = this.toInstallDir(installPath);
     if (!dir) return;
     const normalized = normalizePath(dir);
     if (!/[\\/]/.test(normalized)) return; // ignore plain executable names
-    const current = getExtraPaths("EXTRA_TOOLS").map(normalizePath);
-    if (current.includes(normalized)) return;
-    setExtraPath("EXTRA_TOOLS", current.length, normalized);
+    // get current paths
+    const arr = getExtraPaths("EXTRA_TOOLS");
+    // find index where eclair is detected or matches current UI
+    let idx = this.getEclairPathFromEnv().index;
+    if (idx < 0) idx = 0;
+    // use setExtraPath helper to update env.yml
+    require("../utils/envYamlUtils").setExtraPath("EXTRA_TOOLS", idx, normalized);
+    // reload in-memory state
+    this.loadEnvYaml();
+    this.startEnvWatcher();
+    // persist in UI immediately
+    this._panel.webview.postMessage({ command: 'set-install-path', path: normalized });
+    this._panel.webview.postMessage({ command: 'set-path-status', text: normalized });
+    this._panel.webview.postMessage({ command: 'set-install-path-placeholder', text: normalized });
   }
 
   public async createContent() {
@@ -117,6 +191,37 @@ export class EclairManagerPanel {
   private _setWebviewMessageListener(webview: vscode.Webview) {
     webview.onDidReceiveMessage(async (m: any) => {
       switch (m.command) {
+        case "update-path": {
+          const { tool, newPath } = m;
+          if (tool === "eclair") {
+            this.saveEclairPathToEnv(newPath);
+            const eclairInfo = this.getEclairPathFromEnv();
+            const path = eclairInfo?.path || "";
+            webview.postMessage({ command: "path-updated", tool, path, success: true });
+          }
+          break;
+        }
+        case "browse-path": {
+          const { tool } = m;
+          if (tool === "eclair") {
+            const pick = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: "Select Eclair installation" });
+            if (pick && pick[0]) {
+              const chosen = pick[0].fsPath.trim();
+              this.saveEclairPathToEnv(chosen);
+              const eclairInfo = this.getEclairPathFromEnv();
+              const path = eclairInfo?.path || "";
+              webview.postMessage({ command: "path-updated", tool, path, success: true, FromBrowse: true });
+            }
+          }
+          break;
+        }
+        case "toggle-add-to-path": {
+          const { tool, addToPath } = m;
+          if (tool === "eclair") {
+            webview.postMessage({ command: "add-to-path-updated", tool, doNotUse: !addToPath });
+          }
+          break;
+        }
         case "request-trial":
           vscode.env.openExternal(vscode.Uri.parse("https://www.bugseng.com/eclair-request-trial/"));
           break;
@@ -127,6 +232,11 @@ export class EclairManagerPanel {
           try {
             this._panel.webview.postMessage({ command: "toggle-spinner", show: true });
             await this.runEclair();
+            const eclairInfo = this.getEclairPathFromEnv();
+            const path = eclairInfo?.path || "";
+            this._panel.webview.postMessage({ command: "set-install-path", path });
+            this._panel.webview.postMessage({ command: "set-path-status", text: path });
+            this._panel.webview.postMessage({ command: "set-install-path-placeholder", text: path });
           } finally {
             this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
           }
@@ -334,6 +444,7 @@ export class EclairManagerPanel {
   }
 
   private async runEclair() {
+    this.loadEnvYaml();
     this._panel.webview.postMessage({ command: "toggle-spinner", show: true });
     this._panel.webview.postMessage({ command: "set-path-status", text: "Checking" });
     this._panel.webview.postMessage({ command: "set-install-path-placeholder", text: "Checking" });
@@ -373,57 +484,14 @@ export class EclairManagerPanel {
     }
 
     const installed = !!version;
-    
-    if (installed && !exePath) {
-      try {
-        const fallbackCmd = process.platform === "win32"
-          ? 'where.exe eclair'
-          : 'command -v eclair';
-        const proc2 = await execCommandWithEnv(fallbackCmd);
-        const out2 = await readStdout(proc2);
-        const lines2 = out2.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-        exePath = lines2[0] || exePath;
-      } catch {
-        // ignore
-      }
-    }
 
-    if (installed && !exePath) {
-      exePath = process.platform === "win32" ? "eclair.exe" : "eclair";
-    }
-
-    const installDir = exePath ? this.toInstallDir(exePath) : undefined;
-    if (installed && installDir) {
-      this.saveEclairPathToEnv(installDir);
-    }
-
-    // Prefer path from env.yml (EXTRA_TOOLS) if present and exists
-    const envPaths = getExtraPaths("EXTRA_TOOLS").map(normalizePath);
-    let envEclair = envPaths.find(p => /eclair/i.test(path.basename(p)) || /eclair/i.test(p));
-    if (envEclair && !(require('fs').existsSync(envEclair))) {
-      // If the path doesn't exist, try to find a valid one in the parent directory
-      const parentDir = path.dirname(envEclair);
-      const candidate = path.join(parentDir, "bin");
-      if (require('fs').existsSync(candidate)) {
-        envEclair = candidate;
-      } else {
-        envEclair = undefined;
-      }
-    }
-    const envCandidate = (envEclair && require('fs').existsSync(envEclair)) ? envEclair : envPaths.find(p => require('fs').existsSync(p));
-
-    const displayPath = envCandidate || installDir || exePath;
+    const eclairInfo = this.getEclairPathFromEnv();
+    const eclairPath = (typeof eclairInfo === 'object' && typeof eclairInfo.path === 'string') ? eclairInfo.path : '';
+    this._panel.webview.postMessage({ command: 'set-install-path', path: eclairPath });
+    this._panel.webview.postMessage({ command: 'set-path-status', text: eclairPath });
+    this._panel.webview.postMessage({ command: 'set-install-path-placeholder', text: eclairPath });
 
     this._panel.webview.postMessage({ command: 'eclair-status', installed, version: installed ? version! : 'unknown' });
-    if (displayPath) {
-      this._panel.webview.postMessage({ command: 'set-install-path', path: displayPath });
-      this._panel.webview.postMessage({ command: 'set-path-status', text: displayPath });
-      this._panel.webview.postMessage({ command: 'set-install-path-placeholder', text: displayPath });
-    } else {
-      this._panel.webview.postMessage({ command: 'set-install-path', path: 'Not found' });
-      this._panel.webview.postMessage({ command: 'set-path-status', text: 'Not found' });
-      this._panel.webview.postMessage({ command: 'set-install-path-placeholder', text: 'Not found' });
-    }
     this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
 
   }
@@ -461,9 +529,9 @@ export class EclairManagerPanel {
     <vscode-button id="request-trial" appearance="primary">Request Trial License</vscode-button>
   </div>
   <div class="grid-group-div">
-    <vscode-text-field id="install-path" placeholder="Path to installation (optional)" size="50" disabled>Path:</vscode-text-field>
-    <vscode-button id="browse-install" class="browse-input-button" appearance="secondary" disabled><span class="codicon codicon-folder"></span></vscode-button>
-    <vscode-button id="edit-install" class="save-path-button" appearance="primary">Edit</vscode-button>
+    <vscode-text-field id="details-path-input-eclair" class="details-path-field" placeholder="Enter the tool's path if not in the global PATH" size="50" disabled>Path:</vscode-text-field>
+    <vscode-button id="browse-path-button-eclair" class="browse-input-button" appearance="secondary" disabled><span class="codicon codicon-folder"></span></vscode-button>
+    <vscode-button id="edit-path-eclair" class="save-path-button" data-tool="eclair" appearance="primary">Edit</vscode-button>
   </div>
   
 </div>

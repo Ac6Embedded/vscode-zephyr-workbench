@@ -13,11 +13,16 @@ function setEditMode(inputEl: HTMLInputElement | null, browseBtn: HTMLElement | 
 }
 
 function toggleInstallEdit() {
-  const input = document.getElementById('install-path') as HTMLInputElement | null;
-  const browse = document.getElementById('browse-install') as HTMLElement | null;
-  const editBtn = document.getElementById('edit-install') as HTMLElement | null;
+  const input = document.getElementById('details-path-input-eclair') as HTMLInputElement | null;
+  const browse = document.getElementById('browse-path-button-eclair') as HTMLElement | null;
+  const editBtn = document.getElementById('edit-path-eclair') as HTMLElement | null;
   if (!input || !browse || !editBtn) return;
   const isEdit = (editBtn.textContent || '') === 'Edit';
+  // When leaving edit mode, persist the value to env.yml via backend
+  if (!isEdit) {
+    const newPath = (input.value || '').trim();
+    webviewApi.postMessage({ command: 'update-path', tool: 'eclair', newPath });
+  }
   setEditMode(input, browse, editBtn, isEdit);
 }
 
@@ -109,13 +114,14 @@ function setVSCodeMessageListener() {
         break;
       }
       case "set-install-path": {
-        const f = document.getElementById("install-path") as any;
+        const f = document.getElementById("details-path-input-eclair") as any;
         if (f) {
           const p = (msg.path ?? '').toString().trim();
-          f.value = p.length > 0 ? p : 'Not installed';
+          f.value = p;
+          f.placeholder = '';
         }
-        const browse = document.getElementById('browse-install') as HTMLElement | null;
-        const editBtn = document.getElementById('edit-install') as HTMLElement | null;
+        const browse = document.getElementById('browse-path-button-eclair') as HTMLElement | null;
+        const editBtn = document.getElementById('edit-path-eclair') as HTMLElement | null;
         setEditMode(f as HTMLInputElement, browse, editBtn, false);
         break;
       }
@@ -128,15 +134,16 @@ function setVSCodeMessageListener() {
         break;
       }
       case "set-path-status": {
-        const f = document.getElementById("install-path") as any;
+        const f = document.getElementById("details-path-input-eclair") as any;
         if (f) {
           const t = (msg.text ?? '').toString();
           f.value = t;
+          f.placeholder = '';
         }
         break;
       }
       case "set-install-path-placeholder": {
-        const f = document.getElementById("install-path") as any;
+        const f = document.getElementById("details-path-input-eclair") as any;
         if (f) {
           const t = (msg.text ?? '').toString();
           f.placeholder = t;
@@ -176,9 +183,9 @@ function main() {
   document.getElementById("probe-btn")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "probe-eclair" });
   });
-  document.getElementById('edit-install')?.addEventListener('click', () => toggleInstallEdit());
-  document.getElementById('browse-install')?.addEventListener('click', () => {
-    webviewApi.postMessage({ command: 'browse-install-path' });
+  document.getElementById('edit-path-eclair')?.addEventListener('click', () => toggleInstallEdit());
+  document.getElementById('browse-path-button-eclair')?.addEventListener('click', () => {
+    webviewApi.postMessage({ command: 'browse-path', tool: 'eclair' });
   });
   document.getElementById('edit-config')?.addEventListener('click', () => toggleConfigEdit());
   document.getElementById('browse-config')?.addEventListener('click', () => {
@@ -189,8 +196,8 @@ function main() {
     if (e.key !== 'Enter') return;
     const active = document.activeElement as HTMLElement | null;
     if (!active) return;
-    if (active.id === 'install-path') {
-      const btn = document.getElementById('edit-install') as HTMLElement | null;
+    if (active.id === 'details-path-input-eclair') {
+      const btn = document.getElementById('edit-path-eclair') as HTMLElement | null;
       if (btn && btn.textContent === 'Done') { e.preventDefault(); (btn as any).click(); }
     } else if (active.id === 'extra-config') {
       const btn = document.getElementById('edit-config') as HTMLElement | null;
