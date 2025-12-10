@@ -470,14 +470,26 @@ export class EclairManagerPanel {
   }
 
   private async saveScaConfig(cfg: IEclairConfig) {
-    const folder = this._settingsRoot || this._workspaceFolder?.uri.fsPath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!folder) return;
+    // Prefer explicit workspace folder that created this panel (application context).
+    // If not available, prefer the workspace folder of the active editor (so we save in the project's settings),
+    // then fall back to settingsRoot or first workspace folder.
+    let folderUri = this._workspaceFolder?.uri;
+    if (!folderUri) {
+      const activeEditor = vscode.window.activeTextEditor;
+      if (activeEditor) {
+        const wf = vscode.workspace.getWorkspaceFolder(activeEditor.document.uri);
+        if (wf) folderUri = wf.uri;
+      }
+    }
+    if (!folderUri && this._settingsRoot) folderUri = vscode.Uri.file(this._settingsRoot);
+    if (!folderUri && vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) folderUri = vscode.workspace.workspaceFolders[0].uri;
+    if (!folderUri) return;
 
+    // If an installPath was provided in the UI, persist it to env.yml
     if (cfg.installPath) {
       this.saveEclairPathToEnv(cfg.installPath);
     }
 
-    const folderUri = vscode.Uri.file(folder);
     const config = vscode.workspace.getConfiguration(undefined, folderUri);
     const existing = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
     const configs: any[] = Array.isArray(existing) ? [...existing] : [];
@@ -489,15 +501,26 @@ export class EclairManagerPanel {
 
     const reports = cfg.reports && cfg.reports.length > 0 ? cfg.reports : ["ALL"];
     
+    // Preserve existing sca.path / sca.extraConfig if the user didn't provide new values
+    const prevSca = configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0 ? configs[idx].sca[0] : {};
     const scaArray: any = {
       name: "eclair",
       ruleset: cfg.ruleset || "ECLAIR_RULESET_FIRST_ANALYSIS",
       reports,
+      // prefer explicit values from the UI, otherwise keep previous values if present
+      path: cfg.installPath && cfg.installPath.trim() ? cfg.installPath.trim() : (prevSca?.path || prevSca?.extraConfig || undefined),
+      extraConfig: cfg.extraConfig && cfg.extraConfig.trim() ? cfg.extraConfig.trim() : (prevSca?.extraConfig || prevSca?.eclairConfigPath || undefined),
     };
+
+    // Remove undefined keys to avoid writing empty properties
+    if (!scaArray.path) delete scaArray.path;
+    if (!scaArray.extraConfig) delete scaArray.extraConfig;
 
     configs[idx].sca = [scaArray];
 
-    const target = this._workspaceFolder ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Workspace;
+    // Determine proper target: if we resolved a workspace folder for folderUri use WorkspaceFolder target
+    const resolvedWf = vscode.workspace.getWorkspaceFolder(folderUri);
+    const target = resolvedWf ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Workspace;
     await config.update("zephyr-workbench.build.configurations", configs, target);
   }
 
