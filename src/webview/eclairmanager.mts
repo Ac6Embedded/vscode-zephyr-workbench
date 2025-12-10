@@ -119,14 +119,27 @@ function setVSCodeMessageListener() {
       }
       case "set-install-path": {
         const f = document.getElementById("details-path-input-eclair") as any;
-        if (f) {
-          const p = (msg.path ?? '').toString().trim();
-          f.value = p;
-          f.placeholder = '';
-        }
         const browse = document.getElementById('browse-path-button-eclair') as HTMLElement | null;
         const editBtn = document.getElementById('edit-path-eclair') as HTMLElement | null;
-        setEditMode(f as HTMLInputElement, browse, editBtn, false);
+        if (f) {
+          const p = (msg.path ?? '').toString().trim();
+          // Show special markers (Checking / Not Found) as visible, styled value
+            if (!p || p === "Not Found" || p === "Checking") {
+              // show the text as the input value but keep the field disabled so it appears faded
+              f.value = p || "Not Found";
+              f.placeholder = "";
+              f.disabled = true;
+              // ensure no custom placeholder styling overrides the disabled appearance
+              try { f.classList.remove('em-placeholder-value'); } catch {}
+            } else {
+              f.value = p;
+              f.placeholder = "";
+              f.disabled = true;
+              try { f.classList.remove('em-placeholder-value'); } catch {}
+            }
+        }
+        if (editBtn) editBtn.textContent = 'Edit';
+        try { setEditMode(f as HTMLInputElement, browse, editBtn, false); } catch {}
         break;
       }
       case "set-extra-config": {
@@ -139,10 +152,20 @@ function setVSCodeMessageListener() {
       }
       case "set-path-status": {
         const f = document.getElementById("details-path-input-eclair") as any;
+        const browse = document.getElementById('browse-path-button-eclair') as HTMLElement | null;
         if (f) {
           const t = (msg.text ?? '').toString();
-          f.value = t;
-          f.placeholder = '';
+            if (!t || t === "Not Found" || t === "Checking") {
+              f.value = t || "Not Found";
+              f.placeholder = "";
+              f.disabled = true;
+              try { f.classList.remove('em-placeholder-value'); } catch {}
+            } else {
+              f.value = t;
+              f.placeholder = "";
+              f.disabled = true;
+              try { f.classList.remove('em-placeholder-value'); } catch {}
+            }
         }
         break;
       }

@@ -127,10 +127,11 @@ export class EclairManagerPanel {
       this.loadEnvYaml();
       if (this._panel.visible) {
         const eclairInfo = this.getEclairPathFromEnv();
-        const path = eclairInfo?.path || "";
-        this._panel.webview.postMessage({ command: "set-install-path", path });
-        this._panel.webview.postMessage({ command: "set-path-status", text: path });
-        this._panel.webview.postMessage({ command: "set-install-path-placeholder", text: path });
+        const path = (typeof eclairInfo === 'object' && typeof eclairInfo.path === 'string') ? eclairInfo.path : '';
+        const pathToShow = (!path || path === "") ? "Not Found" : path;
+        this._panel.webview.postMessage({ command: "set-install-path", path: pathToShow });
+        this._panel.webview.postMessage({ command: "set-path-status", text: pathToShow });
+        this._panel.webview.postMessage({ command: "set-install-path-placeholder", text: pathToShow });
       }
     });
   }
@@ -635,8 +636,8 @@ export class EclairManagerPanel {
 <div class="section">
   <h2>Additional Configuration (.ecl)</h2>
   <div class="grid-group-div">
-    <vscode-text-field id="extra-config" placeholder="path/to/config" size="50">Path:</vscode-text-field>
-    <vscode-button id="browse-config" class="browse-extra-input-button" appearance="secondary"><span class="codicon codicon-folder"></span></vscode-button>
+    <vscode-text-field id="extra-config" placeholder="path/to/config" size="50" disabled>Path:</vscode-text-field>
+    <vscode-button id="browse-config" class="browse-extra-input-button" appearance="secondary" disabled><span class="codicon codicon-folder"></span></vscode-button>
     <vscode-button id="edit-config" class="save-path-button" appearance="primary">Edit</vscode-button>
   </div>
 </div>

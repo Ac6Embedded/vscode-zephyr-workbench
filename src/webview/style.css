@@ -167,6 +167,12 @@ vscode-text-field.browse-field {
   min-width: calc(var(--design-unit)* 40px);
 }
 
+.em-placeholder-value {
+  color: color-mix(in srgb, var(--input-placeholder-foreground) 90%, transparent) !important;
+  opacity: 0.95 !important;
+  font-style: italic;
+}
+
 vscode-button {
   height: calc(var(--input-height)* 1px);
 }
