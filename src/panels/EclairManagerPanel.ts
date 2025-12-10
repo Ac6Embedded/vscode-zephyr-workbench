@@ -18,6 +18,20 @@ interface IEclairConfig {
 }
 
 export class EclairManagerPanel {
+    private async saveExtraConfigToActiveSca(newPath: string) {
+      const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+      const config = vscode.workspace.getConfiguration(undefined, folderUri);
+      const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
+      const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
+      const idx = activeIdx >= 0 ? activeIdx : 0;
+      if (!configs[idx]) return;
+      if (!Array.isArray(configs[idx].sca) || configs[idx].sca.length === 0) {
+        configs[idx].sca = [{ name: "eclair" }];
+      }
+      configs[idx].sca[0].path = newPath;
+      await config.update("zephyr-workbench.build.configurations", configs, vscode.ConfigurationTarget.WorkspaceFolder);
+      console.log("[EclairManagerPanel] Saved extraConfig in sca:", newPath);
+    }
   public static currentPanel: EclairManagerPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
@@ -166,6 +180,23 @@ export class EclairManagerPanel {
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
     this._setWebviewMessageListener(this._panel.webview);
 
+    // Read .ecl config path from active sca object and send to webview
+    try {
+      const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+      const config = vscode.workspace.getConfiguration(undefined, folderUri);
+      const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
+      const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
+      const idx = activeIdx >= 0 ? activeIdx : 0;
+      let extraConfigPath = "";
+      if (configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0) {
+        // Use custom key if present, fallback to 'extraConfig' or 'path'
+        extraConfigPath = configs[idx].sca[0].eclairConfigPath || configs[idx].sca[0].extraConfig || configs[idx].sca[0].path || "";
+      }
+      this._panel.webview.postMessage({ command: "set-extra-config", path: extraConfigPath });
+    } catch {
+      this._panel.webview.postMessage({ command: "set-extra-config", path: "" });
+    }
+
     this._panel.onDidChangeViewState(async () => {
       if (this._panel.visible) {
         try {
@@ -263,13 +294,26 @@ export class EclairManagerPanel {
             title: "Select .ecl file"
           });
           if (pick && pick[0]) {
-            webview.postMessage({ command: "set-extra-config", path: pick[0].fsPath });
+            const chosen = pick[0].fsPath;
+            webview.postMessage({ command: "set-extra-config", path: chosen });
+            await this.saveExtraConfigToActiveSca(chosen);
           }
           break;
         }
+        case "update-extra-config": {
+          const newPath = (m?.newPath || "").toString().trim();
+          if (!newPath) break;
+          webview.postMessage({ command: "set-extra-config", path: newPath });
+          await this.saveExtraConfigToActiveSca(newPath);
+          break;
+        }
+        
         case "save-sca-config": {
           const cfg: IEclairConfig = m.data || {};
           await this.saveScaConfig(cfg);
+          if (cfg.extraConfig) {
+            await this.saveExtraConfigToActiveSca(cfg.extraConfig);
+          }
           break;
         }
         case "run-command": {

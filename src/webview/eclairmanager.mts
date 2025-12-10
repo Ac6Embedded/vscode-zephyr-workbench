@@ -32,6 +32,10 @@ function toggleConfigEdit() {
   const editBtn = document.getElementById('edit-config') as HTMLElement | null;
   if (!input || !browse || !editBtn) return;
   const isEdit = (editBtn.textContent || '') === 'Edit';
+  if (!isEdit) {
+    const newPath = (input.value || '').trim();
+    webviewApi.postMessage({ command: 'update-extra-config', newPath });
+  }
   setEditMode(input, browse, editBtn, isEdit);
 }
 
