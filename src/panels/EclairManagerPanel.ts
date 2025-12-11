@@ -501,21 +501,16 @@ export class EclairManagerPanel {
 
     const reports = cfg.reports && cfg.reports.length > 0 ? cfg.reports : ["ALL"];
     
-    // Preserve existing sca.path / sca.extraConfig if the user didn't provide new values
+    // Only one config key: 'path', never both 'path' and 'extraConfig'.
     const prevSca = configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0 ? configs[idx].sca[0] : {};
     const scaArray: any = {
       name: "eclair",
       ruleset: cfg.ruleset || "ECLAIR_RULESET_FIRST_ANALYSIS",
       reports,
-      // prefer explicit values from the UI, otherwise keep previous values if present
-      path: cfg.installPath && cfg.installPath.trim() ? cfg.installPath.trim() : (prevSca?.path || prevSca?.extraConfig || undefined),
-      extraConfig: cfg.extraConfig && cfg.extraConfig.trim() ? cfg.extraConfig.trim() : (prevSca?.extraConfig || prevSca?.eclairConfigPath || undefined),
+      path: cfg.extraConfig && cfg.extraConfig.trim() ? cfg.extraConfig.trim() : (cfg.installPath && cfg.installPath.trim() ? cfg.installPath.trim() : prevSca?.path),
     };
-
     // Remove undefined keys to avoid writing empty properties
     if (!scaArray.path) delete scaArray.path;
-    if (!scaArray.extraConfig) delete scaArray.extraConfig;
-
     configs[idx].sca = [scaArray];
 
     // Determine proper target: if we resolved a workspace folder for folderUri use WorkspaceFolder target
@@ -631,8 +626,6 @@ export class EclairManagerPanel {
       ].map(r => `<vscode-radio id="rs-${r}" name="ruleset" value="${r}">${r === "USER" ? "user defined" : r}</vscode-radio>`).join("")}
   </vscode-radio-group>
   <div id="user-ruleset-fields" class="grid-group-div hidden">
-    <vscode-text-field id="user-ruleset-name" placeholder="User ruleset name" size="40">Name:</vscode-text-field>
-    <vscode-text-field id="user-ruleset-path" placeholder="Path to ruleset" size="50">Path:</vscode-text-field>
   </div>
 </div>
 
