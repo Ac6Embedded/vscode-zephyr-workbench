@@ -656,17 +656,13 @@ export class EclairManagerPanel {
       exePath = undefined;
     }
 
-    // if eclair was detected and is not in env.yml, add it automatically
-    if (exePath) {
-      const eclairInfo = this.getEclairPathFromEnv();
-      const normalizedExe = path.normalize(exePath).toLowerCase();
-      const alreadyInEnv = (typeof eclairInfo === 'object' && typeof eclairInfo.path === 'string')
-        ? path.normalize(eclairInfo.path).toLowerCase() === normalizedExe
-        : false;
-      if (!alreadyInEnv) {
-        this.ensureEclairPathInEnv(exePath);
+      // Only add detected Eclair path to env.yml if there is no path saved yet
+      if (exePath) {
+        const eclairInfo = this.getEclairPathFromEnv();
+        if (!eclairInfo.path) {
+          this.ensureEclairPathInEnv(exePath);
+        }
       }
-    }
 
     let version: string | undefined;
     try {
