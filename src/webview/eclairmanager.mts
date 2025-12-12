@@ -190,13 +190,17 @@ function setVSCodeMessageListener() {
       }
       case "set-user-ruleset-path": {
         const f = document.getElementById("user-ruleset-path") as any;
+        const browseBtn = document.getElementById('browse-user-ruleset-path') as HTMLElement | null;
         const editBtn = document.getElementById('edit-user-ruleset-path') as HTMLElement | null;
         if (f) {
           f.value = msg.path || "";
           f.disabled = true;
         }
         if (editBtn) editBtn.textContent = 'Edit';
-        setEditMode(f as HTMLInputElement, null, editBtn, false);
+        setEditMode(f as HTMLInputElement, browseBtn, editBtn, false);
+        // Salvar automaticamente ao receber novo path do browse
+        const cfg = collectConfig();
+        webviewApi.postMessage({ command: 'save-sca-config', data: cfg });
         break;
       }
     }
@@ -260,14 +264,23 @@ function main() {
   // User ruleset path edit logic 
   document.getElementById('edit-user-ruleset-path')?.addEventListener('click', () => {
     const input = document.getElementById('user-ruleset-path') as HTMLInputElement | null;
+    const browseBtn = document.getElementById('browse-user-ruleset-path') as HTMLElement | null;
     const editBtn = document.getElementById('edit-user-ruleset-path') as HTMLElement | null;
-    if (!input || !editBtn) return;
+    if (!input || !editBtn || !browseBtn) return;
     const isEdit = (editBtn.textContent || '') === 'Edit';
     if (!isEdit) {
       const cfg = collectConfig();
       webviewApi.postMessage({ command: 'save-sca-config', data: cfg });
     }
-    setEditMode(input, null, editBtn, isEdit);
+    setEditMode(input, browseBtn, editBtn, isEdit);
+  });
+
+  // Browse button for user-ruleset-path
+  document.getElementById('browse-user-ruleset-path')?.addEventListener('click', (ev) => {
+    const btn = ev.currentTarget as HTMLElement | null;
+    if (btn && !btn.hasAttribute('disabled')) {
+      webviewApi.postMessage({ command: 'browse-user-ruleset-path' });
+    }
   });
 
   document.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -279,6 +292,12 @@ function main() {
       if (btn && btn.textContent === 'Done') { e.preventDefault(); (btn as any).click(); }
     } else if (active.id === 'extra-config') {
       const btn = document.getElementById('edit-config') as HTMLElement | null;
+      if (btn && btn.textContent === 'Done') { e.preventDefault(); (btn as any).click(); }
+    } else if (active.id === 'user-ruleset-name') {
+      const btn = document.getElementById('edit-user-ruleset-name') as HTMLElement | null;
+      if (btn && btn.textContent === 'Done') { e.preventDefault(); (btn as any).click(); }
+    } else if (active.id === 'user-ruleset-path') {
+      const btn = document.getElementById('edit-user-ruleset-path') as HTMLElement | null;
       if (btn && btn.textContent === 'Done') { e.preventDefault(); (btn as any).click(); }
     }
   });

@@ -424,6 +424,29 @@ export class EclairManagerPanel {
         case "probe-eclair":
           this.runEclair();
           break;
+        case "browse-user-ruleset-path": {
+          const pick = await vscode.window.showOpenDialog({
+            canSelectFiles: false,
+            canSelectFolders: true,
+            canSelectMany: false,
+            title: "Select Ruleset path"
+          });
+          if (pick && pick[0]) {
+            const chosen = pick[0].fsPath.trim();
+            webview.postMessage({ command: "set-user-ruleset-path", path: chosen });
+            // save path select from the browse dialog
+            const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+            const config = vscode.workspace.getConfiguration(undefined, folderUri);
+            const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
+            const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
+            const idx = activeIdx >= 0 ? activeIdx : 0;
+            if (configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0) {
+              configs[idx].sca[0].userRulesetPath = chosen;
+              await config.update("zephyr-workbench.build.configurations", configs, vscode.ConfigurationTarget.Workspace);
+            }
+          }
+          break;
+        }
       }
     }, undefined, this._disposables);
   }
@@ -653,6 +676,7 @@ export class EclairManagerPanel {
     <vscode-text-field id="user-ruleset-name" class="details-path-field" placeholder="Ruleset name (e.g. MYRULESET)" size="30" disabled>Ruleset Name:</vscode-text-field>
     <vscode-button id="edit-user-ruleset-name" class="save-path-button" appearance="primary">Edit</vscode-button>
     <vscode-text-field id="user-ruleset-path" class="details-path-field" placeholder="Path to analysis_<RULESET>.ecl (optional)" size="38" disabled>Ruleset Path:</vscode-text-field>
+    <vscode-button id="browse-user-ruleset-path" class="browse-extra-input-button" appearance="secondary" disabled><span class="codicon codicon-folder"></span></vscode-button>
     <vscode-button id="edit-user-ruleset-path" class="save-path-button" appearance="primary">Edit</vscode-button>
   </div>
 </div>
