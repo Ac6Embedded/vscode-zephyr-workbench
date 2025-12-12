@@ -213,10 +213,9 @@ export class EclairManagerPanel {
     if (!/[\\/]/.test(normalized)) return; // ignore plain executable names
     // get current paths
     const arr = getExtraPaths("EXTRA_TOOLS");
-    // find index where eclair is detected or matches current UI
-    let idx = this.getEclairPathFromEnv().index;
+    let idx = arr.length - 1;
     if (idx < 0) idx = 0;
-    // use setExtraPath helper to update env.yml
+    // Always overwrite the last entry (or add if empty)
     require("../utils/envYamlUtils").setExtraPath("EXTRA_TOOLS", idx, normalized);
     // reload in-memory state
     this.loadEnvYaml();
