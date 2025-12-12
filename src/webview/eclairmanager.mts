@@ -1,9 +1,16 @@
+// Register VSCode Webview UI Toolkit components
 import { provideVSCodeDesignSystem, allComponents } from "@vscode/webview-ui-toolkit";
 
 provideVSCodeDesignSystem().register(allComponents);
 
 const webviewApi = acquireVsCodeApi();
 
+// VSCode API for messaging between webview and extension backend
+
+/**
+ * Enables or disables edit mode for a text field and its related buttons.
+ * Used for all Edit/Done logic in the UI.
+ */
 function setEditMode(inputEl: HTMLInputElement | null, browseBtn: HTMLElement | null, editBtn: HTMLElement | null, editing: boolean) {
   if (!inputEl || !editBtn) return;
   (inputEl as any).disabled = !editing;
@@ -12,6 +19,10 @@ function setEditMode(inputEl: HTMLInputElement | null, browseBtn: HTMLElement | 
   if (editing) inputEl.focus();
 }
 
+/**
+ * Handles Edit/Done logic for the Eclair install path field.
+ * On Done, sends the new path to the backend to update env.yml.
+ */
 function toggleInstallEdit() {
   const input = document.getElementById('details-path-input-eclair') as HTMLInputElement | null;
   const browse = document.getElementById('browse-path-button-eclair') as HTMLElement | null;
@@ -26,6 +37,10 @@ function toggleInstallEdit() {
   setEditMode(input, browse, editBtn, isEdit);
 }
 
+/**
+ * Handles Edit/Done logic for the Additional Configuration (.ecl) field.
+ * On Done, sends the new path to the backend.
+ */
 function toggleConfigEdit() {
   const input = document.getElementById('extra-config') as HTMLInputElement | null;
   const browse = document.getElementById('browse-config') as HTMLElement | null;
@@ -39,6 +54,10 @@ function toggleConfigEdit() {
   setEditMode(input, browse, editBtn, isEdit);
 }
 
+/**
+ * Collects all current config values from the UI fields.
+ * Used to send settings to the backend for persistence.
+ */
 function collectConfig() {
   const installPath = (document.getElementById("install-path") as any)?.value?.trim?.() || "";
   const extraConfig = (document.getElementById("extra-config") as any)?.value?.trim?.() || "";
@@ -53,6 +72,9 @@ function collectConfig() {
   return { installPath, extraConfig, ruleset: selected, userRulesetName: userName, userRulesetPath: userPath, reports };
 }
 
+/**
+ * Shows or hides the user ruleset fields based on the selected ruleset radio.
+ */
 function updateUserRulesetVisibility() {
   const radios = Array.from(document.querySelectorAll('vscode-radio[name="ruleset"]')) as any[];
   const selected = (radios.find(r => (r as any).checked) as any)?.value;
@@ -66,6 +88,9 @@ function updateUserRulesetVisibility() {
   }
 }
 
+/**
+ * Ensures that when 'ALL' is checked, all other report checkboxes are unchecked.
+ */
 function handleReportsAllToggle() {
   const checks = Array.from(document.querySelectorAll('.report-chk')) as any[];
   const allChk = checks.find(c => c.getAttribute('value') === 'ALL') as any;
@@ -75,6 +100,9 @@ function handleReportsAllToggle() {
   }
 }
 
+/**
+ * Prevents conflicting selection between 'ALL' and individual report checkboxes.
+ */
 function preventAllConflict(ev: any) {
   const tgt = ev.target as HTMLElement | null;
   if (!tgt || !tgt.classList.contains('report-chk')) return;
@@ -85,6 +113,10 @@ function preventAllConflict(ev: any) {
   if (val === 'ALL') handleReportsAllToggle();
 }
 
+/**
+ * Listens for messages from the backend and updates the UI accordingly.
+ * Handles all UI state sync from extension to webview.
+ */
 function setVSCodeMessageListener() {
   window.addEventListener("message", (ev: MessageEvent) => {
     const msg: any = ev.data;
@@ -198,7 +230,7 @@ function setVSCodeMessageListener() {
         }
         if (editBtn) editBtn.textContent = 'Edit';
         setEditMode(f as HTMLInputElement, browseBtn, editBtn, false);
-        // Salvar automaticamente ao receber novo path do browse
+        // Save automatically when a new path is received from the browser
         const cfg = collectConfig();
         webviewApi.postMessage({ command: 'save-sca-config', data: cfg });
         break;
@@ -207,6 +239,10 @@ function setVSCodeMessageListener() {
   });
 }
 
+/**
+ * Main entry point for the webview UI logic.
+ * Sets up all event listeners and initializes the UI state.
+ */
 function main() {
   setVSCodeMessageListener();
 
@@ -306,4 +342,5 @@ function main() {
   handleReportsAllToggle();
 }
 
+// Initialize the UI when the webview loads
 window.addEventListener("load", main);

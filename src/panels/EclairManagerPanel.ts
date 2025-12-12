@@ -18,6 +18,10 @@ interface IEclairConfig {
 }
 
 export class EclairManagerPanel {
+    /**
+     * Save the extra config path to the active SCA (Static Code Analysis) configuration in settings.json
+     * Called when the user updates the additional configuration (.ecl) path from the UI.
+     */
     private async saveExtraConfigToActiveSca(newPath: string) {
       const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
       const config = vscode.workspace.getConfiguration(undefined, folderUri);
@@ -92,6 +96,10 @@ export class EclairManagerPanel {
     }
   }
 
+  /**
+   * Utility: Given a path, returns its directory if it's an executable, or the path itself if already a directory.
+   * Used to normalize the Eclair install path.
+   */
   private toInstallDir(p?: string): string | undefined {
     if (!p) return undefined;
     const trimmed = p.trim();
@@ -104,6 +112,10 @@ export class EclairManagerPanel {
     return trimmed;
   }
 
+  /**
+   * Loads the env.yml file into memory (this.envData and this.envYamlDoc).
+   * Used to keep the UI and backend in sync with external changes.
+   */
   private loadEnvYaml() {
     try {
       const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
@@ -118,6 +130,10 @@ export class EclairManagerPanel {
     }
   }
 
+  /**
+   * Starts a file watcher on env.yml to reload it if changed externally.
+   * Keeps the UI fields in sync with manual edits or other tools.
+   */
   private startEnvWatcher() {
     if (this._envWatcher) return;
     const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
@@ -136,6 +152,10 @@ export class EclairManagerPanel {
     });
   }
 
+  /**
+   * Returns the Eclair path from env.yml (EXTRA_TOOLS), if present.
+   * Used to display the current Eclair path in the UI and for auto-detection logic.
+   */
   private getEclairPathFromEnv(): { path: string | undefined, index: number } {
     try {
       const arr = (this.envData as any)?.other?.EXTRA_TOOLS?.path;
@@ -155,6 +175,10 @@ export class EclairManagerPanel {
     return { path: undefined, index: -1 };
   }
 
+  /**
+   * Persists the Eclair install path to env.yml (EXTRA_TOOLS).
+   * Called when the user sets or updates the Eclair path from the UI.
+   */
   private saveEclairPathToEnv(installPath?: string) {
     const dir = this.toInstallDir(installPath);
     if (!dir) return;
@@ -176,6 +200,10 @@ export class EclairManagerPanel {
     this._panel.webview.postMessage({ command: 'set-install-path-placeholder', text: normalized });
   }
 
+  /**
+   * Initializes the webview content and sets up message listeners.
+   * Also triggers initial probe and loads config fields into the UI.
+   */
   public async createContent() {
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
     this._setWebviewMessageListener(this._panel.webview);
@@ -251,6 +279,10 @@ export class EclairManagerPanel {
     }
   }
 
+  /**
+   * Handles messages from the webview (frontend), such as path updates, config saves, etc.
+   * This is the main bridge between UI actions and backend logic.
+   */
   private _setWebviewMessageListener(webview: vscode.Webview) {
     webview.onDidReceiveMessage(async (m: any) => {
       switch (m.command) {
@@ -565,6 +597,10 @@ export class EclairManagerPanel {
     await config.update("zephyr-workbench.build.configurations", configs, target);
   }
 
+  /**
+   * Probes the system for Eclair installation, gets version, and updates the UI accordingly.
+   * If Eclair is found and not present in env.yml, adds it automatically.
+   */
   private async runEclair() {
     this.loadEnvYaml();
     this._panel.webview.postMessage({ command: "toggle-spinner", show: true });
