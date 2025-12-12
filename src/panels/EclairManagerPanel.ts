@@ -18,10 +18,37 @@ interface IEclairConfig {
 }
 
 export class EclairManagerPanel {
-    /**
-     * Save the extra config path to the active SCA (Static Code Analysis) configuration in settings.json
-     * Called when the user updates the additional configuration (.ecl) path from the UI.
-     */
+       /**
+       * Ensures that the Eclair path is present in EXTRA_TOOLS of env.yml.
+       * If not present, adds it automatically.
+       * Call this method after detecting Eclair on the system.
+       */
+      private ensureEclairPathInEnv(eclairBinPath: string) {
+        try {
+          // load env.yml
+          const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
+          if (!fs.existsSync(envYamlPath)) return;
+          const envContent = fs.readFileSync(envYamlPath, 'utf8');
+          const env = yaml.parse(envContent) || {};
+          // make sure the structure exists
+          if (!env.other) env.other = {};
+          if (!env.other.EXTRA_TOOLS) env.other.EXTRA_TOOLS = {};
+          if (!Array.isArray(env.other.EXTRA_TOOLS.path)) env.other.EXTRA_TOOLS.path = [];
+          // Normaliza para comparação
+          const normalizedEclairBin = path.normalize(eclairBinPath).toLowerCase();
+          const alreadyPresent = env.other.EXTRA_TOOLS.path.some((p: string) =>
+            path.normalize(p).toLowerCase() === normalizedEclairBin
+          );
+          if (!alreadyPresent) {
+            env.other.EXTRA_TOOLS.path.push(eclairBinPath);
+            fs.writeFileSync(envYamlPath, yaml.stringify(env), 'utf8');
+            this.loadEnvYaml();
+            this.startEnvWatcher();
+          }
+        } catch (err) {
+          console.error('[EclairManagerPanel] Failed to ensure Eclair path in env.yml:', err);
+        }
+      }
     private async saveExtraConfigToActiveSca(newPath: string) {
       const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
       const config = vscode.workspace.getConfiguration(undefined, folderUri);
@@ -628,6 +655,18 @@ export class EclairManagerPanel {
       exePath = lines[0];
     } catch {
       exePath = undefined;
+    }
+
+    // if eclair was detected and is not in env.yml, add it automatically
+    if (exePath) {
+      const eclairInfo = this.getEclairPathFromEnv();
+      const normalizedExe = path.normalize(exePath).toLowerCase();
+      const alreadyInEnv = (typeof eclairInfo === 'object' && typeof eclairInfo.path === 'string')
+        ? path.normalize(eclairInfo.path).toLowerCase() === normalizedExe
+        : false;
+      if (!alreadyInEnv) {
+        this.ensureEclairPathInEnv(exePath);
+      }
     }
 
     let version: string | undefined;
