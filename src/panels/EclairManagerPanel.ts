@@ -219,6 +219,24 @@ export class EclairManagerPanel {
         } catch {
           this._panel.webview.postMessage({ command: "set-extra-config", path: "" });
         }
+        try {
+          const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+          const config = vscode.workspace.getConfiguration(undefined, folderUri);
+          const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
+          const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
+          const idx = activeIdx >= 0 ? activeIdx : 0;
+          let userRulesetName = "";
+          let userRulesetPath = "";
+          if (configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0) {
+            userRulesetName = configs[idx].sca[0].userRulesetName || "";
+            userRulesetPath = configs[idx].sca[0].userRulesetPath || "";
+          }
+          this._panel.webview.postMessage({ command: "set-user-ruleset-name", name: userRulesetName });
+          this._panel.webview.postMessage({ command: "set-user-ruleset-path", path: userRulesetPath });
+        } catch {
+          this._panel.webview.postMessage({ command: "set-user-ruleset-name", name: "" });
+          this._panel.webview.postMessage({ command: "set-user-ruleset-path", path: "" });
+        }
       }
     }, null, this._disposables);
 
