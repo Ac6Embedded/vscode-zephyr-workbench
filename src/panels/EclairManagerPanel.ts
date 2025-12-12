@@ -503,16 +503,19 @@ export class EclairManagerPanel {
 
     const reports = cfg.reports && cfg.reports.length > 0 ? cfg.reports : ["ALL"];
     
-    // save one key called 'path'
+    // Save userRulesetName and userRulesetPath explicitly in sca object
     const prevSca = configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0 ? configs[idx].sca[0] : {};
     const scaArray: any = {
       name: "eclair",
       ruleset: cfg.ruleset || "ECLAIR_RULESET_FIRST_ANALYSIS",
       reports,
       path: cfg.extraConfig && cfg.extraConfig.trim() ? cfg.extraConfig.trim() : (cfg.installPath && cfg.installPath.trim() ? cfg.installPath.trim() : prevSca?.path),
+      userRulesetName: cfg.userRulesetName && cfg.userRulesetName.trim() ? cfg.userRulesetName.trim() : prevSca?.userRulesetName,
+      userRulesetPath: cfg.userRulesetPath && cfg.userRulesetPath.trim() ? cfg.userRulesetPath.trim() : prevSca?.userRulesetPath,
     };
-    // Remove undefined keys to avoid writing empty properties
     if (!scaArray.path) delete scaArray.path;
+    if (!scaArray.userRulesetName) delete scaArray.userRulesetName;
+    if (!scaArray.userRulesetPath) delete scaArray.userRulesetPath;
     configs[idx].sca = [scaArray];
 
     // Determine target scope for update based on folderUri

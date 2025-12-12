@@ -244,26 +244,28 @@ function main() {
     webviewApi.postMessage({ command: 'browse-extra-config' });
   });
 
+  // User ruleset name edit logic 
   document.getElementById('edit-user-ruleset-name')?.addEventListener('click', () => {
     const input = document.getElementById('user-ruleset-name') as HTMLInputElement | null;
     const editBtn = document.getElementById('edit-user-ruleset-name') as HTMLElement | null;
     if (!input || !editBtn) return;
     const isEdit = (editBtn.textContent || '') === 'Edit';
     if (!isEdit) {
-      const newName = (input.value || '').trim();
-      webviewApi.postMessage({ command: 'update-setting', key: 'userRulesetName', value: newName });
+      const cfg = collectConfig();
+      webviewApi.postMessage({ command: 'save-sca-config', data: cfg });
     }
     setEditMode(input, null, editBtn, isEdit);
   });
 
+  // User ruleset path edit logic 
   document.getElementById('edit-user-ruleset-path')?.addEventListener('click', () => {
     const input = document.getElementById('user-ruleset-path') as HTMLInputElement | null;
     const editBtn = document.getElementById('edit-user-ruleset-path') as HTMLElement | null;
     if (!input || !editBtn) return;
     const isEdit = (editBtn.textContent || '') === 'Edit';
     if (!isEdit) {
-      const newPath = (input.value || '').trim();
-      webviewApi.postMessage({ command: 'update-setting', key: 'userRulesetPath', value: newPath });
+      const cfg = collectConfig();
+      webviewApi.postMessage({ command: 'save-sca-config', data: cfg });
     }
     setEditMode(input, null, editBtn, isEdit);
   });
