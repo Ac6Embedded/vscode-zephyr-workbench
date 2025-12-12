@@ -140,7 +140,6 @@ export class EclairManagerPanel {
     try {
       const arr = (this.envData as any)?.other?.EXTRA_TOOLS?.path;
       if (Array.isArray(arr) && arr.length > 0) {
-        // Sempre retorna o último path salvo
         const idx = arr.length - 1;
         return { path: normalizePath(arr[idx]), index: idx };
       }
@@ -268,6 +267,9 @@ export class EclairManagerPanel {
           }
           break;
         }
+         case "manage-license":
+          vscode.env.openExternal(vscode.Uri.parse("http://localhost:1947"));
+          break;
         case "request-trial":
           vscode.env.openExternal(vscode.Uri.parse("https://www.bugseng.com/eclair-request-trial/"));
           break;
@@ -501,7 +503,7 @@ export class EclairManagerPanel {
 
     const reports = cfg.reports && cfg.reports.length > 0 ? cfg.reports : ["ALL"];
     
-    // Only one config key: 'path', never both 'path' and 'extraConfig'.
+    // save one key called 'path'
     const prevSca = configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0 ? configs[idx].sca[0] : {};
     const scaArray: any = {
       name: "eclair",
@@ -513,7 +515,7 @@ export class EclairManagerPanel {
     if (!scaArray.path) delete scaArray.path;
     configs[idx].sca = [scaArray];
 
-    // Determine proper target: if we resolved a workspace folder for folderUri use WorkspaceFolder target
+    // Determine target scope for update based on folderUri
     const resolvedWf = vscode.workspace.getWorkspaceFolder(folderUri);
     const target = resolvedWf ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Workspace;
     await config.update("zephyr-workbench.build.configurations", configs, target);
@@ -601,7 +603,8 @@ export class EclairManagerPanel {
   <div class="summary-actions">
     <div class="actions-title"><strong>Actions</strong></div>
     <vscode-button id="btn-refresh-status" appearance="primary">Refresh Status</vscode-button>
-    <vscode-button id="about-eclair" appearance="primary">About Eclair</vscode-button>
+    <vscode-button id="about-eclair" appearance="primary">About ECLAIR</vscode-button>
+    <vscode-button id="manage-license" appearance="primary">Manage ECLAIR License</vscode-button>
     <vscode-button id="request-trial" appearance="primary">Request Trial License</vscode-button>
   </div>
   <div class="grid-group-div">

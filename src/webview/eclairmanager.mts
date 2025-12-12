@@ -198,6 +198,9 @@ function main() {
   document.getElementById("run-cmd")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "run-command", data: collectConfig() });
   });
+  document.getElementById("manage-license")?.addEventListener("click", () => {
+    webviewApi.postMessage({ command: "manage-license" });
+  });
   document.getElementById("request-trial")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "request-trial" });
   });
