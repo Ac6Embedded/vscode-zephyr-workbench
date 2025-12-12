@@ -18,6 +18,10 @@ interface IEclairConfig {
 }
 
 export class EclairManagerPanel {
+    /**
+     * Save the extra config path to the active SCA (Static Code Analysis) configuration in settings.json
+     * Called when the user updates the additional configuration (.ecl) path from the UI.
+     */
     private async saveExtraConfigToActiveSca(newPath: string) {
       const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
       const config = vscode.workspace.getConfiguration(undefined, folderUri);
@@ -92,6 +96,10 @@ export class EclairManagerPanel {
     }
   }
 
+  /**
+   * Utility: Given a path, returns its directory if it's an executable, or the path itself if already a directory.
+   * Used to normalize the Eclair install path.
+   */
   private toInstallDir(p?: string): string | undefined {
     if (!p) return undefined;
     const trimmed = p.trim();
@@ -104,6 +112,10 @@ export class EclairManagerPanel {
     return trimmed;
   }
 
+  /**
+   * Loads the env.yml file into memory (this.envData and this.envYamlDoc).
+   * Used to keep the UI and backend in sync with external changes.
+   */
   private loadEnvYaml() {
     try {
       const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
@@ -118,6 +130,10 @@ export class EclairManagerPanel {
     }
   }
 
+  /**
+   * Starts a file watcher on env.yml to reload it if changed externally.
+   * Keeps the UI fields in sync with manual edits or other tools.
+   */
   private startEnvWatcher() {
     if (this._envWatcher) return;
     const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
@@ -136,11 +152,14 @@ export class EclairManagerPanel {
     });
   }
 
+  /**
+   * Returns the Eclair path from env.yml (EXTRA_TOOLS), if present.
+   * Used to display the current Eclair path in the UI and for auto-detection logic.
+   */
   private getEclairPathFromEnv(): { path: string | undefined, index: number } {
     try {
       const arr = (this.envData as any)?.other?.EXTRA_TOOLS?.path;
       if (Array.isArray(arr) && arr.length > 0) {
-        // Sempre retorna o último path salvo
         const idx = arr.length - 1;
         return { path: normalizePath(arr[idx]), index: idx };
       }
@@ -156,6 +175,10 @@ export class EclairManagerPanel {
     return { path: undefined, index: -1 };
   }
 
+  /**
+   * Persists the Eclair install path to env.yml (EXTRA_TOOLS).
+   * Called when the user sets or updates the Eclair path from the UI.
+   */
   private saveEclairPathToEnv(installPath?: string) {
     const dir = this.toInstallDir(installPath);
     if (!dir) return;
@@ -177,6 +200,10 @@ export class EclairManagerPanel {
     this._panel.webview.postMessage({ command: 'set-install-path-placeholder', text: normalized });
   }
 
+  /**
+   * Initializes the webview content and sets up message listeners.
+   * Also triggers initial probe and loads config fields into the UI.
+   */
   public async createContent() {
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
     this._setWebviewMessageListener(this._panel.webview);
@@ -220,6 +247,24 @@ export class EclairManagerPanel {
         } catch {
           this._panel.webview.postMessage({ command: "set-extra-config", path: "" });
         }
+        try {
+          const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+          const config = vscode.workspace.getConfiguration(undefined, folderUri);
+          const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
+          const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
+          const idx = activeIdx >= 0 ? activeIdx : 0;
+          let userRulesetName = "";
+          let userRulesetPath = "";
+          if (configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0) {
+            userRulesetName = configs[idx].sca[0].userRulesetName || "";
+            userRulesetPath = configs[idx].sca[0].userRulesetPath || "";
+          }
+          this._panel.webview.postMessage({ command: "set-user-ruleset-name", name: userRulesetName });
+          this._panel.webview.postMessage({ command: "set-user-ruleset-path", path: userRulesetPath });
+        } catch {
+          this._panel.webview.postMessage({ command: "set-user-ruleset-name", name: "" });
+          this._panel.webview.postMessage({ command: "set-user-ruleset-path", path: "" });
+        }
       }
     }, null, this._disposables);
 
@@ -234,6 +279,10 @@ export class EclairManagerPanel {
     }
   }
 
+  /**
+   * Handles messages from the webview (frontend), such as path updates, config saves, etc.
+   * This is the main bridge between UI actions and backend logic.
+   */
   private _setWebviewMessageListener(webview: vscode.Webview) {
     webview.onDidReceiveMessage(async (m: any) => {
       switch (m.command) {
@@ -268,6 +317,9 @@ export class EclairManagerPanel {
           }
           break;
         }
+         case "manage-license":
+          vscode.env.openExternal(vscode.Uri.parse("http://localhost:1947"));
+          break;
         case "request-trial":
           vscode.env.openExternal(vscode.Uri.parse("https://www.bugseng.com/eclair-request-trial/"));
           break;
@@ -404,6 +456,29 @@ export class EclairManagerPanel {
         case "probe-eclair":
           this.runEclair();
           break;
+        case "browse-user-ruleset-path": {
+          const pick = await vscode.window.showOpenDialog({
+            canSelectFiles: false,
+            canSelectFolders: true,
+            canSelectMany: false,
+            title: "Select Ruleset path"
+          });
+          if (pick && pick[0]) {
+            const chosen = pick[0].fsPath.trim();
+            webview.postMessage({ command: "set-user-ruleset-path", path: chosen });
+            // save path select from the browse dialog
+            const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+            const config = vscode.workspace.getConfiguration(undefined, folderUri);
+            const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
+            const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
+            const idx = activeIdx >= 0 ? activeIdx : 0;
+            if (configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0) {
+              configs[idx].sca[0].userRulesetPath = chosen;
+              await config.update("zephyr-workbench.build.configurations", configs, vscode.ConfigurationTarget.Workspace);
+            }
+          }
+          break;
+        }
       }
     }, undefined, this._disposables);
   }
@@ -501,29 +576,31 @@ export class EclairManagerPanel {
 
     const reports = cfg.reports && cfg.reports.length > 0 ? cfg.reports : ["ALL"];
     
-    // Preserve existing sca.path / sca.extraConfig if the user didn't provide new values
+    // Save userRulesetName and userRulesetPath explicitly in sca object
     const prevSca = configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0 ? configs[idx].sca[0] : {};
     const scaArray: any = {
       name: "eclair",
       ruleset: cfg.ruleset || "ECLAIR_RULESET_FIRST_ANALYSIS",
       reports,
-      // prefer explicit values from the UI, otherwise keep previous values if present
-      path: cfg.installPath && cfg.installPath.trim() ? cfg.installPath.trim() : (prevSca?.path || prevSca?.extraConfig || undefined),
-      extraConfig: cfg.extraConfig && cfg.extraConfig.trim() ? cfg.extraConfig.trim() : (prevSca?.extraConfig || prevSca?.eclairConfigPath || undefined),
+      path: cfg.extraConfig && cfg.extraConfig.trim() ? cfg.extraConfig.trim() : (cfg.installPath && cfg.installPath.trim() ? cfg.installPath.trim() : prevSca?.path),
+      userRulesetName: cfg.userRulesetName && cfg.userRulesetName.trim() ? cfg.userRulesetName.trim() : prevSca?.userRulesetName,
+      userRulesetPath: cfg.userRulesetPath && cfg.userRulesetPath.trim() ? cfg.userRulesetPath.trim() : prevSca?.userRulesetPath,
     };
-
-    // Remove undefined keys to avoid writing empty properties
     if (!scaArray.path) delete scaArray.path;
-    if (!scaArray.extraConfig) delete scaArray.extraConfig;
-
+    if (!scaArray.userRulesetName) delete scaArray.userRulesetName;
+    if (!scaArray.userRulesetPath) delete scaArray.userRulesetPath;
     configs[idx].sca = [scaArray];
 
-    // Determine proper target: if we resolved a workspace folder for folderUri use WorkspaceFolder target
+    // Determine target scope for update based on folderUri
     const resolvedWf = vscode.workspace.getWorkspaceFolder(folderUri);
     const target = resolvedWf ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Workspace;
     await config.update("zephyr-workbench.build.configurations", configs, target);
   }
 
+  /**
+   * Probes the system for Eclair installation, gets version, and updates the UI accordingly.
+   * If Eclair is found and not present in env.yml, adds it automatically.
+   */
   private async runEclair() {
     this.loadEnvYaml();
     this._panel.webview.postMessage({ command: "toggle-spinner", show: true });
@@ -606,7 +683,8 @@ export class EclairManagerPanel {
   <div class="summary-actions">
     <div class="actions-title"><strong>Actions</strong></div>
     <vscode-button id="btn-refresh-status" appearance="primary">Refresh Status</vscode-button>
-    <vscode-button id="about-eclair" appearance="primary">About Eclair</vscode-button>
+    <vscode-button id="about-eclair" appearance="primary">About ECLAIR</vscode-button>
+    <vscode-button id="manage-license" appearance="primary">Manage ECLAIR License</vscode-button>
     <vscode-button id="request-trial" appearance="primary">Request Trial License</vscode-button>
   </div>
   <div class="grid-group-div">
@@ -631,8 +709,11 @@ export class EclairManagerPanel {
       ].map(r => `<vscode-radio id="rs-${r}" name="ruleset" value="${r}">${r === "USER" ? "user defined" : r}</vscode-radio>`).join("")}
   </vscode-radio-group>
   <div id="user-ruleset-fields" class="grid-group-div hidden">
-    <vscode-text-field id="user-ruleset-name" placeholder="User ruleset name" size="40">Name:</vscode-text-field>
-    <vscode-text-field id="user-ruleset-path" placeholder="Path to ruleset" size="50">Path:</vscode-text-field>
+    <vscode-text-field id="user-ruleset-name" class="details-path-field" placeholder="Ruleset name (e.g. MYRULESET)" size="30" disabled>Ruleset Name:</vscode-text-field>
+    <vscode-button id="edit-user-ruleset-name" class="save-path-button" appearance="primary">Edit</vscode-button>
+    <vscode-text-field id="user-ruleset-path" class="details-path-field" placeholder="Path to analysis_<RULESET>.ecl (optional)" size="38" disabled>Ruleset Path:</vscode-text-field>
+    <vscode-button id="browse-user-ruleset-path" class="browse-extra-input-button" appearance="secondary" disabled><span class="codicon codicon-folder"></span></vscode-button>
+    <vscode-button id="edit-user-ruleset-path" class="save-path-button" appearance="primary">Edit</vscode-button>
   </div>
 </div>
 
