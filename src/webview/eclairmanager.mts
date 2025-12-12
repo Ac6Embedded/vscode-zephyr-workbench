@@ -5,9 +5,9 @@ provideVSCodeDesignSystem().register(allComponents);
 const webviewApi = acquireVsCodeApi();
 
 function setEditMode(inputEl: HTMLInputElement | null, browseBtn: HTMLElement | null, editBtn: HTMLElement | null, editing: boolean) {
-  if (!inputEl || !browseBtn || !editBtn) return;
+  if (!inputEl || !editBtn) return;
   (inputEl as any).disabled = !editing;
-  (browseBtn as any).disabled = !editing;
+  if (browseBtn) (browseBtn as any).disabled = !editing;
   (editBtn as any).textContent = editing ? 'Done' : 'Edit';
   if (editing) inputEl.focus();
 }
@@ -177,6 +177,28 @@ function setVSCodeMessageListener() {
         }
         break;
       }
+       case "set-user-ruleset-name": {
+        const f = document.getElementById("user-ruleset-name") as any;
+        const editBtn = document.getElementById('edit-user-ruleset-name') as HTMLElement | null;
+        if (f) {
+          f.value = msg.name || "";
+          f.disabled = true;
+        }
+        if (editBtn) editBtn.textContent = 'Edit';
+        setEditMode(f as HTMLInputElement, null, editBtn, false);
+        break;
+      }
+      case "set-user-ruleset-path": {
+        const f = document.getElementById("user-ruleset-path") as any;
+        const editBtn = document.getElementById('edit-user-ruleset-path') as HTMLElement | null;
+        if (f) {
+          f.value = msg.path || "";
+          f.disabled = true;
+        }
+        if (editBtn) editBtn.textContent = 'Edit';
+        setEditMode(f as HTMLInputElement, null, editBtn, false);
+        break;
+      }
     }
   });
 }
@@ -220,6 +242,30 @@ function main() {
   document.getElementById('edit-config')?.addEventListener('click', () => toggleConfigEdit());
   document.getElementById('browse-config')?.addEventListener('click', () => {
     webviewApi.postMessage({ command: 'browse-extra-config' });
+  });
+
+  document.getElementById('edit-user-ruleset-name')?.addEventListener('click', () => {
+    const input = document.getElementById('user-ruleset-name') as HTMLInputElement | null;
+    const editBtn = document.getElementById('edit-user-ruleset-name') as HTMLElement | null;
+    if (!input || !editBtn) return;
+    const isEdit = (editBtn.textContent || '') === 'Edit';
+    if (!isEdit) {
+      const newName = (input.value || '').trim();
+      webviewApi.postMessage({ command: 'update-setting', key: 'userRulesetName', value: newName });
+    }
+    setEditMode(input, null, editBtn, isEdit);
+  });
+
+  document.getElementById('edit-user-ruleset-path')?.addEventListener('click', () => {
+    const input = document.getElementById('user-ruleset-path') as HTMLInputElement | null;
+    const editBtn = document.getElementById('edit-user-ruleset-path') as HTMLElement | null;
+    if (!input || !editBtn) return;
+    const isEdit = (editBtn.textContent || '') === 'Edit';
+    if (!isEdit) {
+      const newPath = (input.value || '').trim();
+      webviewApi.postMessage({ command: 'update-setting', key: 'userRulesetPath', value: newPath });
+    }
+    setEditMode(input, null, editBtn, isEdit);
   });
 
   document.addEventListener('keydown', (e: KeyboardEvent) => {

@@ -814,3 +814,9 @@ vscode-button {
   max-width: 480px !important;
   width: 480px !important;
 }
+
+#user-ruleset-name,
+#user-ruleset-path {
+  max-width: 320px !important;
+  width: 320px !important;
+}

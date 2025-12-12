@@ -629,6 +629,10 @@ export class EclairManagerPanel {
       ].map(r => `<vscode-radio id="rs-${r}" name="ruleset" value="${r}">${r === "USER" ? "user defined" : r}</vscode-radio>`).join("")}
   </vscode-radio-group>
   <div id="user-ruleset-fields" class="grid-group-div hidden">
+    <vscode-text-field id="user-ruleset-name" class="details-path-field" placeholder="Ruleset name (e.g. MYRULESET)" size="30" disabled>Ruleset Name:</vscode-text-field>
+    <vscode-button id="edit-user-ruleset-name" class="save-path-button" appearance="primary">Edit</vscode-button>
+    <vscode-text-field id="user-ruleset-path" class="details-path-field" placeholder="Path to analysis_<RULESET>.ecl (optional)" size="38" disabled>Ruleset Path:</vscode-text-field>
+    <vscode-button id="edit-user-ruleset-path" class="save-path-button" appearance="primary">Edit</vscode-button>
   </div>
 </div>
 
