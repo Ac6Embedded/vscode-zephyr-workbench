@@ -275,7 +275,18 @@ function main() {
   document.getElementById("probe-btn")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "probe-eclair" });
   });
-  document.getElementById('edit-path-eclair')?.addEventListener('click', () => toggleInstallEdit());
+  document.getElementById('edit-path-eclair')?.addEventListener('click', () => {
+    const input = document.getElementById('details-path-input-eclair') as HTMLInputElement | null;
+    const browse = document.getElementById('browse-path-button-eclair') as HTMLElement | null;
+    const editBtn = document.getElementById('edit-path-eclair') as HTMLElement | null;
+    if (!input || !browse || !editBtn) return;
+    const isEdit = (editBtn.textContent || '') === 'Edit';
+    if (!isEdit) {
+      const newPath = (input.value || '').trim();
+      webviewApi.postMessage({ command: 'update-path', tool: 'eclair', newPath });
+    }
+    setEditMode(input, browse, editBtn, isEdit);
+  });
   document.getElementById('browse-path-button-eclair')?.addEventListener('click', () => {
     webviewApi.postMessage({ command: 'browse-path', tool: 'eclair' });
   });
@@ -325,7 +336,10 @@ function main() {
     if (!active) return;
     if (active.id === 'details-path-input-eclair') {
       const btn = document.getElementById('edit-path-eclair') as HTMLElement | null;
-      if (btn && btn.textContent === 'Done') { e.preventDefault(); (btn as any).click(); }
+      if (btn && btn.textContent === 'Done') {
+        e.preventDefault();
+        (btn as any).click();
+      }
     } else if (active.id === 'extra-config') {
       const btn = document.getElementById('edit-config') as HTMLElement | null;
       if (btn && btn.textContent === 'Done') { e.preventDefault(); (btn as any).click(); }
