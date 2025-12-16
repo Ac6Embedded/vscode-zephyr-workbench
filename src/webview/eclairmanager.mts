@@ -16,7 +16,10 @@ function setEditMode(inputEl: HTMLInputElement | null, browseBtn: HTMLElement | 
   (inputEl as any).disabled = !editing;
   if (browseBtn) (browseBtn as any).disabled = !editing;
   (editBtn as any).textContent = editing ? 'Done' : 'Edit';
-  if (editing) inputEl.focus();
+  if (editing) {
+    inputEl.focus();
+    inputEl.select();
+  }
 }
 
 /**
@@ -59,7 +62,7 @@ function toggleConfigEdit() {
  * Used to send settings to the backend for persistence.
  */
 function collectConfig() {
-  const installPath = (document.getElementById("install-path") as any)?.value?.trim?.() || "";
+  const installPath = (document.getElementById("details-path-input-eclair") as any)?.value?.trim?.() || "";
   const extraConfig = (document.getElementById("extra-config") as any)?.value?.trim?.() || "";
   const radios = Array.from(document.querySelectorAll('vscode-radio[name="ruleset"]')) as any[];
   const selected = (radios.find(r => (r as any).checked) as any)?.value || "ECLAIR_RULESET_FIRST_ANALYSIS";
@@ -155,17 +158,10 @@ function setVSCodeMessageListener() {
         const editBtn = document.getElementById('edit-path-eclair') as HTMLElement | null;
 
         if (f) {
-          const p = (msg.path ?? '').toString().trim();
-
-          if (!p || p === "Not Found" || p === "Checking") {
-            f.value = "";
-            f.placeholder = p || "Not Found";
-            f.disabled = true;
-          } else {
-            f.value = p;
-            f.placeholder = "";
-            f.disabled = true;
-          }
+          const p = (msg.path ?? '').toString();
+          f.value = p;
+          f.placeholder = "";
+          f.disabled = true;
         }
 
         if (editBtn) editBtn.textContent = 'Edit';
@@ -315,7 +311,10 @@ function main() {
     if (!active) return;
     if (active.id === 'details-path-input-eclair') {
       const btn = document.getElementById('edit-path-eclair') as HTMLElement | null;
-      if (btn && btn.textContent === 'Done') { e.preventDefault(); (btn as any).click(); }
+      if (btn && btn.textContent === 'Done') {
+        e.preventDefault();
+        (btn as any).click();
+      }
     } else if (active.id === 'extra-config') {
       const btn = document.getElementById('edit-config') as HTMLElement | null;
       if (btn && btn.textContent === 'Done') { e.preventDefault(); (btn as any).click(); }

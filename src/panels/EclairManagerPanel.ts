@@ -22,7 +22,7 @@ export class EclairManagerPanel {
      * Detects the Zephyr SDK installation directory from common environment variables and paths.
      */
     private detectZephyrSdkDir(): string | undefined {
-      // Try reading settings.json (user/project configuration
+      // Try reading settings.json (user/project configuration)
       const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
       const config = vscode.workspace.getConfiguration(undefined, folderUri);
       const sdkFromSettings = config.get<string>("zephyr-workbench.sdk");
@@ -235,7 +235,8 @@ export class EclairManagerPanel {
     const dir = this.toInstallDir(installPath);
     if (!dir) return;
     const normalized = normalizePath(dir);
-    if (!/[\\/]/.test(normalized)) return; // ignore plain executable names
+    // Allows you to save any value
+    if (!normalized) return;
     // get current paths
     const arr = getExtraPaths("EXTRA_TOOLS");
     // find index where eclair is detected or matches current UI
@@ -246,7 +247,7 @@ export class EclairManagerPanel {
     // reload in-memory state
     this.loadEnvYaml();
     this.startEnvWatcher();
-    // persist in UI immediately
+    // persist in UI immediately with the saved value
     this._panel.webview.postMessage({ command: 'set-install-path', path: normalized });
     this._panel.webview.postMessage({ command: 'set-path-status', text: normalized });
     this._panel.webview.postMessage({ command: 'set-install-path-placeholder', text: normalized });
@@ -762,6 +763,21 @@ export class EclairManagerPanel {
     const installed = !!version;
 
     const eclairInfo = this.getEclairPathFromEnv();
+    // If Eclair is detected but not present in env.yml, add it automatically
+    if (
+      installed &&
+      exePath &&
+      (!eclairInfo.path || eclairInfo.path.trim() === "")
+    ) {
+      const detectedDir = path.dirname(exePath);
+      // Save detected path to env.yml
+      this.saveEclairPathToEnv(detectedDir);
+      console.log(
+        "[EclairManager] Auto-detected Eclair path and saved to env.yml:",
+        detectedDir
+      );
+    }
+
     const eclairPath = (typeof eclairInfo === 'object' && typeof eclairInfo.path === 'string') ? eclairInfo.path : '';
     this._panel.webview.postMessage({ command: 'set-install-path', path: eclairPath });
     this._panel.webview.postMessage({ command: 'set-path-status', text: eclairPath });
