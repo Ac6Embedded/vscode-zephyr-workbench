@@ -150,30 +150,29 @@ function setVSCodeMessageListener() {
         break;
       }
       case "set-install-path": {
-        const f = document.getElementById("details-path-input-eclair") as any;
+        const f = document.getElementById("details-path-input-eclair") as HTMLInputElement | null;
         const browse = document.getElementById('browse-path-button-eclair') as HTMLElement | null;
         const editBtn = document.getElementById('edit-path-eclair') as HTMLElement | null;
+
         if (f) {
           const p = (msg.path ?? '').toString().trim();
-          // Show special markers (Checking / Not Found) as visible, styled value
-            if (!p || p === "Not Found" || p === "Checking") {
-              // show the text as the input value but keep the field disabled so it appears faded
-              f.value = p || "Not Found";
-              f.placeholder = "";
-              f.disabled = true;
-              // ensure no custom placeholder styling overrides the disabled appearance
-              try { f.classList.remove('em-placeholder-value'); } catch {}
-            } else {
-              f.value = p;
-              f.placeholder = "";
-              f.disabled = true;
-              try { f.classList.remove('em-placeholder-value'); } catch {}
-            }
+
+          if (!p || p === "Not Found" || p === "Checking") {
+            f.value = "";
+            f.placeholder = p || "Not Found";
+            f.disabled = true;
+          } else {
+            f.value = p;
+            f.placeholder = "";
+            f.disabled = true;
+          }
         }
+
         if (editBtn) editBtn.textContent = 'Edit';
-        try { setEditMode(f as HTMLInputElement, browse, editBtn, false); } catch {}
+        setEditMode(f, browse, editBtn, false);
         break;
       }
+
       case "set-extra-config": {
         const f = document.getElementById("extra-config") as any;
         if (f) f.value = msg.path || "";
@@ -183,21 +182,12 @@ function setVSCodeMessageListener() {
         break;
       }
       case "set-path-status": {
-        const f = document.getElementById("details-path-input-eclair") as any;
-        const browse = document.getElementById('browse-path-button-eclair') as HTMLElement | null;
+        const f = document.getElementById("details-path-input-eclair") as HTMLInputElement | null;
         if (f) {
           const t = (msg.text ?? '').toString();
-            if (!t || t === "Not Found" || t === "Checking") {
-              f.value = t || "Not Found";
-              f.placeholder = "";
-              f.disabled = true;
-              try { f.classList.remove('em-placeholder-value'); } catch {}
-            } else {
-              f.value = t;
-              f.placeholder = "";
-              f.disabled = true;
-              try { f.classList.remove('em-placeholder-value'); } catch {}
-            }
+          f.value = "";                     
+          f.placeholder = t || "Not Found"; 
+          f.disabled = true;
         }
         break;
       }
@@ -209,7 +199,7 @@ function setVSCodeMessageListener() {
         }
         break;
       }
-       case "set-user-ruleset-name": {
+      case "set-user-ruleset-name": {
         const f = document.getElementById("user-ruleset-name") as any;
         const editBtn = document.getElementById('edit-user-ruleset-name') as HTMLElement | null;
         if (f) {
