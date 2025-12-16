@@ -22,9 +22,17 @@ export class EclairManagerPanel {
      * Detects the Zephyr SDK installation directory from common environment variables and paths.
      */
     private detectZephyrSdkDir(): string | undefined {
+      // Try reading settings.json (user/project configuration
+      const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+      const config = vscode.workspace.getConfiguration(undefined, folderUri);
+      const sdkFromSettings = config.get<string>("zephyr-workbench.sdk");
+      if (sdkFromSettings && fs.existsSync(sdkFromSettings)) {
+        return sdkFromSettings;
+      }
+
+      // TODO: Improve the Fallback  
       const candidates = [
         process.env.ZEPHYR_SDK_INSTALL_DIR,
-        "D:/AC6/Zephyr-Tests/zephyr-sdk-0.17.4", 
         path.join(process.env.USERPROFILE ?? "", ".zinstaller", "tools", "zephyr-sdk"),
       ];
 
