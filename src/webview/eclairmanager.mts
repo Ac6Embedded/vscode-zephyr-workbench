@@ -329,6 +329,9 @@ function main() {
 
   updateUserRulesetVisibility();
   handleReportsAllToggle();
+  // Trigger a status refresh immediately on load so backend detects and
+  // persists Eclair path if needed (minimal, single-shot request).
+  try { webviewApi.postMessage({ command: 'refresh-status' }); } catch (e) { /* ignore */ }
 }
 
 // Initialize the UI when the webview loads

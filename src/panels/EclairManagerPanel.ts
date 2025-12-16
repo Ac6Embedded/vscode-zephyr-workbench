@@ -18,29 +18,48 @@ interface IEclairConfig {
 }
 
 export class EclairManagerPanel {
-    /**
-     * Detects the Zephyr SDK installation directory from common environment variables and paths.
-     */
-    private detectZephyrSdkDir(): string | undefined {
-      // Try reading settings.json (user/project configuration)
-      const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
-      const config = vscode.workspace.getConfiguration(undefined, folderUri);
-      const sdkFromSettings = config.get<string>("zephyr-workbench.sdk");
-      if (sdkFromSettings && fs.existsSync(sdkFromSettings)) {
-        return sdkFromSettings;
+  /**
+   * Save the Eclair path in env.yml without checks, always overwrites.
+   * Usage: EclairManagerPanel.saveEclairAbsolutePath("/path/to/eclair");
+   */
+  public static saveEclairAbsolutePath(dir: string) {
+    try {
+      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
+      let envObj: any = {};
+      if (fs.existsSync(envYamlPath)) {
+        envObj = yaml.parse(fs.readFileSync(envYamlPath, "utf8")) || {};
       }
-
-      // TODO: Improve the Fallback  
-      const candidates = [
-        process.env.ZEPHYR_SDK_INSTALL_DIR,
-        path.join(process.env.USERPROFILE ?? "", ".zinstaller", "tools", "zephyr-sdk"),
-      ];
-
-      for (const c of candidates) {
-        if (c && fs.existsSync(c)) return c;
-      }
-      return undefined;
+      if (!envObj.other) envObj.other = {};
+      if (!envObj.other.EXTRA_TOOLS) envObj.other.EXTRA_TOOLS = {};
+      envObj.other.EXTRA_TOOLS.path = [normalizePath(dir)];
+      fs.writeFileSync(envYamlPath, yaml.stringify(envObj), "utf8");
+    } catch (err) {
+      vscode.window.showErrorMessage("[Eclair] Erro ao salvar path absoluto: " + err);
     }
+  }
+  /**
+   * Detects the Zephyr SDK installation directory from common environment variables and paths.
+   */
+  private detectZephyrSdkDir(): string | undefined {
+    // Try reading settings.json (user/project configuration)
+    const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+    const config = vscode.workspace.getConfiguration(undefined, folderUri);
+    const sdkFromSettings = config.get<string>("zephyr-workbench.sdk");
+    if (sdkFromSettings && fs.existsSync(sdkFromSettings)) {
+      return sdkFromSettings;
+    }
+
+    // TODO: Improve the Fallback  
+    const candidates = [
+      process.env.ZEPHYR_SDK_INSTALL_DIR,
+      path.join(process.env.USERPROFILE ?? "", ".zinstaller", "tools", "zephyr-sdk"),
+    ];
+
+    for (const c of candidates) {
+      if (c && fs.existsSync(c)) return c;
+    }
+    return undefined;
+  }
   /**
    * Save the extra config path to the active SCA (Static Code Analysis) configuration in settings.json
    * Called when the user updates the additional configuration (.ecl) path from the UI.
@@ -93,11 +112,11 @@ export class EclairManagerPanel {
         return path.dirname(lines[0]);
       }
     } catch { /* ignore */ }
-    
+
     return undefined;
   }
 
-  
+
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, workspaceFolder?: vscode.WorkspaceFolder, settingsRoot?: string) {
     this._panel = panel;
@@ -254,12 +273,66 @@ export class EclairManagerPanel {
   }
 
   /**
+   * Minimal: Save the detected Eclair path ONCE if EXTRA_TOOLS.path is not an array
+   * with at least one value. This will never append or touch the file if the
+   * path array already exists and has entries.
+   */
+  private saveEclairPathOnceIfMissing(detectedDir: string) {
+    try {
+      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
+      let envObj: any = {};
+      if (fs.existsSync(envYamlPath)) {
+        envObj = yaml.parse(fs.readFileSync(envYamlPath, "utf8")) || {};
+      }
+      if (!envObj.other) envObj.other = {};
+      if (!envObj.other.EXTRA_TOOLS) envObj.other.EXTRA_TOOLS = {};
+      const current = envObj.other.EXTRA_TOOLS.path;
+      // If it's already a non-empty array with a valid first entry, do nothing
+      if (Array.isArray(current) && current.length > 0 && current[0] && String(current[0]).trim() !== "") {
+        return;
+      }
+      // If it's a string or an empty array, overwrite
+      envObj.other.EXTRA_TOOLS.path = [normalizePath(detectedDir)];
+      fs.writeFileSync(envYamlPath, yaml.stringify(envObj), "utf8");
+    } catch (err) {
+    }
+  }
+
+  /**
    * Initializes the webview content and sets up message listeners.
    * Also triggers initial probe and loads config fields into the UI.
    */
   public async createContent() {
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
     this._setWebviewMessageListener(this._panel.webview);
+
+    // Save the Eclair path in env.yml as soon as you open the panel, if it's installed and there's no path.
+    try {
+      // Detect Eclair in system PATH
+      let exePath: string | undefined = undefined;
+      if (process.platform === "win32") {
+        const whichCmd = 'powershell -NoProfile -Command "$c=Get-Command eclair -ErrorAction SilentlyContinue; if ($c) { $c.Source }"';
+        const execSync = require("child_process").execSync;
+        const out = execSync(whichCmd, { encoding: "utf8" });
+        const lines = out.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
+        if (lines[0] && fs.existsSync(lines[0])) exePath = lines[0];
+      } else {
+        const execSync = require("child_process").execSync;
+        const out = execSync("which eclair", { encoding: "utf8" });
+        const lines = out.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
+        if (lines[0] && fs.existsSync(lines[0])) exePath = lines[0];
+      }
+      if (exePath) {
+        // Check if we already have a valid path in env.yml
+        const arr = getExtraPaths("EXTRA_TOOLS");
+        const jaTem = Array.isArray(arr) && arr.length > 0 && arr[0] && String(arr[0]).trim() !== "";
+        if (!jaTem) {
+          EclairManagerPanel.saveEclairAbsolutePath(path.dirname(exePath));
+        }
+      }
+    } catch (err) {
+      vscode.window.showErrorMessage("[Eclair] Erro ao tentar salvar path automático: " + err);
+    }
 
     // Read .ecl config path from active sca object and send to webview
     try {
@@ -463,7 +536,7 @@ export class EclairManagerPanel {
 
           // Build complete command
           const cmakeArgs = this.buildCmd(cfg)
-            .replace(/^.*?--\s*/, ""); 
+            .replace(/^.*?--\s*/, "");
 
           const westCmd = process.platform === "win32"
             ? "west"
@@ -526,7 +599,7 @@ export class EclairManagerPanel {
             mergedEnv.CMAKE_PREFIX_PATH = [
               zephyrSdk,
               path.join(zephyrSdk, "cmake"),
-              process.env.CMAKE_PREFIX_PATH 
+              process.env.CMAKE_PREFIX_PATH
             ].filter(Boolean).join(path.delimiter);
             mergedEnv.PATH = [
               path.join(zephyrSdk, "arm-zephyr-eabi", "bin"),
@@ -543,7 +616,7 @@ export class EclairManagerPanel {
 
           try {
             await execShellCommandWithEnv("Eclair Analysis", cmd, {
-              cwd: appDir,   
+              cwd: appDir,
               env: mergedEnv,
             });
           } catch (err: any) {
@@ -690,7 +763,7 @@ export class EclairManagerPanel {
     const prevSca = configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0 ? configs[idx].sca[0] : {};
     const sanitizedExtra =
       cfg.extraConfig &&
-      !["Checking", "Not Found"].includes(cfg.extraConfig.trim())
+        !["Checking", "Not Found"].includes(cfg.extraConfig.trim())
         ? cfg.extraConfig.trim()
         : undefined;
 
@@ -762,20 +835,18 @@ export class EclairManagerPanel {
 
     const installed = !!version;
 
-    const eclairInfo = this.getEclairPathFromEnv();
-    // If Eclair is detected but not present in env.yml, add it automatically
+
+    let eclairInfo = this.getEclairPathFromEnv();
+    // Eclair is detected but not present in env.yml, add it automatically (minimal approach)
     if (
       installed &&
       exePath &&
       (!eclairInfo.path || eclairInfo.path.trim() === "")
     ) {
-      const detectedDir = path.dirname(exePath);
-      // Save detected path to env.yml
-      this.saveEclairPathToEnv(detectedDir);
-      console.log(
-        "[EclairManager] Auto-detected Eclair path and saved to env.yml:",
-        detectedDir
-      );
+      const detectedDir = normalizePath(path.dirname(exePath));
+      this.saveEclairPathOnceIfMissing(detectedDir);
+      this.loadEnvYaml();
+      eclairInfo = this.getEclairPathFromEnv();
     }
 
     const eclairPath = (typeof eclairInfo === 'object' && typeof eclairInfo.path === 'string') ? eclairInfo.path : '';
