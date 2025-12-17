@@ -156,16 +156,17 @@ function setVSCodeMessageListener() {
         const f = document.getElementById("details-path-input-eclair") as HTMLInputElement | null;
         const browse = document.getElementById('browse-path-button-eclair') as HTMLElement | null;
         const editBtn = document.getElementById('edit-path-eclair') as HTMLElement | null;
-
+        const delBtn = document.getElementById('delete-path-eclair') as HTMLElement | null;
         if (f) {
           const p = (msg.path ?? '').toString();
           f.value = p;
           f.placeholder = "";
-          f.disabled = true;
+          f.disabled = false;
+          f.style.color = p ? '' : '#888';
         }
-
         if (editBtn) editBtn.textContent = 'Edit';
         setEditMode(f, browse, editBtn, false);
+        if (delBtn) (delBtn as HTMLButtonElement).disabled = !f?.value;
         break;
       }
 
@@ -181,18 +182,14 @@ function setVSCodeMessageListener() {
         const f = document.getElementById("details-path-input-eclair") as HTMLInputElement | null;
         if (f) {
           const t = (msg.text ?? '').toString();
-          f.value = "";                     
-          f.placeholder = t || "Not Found"; 
+          f.value = t || "";
+          f.placeholder = "";
           f.disabled = true;
+          f.style.color = t ? '' : '#888';
         }
         break;
       }
       case "set-install-path-placeholder": {
-        const f = document.getElementById("details-path-input-eclair") as any;
-        if (f) {
-          const t = (msg.text ?? '').toString();
-          f.placeholder = t;
-        }
         break;
       }
       case "set-user-ruleset-name": {
