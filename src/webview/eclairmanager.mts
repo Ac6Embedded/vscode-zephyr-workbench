@@ -182,10 +182,17 @@ function setVSCodeMessageListener() {
         const f = document.getElementById("details-path-input-eclair") as HTMLInputElement | null;
         if (f) {
           const t = (msg.text ?? '').toString();
-          f.value = t || "";
-          f.placeholder = "";
-          f.disabled = true;
-          f.style.color = t ? '' : '#888';
+          if (t.trim().toLowerCase() === 'checking') {
+            f.value = '';
+            f.placeholder = 'Checking';
+            f.disabled = true;
+            f.style.color = '#888';
+          } else {
+            f.value = t || '';
+            f.placeholder = '';
+            f.disabled = true;
+            f.style.color = t ? '' : '#888';
+          }
         }
         break;
       }
