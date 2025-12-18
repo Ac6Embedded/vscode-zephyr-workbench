@@ -109,7 +109,7 @@ describe('Manifest output comparison', () => {
       'utf8'
     );
 
-    // MINIMAL (estrutura exata do exemplo do usuário)
+    // MINIMAL 
     const expectedMinimal = {
       manifest: {
         remotes: [
