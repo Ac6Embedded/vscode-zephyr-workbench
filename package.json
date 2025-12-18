@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://z-workbench.com",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -671,7 +671,7 @@
       "activitybar": [
         {
           "id": "zephyr-workbench-activitybar",
-          "title": "Zephyr Workbench",
+          "title": "Workbench for Zephyr",
           "icon": "res/zephyr-workbench.svg"
         }
       ]
@@ -680,8 +680,8 @@
       "zephyr-workbench-activitybar": [
         {
           "id": "zephyr-workbench-shortcuts",
-          "name": "Zephyr Workbench",
-          "contextualTitle": "Zephyr Workbench",
+          "name": "Workbench for Zephyr",
+          "contextualTitle": "Workbench for Zephyr",
           "icon": "$(project)",
           "type": "tree"
         },
