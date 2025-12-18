@@ -4,11 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-<<<<<<< HEAD
-## [1.3.38]
+## [2.0.3]
 
-- Fix STM32CubeProgrammer install
-=======
+- Update documentation to standardize the new extension name Workbench for Zephyr
+- Adjust website and documentation titles for consistency across pages
+
 ## [2.0.0]
 
 ### DTS
@@ -39,7 +39,6 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Improve error reporting and stability
 - Update Zephyr OpenOCD and cross-platform build scripts; bump zinstaller to v2.0
 - Refine PowerShell policy, try to avoid powershell resctrictions on windows
->>>>>>> version-2
 
 ## [1.3.37]
 
