@@ -454,6 +454,11 @@
         "title": "cve-bin-tool",
         "category": "Zephyr Workbench/Application"
       },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
+          "title": "Devicetree Diagnostics",
+          "category": "Zephyr Workbench/Application"
+        },
       {
         "command": "zephyr-workbench-app-explorer.run-app",
         "title": "Run",
@@ -1318,18 +1323,28 @@
         }
       ],
       "zephyr-workbench-app-explorer.static-code-analysis": [
-        {
-          "command": "zephyr-workbench.eclair-manager.open",
-          "group": "0@view/item/context@1",
-          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
-        }
+          {
+            "command": "zephyr-workbench.eclair-manager.open",
+            "group": "0@view/item/context@1",
+            "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+          },
+          {
+            "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
+            "group": "0@view/item/context@2",
+            "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+          }
       ],
       "zephyr-workbench-app-explorer.config.static-code-analysis": [
-        {
-          "command": "zephyr-workbench.eclair-manager.open",
-          "group": "0@view/item/context@1",
-          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
-        }
+          {
+            "command": "zephyr-workbench.eclair-manager.open",
+            "group": "0@view/item/context@1",
+            "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+          },
+          {
+            "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
+            "group": "0@view/item/context@2",
+            "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+          }
       ],
       "zephyr-workbench-app-explorer.spdx": [
         {
@@ -1377,7 +1392,11 @@
         {
           "command": "zephyr-workbench-app-explorer.spdx.analyze.cve-bin-tool",
           "group": "0@view/item/context@2"
-        }
+          },
+          {
+            "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
+            "group": "0@view/item/context@3"
+          }
       ],
       "commandPalette": [
         {
