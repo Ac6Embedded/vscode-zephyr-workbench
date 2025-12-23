@@ -456,7 +456,7 @@
       },
         {
           "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
-          "title": "Devicetree Diagnostics",
+          "title": "dt-doctor",
           "category": "Zephyr Workbench/Application"
         },
       {
