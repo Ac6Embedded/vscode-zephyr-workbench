@@ -29,23 +29,49 @@ export const listHals: any[] = [
   { label: "xtensa", name: "hal_xtensa" }
 ];
 
-export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isMinimal: boolean = false) {
-  let templateManifestUri = vscode.Uri.joinPath(context.extensionUri, 'west_manifests', 'minimal_west.yml');
-  const templateFile = fs.readFileSync(templateManifestUri.fsPath, 'utf8');
-  const manifestYaml = yaml.parse(templateFile);
-  // If caller indicates minimal template, force the remote base URL to ZephyrProject RTOS
-  if (isMinimal === true) {
-    remotePath = 'https://github.com/zephyrproject-rtos';
+export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isFull: boolean) {
+  let manifestYaml;
+  if (isFull) {
+    // Full manifest structure
+    manifestYaml = {
+      manifest: {
+        remotes: [
+          { name: "zephyrproject", "url-base": remotePath.replace(/\/zephyr\/?$/, '') }
+        ],
+        projects: [
+          {
+            name: "zephyr",
+            "repo-path": "zephyr",
+            remote: "zephyrproject",
+            revision: remoteBranch,
+            import: { "path-prefix": "deps" }
+          }
+        ]
+      }
+    };
+  } else {
+    // Minimal manifest structure
+    let templateManifestUri = vscode.Uri.joinPath(context.extensionUri, 'west_manifests', 'minimal_west.yml');
+    const templateFile = fs.readFileSync(templateManifestUri.fsPath, 'utf8');
+    manifestYaml = yaml.parse(templateFile);
+    // Do not duplicate zephyr in url-base
+    manifestYaml.manifest.remotes[0]['url-base'] = remotePath.replace(/\/zephyr\/?$/, '');
+    manifestYaml.manifest.projects[0]['revision'] = remoteBranch;
+    if (manifestYaml.manifest.projects[0]['import'] && manifestYaml.manifest.projects[0]['import']['name-allowlist']) {
+      const allowlist = manifestYaml.manifest.projects[0]['import']['name-allowlist'];
+      if (!allowlist.includes(templateHal)) {
+        allowlist.push(templateHal);
+      }
+    }
   }
-  manifestYaml.manifest.remotes[0]['url-base'] = remotePath;
-  manifestYaml.manifest.projects[0]['revision'] = remoteBranch;
-  manifestYaml.manifest.projects[0]['import']['name-allowlist'].push(templateHal);
 
   if(!fileExists(workspacePath)) {
     fs.mkdirSync(workspacePath);
   }
   let manifestDir = path.join(workspacePath, 'manifest');
-  fs.mkdirSync(manifestDir);
+  if (!fileExists(manifestDir)) {
+    fs.mkdirSync(manifestDir);
+  }
 
   const destFilePath = path.join(manifestDir, 'west.yml');
   const westManifestContent = yaml.stringify(manifestYaml);
