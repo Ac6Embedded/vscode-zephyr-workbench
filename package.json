@@ -1592,7 +1592,10 @@
     "watch": "node ./esbuild.js --watch",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "test:unit": "mocha -r ts-node/register src/test/unit/**/*.test.ts",
+    "test:integration": "node ./out/test/runTest.js",
+    "coverage": "nyc npm run test:unit"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
