@@ -545,6 +545,12 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
         installCmd = `powershell -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += `-InstallDir ${destDir}`;
         shell = 'powershell.exe';
+        const pwshInstalled = await checkPwshInstalled();
+        if (pwshInstalled) {
+          return;
+          //shell = 'pwsh.exe';
+          //installCmd = `pwsh --% -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        }
         break; 
       }
       case 'darwin': {
@@ -1105,6 +1111,21 @@ export async function checkHomebrew(): Promise<boolean> {
         reject('Homebrew not installed in system');
       } else {
         resolve(true);
+      }
+    });
+  });
+}
+
+export async function checkPwshInstalled(): Promise<boolean> {
+  const cmd = 'pwsh --version';
+  return new Promise<boolean>((resolve, reject) => {
+		exec(cmd, (error) => {
+      if (!error) {
+        console.log('PowerShell 7 is installed');
+        resolve(true);
+      } else {
+        console.log('PowerShell 7 is NOT installed');
+        resolve(false);
       }
     });
   });

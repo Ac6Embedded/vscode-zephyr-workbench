@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://z-workbench.com",
-  "version": "2.0.4",
+  "version": "2.1.0",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -275,6 +275,12 @@
         "category": "Zephyr Workbench/Application"
       },
       {
+        "command": "zephyr-workbench-app-explorer.remove-default-runner",
+        "title": "Remove Default Runner",
+        "icon": "$(remove)",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
         "command": "zephyr-workbench.install-host-tools.open-manager",
         "title": "Open Host Tools Manager",
         "icon": "$(desktop-download)",
@@ -354,6 +360,7 @@
       {
         "command": "zephyr-workbench-app-explorer.delete-config",
         "title": "Delete",
+        "icon": "$(remove)",
         "category": "Zephyr Workbench/Application"
       },
       {
@@ -992,6 +999,16 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-default-runner"
         },
         {
+          "command": "zephyr-workbench-app-explorer.remove-default-runner",
+          "group": "0@view/item/context@8.3",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-default-runner"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.remove-default-runner",
+          "group": "inline",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-default-runner"
+        },
+        {
           "command": "zephyr-workbench-app-explorer.rename-config",
           "group": "inline@4",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
@@ -1015,6 +1032,11 @@
           "command": "zephyr-workbench-app-explorer.debug-app",
           "group": "inline@8",
           "when": "view == zephyr-workbench-app-explorer && (viewItem == zephyr-application || viewItem =~ /^zephyr-build-config/)"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.delete-config",
+          "group": "inline@9",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
           "command": "zephyr-workbench-west-workspace.open-terminal",
@@ -1570,7 +1592,10 @@
     "watch": "node ./esbuild.js --watch",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "test:unit": "mocha -r ts-node/register src/test/unit/**/*.test.ts",
+    "test:integration": "node ./out/test/runTest.js",
+    "coverage": "nyc npm run test:unit"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",

@@ -482,6 +482,38 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('zephyr-workbench-app-explorer.remove-default-runner', async (node: any) => {
+      let project: ZephyrProject | undefined;
+      let targetConfig: ZephyrProjectBuildConfiguration | undefined;
+
+      if (node instanceof ZephyrApplicationTreeItem) {
+        project = node.project;
+        if (project.configs.length === 1) {
+          targetConfig = project.configs[0];
+        } else if (project.configs.length > 1) {
+          const picked = await pickBuildConfigQuickStep(project);
+          if (picked) {
+            targetConfig = project.getBuildConfiguration(picked);
+          }
+        }
+      } else if (node instanceof ZephyrConfigTreeItem) {
+        project = node.project;
+        targetConfig = node.buildConfig;
+      } else if (node instanceof ZephyrConfigDefaultRunnerTreeItem) {
+        project = node.project;
+        targetConfig = node.config;
+      }
+
+      if (!project || !targetConfig) {
+        return;
+      }
+
+      await saveConfigSetting(project.workspaceFolder, targetConfig.name, ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, "");
+      vscode.commands.executeCommand('zephyr-workbench-app-explorer.refresh');
+    })
+  );
+
+  context.subscriptions.push(
       vscode.commands.registerCommand('zephyr-workbench-app-explorer.run-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
         await executeConfigTask('West Flash', node);
       })
@@ -2021,10 +2053,12 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal) => {
+		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal, templateMode) => {
 			if (remotePath && remoteBranch && workspacePath && templateHal) {
+				// Determine if mode is 'full' or 'minimal'
+				const isFull = templateMode === 'full';
 				// Generate west.xml from template
-				let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal, true);
+				let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal, isFull);
 				// Run west init to the newly create manifest
 				vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestFile);
 			}

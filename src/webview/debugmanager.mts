@@ -13,6 +13,7 @@ function main() {
   initApplicationsDropdown();
   initBuildConfigsDropdown();
   initRunnersDropdown();
+  hideSpinner('resetSpinner');
 
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const browseProgramButton = document.getElementById("browseProgramButton") as Button;
@@ -42,6 +43,8 @@ function main() {
   resetButton.addEventListener("click", resetHandler);
   applyButton.addEventListener("click", applyHandler);
   debugButton.addEventListener("click", debugHandler);
+
+  webviewApi.postMessage({ command: 'webviewReady' });
 }
 
 function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputElement) {
@@ -126,6 +129,8 @@ function setVSCodeMessageListener() {
           applicationsDropdown.innerHTML = appsHTML ?? '';
           const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
           addDropdownItemEventListeners(applicationsDropdown, applicationInput);
+          // Apply pending selection if exists
+          pathApplicationSelection();
         }
         const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement;
         if (applicationDropdownSpinner) applicationDropdownSpinner.style.display = 'none';
@@ -135,7 +140,10 @@ function setVSCodeMessageListener() {
         const projectPath = event.data.projectPath;
         if (projectPath && projectPath.length > 0) {
           const configName = event.data.configName;
-          updateSelectedApplication(projectPath, configName);
+          // Store pending selections to be applied once dropdowns are populated
+          pendingProjectPath = projectPath || '';
+          pendingConfigName = configName || '';
+          pathApplicationSelection();
         }
         break;
       }
@@ -157,6 +165,14 @@ function setVSCodeMessageListener() {
       case 'updateRunnerDetect': {
         const runnerDetect = event.data.runnerDetect;
         updateRunnerDetect(runnerDetect === 'true' ? true : false);
+        break;
+      }
+      case 'resetStarted': {
+        document.getElementById('resetSpinner')!.style.display = 'inline-block';
+        break;
+      }
+      case 'resetFinished': {
+        document.getElementById('resetSpinner')!.style.display = 'none';
         break;
       }
       case 'fileSelected':
@@ -280,16 +296,15 @@ function initApplicationsDropdown() {
   const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement;
   const buildConfigDropdownSpinner = document.getElementById('buildConfigDropdownSpinner') as HTMLElement;
 
-  applicationInput.addEventListener('focusin', () => {
-    if (applicationsDropdown) {applicationsDropdown.style.display = 'block';}
-  });
+  const openDropdown = () => {
+    if (applicationsDropdown) { applicationsDropdown.style.display = 'block'; }
+  };
+
+  applicationInput.addEventListener('focusin', openDropdown);
+  applicationInput.addEventListener('click', openDropdown);
 
   applicationInput.addEventListener('focusout', () => {
     if (applicationsDropdown) {applicationsDropdown.style.display = 'none';}
-  });
-
-  applicationInput.addEventListener('click', () => {
-    if (applicationsDropdown) {applicationsDropdown.style.display = 'block';}
   });
 
   applicationInput.addEventListener('input', () => {
@@ -432,6 +447,16 @@ function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = fal
       buildConfigInput.setAttribute('data-value', firstOption.getAttribute('data-value') || '');
       buildConfigInput.dispatchEvent(new Event('input'));
     }
+    // Apply pending selection if exists
+    if (pendingConfigName && buildConfigInput.getAttribute('data-value') !== pendingConfigName) {
+      const option = buildConfigDropdown.querySelector(`[data-value="${pendingConfigName}"]`) as HTMLElement | null;
+      if (option) {
+        buildConfigInput.value = option.getAttribute('data-label') || pendingConfigName;
+        buildConfigInput.setAttribute('data-value', pendingConfigName);
+        buildConfigInput.dispatchEvent(new Event('input'));
+        pendingConfigName = '';
+      }
+    }
   } else {
     buildConfigInput.disabled = true;
   }
@@ -522,5 +547,33 @@ function updateRunnerDetect(runnerDetect: boolean) {
     runnerDetectSpan.style.color = "#aa0000";
   } else {
     console.warn('Unexpected value for runnerDetect:', runnerDetect);
+  }
+}
+
+// Pending selections to be made once dropdowns are populated
+let pendingProjectPath: string = '';
+let pendingConfigName: string = '';
+
+function pathApplicationSelection() {
+  if (!pendingProjectPath){
+    return;
+  }
+  const input = document.getElementById('applicationInput') as HTMLInputElement | null;
+  const dropdown = document.getElementById('applicationsDropdown') as HTMLElement | null;
+  if (!input || !dropdown)
+  {
+    return;
+  }
+  if (input.getAttribute('data-value') === pendingProjectPath){
+    return;
+  }
+
+  const option = Array.from(dropdown.children).find(el => (el as HTMLElement).getAttribute('data-value') === pendingProjectPath) as HTMLElement | undefined;
+
+  if (option) {
+    input.value = option.getAttribute('data-label') || '';
+    input.setAttribute('data-value', option.getAttribute('data-value') || '');
+    input.dispatchEvent(new Event('input'));
+    pendingProjectPath = '';
   }
 }

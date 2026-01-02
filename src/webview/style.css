@@ -792,3 +792,6 @@ vscode-button {
   justify-content: flex-start;
 }
 
+.debug-manager-buttons #resetSpinner {
+  margin-left: 10px;    
+}

@@ -73,7 +73,11 @@ export async function westUpdateCommand(workspacePath: string): Promise<void> {
     cwd: `${workspacePath}`
   };
 
-  await execWestCommand(`West Update for current workspace`, command, options);
+  try {
+    await execWestCommand(`West Update for current workspace`, command, options);
+  } finally {
+    try { await vscode.commands.executeCommand('zephyr-workbench-west-workspace.refresh'); } catch {}
+  }
 }
 
 export async function westPackagesInstallCommand(workspacePath: string): Promise<void> {

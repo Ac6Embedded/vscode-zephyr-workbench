@@ -48,6 +48,7 @@ window.addEventListener("load", () => {
   initVersionsDropdown();
   initIarSdkDropdown();
 
+
   /* category / sub‑choice listeners */
   const sourceCat  = getEl<RadioGroup>("sourceCategory");
   const zephyrSub  = getEl<RadioGroup>("srcTypeZephyr");

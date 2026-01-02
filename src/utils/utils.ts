@@ -933,3 +933,14 @@ export async function checkZinstallerVersion(
     );
   }
 }
+
+export function checkPathSpace(path: string, showVscode: boolean = true): boolean {
+  if (!path) { return false; }
+  if (/\s/.test(path)) {
+    const msg = `Install path contains space: "${path}". This may not work with the installer.`;
+    try { if (showVscode) { vscode.window.showWarningMessage(msg); } } catch {}
+    console.warn(msg);
+    return true;
+  }
+  return false;
+}

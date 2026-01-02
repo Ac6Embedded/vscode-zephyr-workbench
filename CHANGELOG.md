@@ -4,6 +4,18 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.1.0]
+
+- Fix Debug Manager default reset and avoid scanning until the view is opened
+- Pre-fill “Select the application to debug” when launching Debug from an application
+- Add remove actions in Multi-build for build configs and default runner
+- Disable “Sample project” selection while samples are loading
+- Refresh Host Tools versions after project creation (no VS Code reload needed)
+- Refresh runner “path” from YAML immediately after install
+- Warn when initializing into a path that already have a west workspace
+- Ensure west manifest revision/version updates correctly after `west update`
+- Add Minimal/Full option when creating west workspace from template
+
 ## [2.0.4]
 
 - Fetch toolchains per version remotely with inline spinner feedback

@@ -73,7 +73,7 @@ export class WestWorkspaceTreeItem extends vscode.TreeItem {
 		public readonly westWorkspace: WestWorkspace,
 		public readonly collapsibleState: vscode.TreeItemCollapsibleState,
 	) {
-		super(westWorkspace.name, collapsibleState);
+    super(`${westWorkspace.name}`, collapsibleState);
 
 		this.tooltip = `${this.westWorkspace.rootUri.fsPath}`;
 		this.description = `[${this.westWorkspace.version}]`;
@@ -81,8 +81,8 @@ export class WestWorkspaceTreeItem extends vscode.TreeItem {
 
 	//iconPath = new vscode.ThemeIcon('symbol-misc');
   iconPath = {
-    light: path.join(__filename, '..', '..', 'res', 'icons', 'zephyr.svg'),
-    dark: path.join(__filename, '..', '..', 'res', 'icons', 'zephyr.svg')
+    light: path.join(__filename, '..', '..', 'res', 'icons','zephyr.svg'),
+    dark: path.join(__filename, '..', '..', 'res', 'icons','zephyr.svg')
   };
 	contextValue = 'west-workspace';
 }
