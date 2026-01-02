@@ -66,11 +66,6 @@ export class CreateWestWorkspacePanel {
       }).then(uri => {
         if (uri && uri.length > 0) {
           const selectedFolderUri = uri[0].fsPath;
-          this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: selectedFolderUri, id: 'workspacePath'});
-          if (fs.existsSync(path.join(selectedFolderUri, 'deps')) || fs.existsSync(path.join(selectedFolderUri, 'manifest'))|| fs.existsSync(path.join(selectedFolderUri, '.west'))) {
-            vscode.window.showWarningMessage('The selected folder already contains a west workspace. Please select an empty folder.');
-            return;
-          }
           // Send the selected file URI back to the webview
           this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: selectedFolderUri, id: 'workspacePath'});
         }
@@ -331,12 +326,6 @@ export class CreateWestWorkspacePanel {
                 vscode.window.showWarningMessage("Local import expects an existing west workspace folder (missing '.west'). Please select the workspace root.");
                 return;
               }
-            }
-
-            this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: workspacePath, id: 'workspacePath'});
-            if (fs.existsSync(path.join(workspacePath, 'deps')) || fs.existsSync(path.join(workspacePath, 'manifest')) || fs.existsSync(path.join(workspacePath, '.west'))) {
-              vscode.window.showWarningMessage('The selected folder already contains a west workspace. Please select an empty folder.');
-              return;
             }
 
             if(srcType === 'remote') {
