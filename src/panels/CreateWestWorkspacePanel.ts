@@ -3,6 +3,8 @@ import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { execCommandWithEnv, getGitTags, getGitBranches } from "../utils/execUtils";
 import { listHals } from "../utils/manifestUtils";
+import * as path from "path";
+import * as fs from "fs";
 
 export class CreateWestWorkspacePanel {
   public static currentPanel: CreateWestWorkspacePanel | undefined;
@@ -305,12 +307,26 @@ export class CreateWestWorkspacePanel {
             workspacePath = message.workspacePath;
             manifestPath = message.manifestPath;
             templateHal = message.templateHal;
-            // Search for template mode 
-            if (srcType === 'template') {
-              const templateModeRadio = webview as any;
-              webview.postMessage({ command: 'getTemplateMode' });
+            this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: workspacePath, id: 'workspacePath'});
+
+            const hasDeps = fs.existsSync(path.join(workspacePath, 'deps'));
+            const hasManifestDir = fs.existsSync(path.join(workspacePath, 'manifest'));
+            const hasWestDir = fs.existsSync(path.join(workspacePath, '.west'));
+            const looksLikeWestWorkspace = hasDeps || hasManifestDir || hasWestDir;
+
+            // For remote/template/manifest init: require an empty folder (not an existing west workspace)
+            if (srcType !== 'local') {
+              if (looksLikeWestWorkspace) {
+                vscode.window.showWarningMessage('The selected folder already contains a west workspace. Please select an empty folder.');
+                return;
+              }
+            } else {
+              // For local import: expect an existing west workspace folder
+              if (!hasWestDir) {
+                vscode.window.showWarningMessage("Local import expects an existing west workspace folder (missing '.west'). Please select the workspace root.");
+                return;
+              }
             }
-            templateMode = message.templateMode;
 
             if(srcType === 'remote') {
               vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath);
