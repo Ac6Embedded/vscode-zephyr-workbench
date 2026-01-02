@@ -19,6 +19,43 @@ interface IEclairConfig {
 
 export class EclairManagerPanel {
   /**
+   * Resolve the most likely "application" workspace folder.
+   * In multi-root setups, the first workspace folder can be a container (no CMakeLists.txt).
+   * Prefer the folder that contains a top-level CMakeLists.txt.
+   */
+  private resolveApplicationFolderUri(): vscode.Uri | undefined {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+
+    const hasTopLevelCMakeLists = (uri: vscode.Uri | undefined) => {
+      if (!uri) return false;
+      try {
+        return fs.existsSync(path.join(uri.fsPath, "CMakeLists.txt"));
+      } catch {
+        return false;
+      }
+    };
+
+    // 1) Prefer the folder that created the panel, if it looks like an app
+    if (hasTopLevelCMakeLists(this._workspaceFolder?.uri)) {
+      return this._workspaceFolder!.uri;
+    }
+
+    // 2) Prefer active editor's workspace folder, if it looks like an app
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor) {
+      const wf = vscode.workspace.getWorkspaceFolder(activeEditor.document.uri);
+      if (hasTopLevelCMakeLists(wf?.uri)) return wf!.uri;
+    }
+
+    // 3) Find any workspace folder that looks like an app
+    const match = folders.find(f => hasTopLevelCMakeLists(f.uri));
+    if (match) return match.uri;
+
+    // 4) Fall back (best effort)
+    return this._workspaceFolder?.uri ?? folders[0]?.uri;
+  }
+
+  /**
    * Save the Eclair path in env.yml without checks, always overwrites.
    * Usage: EclairManagerPanel.saveEclairAbsolutePath("/path/to/eclair");
    */
@@ -42,7 +79,7 @@ export class EclairManagerPanel {
    */
   private detectZephyrSdkDir(): string | undefined {
     // Try reading settings.json (user/project configuration)
-    const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+    const folderUri = this.resolveApplicationFolderUri();
     const config = vscode.workspace.getConfiguration(undefined, folderUri);
     const sdkFromSettings = config.get<string>("zephyr-workbench.sdk");
     if (sdkFromSettings && fs.existsSync(sdkFromSettings)) {
@@ -65,7 +102,8 @@ export class EclairManagerPanel {
    * Called when the user updates the additional configuration (.ecl) path from the UI.
    */
   private async saveExtraConfigToActiveSca(newPath: string) {
-    const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+    const folderUri = this.resolveApplicationFolderUri();
+    if (!folderUri) return;
     const config = vscode.workspace.getConfiguration(undefined, folderUri);
     const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
     const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
@@ -336,7 +374,8 @@ export class EclairManagerPanel {
 
     // Read .ecl config path from active sca object and send to webview
     try {
-      const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+      const folderUri = this.resolveApplicationFolderUri();
+      if (!folderUri) throw new Error("No application folder");
       const config = vscode.workspace.getConfiguration(undefined, folderUri);
       const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
       const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
@@ -360,7 +399,8 @@ export class EclairManagerPanel {
           this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
         }
         try {
-          const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+          const folderUri = this.resolveApplicationFolderUri();
+          if (!folderUri) throw new Error("No application folder");
           const config = vscode.workspace.getConfiguration(undefined, folderUri);
           const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
           const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
@@ -375,7 +415,8 @@ export class EclairManagerPanel {
           this._panel.webview.postMessage({ command: "set-extra-config", path: "" });
         }
         try {
-          const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+          const folderUri = this.resolveApplicationFolderUri();
+          if (!folderUri) throw new Error("No application folder");
           const config = vscode.workspace.getConfiguration(undefined, folderUri);
           const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
           const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
@@ -513,9 +554,8 @@ export class EclairManagerPanel {
           await this.saveScaConfig(cfg);
 
           // Determine application directory
-          const appDir =
-            this._workspaceFolder?.uri.fsPath ||
-            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          const folderUri = this.resolveApplicationFolderUri();
+          const appDir = folderUri?.fsPath;
 
           if (!appDir) {
             vscode.window.showErrorMessage("Unable to determine application directory for west build.");
@@ -523,11 +563,23 @@ export class EclairManagerPanel {
           }
 
           // Determine folder URI for configuration
-          const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
           const config = vscode.workspace.getConfiguration(undefined, folderUri);
           const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
           const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
           const idx = activeIdx >= 0 ? activeIdx : 0;
+
+          // Resolve BOARD from configuration (configurations[].board > zephyr-workbench.board > env)
+          const board =
+            (configs?.[idx]?.board?.toString()?.trim() || "") ||
+            (config.get<string>("zephyr-workbench.board")?.trim() || "") ||
+            (process.env.BOARD?.trim() || "");
+
+          if (!board) {
+            vscode.window.showErrorMessage(
+              "BOARD not set. Please set 'zephyr-workbench.board' or 'zephyr-workbench.build.configurations[].board'."
+            );
+            break;
+          }
 
           const buildDir =
             configs[idx]?.build?.dir ||
@@ -547,6 +599,7 @@ export class EclairManagerPanel {
             "build",
             `-s "${appDir}"`,
             `-d "${buildDir}"`,
+            `--board=${board}`,
             "--",
             cmakeArgs
           ].join(" ");
@@ -639,14 +692,15 @@ export class EclairManagerPanel {
             const chosen = pick[0].fsPath.trim();
             webview.postMessage({ command: "set-user-ruleset-path", path: chosen });
             // save path select from the browse dialog
-            const folderUri = this._workspaceFolder?.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+            const folderUri = this.resolveApplicationFolderUri();
+            if (!folderUri) break;
             const config = vscode.workspace.getConfiguration(undefined, folderUri);
             const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
             const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
             const idx = activeIdx >= 0 ? activeIdx : 0;
             if (configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0) {
               configs[idx].sca[0].userRulesetPath = chosen;
-              await config.update("zephyr-workbench.build.configurations", configs, vscode.ConfigurationTarget.Workspace);
+              await config.update("zephyr-workbench.build.configurations", configs, vscode.ConfigurationTarget.WorkspaceFolder);
             }
           }
           break;
@@ -674,7 +728,16 @@ export class EclairManagerPanel {
       }
     }
 
-    parts.push(westCmd, "build", "--", "-DZEPHYR_SCA_VARIANT=eclair");
+    // Disable ccache when using ECLAIR SCA variant.
+    // Zephyr wraps compilation with: cmake -P sca/eclair/eclair.cmake -- <compiler ...>
+    // If ccache is enabled, it becomes: ccache cmake -P ... which breaks.
+    parts.push(
+      westCmd,
+      "build",
+      "--",
+      "-DZEPHYR_SCA_VARIANT=eclair",
+      "-DZEPHYR_CCACHE=0"
+    );
 
     if (cfg.ruleset === "USER") {
       parts.push("-DECLAIR_RULESET_USER=ON");
@@ -728,19 +791,7 @@ export class EclairManagerPanel {
   }
 
   private async saveScaConfig(cfg: IEclairConfig) {
-    // Prefer explicit workspace folder that created this panel (application context).
-    // If not available, prefer the workspace folder of the active editor (so we save in the project's settings),
-    // then fall back to settingsRoot or first workspace folder.
-    let folderUri = this._workspaceFolder?.uri;
-    if (!folderUri) {
-      const activeEditor = vscode.window.activeTextEditor;
-      if (activeEditor) {
-        const wf = vscode.workspace.getWorkspaceFolder(activeEditor.document.uri);
-        if (wf) folderUri = wf.uri;
-      }
-    }
-    if (!folderUri && this._settingsRoot) folderUri = vscode.Uri.file(this._settingsRoot);
-    if (!folderUri && vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) folderUri = vscode.workspace.workspaceFolders[0].uri;
+    const folderUri = this.resolveApplicationFolderUri();
     if (!folderUri) return;
 
     // If an installPath was provided in the UI, persist it to env.yml
@@ -783,10 +834,7 @@ export class EclairManagerPanel {
 
     configs[idx].sca = [scaArray];
 
-    // Determine target scope for update based on folderUri
-    const resolvedWf = vscode.workspace.getWorkspaceFolder(folderUri);
-    const target = resolvedWf ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Workspace;
-    await config.update("zephyr-workbench.build.configurations", configs, target);
+    await config.update("zephyr-workbench.build.configurations", configs, vscode.ConfigurationTarget.WorkspaceFolder);
   }
 
   /**

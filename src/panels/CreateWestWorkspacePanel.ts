@@ -67,12 +67,6 @@ export class CreateWestWorkspacePanel {
         if (uri && uri.length > 0) {
           const selectedFolderUri = uri[0].fsPath;
           this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: selectedFolderUri, id: 'workspacePath'});
-          if (fs.existsSync(path.join(selectedFolderUri, 'deps')) || fs.existsSync(path.join(selectedFolderUri, 'manifest'))|| fs.existsSync(path.join(selectedFolderUri, '.west'))) {
-            vscode.window.showWarningMessage('The selected folder already contains a west workspace. Please select an empty folder.');
-            return;
-          }
-          // Send the selected file URI back to the webview
-          this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: selectedFolderUri, id: 'workspacePath'});
         }
       });
     }
@@ -289,9 +283,24 @@ export class CreateWestWorkspacePanel {
             templateHal = message.templateHal;
 
             this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: workspacePath, id: 'workspacePath'});
-            if (fs.existsSync(path.join(workspacePath, 'deps')) || fs.existsSync(path.join(workspacePath, 'manifest')) || fs.existsSync(path.join(workspacePath, '.west'))) {
-              vscode.window.showWarningMessage('The selected folder already contains a west workspace. Please select an empty folder.');
-              return;
+
+            const hasDeps = fs.existsSync(path.join(workspacePath, 'deps'));
+            const hasManifestDir = fs.existsSync(path.join(workspacePath, 'manifest'));
+            const hasWestDir = fs.existsSync(path.join(workspacePath, '.west'));
+            const looksLikeWestWorkspace = hasDeps || hasManifestDir || hasWestDir;
+
+            // For remote/template/manifest init: require an empty folder (not an existing west workspace)
+            if (srcType !== 'local') {
+              if (looksLikeWestWorkspace) {
+                vscode.window.showWarningMessage('The selected folder already contains a west workspace. Please select an empty folder.');
+                return;
+              }
+            } else {
+              // For local import: expect an existing west workspace folder
+              if (!hasWestDir) {
+                vscode.window.showWarningMessage("Local import expects an existing west workspace folder (missing '.west'). Please select the workspace root.");
+                return;
+              }
             }
 
             if(srcType === 'remote') {
