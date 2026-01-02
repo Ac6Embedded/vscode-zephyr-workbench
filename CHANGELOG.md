@@ -4,6 +4,10 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.0.4]
+
+- Fetch toolchains per version remotely with inline spinner feedback
+
 ## [2.0.3]
 
 - Update documentation to standardize the new extension name Workbench for Zephyr
