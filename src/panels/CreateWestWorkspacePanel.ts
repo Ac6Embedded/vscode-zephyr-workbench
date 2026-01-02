@@ -327,6 +327,8 @@ export class CreateWestWorkspacePanel {
                 return;
               }
             }
+            
+            templateMode = message.templateMode;
 
             if(srcType === 'remote') {
               vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath);
