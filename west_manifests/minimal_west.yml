@@ -15,4 +15,5 @@ manifest:
           - cmsis_6
           - percepio
           - picolibc
+          - mcuboot
           - segger
