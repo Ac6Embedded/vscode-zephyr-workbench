@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { getSdkVersion, listToolchainArch } from "../utils/sdkUtils";
+import { getMinimalToolchainsForVersion, getSdkVersion } from "../utils/sdkUtils";
 import { getListZephyrSDKs } from "../utils/utils";
 
 export class ImportZephyrSDKPanel {
@@ -114,32 +114,23 @@ export class ImportZephyrSDKPanel {
       }
     }
 
-    /* ── toolchain list for “minimal” installs ─────────────────────── */
-    let toolsListHTML = "";
-    for (const t of listToolchainArch) {
-      toolsListHTML += `<div>
-          <vscode-checkbox class="toolchain-checkbox"
-                           current-value="${t}" disabled>${t}</vscode-checkbox>
-        </div>`;
-    }
-
     /* default SDK URL matching current platform */
     let defaultSDKUrl = "";
     if (process.platform === "linux" && process.arch === "x64") {
       defaultSDKUrl =
-        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-x86_64.tar.xz";
+        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.17.4/zephyr-sdk-0.17.4_linux-x86_64.tar.xz";
     } else if (process.platform === "linux" && process.arch === "arm64") {
       defaultSDKUrl =
-        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-aarch64.tar.xz";
+        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.17.4/zephyr-sdk-0.17.4_linux-aarch64.tar.xz";
     } else if (process.platform === "win32" && process.arch === "x64") {
       defaultSDKUrl =
-        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_windows-x86_64.7z";
+        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.17.4/zephyr-sdk-0.17.4_windows-x86_64.7z";
     } else if (process.platform === "darwin" && process.arch === "x64") {
       defaultSDKUrl =
-        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_macos-x86_64.tar.xz";
+        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.17.4/zephyr-sdk-0.17.4_macos-x86_64.tar.xz";
     } else if (process.platform === "darwin" && process.arch === "arm64") {
       defaultSDKUrl =
-        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_macos-aarch64.tar.xz";
+        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.17.4/zephyr-sdk-0.17.4_macos-aarch64.tar.xz";
     }
 
     /* ── Zephyr SDK list for the IAR dropdown ──────────────────────── */
@@ -228,6 +219,7 @@ export class ImportZephyrSDKPanel {
         </a>
       </div>
 
+      <div class="combo-with-spinner">
       <div id="listVersion" class="combo-dropdown grid-value-div">
         <input  id="versionInput"
                 class="combo-dropdown-control"
@@ -245,12 +237,16 @@ export class ImportZephyrSDKPanel {
           ${versionItems}
         </div>
       </div>
+      <div id="toolchainSpinner" class="spinner version-spinner" aria-label="Loading toolchains" style="display:none"></div>
+      </div>
     </div>
 
-    <div class="grid-group-div">
+    <div class="grid-group-div" id="toolchainSection">
       <fieldset class="no-border">
-        <div class="toolchains-container">
-          ${toolsListHTML}
+        <div class="toolchains-container" id="toolchainsContainer">
+          <div class="toolchain-placeholder">
+            Select "Minimal" to fetch toolchains for your platform.
+          </div>
         </div>
       </fieldset>
     </div>
@@ -372,6 +368,34 @@ export class ImportZephyrSDKPanel {
                 );
                 break;
             }
+            return;
+
+          case "fetchMinimalToolchains": {
+            const version = msg.version as string | undefined;
+            if (!version) {
+              webview.postMessage({
+                command: "toolchainError",
+                version,
+                message: "Missing version when fetching toolchains.",
+              });
+              return;
+            }
+            try {
+              const toolchains = await getMinimalToolchainsForVersion(version);
+              webview.postMessage({
+                command: "toolchainList",
+                version,
+                toolchains,
+              });
+            } catch (error: any) {
+              webview.postMessage({
+                command: "toolchainError",
+                version,
+                message: error?.message ?? String(error),
+              });
+            }
+            return;
+          }
         }
       },
       undefined,
