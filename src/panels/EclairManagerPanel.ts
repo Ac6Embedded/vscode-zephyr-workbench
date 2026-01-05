@@ -18,11 +18,7 @@ interface IEclairConfig {
 }
 
 export class EclairManagerPanel {
-  /**
-   * Resolve the most likely "application" workspace folder.
-   * In multi-root setups, the first workspace folder can be a container (no CMakeLists.txt).
-   * Prefer the folder that contains a top-level CMakeLists.txt.
-   */
+  // Find the most likely application folder (prefers one with CMakeLists.txt)
   private resolveApplicationFolderUri(): vscode.Uri | undefined {
     const folders = vscode.workspace.workspaceFolders ?? [];
 
@@ -634,6 +630,9 @@ export class EclairManagerPanel {
             if (typeof v === "string") mergedEnv[k] = v;
             else mergedEnv[k] = "";
           }
+
+          // Disable ccache for SCA/Eclair (breaks wrapper script)
+          mergedEnv.CCACHE_DISABLE = "1";
           mergedEnv.PATH =
             (extraPaths.length ? extraPaths.join(path.delimiter) + path.delimiter : "") +
             (process.env.PATH || "");
@@ -728,15 +727,14 @@ export class EclairManagerPanel {
       }
     }
 
-    // Disable ccache when using ECLAIR SCA variant.
-    // Zephyr wraps compilation with: cmake -P sca/eclair/eclair.cmake -- <compiler ...>
-    // If ccache is enabled, it becomes: ccache cmake -P ... which breaks.
+    // Disable compiler launchers for ECLAIR SCA (breaks with ccache)
     parts.push(
       westCmd,
       "build",
       "--",
       "-DZEPHYR_SCA_VARIANT=eclair",
-      "-DZEPHYR_CCACHE=0"
+      "-DCMAKE_C_COMPILER_LAUNCHER=",
+      "-DCMAKE_CXX_COMPILER_LAUNCHER=",
     );
 
     if (cfg.ruleset === "USER") {
