@@ -80,6 +80,9 @@ function generateWestManifestTest(
 describe('Manifest output comparison', () => {
   const tmpRoot = path.join(__dirname, 'tmp-workspace-compare');
 
+  const expectedFullPath = path.join(__dirname, 'expected_full.yml');
+  const expectedMinimalPath = path.join(__dirname, 'expected_minimal.yml');
+
   const remotePath = 'https://github.com/zephyrproject-rtos';
   const remoteBranch = 'v4.3.0';
   const templateHal = 'hal_stm32';
@@ -142,6 +145,17 @@ describe('Manifest output comparison', () => {
       yaml.stringify(expectedMinimal),
       'utf8'
     );
+  });
+
+  // Delete expected files (expected_minimal.yml and expected_full.yml)
+  // If you want see them, comment this block
+  after(() => {
+    if (fs.existsSync(expectedFullPath)) {
+      fs.unlinkSync(expectedFullPath);
+    }
+    if (fs.existsSync(expectedMinimalPath)) {
+      fs.unlinkSync(expectedMinimalPath);
+    }
   });
 
   afterEach(() => {

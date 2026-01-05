@@ -1593,7 +1593,7 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
-    "test:unit": "mocha -r ts-node/register src/test/unit/**/*.test.ts",
+    "test:unit": "cross-env NODE_PATH=src/test/unit/stubs mocha -r ts-node/register src/test/unit/**/*.test.ts",
     "test:integration": "node ./out/test/runTest.js",
     "coverage": "nyc npm run test:unit"
   },

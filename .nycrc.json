@@ -1,9 +1,15 @@
 {
   "extension": [".ts"],
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/constants.ts",
+    "src/utilities/**/*.ts",
+    "src/utils/envYamlUtils.ts"
+  ],
   "exclude": [
     "src/test/**",
     "src/extension.ts",
+    "src/utilities/getUri.ts",
+    "src/utilities/MultiStepQuickPick.ts",
     "**/*.d.ts"
   ],
   "reporter": ["text", "html"],
