@@ -94,6 +94,15 @@ export class ZephyrProjectBuildConfiguration {
       BUILD_DIR: this.getBuildDir(parentProject),
       ...(this.westArgs) ? { WEST_ARGS: this.westArgs } : {}
     };
+    
+    // Make a copy of envVars to modify
+    let envVars = { ...this.envVars };
+
+    // If sysbuild is true, remove CONF_FILE and EXTRA_CONF_FILE from envVars
+    if (this.sysbuild === "true") {
+      delete envVars.CONF_FILE;
+      delete envVars.EXTRA_CONF_FILE;
+    }
 
     let additionalEnv = getBuildEnv(this.envVars);
     baseEnv = { ...baseEnv, ...additionalEnv };
