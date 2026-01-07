@@ -9,6 +9,7 @@ import { execCommandWithEnv } from "../utils/execUtils";
 import { ZINSTALLER_MINIMUM_VERSION } from "../constants";
 import { formatYml } from "../utilities/formatYml";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
+import { checkPathSpace } from "../utils/utils";
 
 export class HostToolsPanel {
   public static currentPanel: HostToolsPanel | undefined;
@@ -47,7 +48,12 @@ export class HostToolsPanel {
 
     this._panel.onDidChangeViewState(async () => {
       if (this._panel.visible) {
-        this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
+       try {
+          this._panel.webview.postMessage({ command: 'toggle-spinner', show: true });
+          await this.checkAndPublishToolVersions();
+        } finally {
+          this._panel.webview.postMessage({ command: 'toggle-spinner', show: false });
+        }
       }
     }, null, this._disposables);
 
@@ -107,8 +113,8 @@ export class HostToolsPanel {
         }
       );
       panel.iconPath = {
-        light: vscode.Uri.joinPath(extensionUri, "res", "icons", "light", "desktop-download.svg"),
-        dark: vscode.Uri.joinPath(extensionUri, "res", "icons", "dark", "desktop-download.svg"),
+        light: vscode.Uri.joinPath(extensionUri, "res", "icons", "light", "symbol-property-light.svg"),
+        dark: vscode.Uri.joinPath(extensionUri, "res", "icons", "dark", "symbol-property-dark.svg"),
       };
 
       HostToolsPanel.currentPanel = new HostToolsPanel(panel, extensionUri);
@@ -497,6 +503,9 @@ export class HostToolsPanel {
               const prevKey: string = (message.prevKey ?? '').toString();
               const newKey: string = (message.newKey ?? '').toString().trim();
               const newValue: string = (message.newValue ?? '').toString();
+
+              checkPathSpace(newValue, true);
+
               if (!newKey) {
                 vscode.window.showErrorMessage('Please provide a variable name');
                 webview.postMessage({ command: 'env-var-updated', idx, success: false });

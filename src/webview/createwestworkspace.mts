@@ -439,6 +439,17 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const manifestPath = document.getElementById("manifestPath") as TextField;
   const workspacePath = document.getElementById("workspacePath") as TextField;
   
+  // Get template mode (Full or Minimal)
+  const templateModeGroup = document.getElementById("templateMode");
+  let templateModeValue = "minimal";
+  if (templateModeGroup) {
+    const radios = templateModeGroup.querySelectorAll('vscode-radio');
+    radios.forEach(radio => {
+      if ((radio as any).checked) {
+        templateModeValue = radio.getAttribute('value') || "";
+      }
+    });
+  }
   webviewApi.postMessage(
     {
       command: 'create',
@@ -448,6 +459,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       templateHal: templateInput.getAttribute('data-value'),
       manifestPath: manifestPath.value,
       workspacePath: workspacePath.value,
+      templateMode: templateModeValue
     }
   );
 }

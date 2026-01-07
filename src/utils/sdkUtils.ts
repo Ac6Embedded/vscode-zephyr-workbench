@@ -4,16 +4,8 @@ import path from "path";
 import { execCommand, extract, getFirstDirectoryName7z } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY } from "../constants";
 import { getGitTags } from "./execUtils";
-import { url } from "inspector";
 
 export const sdkRepoURL = "https://github.com/zephyrproject-rtos/sdk-ng/";
-
-export const listToolchainArch = [ 'aarch64', 'arm', 'arc', 'arc64', 'microblazeel', 'mips',  'nios2', 
-	'riscv64', 'sparc', 'x86_64', 'xtensa-dc233c', 'xtensa-espressif_esp32', 'xtensa-espressif_esp32s2',
-	'xtensa-espressif_esp32s3', 'xtensa-intel_ace15_mtpm', 'xtensa-intel_tgl_adsp', 'xtensa-mtk_mt8195_adsp',
-	'xtensa-nxp_imx_adsp', 'xtensa-nxp_imx8m_adsp', 'xtensa-nxp_imx8ulp_adsp', 'xtensa-nxp_rt500_adsp',
-	'xtensa-nxp_rt600_adsp', 'xtensa-sample_controller'
-];
 
 export const sdkType = [ 'full', 'minimal' ];
 export const sdkOSes = [ 'linux', 'windows', 'macos' ];
@@ -24,29 +16,16 @@ export const minSdkURL = "https://github.com/zephyrproject-rtos/sdk-ng/releases/
 export const fullSdkURL = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${os}-${arch}.${ext}";
 export const toolsSdkURL = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/toolchain_${os}-${arch}_${toolchain}.${ext}";
 
-export async function getSdkVersion(): Promise<any[]> {
-	try {
-		const tags = await getGitTags(sdkRepoURL);
-		let versions = [];
-		if(tags && tags.length > 0) {
-			for(let tag of tags) {
-				// do not keep -alpha, -beta, -rc versions
-				if(!tag.includes('-')) {
-					versions.push(tag);
-				}
-			}
-		}
-		return versions;
-	} catch (error) {
-		return [];
-	}
-}
+type SdkHostTarget = {
+	os: 'linux' | 'windows' | 'macos';
+	arch: 'x86_64' | 'aarch64';
+	ext: 'tar.xz' | '7z';
+};
 
-export function generateSdkUrls(type: string, version: string, toolchains: string[]): string[] {
-	let urls: string[] = [];
-	let os = undefined;
-	let arch = undefined;
-	let ext = undefined;
+export function getSdkHostTarget(): SdkHostTarget | undefined {
+	let os: SdkHostTarget['os'] | undefined;
+	let arch: SdkHostTarget['arch'] | undefined;
+	let ext: SdkHostTarget['ext'] | undefined;
 	
 	switch(process.platform) {
 		case 'linux': {
@@ -81,26 +60,141 @@ export function generateSdkUrls(type: string, version: string, toolchains: strin
 			break;
 	}
 
-	if(os && arch) {
+	if (os && arch && ext) {
+		return { os, arch, ext };
+	}
+	return undefined;
+}
+
+export async function getSdkVersion(): Promise<any[]> {
+	try {
+		const tags = await getGitTags(sdkRepoURL);
+		let versions = [];
+		if(tags && tags.length > 0) {
+			for(let tag of tags) {
+				// do not keep -alpha, -beta, -rc versions
+				if(!tag.includes('-')) {
+					versions.push(tag);
+				}
+			}
+		}
+		return versions;
+	} catch (error) {
+		return [];
+	}
+}
+
+export function generateSdkUrls(type: string, version: string, toolchains: string[]): string[] {
+	let urls: string[] = [];
+	const host = getSdkHostTarget();
+
+	if(host) {
 		if(type === 'full') {
-			const fullUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${os}-${arch}.${ext}`;
+			const fullUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${host.os}-${host.arch}.${host.ext}`;
 			urls.push(fullUrl);
 		} else if(type === 'minimal') {
-			const minUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${os}-${arch}_minimal.${ext}`;
+			const minUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${host.os}-${host.arch}_minimal.${host.ext}`;
 			urls.push(minUrl);
 
-			for(let tArch of toolchains) {
-				let toolchain = `${tArch}-zephyr-elf`;
-				if(tArch === 'arm') {
-					toolchain = `${tArch}-zephyr-eabi`;
-				}
-				const toolUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/toolchain_${os}-${arch}_${toolchain}.${ext}`;
+			for(const tArch of toolchains) {
+				const toolchain = mapToolchainIdToPackage(tArch);
+				if (!toolchain) { continue; }
+				const toolUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/toolchain_${host.os}-${host.arch}_${toolchain}.${host.ext}`;
 				urls.push(toolUrl);
 			}
 		} 
 	}
 	
 	return urls;
+}
+
+export async function getMinimalToolchainsForVersion(version: string): Promise<string[]> {
+	const host = getSdkHostTarget();
+	if (!host) {
+		throw new Error('Unsupported host platform for Zephyr SDK downloads.');
+	}
+
+	const tag = version?.startsWith('v') ? version : `v${version}`;
+	const response = await fetch(`https://github.com/zephyrproject-rtos/sdk-ng/releases/tag/${tag}`, {
+		headers: { 'User-Agent': 'zephyr-workbench' }
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to fetch release page (${response.status})`);
+	}
+	const html = await response.text();
+	const tableMatch = html.split('<h3>Toolchains</h3>')[1]?.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
+	if (!tableMatch) {
+		throw new Error('Could not find toolchain table on release page.');
+	}
+	const rows = Array.from(tableMatch[1].matchAll(/<tr>([\s\S]*?)<\/tr>/gi));
+	// Skip header row
+	const hostColIdx = host.os === 'linux' ? 1 : host.os === 'macos' ? 2 : 3;
+	const toolchains: string[] = [];
+	for (let i = 1; i < rows.length; i++) {
+		const cells = Array.from(rows[i][1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)).map(m => m[1]);
+		if (cells.length <= hostColIdx) {
+			continue;
+		}
+		const targetName = stripHtml(cells[0]);
+		const cellHtml = cells[hostColIdx];
+		if (hasMatchingAsset(cellHtml, host)) {
+			toolchains.push(targetName);
+		}
+	}
+	if (toolchains.length === 0) {
+		throw new Error('No toolchains found for this platform on the selected release.');
+	}
+	return toolchains.map(friendlyToolchainId);
+}
+
+function hasMatchingAsset(cellHtml: string, host: SdkHostTarget): boolean {
+	const links = Array.from(cellHtml.matchAll(/href="([^"]+)"/gi)).map(m => m[1]);
+	return links.some(link => link.includes(`_${host.os}-${host.arch}_`));
+}
+
+function stripHtml(content: string): string {
+	return content.replace(/<[^>]*>/g, '').trim();
+}
+
+/**
+ * Convert a toolchain identifier from the release table into a user-friendly id.
+ * Examples:
+ *   "aarch64-zephyr-elf" -> "aarch64"
+ *   "arm-zephyr-eabi" -> "arm"
+ *   "xtensa-espressif_esp32s3_zephyr-elf" -> "xtensa-espressif_esp32s3"
+ */
+export function friendlyToolchainId(name: string): string {
+	const match = name.match(/^(.*?)[-_]zephyr-(?:elf|eabi)$/);
+	return match ? match[1] : name;
+}
+
+/**
+ * Map a friendly toolchain id (e.g. "arm", "aarch64", "xtensa-espressif_esp32s3")
+ * back to the package name used in download URLs.
+ */
+export function mapToolchainIdToPackage(id: string): string {
+	if (!id) { return id; }
+	if (id.includes('zephyr-elf') || id.includes('zephyr-eabi')) {
+		return id;
+	}
+
+	switch (id) {
+		case 'arm':
+			return 'arm-zephyr-eabi';
+		case 'aarch64':
+			return 'aarch64-zephyr-elf';
+		case 'riscv':
+		case 'riscv64':
+			return 'riscv64-zephyr-elf';
+		default:
+			break;
+	}
+
+	if (id.startsWith('xtensa-')) {
+		return `${id}_zephyr-elf`;
+	}
+
+	return `${id}-zephyr-elf`;
 }
 
 export async function registerZephyrSDK(sdkPath: string) {

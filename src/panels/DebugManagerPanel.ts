@@ -31,8 +31,9 @@ export class DebugManagerPanel {
     this._setWebviewMessageListener(this._panel.webview);
     this._setDefaultSelection(this._panel.webview);
     // Trigger async applications discovery post-render
-    this._panel.webview.postMessage({ command: 'applicationsLoading' });
-    this._loadApplicationsAsync(this._panel.webview);
+    
+    //this._panel.webview.postMessage({ command: 'applicationsLoading' });
+    //this._loadApplicationsAsync(this._panel.webview);
   }
 
   public static render(extensionUri: vscode.Uri, project?: ZephyrProject | undefined, buildConfig?: ZephyrProjectBuildConfiguration | undefined) {

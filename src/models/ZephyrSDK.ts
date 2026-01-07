@@ -49,32 +49,37 @@ export class ZephyrSDK {
     };
   }
 
-  public static getToolchainPrefix(arch: string, socToolchainName: string | undefined = undefined) {
-    let prefix = '';
-    switch(arch) {
-      case 'arm': 
-        prefix = 'arm-zephyr-eabi';
-        break;
-      case 'arm64': 
-        prefix = 'aarch64-zephyr-eabi';
-        break;
-      case 'riscv':
-        prefix = 'riscv64-zephyr-elf';
-        break;
-      case 'microblaze':
-        prefix = 'microblazeel-zephyr-elf';
-        break;
-      case 'x86':
-        prefix = 'x86_64-zephyr-elf';
-        break;
-      case 'xtensa':
-        prefix = `xtensa-${socToolchainName}_zephyr-elf`;
-        break;
-      default:
-        prefix = `${arch}-zephyr-elf`;
-        break;
+  public static getToolchainPrefix(toolchainId: string, socToolchainName: string | undefined = undefined) {
+    if (!toolchainId) { return toolchainId; }
+
+    // Already a full identifier
+    if (toolchainId.includes('zephyr-elf') || toolchainId.includes('zephyr-eabi')) {
+      return toolchainId;
     }
-    return prefix;
+
+    switch (toolchainId) {
+      case 'arm':
+        return 'arm-zephyr-eabi';
+      case 'arm64':
+      case 'aarch64':
+        return 'aarch64-zephyr-elf';
+      case 'riscv':
+      case 'riscv64':
+        return 'riscv64-zephyr-elf';
+      case 'microblaze':
+      case 'microblazeel':
+        return 'microblazeel-zephyr-elf';
+      case 'x86':
+      case 'x86_64':
+        return 'x86_64-zephyr-elf';
+      case 'xtensa':
+        if (socToolchainName) {
+          return `xtensa-${socToolchainName}_zephyr-elf`;
+        }
+        return toolchainId;
+      default:
+        return `${toolchainId}-zephyr-elf`;
+    }
   }
 
   public getCompilerPath(arch: string, socToolchain: string | undefined = undefined): string {

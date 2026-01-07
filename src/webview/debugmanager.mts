@@ -43,6 +43,8 @@ function main() {
   resetButton.addEventListener("click", resetHandler);
   applyButton.addEventListener("click", applyHandler);
   debugButton.addEventListener("click", debugHandler);
+
+  webviewApi.postMessage({ command: 'webviewReady' });
 }
 
 function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputElement) {
@@ -294,14 +296,12 @@ function initApplicationsDropdown() {
   const applicationDropdownSpinner = document.getElementById('applicationsDropdownSpinner') as HTMLElement;
   const buildConfigDropdownSpinner = document.getElementById('buildConfigDropdownSpinner') as HTMLElement;
 
-  const openAndRefresh = () => {
+  const openDropdown = () => {
     if (applicationsDropdown) { applicationsDropdown.style.display = 'block'; }
-    if (applicationDropdownSpinner) { applicationDropdownSpinner.style.display = 'inline-block'; }
-    webviewApi.postMessage({ command: 'refreshApplications' });
   };
 
-  applicationInput.addEventListener('focusin', openAndRefresh);
-  applicationInput.addEventListener('click', openAndRefresh);
+  applicationInput.addEventListener('focusin', openDropdown);
+  applicationInput.addEventListener('click', openDropdown);
 
   applicationInput.addEventListener('focusout', () => {
     if (applicationsDropdown) {applicationsDropdown.style.display = 'none';}

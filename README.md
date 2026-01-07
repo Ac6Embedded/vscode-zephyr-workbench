@@ -1,6 +1,6 @@
-# Zephyr Workbench for VS Code
+# Workbench for Zephyr (VS Code)
 
-Ac6 Zephyr Workbench for VS Code extension adds support of Zephyr development to Visual Studio Code, including SDK management, Project wizard, build and debugging features. 
+Ac6 Workbench for Zephyr is a VS Code extension that adds support of Zephyr development to Visual Studio Code, including SDK management, Project wizard, build and debugging features. 
 
 ## Features
 * Install native Host Tools (python, cmake, ...)
@@ -14,7 +14,7 @@ Ac6 Zephyr Workbench for VS Code extension adds support of Zephyr development to
 * Supported on every platforms
 
 <p align="center">
-  <img alt="Zephyr Workbench Overview" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/gifs/zw_create_app.gif">
+  <img alt="Workbench for Zephyr Overview" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/gifs/zw_create_app.gif">
 </p>
 
 ## Documentation
@@ -22,7 +22,7 @@ Ac6 Zephyr Workbench for VS Code extension adds support of Zephyr development to
 Find the complete documentation on: [https://zephyr-workbench.com/](https://zephyr-workbench.com/)
 
 ## Requirements
-To build your project on Zephyr Workbench, No external tools is required. Host tools are installed by the extension itself.
+To build your project on Workbench for Zephyr, No external tools is required. Host tools are installed by the extension itself.
 To flash and to debug the application on your target, external tools are required. Depending on needs, your might have to install some of the following software tools on your workstation:
 * LinkServer Debug Host Tools
 * J-Link Debug Host Tools
@@ -32,7 +32,7 @@ Additionally a driver software might be required to connect to your JTAG probe.
 On MacOSX, due to many dependencies, Homebrew is required to install external tools and python.
   
 ## Usage
-Zephyr Workbench provides a dedicated panel, to access it, click on the "Zephyr Workbench" logo on the left 
+Workbench for Zephyr provides a dedicated panel, to access it, click on the "Workbench for Zephyr" logo on the left 
 
 ### Install Host tools
 1. Click on "Install Host Tools" to download and to install the native tools in ${USERDIR}/.zinstaller (takes ~5mins)
@@ -130,7 +130,7 @@ The previous steps ("Import West Workspace" and "Import Zephyr SDK") are mandato
   <img alt="Configure Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/gifs/zw_debug_config.gif">
 </p>
 
-The newly debug configuration is named "Zephyr Workbench Debug"
+The newly debug configuration is named "Workbench for Zephyr Debug"
 
 If the launch configuration was already created, you don't need to open the **Debug Manager** again. Run your debug session as usually with VSC.
 1. Go to the "Run and Debug" (Ctrl+Shift+D) activity panel
@@ -177,7 +177,7 @@ OpenOCD and STM32CubeProgrammer installers are provided.
 3. Click on the "Install" icon to install the tools 
    <or>
    Click on the "Website" icon to be redirected to the official website of the tool and manually install it
-Note: As third-party installer cannot be fully controlled, you might need to manually set up your PATH environment variable to use the tool in Zephyr Workbench
+Note: As third-party installer cannot be fully controlled, you might need to manually set up your PATH environment variable to use the tool in Workbench for Zephyr
 
 <p align="center">
   <img alt="Debug tools" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_8_install_debug_tools.png" width="80%">

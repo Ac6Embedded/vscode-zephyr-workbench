@@ -3,6 +3,8 @@ import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { execCommandWithEnv, getGitTags, getGitBranches } from "../utils/execUtils";
 import { listHals } from "../utils/manifestUtils";
+import * as path from "path";
+import * as fs from "fs";
 
 export class CreateWestWorkspacePanel {
   public static currentPanel: CreateWestWorkspacePanel | undefined;
@@ -134,7 +136,7 @@ export class CreateWestWorkspacePanel {
             <div class="grid-group-div">
               <vscode-radio-group id="srcType" orientation="vertical">
                 <label slot="label">Source location:</label>
-                <vscode-radio value="template" checked>Minimal from template</vscode-radio>
+                <vscode-radio value="template" checked>From template</vscode-radio>
                 <vscode-radio value="remote">Repository</vscode-radio>
                 <vscode-radio value="local">Local folder</vscode-radio>
                 <vscode-radio value="manifest">Local manifest</vscode-radio>
@@ -144,6 +146,12 @@ export class CreateWestWorkspacePanel {
           <form>
             <div class="grid-group-div">
               <vscode-text-field size="50" type="url" id="remotePath" value="https://github.com/zephyrproject-rtos">Path:</vscode-text-field>
+            </div>
+            <div class="grid-group-div" id="templateModeGroup" style="display: block;">
+              <vscode-radio-group id="templateMode" orientation="horizontal">
+                <vscode-radio value="minimal" checked>Minimal</vscode-radio>
+                <vscode-radio value="full">Full</vscode-radio>
+              </vscode-radio-group>
             </div>
 
             <div class="grid-group-div" id="templatesGroup">
@@ -204,6 +212,24 @@ export class CreateWestWorkspacePanel {
             <div>
           </form>
           <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
+          <script nonce="${nonce}">
+            window.addEventListener('DOMContentLoaded', () => {
+              const srcTypeGroup = document.getElementById('srcType');
+              const templateModeGroup = document.getElementById('templateModeGroup');
+              function updateTemplateModeVisibility() {
+                const radios = srcTypeGroup.querySelectorAll('vscode-radio');
+                let selected = null;
+                radios.forEach(radio => {
+                  if (radio.hasAttribute('checked') || radio.checked) {
+                    selected = radio.getAttribute('value');
+                  }
+                });
+                templateModeGroup.style.display = (selected === 'template') ? 'block' : 'none';
+              }
+              srcTypeGroup.addEventListener('change', updateTemplateModeVisibility);
+              updateTemplateModeVisibility();
+            });
+          </script>
         </body>
       </html>
     `;
@@ -256,6 +282,7 @@ export class CreateWestWorkspacePanel {
         let workspacePath;
         let manifestPath;
         let templateHal;
+        let templateMode;
 
         switch (command) {
           case 'debug':
@@ -280,6 +307,28 @@ export class CreateWestWorkspacePanel {
             workspacePath = message.workspacePath;
             manifestPath = message.manifestPath;
             templateHal = message.templateHal;
+            this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: workspacePath, id: 'workspacePath'});
+
+            const hasDeps = fs.existsSync(path.join(workspacePath, 'deps'));
+            const hasManifestDir = fs.existsSync(path.join(workspacePath, 'manifest'));
+            const hasWestDir = fs.existsSync(path.join(workspacePath, '.west'));
+            const looksLikeWestWorkspace = hasDeps || hasManifestDir || hasWestDir;
+
+            // For remote/template/manifest init: require an empty folder (not an existing west workspace)
+            if (srcType !== 'local') {
+              if (looksLikeWestWorkspace) {
+                vscode.window.showWarningMessage('The selected folder already contains a west workspace. Please select an empty folder.');
+                return;
+              }
+            } else {
+              // For local import: expect an existing west workspace folder
+              if (!hasWestDir) {
+                vscode.window.showWarningMessage("Local import expects an existing west workspace folder (missing '.west'). Please select the workspace root.");
+                return;
+              }
+            }
+            
+            templateMode = message.templateMode;
 
             if(srcType === 'remote') {
               vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath);
@@ -288,7 +337,7 @@ export class CreateWestWorkspacePanel {
             } else if(srcType === 'manifest') {
               vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestPath);
             } else if(srcType === 'template') {
-              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal);
+              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode);
             } 
             break;
         }
