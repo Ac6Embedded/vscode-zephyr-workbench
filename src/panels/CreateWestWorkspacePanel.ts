@@ -216,18 +216,59 @@ export class CreateWestWorkspacePanel {
             window.addEventListener('DOMContentLoaded', () => {
               const srcTypeGroup = document.getElementById('srcType');
               const templateModeGroup = document.getElementById('templateModeGroup');
-              function updateTemplateModeVisibility() {
-                const radios = srcTypeGroup.querySelectorAll('vscode-radio');
-                let selected = null;
-                radios.forEach(radio => {
-                  if (radio.hasAttribute('checked') || radio.checked) {
-                    selected = radio.getAttribute('value');
-                  }
-                });
-                templateModeGroup.style.display = (selected === 'template') ? 'block' : 'none';
+              const templateModeRadios = document.getElementById('templateMode');
+              const templatesGroup = document.getElementById('templatesGroup');
+
+              let currentSrcType = 'template';
+              let currentTemplateMode = 'minimal';
+
+              function updateVisibility() {
+                const inTemplateSource = (currentSrcType === 'template');
+                const isMinimal = (currentTemplateMode === 'minimal');
+
+                templateModeGroup.style.display = inTemplateSource ? 'block' : 'none';
+                templatesGroup.style.display = (inTemplateSource && isMinimal) ? 'block' : 'none';
               }
-              srcTypeGroup.addEventListener('change', updateTemplateModeVisibility);
-              updateTemplateModeVisibility();
+
+              srcTypeGroup?.querySelectorAll('vscode-radio').forEach(radio => {
+                radio.addEventListener('click', () => {
+                  currentSrcType = radio.getAttribute('value');
+                  setTimeout(updateVisibility, 10);
+                });
+                radio.addEventListener('change', () => {
+                  currentSrcType = radio.getAttribute('value');
+                  setTimeout(updateVisibility, 10);
+                });
+              });
+
+              templateModeRadios?.querySelectorAll('vscode-radio').forEach(radio => {
+                radio.addEventListener('click', () => {
+                  currentTemplateMode = radio.getAttribute('value');
+                  setTimeout(updateVisibility, 10);
+                });
+                radio.addEventListener('change', () => {
+                  currentTemplateMode = radio.getAttribute('value');
+                  setTimeout(updateVisibility, 10);
+                });
+              });
+
+              srcTypeGroup?.addEventListener('change', (e) => {
+                const target = e.target;
+                if (target && target.tagName === 'VSCODE-RADIO') {
+                  currentSrcType = target.getAttribute('value') || currentSrcType;
+                  setTimeout(updateVisibility, 10);
+                }
+              });
+
+              templateModeRadios?.addEventListener('change', (e) => {
+                const target = e.target;
+                if (target && target.tagName === 'VSCODE-RADIO') {
+                  currentTemplateMode = target.getAttribute('value') || currentTemplateMode;
+                  setTimeout(updateVisibility, 10);
+                }
+              });
+
+              updateVisibility();
             });
           </script>
         </body>
