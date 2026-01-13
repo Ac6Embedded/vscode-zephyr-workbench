@@ -19,7 +19,7 @@ Ac6 Workbench for Zephyr is a VS Code extension that adds support of Zephyr deve
 
 ## Documentation
 
-Find the complete documentation on: [https://zephyr-workbench.com/](https://zephyr-workbench.com/)
+Find the complete documentation on: [https://z-workbench.com/](https://z-workbench.com/)
 
 ## Requirements
 To build your project on Workbench for Zephyr, No external tools is required. Host tools are installed by the extension itself.
