@@ -12,7 +12,7 @@ import { getEnvVarFormat, getShell } from "./execUtils";
 import { checkHostTools, checkEnvFile } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY, ZINSTALLER_MINIMUM_VERSION } from '../constants';
 import { ZephyrProject } from '../models/ZephyrProject';
-import { getBoardsDirectories, westTmpBuildSystemCommand } from '../commands/WestCommands';
+import { getBoardsDirectories, westTmpBuildCmakeOnlyCommand } from '../commands/WestCommands';
 import { checkOrCreateTask, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 
@@ -643,7 +643,7 @@ export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?
           if (fileExists(buildDir)) {
             envVars = readZephyrSettings(buildDir);
           } else {
-            const tmpBuildDir = await westTmpBuildSystemCommand(resource, westWorkspace, buildConfig);
+            const tmpBuildDir = await westTmpBuildCmakeOnlyCommand(resource, westWorkspace, buildConfig);
             if (tmpBuildDir) {
               envVars = readZephyrSettings(tmpBuildDir);
               deleteFolder(tmpBuildDir);
