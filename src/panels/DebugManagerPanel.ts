@@ -87,11 +87,15 @@ export class DebugManagerPanel {
     }
   }
 
-  public openFileDialog(elementId: string, filters: any = { 'All': ['*'] }) {
+  public openFileDialog(
+    elementId: string,
+    filters: any = { 'All': ['*'] },
+    options?: { canSelectFiles?: boolean; canSelectFolders?: boolean }
+  ) {
     if (this._panel) {
       vscode.window.showOpenDialog({
-        canSelectFiles: true,
-        canSelectFolders: false,
+        canSelectFiles: options?.canSelectFiles ?? true,
+        canSelectFolders: options?.canSelectFolders ?? false,
         canSelectMany: false,
         openLabel: 'Select',
         filters: filters,
@@ -359,7 +363,7 @@ export class DebugManagerPanel {
             break;
           }
           case 'browseRunner': {
-            this.openFileDialog('runnerPath');
+            this.openFileDialog('runnerPath', { 'All': ['*'] }, { canSelectFiles: true, canSelectFolders: true });
             break;
           }
           case 'install': {
@@ -581,6 +585,38 @@ export class DebugManagerPanel {
         serverArgs: `${serverArgs}`
       });
     }
+
+    function escapeRegExp(value: string): string {
+      return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function runnerPathArg(debugServerArgs: string, runnerName: string, runnerPath?: string): string {
+      const path = runnerPath?.trim();
+      const runner = runnerName?.trim().toLowerCase();
+      const args = debugServerArgs?.trim() ?? '';
+
+      if (!path || !runner) {
+        return args;
+      }
+
+      const flag = `--${runner}`;
+      const quotedPath = path.includes(' ') ? `"${path}"` : path;
+      const flagPattern = new RegExp(`(${escapeRegExp(flag)})(?:\\s+|=)(?:"[^"]*"|\\S+)`, 'gi');
+
+      // Replace existing flag value
+      if (flagPattern.test(args)) {
+        return args.replace(flagPattern, `$1 ${quotedPath}`);
+      }
+
+      // Insert after --runner <name> if it matches
+      const runnerPattern = new RegExp(`(--runner(?:\\s+|=)(?:"${runner}"|${runner}))`, 'i');
+      if (runnerPattern.test(args)) {
+        return args.replace(runnerPattern, `$1 ${flag} ${quotedPath}`);
+      }
+
+      // Otherwise append
+      return args ? `${args} ${flag} ${quotedPath}` : `${flag} ${quotedPath}`;
+    }
     
     async function applyHandler(message: any): Promise<void> {
       const projectPath = message.project;
@@ -611,6 +647,7 @@ export class DebugManagerPanel {
           runner.serverPort = gdbPort;
           config.serverStarted = runner.serverStartedPattern;
           config.debugServerArgs = runner.getWestDebugArgs(buildConfig.relativeBuildDir);
+          config.debugServerArgs = runnerPathArg(config.debugServerArgs, runner.name, runnerPath);
           config.setupCommands = [];
           for(const arg of getSetupCommands(programPath, runner.serverAddress, runner.serverPort, gdbMode)) {
             config.setupCommands.push(arg);
