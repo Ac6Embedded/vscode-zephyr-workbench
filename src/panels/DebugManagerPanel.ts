@@ -363,7 +363,7 @@ export class DebugManagerPanel {
             break;
           }
           case 'browseRunner': {
-            this.openFileDialog('runnerPath', { 'All': ['*'] }, { canSelectFiles: true, canSelectFolders: true });
+            this.openFileDialog('runnerPath', { 'Executable': ['exe'], 'All': ['*'] });
             break;
           }
           case 'install': {
