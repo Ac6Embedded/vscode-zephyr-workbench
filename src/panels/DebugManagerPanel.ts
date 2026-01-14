@@ -335,7 +335,8 @@ export class DebugManagerPanel {
               if(runnerPath && runnerPath.length > 0) {
                 runner.serverPath = runnerPath;
               }
-              // FIXME: Does not take has the runnerPath value before detection
+              // let runner auto-discover its executable 
+              await runner.loadInternalArgs();
               //await updateRunnerConfiguration(runner);
               await updateRunnerDetect(runner);
             }
@@ -599,7 +600,7 @@ export class DebugManagerPanel {
         return args;
       }
 
-      const flag = `--${runner}`;
+      const flag = runner === 'stlink_gdbserver' ? '--stlink-gdbserver' : `--${runner}`;
       const quotedPath = path.includes(' ') ? `"${path}"` : path;
       const flagPattern = new RegExp(`(${escapeRegExp(flag)})(?:\\s+|=)(?:"[^"]*"|\\S+)`, 'gi');
 
