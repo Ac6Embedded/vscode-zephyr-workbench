@@ -12,15 +12,6 @@ import { concatCommands, execShellCommandWithEnv, getShell, getShellNullRedirect
 import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from '../utils/utils'; 
 
 function quote(p: string): string {
-  if (!p) {
-    return p;
-  }
-  const alreadyQuoted =
-    (p.startsWith('"') && p.endsWith('"')) ||
-    (p.startsWith("'") && p.endsWith("'"));
-  if (alreadyQuoted) {
-    return p;
-  }
   return /\s/.test(p) ? `"${p}"` : p;
 }
 
@@ -82,11 +73,7 @@ export async function westUpdateCommand(workspacePath: string): Promise<void> {
     cwd: `${workspacePath}`
   };
 
-  try {
-    await execWestCommand(`West Update for current workspace`, command, options);
-  } finally {
-    try { await vscode.commands.executeCommand('zephyr-workbench-west-workspace.refresh'); } catch {}
-  }
+  await execWestCommand(`West Update for current workspace`, command, options);
 }
 
 export async function westPackagesInstallCommand(workspacePath: string): Promise<void> {
@@ -137,29 +124,30 @@ export async function westTmpBuildCmakeOnlyCommand(
 
   const shellKind = classifyShell(getShellExe());
 
-  const tmpDirFs = path.join(zephyrProject.folderPath, '.tmp');
-  const tmpDirArg = normalizePathForShell(shellKind, tmpDirFs);
+  const tmpPath = normalizePathForShell(shellKind, path.join(zephyrProject.folderPath, '.tmp'));
 
   const westArgs = makeWestArgs(buildConfig.westArgs);
 
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
   const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
 
-  const projectPathArg = normalizePathForShell(shellKind, zephyrProject.folderPath);
+  const redirect = getShellNullRedirect(shellKind);
 
   const command  = [
     'west build',
+    '-t boards',
     '--cmake-only',
-    `--board ${buildConfig.boardIdentifier}`,
-    `--build-dir ${quote(tmpDirArg)}`,
-    quote(projectPathArg),
-    (westArgs ? `${westArgs}` : ''),
+    `--board 96b_aerocore2`,
+    `--build-dir ${quote(tmpPath)}`,
+    quote(normalizePathForShell(shellKind,zephyrProject.folderPath)),
+    (westArgs ? ` ${westArgs}` : ''),
+    redirect,
   ].filter(Boolean).join(' ');
 
   const options: vscode.ShellExecutionOptions = {
-    cwd        : westWorkspace.kernelUri.fsPath,
+    cwd        : zephyrProject.folderPath,
     env        : {
-      ...normEnvVars,
+      ...buildConfig.envVars,
       ...activeSdk.buildEnv,
       ...westWorkspace.buildEnv
     },
@@ -174,7 +162,7 @@ export async function westTmpBuildCmakeOnlyCommand(
     true
   );
 
-  return tmpDirFs;
+  return tmpPath;
 }
 
 export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspace: WestWorkspace, extraWestArgs = ''): Promise<void> {
