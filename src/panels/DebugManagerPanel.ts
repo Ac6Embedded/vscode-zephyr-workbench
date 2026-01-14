@@ -600,7 +600,7 @@ export class DebugManagerPanel {
         return args;
       }
 
-      const flag = runner === 'stlink_gdbserver' ? '--stlink-gdbserver' : `--${runner}`;
+      const flag = runner === 'stlink_gdbserver' ? '--stlink_gdbserver' : `--${runner}`;
       const quotedPath = path.includes(' ') ? `"${path}"` : path;
       const flagPattern = new RegExp(`(${escapeRegExp(flag)})(?:\\s+|=)(?:"[^"]*"|\\S+)`, 'gi');
 
