@@ -12,6 +12,15 @@ import { concatCommands, execShellCommandWithEnv, getShell, getShellNullRedirect
 import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from '../utils/utils'; 
 
 function quote(p: string): string {
+  if (!p) {
+    return p;
+  }
+  const alreadyQuoted =
+    (p.startsWith('"') && p.endsWith('"')) ||
+    (p.startsWith("'") && p.endsWith("'"));
+  if (alreadyQuoted) {
+    return p;
+  }
   return /\s/.test(p) ? `"${p}"` : p;
 }
 
@@ -128,30 +137,29 @@ export async function westTmpBuildCmakeOnlyCommand(
 
   const shellKind = classifyShell(getShellExe());
 
-  const tmpPath = normalizePathForShell(shellKind, path.join(zephyrProject.folderPath, '.tmp'));
+  const tmpDirFs = path.join(zephyrProject.folderPath, '.tmp');
+  const tmpDirArg = normalizePathForShell(shellKind, tmpDirFs);
 
   const westArgs = makeWestArgs(buildConfig.westArgs);
 
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
   const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
 
-  const redirect = getShellNullRedirect(shellKind);
+  const projectPathArg = normalizePathForShell(shellKind, zephyrProject.folderPath);
 
   const command  = [
     'west build',
-    '-t boards',
     '--cmake-only',
-    `--board 96b_aerocore2`,
-    `--build-dir ${quote(tmpPath)}`,
-    quote(normalizePathForShell(shellKind,zephyrProject.folderPath)),
-    (westArgs ? ` ${westArgs}` : ''),
-    redirect,
+    `--board ${buildConfig.boardIdentifier}`,
+    `--build-dir ${quote(tmpDirArg)}`,
+    quote(projectPathArg),
+    (westArgs ? `${westArgs}` : ''),
   ].filter(Boolean).join(' ');
 
   const options: vscode.ShellExecutionOptions = {
-    cwd        : zephyrProject.folderPath,
+    cwd        : westWorkspace.kernelUri.fsPath,
     env        : {
-      ...buildConfig.envVars,
+      ...normEnvVars,
       ...activeSdk.buildEnv,
       ...westWorkspace.buildEnv
     },
@@ -166,7 +174,7 @@ export async function westTmpBuildCmakeOnlyCommand(
     true
   );
 
-  return tmpPath;
+  return tmpDirFs;
 }
 
 export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspace: WestWorkspace, extraWestArgs = ''): Promise<void> {
