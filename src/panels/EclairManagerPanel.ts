@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import fs, { accessSync, existsSync } from "fs";
 import path from "path";
+import os from "os";
 import yaml from "yaml";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
@@ -67,7 +68,7 @@ export class EclairManagerPanel {
       envObj.other.EXTRA_TOOLS.path = [normalizePath(dir)];
       fs.writeFileSync(envYamlPath, yaml.stringify(envObj), "utf8");
     } catch (err) {
-      vscode.window.showErrorMessage("[Eclair] Erro ao salvar path absoluto: " + err);
+      vscode.window.showErrorMessage("[Eclair] Error trying to save absolute path: " + err);
     }
   }
   /**
@@ -359,13 +360,13 @@ export class EclairManagerPanel {
       if (exePath) {
         // Check if we already have a valid path in env.yml
         const arr = getExtraPaths("EXTRA_TOOLS");
-        const jaTem = Array.isArray(arr) && arr.length > 0 && arr[0] && String(arr[0]).trim() !== "";
-        if (!jaTem) {
+        const alreadyHas = Array.isArray(arr) && arr.length > 0 && arr[0] && String(arr[0]).trim() !== "";
+        if (!alreadyHas) {
           EclairManagerPanel.saveEclairAbsolutePath(path.dirname(exePath));
         }
       }
     } catch (err) {
-      vscode.window.showErrorMessage("[Eclair] Erro ao tentar salvar path automático: " + err);
+      vscode.window.showErrorMessage("[Eclair] Error trying to save automatic path: " + err);
     }
 
     // Read .ecl config path from active sca object and send to webview
@@ -463,7 +464,7 @@ export class EclairManagerPanel {
         case "browse-path": {
           const { tool } = m;
           if (tool === "eclair") {
-            const pick = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: "Select Eclair installation" });
+            const pick = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: "Select the Eclair installation" });
             if (pick && pick[0]) {
               const chosen = pick[0].fsPath.trim();
               this.saveEclairPathToEnv(chosen);
@@ -517,21 +518,27 @@ export class EclairManagerPanel {
           break;
         }
         case "browse-extra-config": {
+          const folderUri = this.resolveApplicationFolderUri();
           const pick = await vscode.window.showOpenDialog({
             canSelectFiles: true,
             canSelectFolders: false,
             canSelectMany: false,
-            title: "Select ECLAIR options file (.ecl / .cmake)",
+            defaultUri: folderUri,
+            title: "Select the additional configuration",
             filters: {
-              "ECLAIR config": ["ecl", "cmake"],
+              "ECL file": ["ecl", "eclair", "cmake"],
               "All files": ["*"]
             }
           });
+          if (pick?.[0]) {
+            const chosen = pick[0].fsPath;
+            webview.postMessage({ command: "set-extra-config", path: chosen });
+            await this.saveExtraConfigToActiveSca(chosen);
+          }
           break;
         }
         case "update-extra-config": {
           const newPath = (m?.newPath || "").toString().trim();
-          if (!newPath) break;
           webview.postMessage({ command: "set-extra-config", path: newPath });
           await this.saveExtraConfigToActiveSca(newPath);
           break;
@@ -582,6 +589,31 @@ export class EclairManagerPanel {
             configs[idx]?.buildDir ||
             path.join(appDir, "build");
 
+          // Handle .ecl/.eclair files by generating a wrapper .cmake file
+          // This avoids passing strict .ecl files to CMake's include() which fails
+          // and ensures the file persists across pristine builds.
+          if (cfg.extraConfig) {
+            const p = cfg.extraConfig.trim();
+            const ext = (p && p.lastIndexOf(".") !== -1)
+              ? p.slice(p.lastIndexOf(".")).toLowerCase()
+              : "";
+              
+            if ((ext === ".ecl" || ext === ".eclair") && fs.existsSync(p)) {
+               try {
+                 const tmpDir = os.tmpdir();
+                 const wrapperPath = path.join(tmpDir, `zephyr_eclair_wrapper_${Date.now()}.cmake`);
+                 const safePath = p.replace(/\\/g, "/");
+                 const content = `list(APPEND ECLAIR_ENV_ADDITIONAL_OPTIONS "-eval_file=${safePath}")\n`;
+                 fs.writeFileSync(wrapperPath, content, { encoding: "utf8" });
+                 
+                 // Update internal config to point to the wrapper
+                 cfg.extraConfig = wrapperPath;
+               } catch (err) {
+                 vscode.window.showWarningMessage(`Failed to create ECLAIR wrapper: ${err}`);
+               }
+            }
+          }
+
           // Build complete command
           const cmakeArgs = this.buildCmd(cfg)
             .replace(/^.*?--\s*/, "");
@@ -590,15 +622,18 @@ export class EclairManagerPanel {
             ? "west"
             : "west";
 
+          const psStopParsing = process.platform === "win32" ? "--%" : "";
+
           const cmd = [
             westCmd,
+            psStopParsing,
             "build",
             `-s "${appDir}"`,
             `-d "${buildDir}"`,
             `--board=${board}`,
             "--",
             cmakeArgs
-          ].join(" ");
+          ].filter(Boolean).join(" ");
 
 
           // Determine extra paths for environment
@@ -773,15 +808,21 @@ export class EclairManagerPanel {
     if (cfg.extraConfig) {
       const p = cfg.extraConfig.trim();
 
+      const ext = (p && p.lastIndexOf(".") !== -1)
+        ? p.slice(p.lastIndexOf(".")).toLowerCase()
+        : "";
+
+      // Only pass .cmake files directly
       if (
-        !p ||
-        p === "Checking" ||
-        p === "Not Found" ||
-        !fs.existsSync(p) ||
-        fs.statSync(p).isDirectory()
+        p &&
+        ext === ".cmake" &&
+        p !== "Checking" &&
+        p !== "Not Found" &&
+        fs.existsSync(p) &&
+        !fs.statSync(p).isDirectory()
       ) {
-      } else {
-        parts.push(`-DECLAIR_OPTIONS_FILE=\"${p}\"`);
+        const cmakePath = p.replace(/\\/g, "/");
+        parts.push(`-DECLAIR_OPTIONS_FILE:FILEPATH=${cmakePath}`);
       }
     }
 
