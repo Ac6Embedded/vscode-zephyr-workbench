@@ -66,6 +66,7 @@ export class CreateWestWorkspacePanel {
       }).then(uri => {
         if (uri && uri.length > 0) {
           const selectedFolderUri = uri[0].fsPath;
+          // Send the selected file URI back to the webview
           this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: selectedFolderUri, id: 'workspacePath'});
         }
       });
@@ -135,7 +136,7 @@ export class CreateWestWorkspacePanel {
             <div class="grid-group-div">
               <vscode-radio-group id="srcType" orientation="vertical">
                 <label slot="label">Source location:</label>
-                <vscode-radio value="template" checked>Minimal from template</vscode-radio>
+                <vscode-radio value="template" checked>From template</vscode-radio>
                 <vscode-radio value="remote">Repository</vscode-radio>
                 <vscode-radio value="local">Local folder</vscode-radio>
                 <vscode-radio value="manifest">Local manifest</vscode-radio>
@@ -145,6 +146,12 @@ export class CreateWestWorkspacePanel {
           <form>
             <div class="grid-group-div">
               <vscode-text-field size="50" type="url" id="remotePath" value="https://github.com/zephyrproject-rtos">Path:</vscode-text-field>
+            </div>
+            <div class="grid-group-div" id="templateModeGroup" style="display: block;">
+              <vscode-radio-group id="templateMode" orientation="horizontal">
+                <vscode-radio value="minimal" checked>Minimal</vscode-radio>
+                <vscode-radio value="full">Full</vscode-radio>
+              </vscode-radio-group>
             </div>
 
             <div class="grid-group-div" id="templatesGroup">
@@ -205,6 +212,65 @@ export class CreateWestWorkspacePanel {
             <div>
           </form>
           <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
+          <script nonce="${nonce}">
+            window.addEventListener('DOMContentLoaded', () => {
+              const srcTypeGroup = document.getElementById('srcType');
+              const templateModeGroup = document.getElementById('templateModeGroup');
+              const templateModeRadios = document.getElementById('templateMode');
+              const templatesGroup = document.getElementById('templatesGroup');
+
+              let currentSrcType = 'template';
+              let currentTemplateMode = 'minimal';
+
+              function updateVisibility() {
+                const inTemplateSource = (currentSrcType === 'template');
+                const isMinimal = (currentTemplateMode === 'minimal');
+
+                templateModeGroup.style.display = inTemplateSource ? 'block' : 'none';
+                templatesGroup.style.display = (inTemplateSource && isMinimal) ? 'block' : 'none';
+              }
+
+              srcTypeGroup?.querySelectorAll('vscode-radio').forEach(radio => {
+                radio.addEventListener('click', () => {
+                  currentSrcType = radio.getAttribute('value');
+                  setTimeout(updateVisibility, 10);
+                });
+                radio.addEventListener('change', () => {
+                  currentSrcType = radio.getAttribute('value');
+                  setTimeout(updateVisibility, 10);
+                });
+              });
+
+              templateModeRadios?.querySelectorAll('vscode-radio').forEach(radio => {
+                radio.addEventListener('click', () => {
+                  currentTemplateMode = radio.getAttribute('value');
+                  setTimeout(updateVisibility, 10);
+                });
+                radio.addEventListener('change', () => {
+                  currentTemplateMode = radio.getAttribute('value');
+                  setTimeout(updateVisibility, 10);
+                });
+              });
+
+              srcTypeGroup?.addEventListener('change', (e) => {
+                const target = e.target;
+                if (target && target.tagName === 'VSCODE-RADIO') {
+                  currentSrcType = target.getAttribute('value') || currentSrcType;
+                  setTimeout(updateVisibility, 10);
+                }
+              });
+
+              templateModeRadios?.addEventListener('change', (e) => {
+                const target = e.target;
+                if (target && target.tagName === 'VSCODE-RADIO') {
+                  currentTemplateMode = target.getAttribute('value') || currentTemplateMode;
+                  setTimeout(updateVisibility, 10);
+                }
+              });
+
+              updateVisibility();
+            });
+          </script>
         </body>
       </html>
     `;
@@ -257,6 +323,7 @@ export class CreateWestWorkspacePanel {
         let workspacePath;
         let manifestPath;
         let templateHal;
+        let templateMode;
 
         switch (command) {
           case 'debug':
@@ -281,7 +348,6 @@ export class CreateWestWorkspacePanel {
             workspacePath = message.workspacePath;
             manifestPath = message.manifestPath;
             templateHal = message.templateHal;
-
             this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: workspacePath, id: 'workspacePath'});
 
             const hasDeps = fs.existsSync(path.join(workspacePath, 'deps'));
@@ -302,6 +368,8 @@ export class CreateWestWorkspacePanel {
                 return;
               }
             }
+            
+            templateMode = message.templateMode;
 
             if(srcType === 'remote') {
               vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath);
@@ -310,7 +378,7 @@ export class CreateWestWorkspacePanel {
             } else if(srcType === 'manifest') {
               vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestPath);
             } else if(srcType === 'template') {
-              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal);
+              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode);
             } 
             break;
         }
