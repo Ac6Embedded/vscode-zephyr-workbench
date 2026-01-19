@@ -4,6 +4,7 @@ import path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { westBoardsCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBuildCommand, execWestCommandWithEnvAsync, westConfigCommand } from './commands/WestCommands';
+import { execShellCommandWithEnv, getOutputChannel } from './utils/execUtils';
 import { WestWorkspace } from './models/WestWorkspace';
 import { ZephyrAppProject } from './models/ZephyrAppProject';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
@@ -26,6 +27,7 @@ import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
 import { HostToolsPanel } from './panels/HostToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
+import { EclairManagerPanel } from './panels/EclairManagerPanel';
 import { changeToolchainQuickStep } from "./quicksteps/changeToolchainQuickStep";
 import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
@@ -176,6 +178,45 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.env.openExternal(url);
 		}
 	});
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench.eclair-manager.open', async (node?: any) => {
+			const { workspaceFolder, settingsRoot } = resolveWorkspaceFolderForEclair(node);
+			EclairManagerPanel.render(context.extensionUri, workspaceFolder, settingsRoot);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.analyze.dt-doctor', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
+			if (!node?.project) return;
+			const project = node.project;
+			const buildDir = node instanceof ZephyrConfigTreeItem
+				? node.buildConfig.getBuildDir(project)
+				: project.configs[0].getBuildDir(project);
+
+			const cmd = `west build --build-dir "${buildDir}" -- -DZEPHYR_SCA_VARIANT=dtdoctor`;
+
+			// Prepare merged environment
+			const mergedEnvRaw = { ...process.env };
+			// Include Zephyr environment variables
+			const mergedEnv: { [key: string]: string } = {};
+			for (const [k, v] of Object.entries(mergedEnvRaw)) {
+				if (typeof v === 'string') mergedEnv[k] = v;
+			}
+
+			const out = getOutputChannel();
+			out.show(true);
+			out.appendLine(`[dt-doctor] cmd: ${cmd}`);
+			try {
+				await execShellCommandWithEnv("dt-doctor", cmd, {
+					cwd: project.folderPath,
+					env: mergedEnv,
+				});
+			} catch (err: any) {
+				vscode.window.showErrorMessage(`Failed to run dt-doctor: ${err}`);
+			}
+		})
+	);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-west-workspace.open-wizard', async () => {
@@ -2155,6 +2196,15 @@ export function activate(context: vscode.ExtensionContext) {
 	checkZinstallerVersion(context).catch(console.error);
 
 	setDefaultSettings();
+}
+
+function resolveWorkspaceFolderForEclair(node?: any): { workspaceFolder?: vscode.WorkspaceFolder, settingsRoot?: string } {
+	if ((node as vscode.Uri)?.fsPath) {
+		const wf = vscode.workspace.getWorkspaceFolder(node as vscode.Uri) || undefined;
+		return { workspaceFolder: wf, settingsRoot: (node as vscode.Uri).fsPath };
+	}
+	const fallback = getCurrentWorkspaceFolder() ?? vscode.workspace.workspaceFolders?.[0];
+	return { workspaceFolder: fallback, settingsRoot: fallback?.uri.fsPath };
 }
 
 function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined {

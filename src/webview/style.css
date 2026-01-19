@@ -4,6 +4,19 @@ body {
   color: var(--vscode-editor-foreground);
 }
 
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 2px 10px;
+  margin-bottom: 8px;
+}
+.checkbox-grid label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 0;
+}
+
 form {
   margin-top: 5px;
   margin-bottom: 10px;
@@ -29,6 +42,10 @@ form {
 
 .grid-group-div * {
   vertical-align: bottom;
+}
+
+.command-actions {
+  margin-top: 12px;
 }
 
 .grid-header-div , .grid-value-div {
@@ -153,6 +170,12 @@ vscode-text-field {
 vscode-text-field.browse-field {
   width: calc(var(--design-unit)* 114px);
   min-width: calc(var(--design-unit)* 40px);
+}
+
+.em-placeholder-value {
+  color: color-mix(in srgb, var(--input-placeholder-foreground) 90%, transparent) !important;
+  opacity: 0.95 !important;
+  font-style: italic;
 }
 
 vscode-button {
@@ -794,4 +817,20 @@ vscode-button {
 
 .debug-manager-buttons #resetSpinner {
   margin-left: 10px;    
+}
+
+#details-path-input-eclair {
+  max-width: 480px !important;
+  width: 480px !important;
+}
+
+#extra-config {
+  max-width: 480px !important;
+  width: 480px !important;
+}
+
+#user-ruleset-name,
+#user-ruleset-path {
+  max-width: 320px !important;
+  width: 320px !important;
 }

@@ -264,6 +264,12 @@
         "category": "Zephyr Workbench"
       },
       {
+        "command": "zephyr-workbench.eclair-manager.open",
+        "title": "Eclair Manager",
+        "icon": "$(beaker)",
+        "category": "Zephyr Workbench"
+      },
+      {
         "command": "zephyr-workbench-app-explorer.set-default-runner",
         "title": "Set Default Runner",
         "icon": "$(run)",
@@ -448,6 +454,11 @@
         "title": "cve-bin-tool",
         "category": "Zephyr Workbench/Application"
       },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
+          "title": "dt-doctor",
+          "category": "Zephyr Workbench/Application"
+        },
       {
         "command": "zephyr-workbench-app-explorer.run-app",
         "title": "Run",
@@ -770,6 +781,14 @@
         "label": "Memory Analysis"
       },
       {
+        "id": "zephyr-workbench-app-explorer.static-code-analysis",
+        "label": "Static Code Analysis"
+      },
+      {
+        "id": "zephyr-workbench-app-explorer.config.static-code-analysis",
+        "label": "Static Code Analysis"
+      },
+      {
         "id": "zephyr-workbench-app-explorer.spdx",
         "label": "SPDX"
       },
@@ -840,6 +859,16 @@
         {
           "command": "zephyr-workbench.explorer.terminal",
           "group": "zephyr@999"
+        },
+        {
+          "command": "zephyr-workbench.eclair-manager.open",
+          "group": "zephyr@995"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "zephyr-workbench.eclair-manager.open",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -861,6 +890,11 @@
         {
           "submenu": "zephyr-workbench-app-explorer.memory-analysis",
           "group": "0@view/item/context@3",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.static-code-analysis",
+          "group": "0@view/item/context@3.5",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
@@ -946,6 +980,11 @@
         {
           "submenu": "zephyr-workbench-app-explorer.config.memory-analysis",
           "group": "0@view/item/context@3",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.config.static-code-analysis",
+          "group": "0@view/item/context@3.5",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
@@ -1283,6 +1322,30 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         }
       ],
+      "zephyr-workbench-app-explorer.static-code-analysis": [
+          {
+            "command": "zephyr-workbench.eclair-manager.open",
+            "group": "0@view/item/context@1",
+            "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+          },
+          {
+            "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
+            "group": "0@view/item/context@2",
+            "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+          }
+      ],
+      "zephyr-workbench-app-explorer.config.static-code-analysis": [
+          {
+            "command": "zephyr-workbench.eclair-manager.open",
+            "group": "0@view/item/context@1",
+            "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+          },
+          {
+            "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
+            "group": "0@view/item/context@2",
+            "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+          }
+      ],
       "zephyr-workbench-app-explorer.spdx": [
         {
           "command": "zephyr-workbench-app-explorer.spdx.install-dependencies",
@@ -1329,7 +1392,11 @@
         {
           "command": "zephyr-workbench-app-explorer.spdx.analyze.cve-bin-tool",
           "group": "0@view/item/context@2"
-        }
+          },
+          {
+            "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
+            "group": "0@view/item/context@3"
+          }
       ],
       "commandPalette": [
         {
