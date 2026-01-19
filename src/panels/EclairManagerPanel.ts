@@ -366,7 +366,7 @@ export class EclairManagerPanel {
         }
       }
     } catch (err) {
-      vscode.window.showErrorMessage("[Eclair] Error trying to save automatic path: " + err);
+      vscode.window.showErrorMessage("Eclair is not installed. Please install Eclair and try again.");
     }
 
     // Read .ecl config path from active sca object and send to webview
