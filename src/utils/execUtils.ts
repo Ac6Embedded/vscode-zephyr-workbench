@@ -53,7 +53,7 @@ export function getEnvVarFormat(shell: string, env: string): string {
 
 export function getShell(): string {
   if (process.platform === 'win32') {
-    return classifyShell(getShellExe());
+    return 'cmd.exe';
   }
   return 'bash';
 }
