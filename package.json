@@ -456,7 +456,7 @@
       },
         {
           "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
-          "title": "dt-doctor",
+          "title": "DT Doctor",
           "category": "Zephyr Workbench/Application"
         },
       {

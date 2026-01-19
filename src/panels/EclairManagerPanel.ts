@@ -68,7 +68,7 @@ export class EclairManagerPanel {
       envObj.other.EXTRA_TOOLS.path = [normalizePath(dir)];
       fs.writeFileSync(envYamlPath, yaml.stringify(envObj), "utf8");
     } catch (err) {
-      vscode.window.showErrorMessage("[Eclair] Error trying to save absolute path: " + err);
+      vscode.window.showErrorMessage("Eclair is not installed. Please install Eclair and try again.");
     }
   }
   /**
