@@ -375,7 +375,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     let envSourceCmd = `source ${envScript}`;
     if (shell === 'cmd.exe') {
       envSourceCmd = `call ${envScript}`;
-    } else if (shell === 'powershell.exe' || shell === 'pwsh.exe') {
+    } else if (shell === 'powershell.exe') {
       envSourceCmd = `. ${envScript}`;
     }
 
