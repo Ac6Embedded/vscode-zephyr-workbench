@@ -4,6 +4,26 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.2.0]
+
+### Debug Manager
+- Added support for the ST-LINK GDB server debug runner
+
+### Static Code Analysis
+- Added support for Eclair
+- Added support for Devicetree diagnostics (dtdoctor) 
+
+### Tests
+- Added unit tests 
+
+### Build 
+- Fixed build failure when using `--sysbuild` together with `CONF_FILE` and/or `EXTRA_CONF_FILE`
+
+### Others
+- Minor fixes in the West Workspace and Debug Manager
+- Full support for PowerShell 7
+
+
 ## [2.1.0]
 
 - Fix Debug Manager default reset and avoid scanning until the view is opened
