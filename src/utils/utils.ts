@@ -72,6 +72,10 @@ export function getEnvScriptFilename(): string {
       scriptName = 'env.ps1';
       break;
     }
+    case 'pwsh.exe':{
+      scriptName = 'env.ps1';
+      break;
+    }
     case 'cmd.exe': {
       scriptName = 'env.bat';
       break;

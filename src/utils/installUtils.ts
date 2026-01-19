@@ -355,11 +355,16 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
             });
           return;
         }
+        // check if powershell 7 is installed and used by default then use pwsh.exe instead
+        let currentShell = 'powershell.exe';
+        const pwshInstalled = await checkPwshInstalled();
+        if(pwshInstalled) {
+          currentShell = 'pwsh.exe';
+        }
         installScript = 'install.ps1';
         installCmd = `powershell --% -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += ` -InstallDir ${destDir}`;
-        shell = 'powershell.exe';
-        // TODO: check if powershell 7 is installed and used by default then use pwsh.exe instead
+        shell = currentShell;
         break; 
       }
       case 'darwin': {
@@ -545,11 +550,10 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
         installCmd = `powershell -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         installArgs += `-InstallDir ${destDir}`;
         shell = 'powershell.exe';
+        // in Verify Host Tools, just check if pwsh is installed
         const pwshInstalled = await checkPwshInstalled();
         if (pwshInstalled) {
           return;
-          //shell = 'pwsh.exe';
-          //installCmd = `pwsh --% -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
         }
         break; 
       }
@@ -1118,7 +1122,7 @@ export async function checkHomebrew(): Promise<boolean> {
 
 export async function checkPwshInstalled(): Promise<boolean> {
   const cmd = 'pwsh --version';
-  return new Promise<boolean>((resolve, reject) => {
+  return new Promise<boolean>((resolve) => {
 		exec(cmd, (error) => {
       if (!error) {
         console.log('PowerShell 7 is installed');
