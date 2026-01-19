@@ -107,7 +107,7 @@ export async function westBoardsCommand(workspacePath: string): Promise<void> {
   await execWestCommand('West Update for current workspace', command, options);
 }
 
-export async function westTmpBuildSystemCommand(
+export async function westTmpBuildCmakeOnlyCommand(
   zephyrProject : ZephyrProject,
   westWorkspace : WestWorkspace,
   buildConfig?  : ZephyrProjectBuildConfiguration
@@ -136,6 +136,7 @@ export async function westTmpBuildSystemCommand(
   const command  = [
     'west build',
     '-t boards',
+    '--cmake-only',
     `--board 96b_aerocore2`,
     `--build-dir ${quote(tmpPath)}`,
     quote(normalizePathForShell(shellKind,zephyrProject.folderPath)),
@@ -155,7 +156,7 @@ export async function westTmpBuildSystemCommand(
   };
 
   await execShellTaskWithEnvAndWait(
-    'West tmp build system command',
+    'West tmp build cmake-only command',
     command,
     options,
     true

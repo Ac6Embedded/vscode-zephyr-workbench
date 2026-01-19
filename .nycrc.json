@@ -1,0 +1,21 @@
+{
+  "extension": [".ts"],
+  "include": [
+    "src/constants.ts",
+    "src/utilities/**/*.ts",
+    "src/utils/envYamlUtils.ts"
+  ],
+  "exclude": [
+    "src/test/**",
+    "src/extension.ts",
+    "src/utilities/getUri.ts",
+    "src/utilities/MultiStepQuickPick.ts",
+    "**/*.d.ts"
+  ],
+  "reporter": ["text", "html"],
+  "report-dir": "coverage",
+  "require": ["ts-node/register"],
+  "sourceMap": true,
+  "instrument": true,
+  "all": true
+}

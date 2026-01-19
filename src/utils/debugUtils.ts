@@ -10,6 +10,7 @@ import { ZephyrProject } from "../models/ZephyrProject";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
 import { getSupportedBoards, getWestWorkspace, getZephyrSDK, deleteFolder, findBoardByHierarchicalIdentifier } from './utils';
 import { STM32CubeProgrammer } from '../debug/runners/STM32CubeProgrammer';
+import { StlinkGdbserver } from '../debug/runners/StlinkGdbserver';
 import { Nrfutil } from '../debug/runners/Nrfutil';
 import { Nrfjprog } from '../debug/runners/Nrfjprog';
 import { SimplicityCommander } from '../debug/runners/SimplicityCommander';
@@ -26,7 +27,8 @@ export function getDebugRunners(): WestRunner[] {
     new Openocd(), 
     new Linkserver(),
     new JLink(),
-    new PyOCD()
+    new PyOCD(),
+    new StlinkGdbserver()
   ];
 }
 
@@ -87,7 +89,8 @@ export function getRunRunners(): WestRunner[] {
     new PyOCD(),
     new Nrfutil(),
     new Nrfjprog(),
-    new SimplicityCommander()
+    new SimplicityCommander(),
+    new StlinkGdbserver()
   ];
 }
 
@@ -178,6 +181,8 @@ export function getRunner(runnerName: string): WestRunner | undefined {
       return new PyOCD();
     case 'stm32cubeprogrammer':
       return new STM32CubeProgrammer();
+    case 'stlink_gdbserver':
+      return new StlinkGdbserver();
     case 'nrfutil':
       return new Nrfutil();
     case 'nrfjprog':

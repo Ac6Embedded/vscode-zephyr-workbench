@@ -14,12 +14,14 @@ Ac6 Workbench for Zephyr is a VS Code extension that adds support of Zephyr deve
 * Supported on every platforms
 
 <p align="center">
-  <img alt="Workbench for Zephyr Overview" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/gifs/zw_create_app.gif">
+  <a href="https://www.youtube.com/watch?v=1RB0GI6rJk0">
+    <img alt="Getting started Workbench for Zephyr" src="res/getting-started.png">
+  </a>
 </p>
 
 ## Documentation
 
-Find the complete documentation on: [https://zephyr-workbench.com/](https://zephyr-workbench.com/)
+Find the complete documentation on: [https://z-workbench.com/](https://z-workbench.com/)
 
 ## Requirements
 To build your project on Workbench for Zephyr, No external tools is required. Host tools are installed by the extension itself.
