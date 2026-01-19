@@ -4,6 +4,9 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.2.1]
+- Remove support for PowerShell 7
+
 ## [2.2.0]
 
 ### Debug Manager
