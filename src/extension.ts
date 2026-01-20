@@ -189,32 +189,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.analyze.dt-doctor', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
 			if (!node?.project) return;
-			const project = node.project;
-			const buildDir = node instanceof ZephyrConfigTreeItem
-				? node.buildConfig.getBuildDir(project)
-				: project.configs[0].getBuildDir(project);
-
-			const cmd = `west build --build-dir "${buildDir}" -- -DZEPHYR_SCA_VARIANT=dtdoctor`;
-
-			// Prepare merged environment
-			const mergedEnvRaw = { ...process.env };
-			// Include Zephyr environment variables
-			const mergedEnv: { [key: string]: string } = {};
-			for (const [k, v] of Object.entries(mergedEnvRaw)) {
-				if (typeof v === 'string') mergedEnv[k] = v;
-			}
-
-			const out = getOutputChannel();
-			out.show(true);
-			out.appendLine(`[dt-doctor] cmd: ${cmd}`);
-			try {
-				await execShellCommandWithEnv("dt-doctor", cmd, {
-					cwd: project.folderPath,
-					env: mergedEnv,
-				});
-			} catch (err: any) {
-				vscode.window.showErrorMessage(`Failed to run dt-doctor: ${err}`);
-			}
+			await executeConfigTask('DT Doctor', node);
 		})
 	);
 

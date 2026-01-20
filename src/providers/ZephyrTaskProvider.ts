@@ -186,6 +186,20 @@ const puncoverTask: ZephyrTaskDefinition = {
   ]
 };
 
+const dtDoctorTask: ZephyrTaskDefinition = {
+  label: "DT Doctor",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "west",
+  config: "primary",
+  args: [
+    "build",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\"",
+    "-- -DZEPHYR_SCA_VARIANT=dtdoctor"
+  ]
+};
+
 const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [westBuildTask.label, westBuildTask],
   [rebuildTask.label, rebuildTask],
@@ -197,7 +211,8 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [flashTask.label, flashTask],
   [ramReportTask.label, ramReportTask],
   [romReportTask.label, romReportTask],
-  [puncoverTask.label, puncoverTask]
+  [puncoverTask.label, puncoverTask],
+  [dtDoctorTask.label, dtDoctorTask]
 ]);
 
 type TasksJsonConfig = TaskConfig & { inputs?: any[] };

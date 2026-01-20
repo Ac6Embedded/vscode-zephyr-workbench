@@ -19,6 +19,24 @@ interface IEclairConfig {
 }
 
 export class EclairManagerPanel {
+  // Gets the west workspace path from settings.json configuration.
+  private getWestWorkspacePath(): string | undefined {
+    const folderUri = this.resolveApplicationFolderUri();
+    if (!folderUri) return undefined;
+    
+    const config = vscode.workspace.getConfiguration(undefined, folderUri);
+    const westWorkspace = config.get<string>("zephyr-workbench.westWorkspace");
+    
+    if (westWorkspace && fs.existsSync(westWorkspace)) {
+      // Verify it has .west folder
+      if (fs.existsSync(path.join(westWorkspace, ".west"))) {
+        return westWorkspace;
+      }
+    }
+    
+    return undefined;
+  }
+
   // Find the most likely application folder (prefers one with CMakeLists.txt)
   private resolveApplicationFolderUri(): vscode.Uri | undefined {
     const folders = vscode.workspace.workspaceFolders ?? [];
@@ -579,7 +597,7 @@ export class EclairManagerPanel {
 
           if (!board) {
             vscode.window.showErrorMessage(
-              "BOARD not set. Please set 'zephyr-workbench.board' or 'zephyr-workbench.build.configurations[].board'."
+              "BOARD not set. Please set it before running Eclair analysis."
             );
             break;
           }
@@ -587,11 +605,11 @@ export class EclairManagerPanel {
           const buildDir =
             configs[idx]?.build?.dir ||
             configs[idx]?.buildDir ||
-            path.join(appDir, "build");
+            path.join(appDir, "build", configs[idx]?.name || "primary");
 
           // Handle .ecl/.eclair files by generating a wrapper .cmake file
           // This avoids passing strict .ecl files to CMake's include() which fails
-          // and ensures the file persists across pristine builds.
+          // and ensures the file persists across the build.
           if (cfg.extraConfig) {
             const p = cfg.extraConfig.trim();
             const ext = (p && p.lastIndexOf(".") !== -1)
@@ -622,11 +640,8 @@ export class EclairManagerPanel {
             ? "west"
             : "west";
 
-          const psStopParsing = process.platform === "win32" ? "--%" : "";
-
           const cmd = [
             westCmd,
-            psStopParsing,
             "build",
             `-s "${appDir}"`,
             `-d "${buildDir}"`,
@@ -635,6 +650,13 @@ export class EclairManagerPanel {
             cmakeArgs
           ].filter(Boolean).join(" ");
 
+          // Run from west workspace 
+          const westTopdir = this.getWestWorkspacePath();
+          
+          if (!westTopdir) {
+            vscode.window.showErrorMessage("West workspace not found.");
+            break;
+          }
 
           // Determine extra paths for environment
           const extraPaths: string[] = [];
@@ -696,6 +718,7 @@ export class EclairManagerPanel {
           }
 
           const out = getOutputChannel();
+          out.appendLine(`[Eclair] cwd: ${westTopdir}`);
           out.appendLine(`[Eclair] cmd: ${cmd}`);
           out.appendLine(`[Eclair] ZEPHYR_SDK_INSTALL_DIR=${mergedEnv.ZEPHYR_SDK_INSTALL_DIR}`);
           out.appendLine(`[Eclair] ZEPHYR_TOOLCHAIN_VARIANT=${mergedEnv.ZEPHYR_TOOLCHAIN_VARIANT}`);
@@ -703,7 +726,7 @@ export class EclairManagerPanel {
 
           try {
             await execShellCommandWithEnv("Eclair Analysis", cmd, {
-              cwd: appDir,
+              cwd: westTopdir,
               env: mergedEnv,
             });
           } catch (err: any) {
