@@ -607,41 +607,11 @@ export class EclairManagerPanel {
             configs[idx]?.buildDir ||
             path.join(appDir, "build", configs[idx]?.name || "primary");
 
-          // Handle .ecl/.eclair files by generating a wrapper .cmake file
-          // This avoids passing strict .ecl files to CMake's include() which fails
-          // and ensures the file persists across the build.
-          if (cfg.extraConfig) {
-            const p = cfg.extraConfig.trim();
-            const ext = (p && p.lastIndexOf(".") !== -1)
-              ? p.slice(p.lastIndexOf(".")).toLowerCase()
-              : "";
-              
-            if ((ext === ".ecl" || ext === ".eclair") && fs.existsSync(p)) {
-               try {
-                 const tmpDir = os.tmpdir();
-                 const wrapperPath = path.join(tmpDir, `zephyr_eclair_wrapper_${Date.now()}.cmake`);
-                 const safePath = p.replace(/\\/g, "/");
-                 const content = `list(APPEND ECLAIR_ENV_ADDITIONAL_OPTIONS "-eval_file=${safePath}")\n`;
-                 fs.writeFileSync(wrapperPath, content, { encoding: "utf8" });
-                 
-                 // Update internal config to point to the wrapper
-                 cfg.extraConfig = wrapperPath;
-               } catch (err) {
-                 vscode.window.showWarningMessage(`Failed to create ECLAIR wrapper: ${err}`);
-               }
-            }
-          }
-
-          // Build complete command
-          const cmakeArgs = this.buildCmd(cfg)
-            .replace(/^.*?--\s*/, "");
-
-          const westCmd = process.platform === "win32"
-            ? "west"
-            : "west";
+          // Build CMake arguments
+          const cmakeArgs = this.buildCmd(cfg);
 
           const cmd = [
-            westCmd,
+            "west",
             "build",
             `-s "${appDir}"`,
             `-d "${buildDir}"`,
@@ -785,11 +755,8 @@ export class EclairManagerPanel {
       }
     }
 
-    // Disable compiler launchers for ECLAIR SCA (breaks with ccache)
+    // Only CMake arguments - west build command is added in run-command
     parts.push(
-      westCmd,
-      "build",
-      "--",
       "-DZEPHYR_SCA_VARIANT=eclair",
       "-DCMAKE_C_COMPILER_LAUNCHER=",
       "-DCMAKE_CXX_COMPILER_LAUNCHER=",
@@ -831,21 +798,25 @@ export class EclairManagerPanel {
     if (cfg.extraConfig) {
       const p = cfg.extraConfig.trim();
 
-      const ext = (p && p.lastIndexOf(".") !== -1)
-        ? p.slice(p.lastIndexOf(".")).toLowerCase()
-        : "";
-
-      // Only pass .cmake files directly
       if (
         p &&
-        ext === ".cmake" &&
         p !== "Checking" &&
         p !== "Not Found" &&
         fs.existsSync(p) &&
         !fs.statSync(p).isDirectory()
       ) {
-        const cmakePath = p.replace(/\\/g, "/");
-        parts.push(`-DECLAIR_OPTIONS_FILE:FILEPATH=${cmakePath}`);
+        const ext = path.extname(p).toLowerCase();
+        const filePath = p.replace(/\\/g, "/");
+
+        let finalPath = filePath;
+        if (ext === ".ecl" || ext === ".eclair") {
+          // .ecl file needs a wrapper that uses -eval_file
+          const wrapperPath = path.join(os.tmpdir(), "eclair_wrapper.cmake");
+          const content = `list(APPEND ECLAIR_ENV_ADDITIONAL_OPTIONS "-eval_file=${filePath}")\n`;
+          fs.writeFileSync(wrapperPath, content, { encoding: "utf8" });
+          finalPath = wrapperPath.replace(/\\/g, "/");
+        }
+        parts.push(`'-DECLAIR_OPTIONS_FILE=${finalPath}'`);
       }
     }
 
