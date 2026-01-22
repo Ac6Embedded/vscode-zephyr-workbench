@@ -10,6 +10,7 @@ import { ZephyrBoard } from '../models/ZephyrBoard';
 import { ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
 import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, getEnvVarFormat, getShell, getShellArgs } from '../utils/execUtils';
+import { sysbuildPython } from '../utils/sysbuildAdapter';
 import { getWestWorkspace, getZephyrSDK, findIarEntry, msleep } from '../utils/utils';
 import { addConfig, deleteConfig } from '../utils/zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
@@ -450,7 +451,11 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       }
     }
 
-    const shellExecution = new vscode.ShellExecution(concatCommands(shell, envSourceCmd, fullCommand), options);
+    const fixed = sysbuildPython(shell, String(envScript), fullCommand);
+    const shellExecution = new vscode.ShellExecution(
+      concatCommands(shell, envSourceCmd, ...(fixed.postEnv ? [fixed.postEnv] : []), fixed.cmd),
+      options
+    );
     const resolvedTask = new vscode.Task(
       _task.definition,
       _task.scope as vscode.WorkspaceFolder,

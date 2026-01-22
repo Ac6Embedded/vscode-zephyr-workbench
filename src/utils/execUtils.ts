@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { compareVersions, fileExists } from './utils';
+import { sysbuildPython } from './sysbuildAdapter';
 import {
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
@@ -16,6 +17,8 @@ let _channel: vscode.OutputChannel;
 const pyOCDOutput = vscode.window.createOutputChannel('pyOCD');
 
 /* helpers */
+
+export { sysbuildPython };
 
 export function concatCommands(shell: string, ...cmds: string[]): string {
   switch (shell) {
@@ -691,7 +694,9 @@ export async function execShellTaskWithEnvAndWait(
   const envScript = normalizePathForShell(shellKind, envScriptRaw);
   const redirect = getShellNullRedirect(shellKind);
   const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
-  const fullCmd = concatCommands(shellKind, cmdEnv, cmd);
+
+  const fixed = sysbuildPython(shellKind, envScript, cmd);
+  const fullCmd = concatCommands(shellKind, cmdEnv, ...(fixed.postEnv ? [fixed.postEnv] : []), fixed.cmd);
 
   const shExec = new vscode.ShellExecution(fullCmd, {
     ...options,
