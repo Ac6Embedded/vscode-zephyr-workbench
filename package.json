@@ -461,8 +461,13 @@
         },
       {
         "command": "zephyr-workbench-app-explorer.run-app",
-        "title": "Run",
+        "title": "Flash",
         "icon": "$(run)",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.flash-run-app",
+        "title": "Flash/Run",
         "category": "Zephyr Workbench/Application"
       },
       {
@@ -898,7 +903,7 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.run-app",
+          "command": "zephyr-workbench-app-explorer.flash-run-app",
           "group": "0@view/item/context@4",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
@@ -988,7 +993,7 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
-          "command": "zephyr-workbench-app-explorer.run-app",
+          "command": "zephyr-workbench-app-explorer.flash-run-app",
           "group": "0@view/item/context@4",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
@@ -1513,6 +1518,10 @@
         },
         {
           "command": "zephyr-workbench-app-explorer.run-app",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.flash-run-app",
           "when": "false"
         },
         {

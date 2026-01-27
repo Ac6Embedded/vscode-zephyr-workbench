@@ -534,6 +534,11 @@ export function activate(context: vscode.ExtensionContext) {
         await executeConfigTask('West Flash', node);
       })
   );
+  context.subscriptions.push(
+      vscode.commands.registerCommand('zephyr-workbench-app-explorer.flash-run-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
+        await executeConfigTask('West Flash', node);
+      })
+  );
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.debug-app', async (
 			node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder | vscode.Uri
