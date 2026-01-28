@@ -864,17 +864,9 @@
         {
           "command": "zephyr-workbench.explorer.terminal",
           "group": "zephyr@999"
-        },
-        {
-          "command": "zephyr-workbench.eclair-manager.open",
-          "group": "zephyr@995"
         }
       ],
       "editor/context": [
-        {
-          "command": "zephyr-workbench.eclair-manager.open",
-          "group": "navigation"
-        }
       ],
       "view/item/context": [
         {
