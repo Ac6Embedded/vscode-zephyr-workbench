@@ -70,8 +70,19 @@ export class DebugToolsPanel {
 
   private async loadVersions() {
     const versionPromises = this.data.debug_tools.map(async (tool: any) => {
-      const runner = getRunner(tool.tool);
-      if (!runner) {return;}
+      // Use alias if present, otherwise use tool
+      const runnerAlias = tool.alias || tool.tool;
+      const runner = getRunner(runnerAlias);
+      
+      if (!runner) {
+        // if runner is not defined/found, keep YAML values
+        this._panel.webview.postMessage({
+          command: "detect-done",
+          tool: tool.tool,
+          version: tool.version || "",
+        });
+        return;
+      }
 
       runner.loadArgs(undefined);
       try {
@@ -200,8 +211,24 @@ export class DebugToolsPanel {
       } else {
         toolHTML += `<td></td>`; // empty cell if no_edit is true
       }
+
+      let toolNameType = '';
+      const nameParts = (tool.name || '').split(' '); // split the string name in two (OpenOCD and Zephyr)
+      const toolType = nameParts.length > 1 ? nameParts.slice(1).join(' ') : ''; // gets the second string (Zephyr) which is the Type that should be in (...)
+      const toolBaseName = nameParts[0] || '';
+      //const nameWithType = toolType ? `${toolBaseName} (${toolType})` : toolBaseName;
+
+      if (tool.alias === 'openocd'){
+        toolNameType += `<td id="name-${tool.tool}">${toolBaseName} (${toolType})</td>`
+        // should display something like OpenOCD (Zephyr) at the name's column
+      }
+      else{
+        toolNameType += `<td id="name-${tool.tool}">${tool.name}</td>`;
+        // for those who are not openocd
+      }
+
       toolHTML += `
-        <td id="name-${tool.tool}">${tool.name}</td>
+        ${toolNameType} 
         <td id="version-${tool.tool}">${tool.version}</td>
         <td id="detect-${tool.tool}">${tool.found}</td>
         <td id="buttons-${tool.tool}">`;
@@ -432,16 +459,19 @@ export class DebugToolsPanel {
             break;
           }
           case 'detect': {
-            let runner = getRunner(message.tool);
+            const tool = this.data.debug_tools.find((t: { tool: string; }) => t.tool === message.tool);
+            const runnerAlias = tool?.alias || message.tool;
+            let runner = getRunner(runnerAlias);
             if(runner) {
               runner.loadArgs(undefined);
               let version = await runner.detectVersion();
               webview.postMessage({ 
                 command: 'detect-done', 
                 tool: message.tool,
-                version: version? version:'',
+                version: version || '',
               });
             }
+            break;
           }
           case 'debug':
             vscode.window.showInformationMessage(message.text);
