@@ -613,6 +613,7 @@ export class EclairManagerPanel {
           const cmd = [
             "west",
             "build",
+            "--pristine",
             `-s "${appDir}"`,
             `-d "${buildDir}"`,
             `--board=${board}`,
@@ -758,8 +759,8 @@ export class EclairManagerPanel {
     // Only CMake arguments - west build command is added in run-command
     parts.push(
       "-DZEPHYR_SCA_VARIANT=eclair",
-      "-DCMAKE_C_COMPILER_LAUNCHER=",
-      "-DCMAKE_CXX_COMPILER_LAUNCHER=",
+      "-UCMAKE_C_COMPILER_LAUNCHER",
+      "-UCMAKE_CXX_COMPILER_LAUNCHER"
     );
 
     if (cfg.ruleset === "USER") {
