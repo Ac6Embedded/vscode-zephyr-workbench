@@ -225,6 +225,28 @@ function setVSCodeMessageListener() {
         webviewApi.postMessage({ command: 'save-sca-config', data: cfg });
         break;
       }
+      case "report-server-started": {
+        const startBtn = document.getElementById('start-report-server') as any;
+        const stopBtn = document.getElementById('stop-report-server') as any;
+        if (startBtn) {
+          startBtn.disabled = true;
+        }
+        if (stopBtn) {
+          stopBtn.disabled = false;
+        }
+        break;
+      }
+      case "report-server-stopped": {
+        const startBtn = document.getElementById('start-report-server') as any;
+        const stopBtn = document.getElementById('stop-report-server') as any;
+        if (startBtn) {
+          startBtn.disabled = false;
+        }
+        if (stopBtn) {
+          stopBtn.disabled = true;
+        }
+        break;
+      }
     }
   });
 }
@@ -249,6 +271,12 @@ function main() {
   });
   document.getElementById("run-cmd")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "run-command", data: collectConfig() });
+  });
+  document.getElementById("start-report-server")?.addEventListener("click", () => {
+    webviewApi.postMessage({ command: "start-report-server" });
+  });
+  document.getElementById("stop-report-server")?.addEventListener("click", () => {
+    webviewApi.postMessage({ command: "stop-report-server" });
   });
   document.getElementById("manage-license")?.addEventListener("click", () => {
     webviewApi.postMessage({ command: "manage-license" });
