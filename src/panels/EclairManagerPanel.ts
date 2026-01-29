@@ -142,6 +142,7 @@ export class EclairManagerPanel {
   private _envWatcher: fs.FSWatcher | undefined;
   private envData: any | undefined;
   private envYamlDoc: any | undefined;
+  private _reportServerTerminal: vscode.Terminal | undefined;
 
   /**
    * Dynamically detects the Eclair directory for PATH (env.yml, PATH, system).
@@ -213,6 +214,15 @@ export class EclairManagerPanel {
     if (this._envWatcher) {
       try { this._envWatcher.close(); } catch { /* ignore */ }
     }
+    // Dispose report server terminal if running
+    if (this._reportServerTerminal) {
+      try {
+        this._reportServerTerminal.dispose();
+      } catch {
+        /* ignore */
+      }
+      this._reportServerTerminal = undefined;
+    }
     this._panel.dispose();
     while (this._disposables.length) {
       const d = this._disposables.pop();
@@ -234,6 +244,95 @@ export class EclairManagerPanel {
       return d;
     }
     return trimmed;
+  }
+
+  /**
+   * Finds the Eclair PROJECT.ecd database file in the build directory.
+   * Searches in build/sca/eclair/PROJECT.ecd path.
+   */
+  private findEclairDatabase(): string | undefined {
+    const folderUri = this.resolveApplicationFolderUri();
+    if (!folderUri) {
+      return undefined;
+    }
+
+    const appDir = folderUri.fsPath;
+    const config = vscode.workspace.getConfiguration(undefined, folderUri);
+    const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
+    const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
+    const idx = activeIdx >= 0 ? activeIdx : 0;
+
+    const buildDir = configs[idx]?.build?.dir || configs[idx]?.buildDir || path.join(appDir, "build");
+    const ecdPath = path.join(buildDir, "sca", "eclair", "PROJECT.ecd");
+
+    if (fs.existsSync(ecdPath)) {
+      return ecdPath;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Starts the Eclair report server and opens it in the browser.
+   */
+  private async startReportServer(): Promise<void> {
+    const dbPath = this.findEclairDatabase();
+    
+    if (!dbPath) {
+      vscode.window.showErrorMessage("Eclair database (PROJECT.ecd) not found. Please run an analysis first.");
+      return;
+    }
+
+    // Check if server is already running
+    if (this._reportServerTerminal) {
+      vscode.window.showInformationMessage("Eclair report server is already running.");
+      return;
+    }
+
+    const eclairDir = await this.detectEclairDir();
+    const eclairReportCmd = eclairDir 
+      ? path.join(eclairDir, process.platform === "win32" ? "eclair_report.exe" : "eclair_report")
+      : "eclair_report";
+
+    const cmd = `"${eclairReportCmd}" -db="${dbPath}" -browser -server=restart`;
+
+    try {
+      const out = getOutputChannel();
+      out.appendLine(`[Eclair Report] Starting report server...`);
+      out.appendLine(`[Eclair Report] Database: ${dbPath}`);
+      out.appendLine(`[Eclair Report] Command: ${cmd}`);
+
+      // Start background processes
+      const terminal = vscode.window.createTerminal({
+        name: "Eclair Report Server",
+        hideFromUser: false
+      });
+      terminal.sendText(cmd);
+      terminal.show();
+
+      // Store terminal reference
+      this._reportServerTerminal = terminal;
+      this._panel.webview.postMessage({ command: "report-server-started" });
+      vscode.window.showInformationMessage("Eclair report server started. Check your browser.");
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Failed to start Eclair report server: ${err.message || err}`);
+    }
+  }
+
+  /**
+   * Stops the Eclair report server.
+   */
+  private async stopReportServer() {
+    if (!this._reportServerTerminal) {
+      vscode.window.showInformationMessage("Eclair report server is not running.");
+      return;
+    }
+
+    // Dispose the terminal (this will kill the process)
+    this._reportServerTerminal.dispose();
+    this._reportServerTerminal = undefined;
+    this._panel.webview.postMessage({ command: "report-server-stopped" });
+    vscode.window.showInformationMessage("Eclair report server stopped.");
   }
 
   /**
@@ -459,6 +558,13 @@ export class EclairManagerPanel {
       } finally {
         this._panel.webview.postMessage({ command: "toggle-spinner", show: false });
       }
+    }
+    
+    // Initialize report server button states
+    if (this._reportServerTerminal) {
+      this._panel.webview.postMessage({ command: "report-server-started" });
+    } else {
+      this._panel.webview.postMessage({ command: "report-server-stopped" });
     }
   }
 
@@ -731,6 +837,14 @@ export class EclairManagerPanel {
               await config.update("zephyr-workbench.build.configurations", configs, vscode.ConfigurationTarget.WorkspaceFolder);
             }
           }
+          break;
+        }
+        case "start-report-server": {
+          await this.startReportServer();
+          break;
+        }
+        case "stop-report-server": {
+          await this.stopReportServer();
           break;
         }
       }
@@ -1037,6 +1151,18 @@ export class EclairManagerPanel {
   <div class="grid-group-div command-actions">
     <vscode-button id="generate-cmd" appearance="secondary">Apply configuration</vscode-button>
     <vscode-button id="run-cmd" appearance="primary">Run Analysis</vscode-button>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Report Viewer</h2>
+  <div class="grid-group-div command-actions">
+    <vscode-button id="start-report-server" appearance="primary">
+      <span class="codicon codicon-preview"></span> Open Report Viewer
+    </vscode-button>
+    <vscode-button id="stop-report-server" appearance="secondary" disabled>
+      <span class="codicon codicon-debug-stop"></span> Stop Report Server
+    </vscode-button>
   </div>
 </div>
 
