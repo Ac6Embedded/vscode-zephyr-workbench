@@ -225,11 +225,12 @@ export class DebugToolsPanel {
       const info = this.data.aliases?.find((a:Aliases) => a.alias === alias) || {};
       const parentToolName = info.name || '-';
 
-      // Get default tool ID from env.yml
-      const defaultToolId = this.envData?.aliases?.[alias]?.default || tools[0].tool;
+      // Get default tool from env.yml, fallback to debug-tools.yml default
+      const defaultDebugToolsYml = this.data.aliases?.find((a:Aliases) => a.alias === alias)?.default;
+      const defaultEnvYml = this.envData?.runners?.[alias]?.default || defaultDebugToolsYml || tools[0].tool;
 
       // try to find parent info from Aliases (OpenOCD), then we check the default tools to use your version and status (found) to display at the parent row
-      const parentTool = this.data.debug_tools.find((t: any) => t.tool === defaultToolId);
+      const parentTool = this.data.debug_tools.find((t: any) => t.tool === defaultEnvYml);
       
       // Parent row, show version and status from default tool choosen
       toolsHTML += `<tr id="row-${alias}">
@@ -238,7 +239,7 @@ export class DebugToolsPanel {
         <td id="version-${alias}">${parentTool?.version || ''}</td>
         <td id="detect-${alias}">${parentTool?.found || ''}</td>
         <td></td>
-        <td></td>
+        <td><div class="progress-wheel" id="progress-${alias}"><vscode-progress-ring></vscode-progress-ring></div></td>
       </tr>`;
       
       // Details row for path/edit (like other tools)
@@ -262,17 +263,16 @@ export class DebugToolsPanel {
       // Child rows (variants for OpenOCD) 
       for (let tool of tools) {
         const childToolName = tool.name;
-        const defaultTool = this.envData?.aliases?.[alias]?.default;
-        const isDefault = tool.tool === defaultTool;
+        const isDefault = tool.tool === defaultEnvYml;
         
         toolsHTML += `<tr id="row-${tool.tool}" class="details-row hidden alias-variant-row">
           <td></td>
           <td style="padding-left:20px">
             ${childToolName}
-            <vscode-checkbox class="set-default-checkbox" data-tool="${tool.tool}" data-alias="${alias}" ${isDefault ? 'checked' : ''} ${isDefault ? 'disabled' : ''}> Set default</vscode-checkbox>
+            <vscode-checkbox class="set-default-checkbox" data-tool="${tool.tool}" data-alias="${alias}" ${isDefault ? 'checked' : ''}> Set default</vscode-checkbox>
           </td>
-          <td id="version-${tool.tool}">${tool.version}</td>
-          <td id="detect-${tool.tool}">${tool.found}</td>
+          <td id="version-${tool.tool}">${tool.version || ''}</td>
+          <td id="detect-${tool.tool}">${tool.found || ''}</td>
           <td id="buttons-${tool.tool}">`;
         
         // Add install/website buttons to OpenOCDs child rows 
@@ -303,7 +303,7 @@ export class DebugToolsPanel {
         }
         
         toolsHTML += `</td>
-          <td></td>
+          <td><div class="progress-wheel" id="progress-${tool.tool}"><vscode-progress-ring></vscode-progress-ring></div></td>
         </tr>`;
       }
     }
@@ -613,7 +613,7 @@ export class DebugToolsPanel {
                 doc = yaml.parseDocument('{}');
               }
               
-              doc.setIn(['aliases', alias, 'default'], tool);
+              doc.setIn(['runners', alias, 'default'], tool);
               formatYml(doc.contents);
               const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
               fs.writeFileSync(envYamlPath, yamlText, 'utf8');
