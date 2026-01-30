@@ -9,6 +9,7 @@ import { getRunner } from "../utils/debugUtils";
 import { getInternalDirRealPath } from "../utils/utils";
 import { formatYml } from "../utilities/formatYml";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
+import { Aliases, Tools } from "../interface/interfaceDebugTools";
 
 export class DebugToolsPanel {
 
@@ -196,7 +197,119 @@ export class DebugToolsPanel {
 
   private async getToolsHTML(): Promise<string> {
     let toolsHTML = '';
-    for(let tool of this.data.debug_tools) {
+    
+    const hasAlias = new Map<string, any[]>(); // for OpenOCD variants. This is a dictionary
+    const noAlias: any = []; // for the other runners as J-link and others. This is an array
+
+    // We get the datas for those who have alias or not (OpenOCD variants and the other runners)
+    for (const tools of this.data.debug_tools) {
+      if(!tools.alias){
+        // if does not have alias, we just push this data to noAlias array (it means that they are not OpenOCDs)
+        noAlias.push(tools);
+        continue;
+      }
+      if (!hasAlias.has(tools.alias)) {
+        // if hasAlias Map does not have this alias yet, we create an empty array for this
+        hasAlias.set(tools.alias, []);
+      }
+      hasAlias.get(tools.alias)!.push(tools); // we send the data to the alias array
+    }
+    
+    // Convert hasAlias (which is a dictionary) to array of [alias, tools] for iteration, e.g: [openocd, [openocd-stm32, openocd-zephyr]]
+    const aliases = Array.from(hasAlias.entries());
+    
+    // Load information about tools with alias, e.g : [alias = openocd, tools = [openocd-stm32, openocd-zephyr]]  
+    for (const [alias, tools] of aliases) {
+      
+      // "info" try to acess the object Aliases and try to find the same alias to Aliases and Tool, e.g: a.alias === alias
+      const info = this.data.aliases?.find((a:Aliases) => a.alias === alias) || {};
+      const parentToolName = info.name || '-';
+
+      // Get default tool ID from env.yml
+      const defaultToolId = this.envData?.aliases?.[alias]?.default || tools[0].tool;
+
+      // try to find parent info from Aliases (OpenOCD), then we check the default tools to use your version and status (found) to display at the parent row
+      const parentTool = this.data.debug_tools.find((t: any) => t.tool === defaultToolId);
+      
+      // Parent row, show version and status from default tool choosen
+      toolsHTML += `<tr id="row-${alias}">
+        <td><button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right" data-tool="${alias}" aria-label="Expand/Collapse"></button></td>
+        <td id="name-${alias}">${parentToolName}</td>
+        <td id="version-${alias}">${parentTool?.version || ''}</td>
+        <td id="detect-${alias}">${parentTool?.found || ''}</td>
+        <td></td>
+        <td></td>
+      </tr>`;
+      
+      // Details row for path/edit (like other tools)
+      const pathValue = this.getRunnerPath(alias) ?? '';
+      const addToPathChecked = (this.envData?.runners?.[alias]?.do_not_use !== true) ? 'checked' : '';
+      toolsHTML += `<tr id="details-${alias}" class="details-row hidden">
+        <td></td>
+        <td><div id="details-content-${alias}" class="details-content">
+          <div class="grid-group-div">
+            <vscode-text-field id="details-path-input-${alias}" class="details-path-field" 
+              placeholder="Enter the tool's path if not in the global PATH" value="${pathValue}" size="50" disabled>Path:</vscode-text-field>
+            <vscode-button id="browse-path-button-${alias}" class="browse-input-button" appearance="secondary" disabled>
+              <span class="codicon codicon-folder"></span>
+            </vscode-button>
+          </div></div></td>
+        <td><vscode-button appearance="primary" class="save-path-button" data-tool="${alias}">Edit</vscode-button></td>
+        <td><vscode-checkbox class="add-to-path" data-tool="${alias}" ${addToPathChecked} disabled> Add to PATH</vscode-checkbox></td>
+        <td></td><td></td>
+      </tr>`;
+      
+      // Child rows (variants for OpenOCD) 
+      for (let tool of tools) {
+        const childToolName = tool.name;
+        const defaultTool = this.envData?.aliases?.[alias]?.default;
+        const isDefault = tool.tool === defaultTool;
+        
+        toolsHTML += `<tr id="row-${tool.tool}" class="details-row hidden alias-variant-row">
+          <td></td>
+          <td style="padding-left:20px">
+            ${childToolName}
+            <vscode-checkbox class="set-default-checkbox" data-tool="${tool.tool}" data-alias="${alias}" ${isDefault ? 'checked' : ''} ${isDefault ? 'disabled' : ''}> Set default</vscode-checkbox>
+          </td>
+          <td id="version-${tool.tool}">${tool.version}</td>
+          <td id="detect-${tool.tool}">${tool.found}</td>
+          <td id="buttons-${tool.tool}">`;
+        
+        // Add install/website buttons to OpenOCDs child rows 
+        let hasSource = false;
+        if (tool.os) {
+          switch(process.platform) {
+            case 'linux':
+              hasSource = tool.os.linux ? true : false;
+              break;
+            case 'win32':
+              hasSource = tool.os.windows ? true : false;
+              break;
+            case 'darwin':
+              hasSource = tool.os.darwin ? true : false;
+              break;
+          }
+          if (hasSource) {
+            toolsHTML += `<vscode-button appearance="icon" class="install-button" data-tool="${tool.tool}">
+              <span class="codicon codicon-desktop-download"></span>
+            </vscode-button>`;
+          }
+        }
+        
+        if (tool.website) {
+          toolsHTML += `<vscode-button appearance="icon" class="website-button" data-tool="${tool.tool}">
+            <a href="${tool.website}"><span class="codicon codicon-link"></span></a>
+          </vscode-button>`;
+        }
+        
+        toolsHTML += `</td>
+          <td></td>
+        </tr>`;
+      }
+    }
+    
+    // Render the other tools (J-link for example)
+    for(let tool of noAlias) {
       let toolHTML = '';
       let hasSource = false;
 
@@ -212,23 +325,7 @@ export class DebugToolsPanel {
         toolHTML += `<td></td>`; // empty cell if no_edit is true
       }
 
-      let toolNameType = '';
-      const nameParts = (tool.name || '').split(' '); // split the string name in two (OpenOCD and Zephyr)
-      const toolType = nameParts.length > 1 ? nameParts.slice(1).join(' ') : ''; // gets the second string (Zephyr) which is the Type that should be in (...)
-      const toolBaseName = nameParts[0] || '';
-      //const nameWithType = toolType ? `${toolBaseName} (${toolType})` : toolBaseName;
-
-      if (tool.alias === 'openocd'){
-        toolNameType += `<td id="name-${tool.tool}">${toolBaseName} (${toolType})</td>`
-        // should display something like OpenOCD (Zephyr) at the name's column
-      }
-      else{
-        toolNameType += `<td id="name-${tool.tool}">${tool.name}</td>`;
-        // for those who are not openocd
-      }
-
-      toolHTML += `
-        ${toolNameType} 
+      toolHTML += `<td id="name-${tool.tool}">${tool.name}</td>
         <td id="version-${tool.tool}">${tool.version}</td>
         <td id="detect-${tool.tool}">${tool.found}</td>
         <td id="buttons-${tool.tool}">`;
@@ -248,10 +345,7 @@ export class DebugToolsPanel {
         if(hasSource) {
           toolHTML +=`<vscode-button appearance="icon" class="install-button" data-tool="${tool.tool}">
                          <span class="codicon codicon-desktop-download"></span>
-                       </vscode-button>
-                       <!--vscode-button appearance="icon" class="remove-button" data-tool="${tool.tool}">
-                         <span class="codicon codicon-trash"></span>
-                       </vscode-button-->`;
+                       </vscode-button>`;
         }
       }
 
@@ -507,6 +601,28 @@ export class DebugToolsPanel {
             let selectedTool = this.data.debug_tools.find((tool: { tool: string; }) => tool.tool === message.tool);
             vscode.commands.executeCommand("zephyr-workbench.run-install-debug-tools", this._panel, [ selectedTool ]);
             break;
+          case 'set-default': {
+            const { tool, alias } = message;
+            try {
+              const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+              let doc: any;
+              if (fs.existsSync(envYamlPath)) {
+                const text = fs.readFileSync(envYamlPath, 'utf8');
+                doc = yaml.parseDocument(text);
+              } else {
+                doc = yaml.parseDocument('{}');
+              }
+              
+              doc.setIn(['aliases', alias, 'default'], tool);
+              formatYml(doc.contents);
+              const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
+              fs.writeFileSync(envYamlPath, yamlText, 'utf8');
+              vscode.window.showInformationMessage(`Set ${tool} as default for ${alias}`);
+            } catch (e) {
+              vscode.window.showErrorMessage(`Failed to set default`);
+            }
+            break;
+          }
           case 'update-path': {
             // Persist new path to env.yml and send back confirmation
             const { tool, newPath, addToPath } = message;

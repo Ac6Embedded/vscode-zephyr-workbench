@@ -38,13 +38,71 @@ other_content:
       source: https://repo.msys2.org/msys/x86_64/libyaml-0.2.5-2-x86_64.pkg.tar.zst
       sha256: 11509c6e3133b3fc63f99cc04e89a1cc5685aa746e96bd5f481e3424fbd4f6c1
 debug_tools:
-- tool: openocd
+- tool: openocd-zephyr
+  alias: openocd
   name: OpenOCD Zephyr
   version: 0.12.0
   website: https://github.com/zephyrproject-rtos/openocd
   type: debug_server
   group: Common
-  install_dir: openocd
+  install_dir: openocd-zephyr
+  root: false
+  os:
+    windows:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/win32/openocd-zephyr-0.12.0-win32-x86_64.7z
+      sha256: d5cea76f71872620f6f3e390c7935dce84ff97d4a840677bbc868595f5a10cbf
+    linux:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/linux/openocd-zephyr-0.12.0-linux-x86_64.tar.xz
+      sha256: 07fd7b4b7175cea09b413c240ddc42c681f9e4e6cd1e23b1a18f056aad7eb3a6
+    darwin:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/darwin/openocd-zephyr-0.12.0-darwin-arm64.tar.xz
+      sha256: 3123f6d42454cbb2af03bbea48e5c4f93fe7c556119d64b4372f249e4ba14ee9
+- tool: openocd-esp32
+  alias: openocd
+  name: OpenOCD ESP32
+  version: 0.12.0
+  website: https://github.com/espressif/openocd-esp32/releases
+  type: debug_server
+  group: Common
+  install_dir: openocd-esp32
+  root: false
+  os:
+    windows:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/win32/openocd-zephyr-0.12.0-win32-x86_64.7z
+      sha256: d5cea76f71872620f6f3e390c7935dce84ff97d4a840677bbc868595f5a10cbf
+    linux:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/linux/openocd-zephyr-0.12.0-linux-x86_64.tar.xz
+      sha256: 07fd7b4b7175cea09b413c240ddc42c681f9e4e6cd1e23b1a18f056aad7eb3a6
+    darwin:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/darwin/openocd-zephyr-0.12.0-darwin-arm64.tar.xz
+      sha256: 3123f6d42454cbb2af03bbea48e5c4f93fe7c556119d64b4372f249e4ba14ee9
+- tool: openocd-xpack
+  alias: openocd
+  name: OpenOCD XPACK
+  version: 0.12.0
+  website: https://github.com/xpack-dev-tools/openocd-xpack/releases
+  type: debug_server
+  group: Common
+  install_dir: openocd-xpack
+  root: false
+  os:
+    windows:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/win32/openocd-zephyr-0.12.0-win32-x86_64.7z
+      sha256: d5cea76f71872620f6f3e390c7935dce84ff97d4a840677bbc868595f5a10cbf
+    linux:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/linux/openocd-zephyr-0.12.0-linux-x86_64.tar.xz
+      sha256: 07fd7b4b7175cea09b413c240ddc42c681f9e4e6cd1e23b1a18f056aad7eb3a6
+    darwin:
+      source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/darwin/openocd-zephyr-0.12.0-darwin-arm64.tar.xz
+      sha256: 3123f6d42454cbb2af03bbea48e5c4f93fe7c556119d64b4372f249e4ba14ee9
+- tool: openocd-stm32
+  alias: openocd
+  name: OpenOCD STM32
+  version: 0.12.0
+  website: https://github.com/STMicroelectronics/OpenOCD
+  type: debug_server
+  group: Common
+  install_dir: openocd-stm32
   root: false
   os:
     windows:
@@ -234,3 +292,8 @@ packs:
 - pack: esp32
   name: ESP32
   tools: [cp210x]
+
+aliases:
+- alias: openocd
+  name: OpenOCD
+  default: openocd-zephyr 

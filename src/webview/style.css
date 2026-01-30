@@ -834,3 +834,10 @@ vscode-button {
   max-width: 320px !important;
   width: 320px !important;
 }
+
+.set-default-checkbox {
+  margin-left: 15px;
+  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+}
