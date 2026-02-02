@@ -13,7 +13,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Added support for the ST-LINK GDB server debug runner
 
 ### Static Code Analysis
-- Added support for Eclair
+- Added support for ECLAIR
 - Added support for Devicetree diagnostics (dtdoctor) 
 
 ### Tests
