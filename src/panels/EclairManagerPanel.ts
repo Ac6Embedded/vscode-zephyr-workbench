@@ -8,6 +8,7 @@ import { getUri } from "../utilities/getUri";
 import { execCommandWithEnv, execShellCommandWithEnv, getOutputChannel, classifyShell, getShellExe, concatCommands } from "../utils/execUtils";
 import { getInternalDirRealPath } from "../utils/utils";
 import { getExtraPaths, normalizePath, setExtraPath } from "../utils/envYamlUtils";
+import type { IEclairExtension } from "../ext/eclair_api";
 
 interface IEclairConfig {
   installPath?: string;
@@ -310,6 +311,8 @@ export class EclairManagerPanel {
       terminal.sendText(cmd);
       terminal.show();
 
+      await this.tryActivateEclairExtension("Eclair Report");
+
       // Store terminal reference
       this._reportServerTerminal = terminal;
       this._panel.webview.postMessage({ command: "report-server-started" });
@@ -333,6 +336,42 @@ export class EclairManagerPanel {
     this._reportServerTerminal = undefined;
     this._panel.webview.postMessage({ command: "report-server-stopped" });
     vscode.window.showInformationMessage("Eclair report server stopped.");
+  }
+
+  /**
+   * Attempts to activate the Eclair VS Code extension if it's installed.
+   */
+  private async tryActivateEclairExtension(ctx: string): Promise<void> {
+    const out = getOutputChannel();
+
+    try {
+      const eclairExt = vscode.extensions.getExtension<IEclairExtension>('bugseng.eclair');
+      if (!eclairExt) {
+        out.appendLine(`[${ctx}] Eclair extension not found.`);
+        vscode.window.showInformationMessage("Eclair VS Code extension not found. To install it, use the VSIX file provided with ECLAIR (see manual for details).");
+        return;
+      }
+
+      if (!eclairExt.isActive) {
+        out.appendLine(`[${ctx}] Activating Eclair extension...`);
+        await eclairExt.activate();
+        out.appendLine(`[${ctx}] Eclair extension activated.`);
+      }
+
+      if (!eclairExt.exports || typeof eclairExt.exports.enable !== 'function') {
+        out.appendLine(`[${ctx}] Eclair extension enable function not found.`);
+        vscode.window.showWarningMessage("Eclair VS Code extension may be outdated. The enable function is not available. Please make sure the extension is up to date.");
+        return;
+      }
+
+      out.appendLine(`[${ctx}] Enabling Eclair extension...`);
+      eclairExt.exports.enable();
+      out.appendLine(`[${ctx}] Eclair extension enabled.`);
+    } catch (err: any) {
+      let e = `Could not activate Eclair extension: ${err.message || err}`;
+      out.appendLine(`[${ctx}] ${e}`);
+      vscode.window.showErrorMessage(e);
+    }
   }
 
   /**
