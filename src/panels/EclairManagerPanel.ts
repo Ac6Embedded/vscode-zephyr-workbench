@@ -72,7 +72,7 @@ export class EclairManagerPanel {
   }
 
   /**
-   * Save the Eclair path in env.yml without checks, always overwrites.
+   * Save the ECLAIR path in env.yml without checks, always overwrites.
    * Usage: EclairManagerPanel.saveEclairAbsolutePath("/path/to/eclair");
    */
   public static saveEclairAbsolutePath(dir: string) {
@@ -87,7 +87,7 @@ export class EclairManagerPanel {
       envObj.other.EXTRA_TOOLS.path = [normalizePath(dir)];
       fs.writeFileSync(envYamlPath, yaml.stringify(envObj), "utf8");
     } catch (err) {
-      vscode.window.showErrorMessage("Eclair is not installed. Please install Eclair and try again.");
+      vscode.window.showErrorMessage("ECLAIR is not installed. Please install ECLAIR and try again.");
     }
   }
   /**
@@ -146,7 +146,7 @@ export class EclairManagerPanel {
   private _reportServerTerminal: vscode.Terminal | undefined;
 
   /**
-   * Dynamically detects the Eclair directory for PATH (env.yml, PATH, system).
+   * Dynamically detects the ECLAIR directory for PATH (env.yml, PATH, system).
    * Never uses installPath from the UI for execution.
    */
   private async detectEclairDir(): Promise<string | undefined> {
@@ -194,7 +194,7 @@ export class EclairManagerPanel {
     }
     const panel = vscode.window.createWebviewPanel(
       "zephyr-workbench.eclair-manager.panel",
-      "Eclair Manager",
+      "ECLAIR Manager",
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -233,7 +233,7 @@ export class EclairManagerPanel {
 
   /**
    * Utility: Given a path, returns its directory if it's an executable, or the path itself if already a directory.
-   * Used to normalize the Eclair install path.
+   * Used to normalize the ECLAIR install path.
    */
   private toInstallDir(p?: string): string | undefined {
     if (!p) return undefined;
@@ -248,7 +248,7 @@ export class EclairManagerPanel {
   }
 
   /**
-   * Finds the Eclair PROJECT.ecd database file in the build directory.
+   * Finds the ECLAIR PROJECT.ecd database file in the build directory.
    * Searches in build/sca/eclair/PROJECT.ecd path.
    */
   private findEclairDatabase(): string | undefined {
@@ -274,19 +274,19 @@ export class EclairManagerPanel {
   }
 
   /**
-   * Starts the Eclair report server and opens it in the browser.
+   * Starts the ECLAIR report server and opens it in the browser.
    */
   private async startReportServer(): Promise<void> {
     const dbPath = this.findEclairDatabase();
     
     if (!dbPath) {
-      vscode.window.showErrorMessage("Eclair database (PROJECT.ecd) not found. Please run an analysis first.");
+      vscode.window.showErrorMessage("ECLAIR database (PROJECT.ecd) not found. Please run an analysis first.");
       return;
     }
 
     // Check if server is already running
     if (this._reportServerTerminal) {
-      vscode.window.showInformationMessage("Eclair report server is already running.");
+      vscode.window.showInformationMessage("ECLAIR report server is already running.");
       return;
     }
 
@@ -299,35 +299,35 @@ export class EclairManagerPanel {
 
     try {
       const out = getOutputChannel();
-      out.appendLine(`[Eclair Report] Starting report server...`);
-      out.appendLine(`[Eclair Report] Database: ${dbPath}`);
-      out.appendLine(`[Eclair Report] Command: ${cmd}`);
+      out.appendLine(`[ECLAIR Report] Starting report server...`);
+      out.appendLine(`[ECLAIR Report] Database: ${dbPath}`);
+      out.appendLine(`[ECLAIR Report] Command: ${cmd}`);
 
       // Start background processes
       const terminal = vscode.window.createTerminal({
-        name: "Eclair Report Server",
+        name: "ECLAIR Report Server",
         hideFromUser: false
       });
       terminal.sendText(cmd);
       terminal.show();
 
-      await this.tryActivateEclairExtension("Eclair Report");
+      await this.tryActivateEclairExtension("ECLAIR Report");
 
       // Store terminal reference
       this._reportServerTerminal = terminal;
       this._panel.webview.postMessage({ command: "report-server-started" });
-      vscode.window.showInformationMessage("Eclair report server started. Check your browser.");
+      vscode.window.showInformationMessage("ECLAIR report server started. Check your browser.");
     } catch (err: any) {
-      vscode.window.showErrorMessage(`Failed to start Eclair report server: ${err.message || err}`);
+      vscode.window.showErrorMessage(`Failed to start ECLAIR report server: ${err.message || err}`);
     }
   }
 
   /**
-   * Stops the Eclair report server.
+   * Stops the ECLAIR report server.
    */
   private async stopReportServer() {
     if (!this._reportServerTerminal) {
-      vscode.window.showInformationMessage("Eclair report server is not running.");
+      vscode.window.showInformationMessage("ECLAIR report server is not running.");
       return;
     }
 
@@ -335,11 +335,11 @@ export class EclairManagerPanel {
     this._reportServerTerminal.dispose();
     this._reportServerTerminal = undefined;
     this._panel.webview.postMessage({ command: "report-server-stopped" });
-    vscode.window.showInformationMessage("Eclair report server stopped.");
+    vscode.window.showInformationMessage("ECLAIR report server stopped.");
   }
 
   /**
-   * Attempts to activate the Eclair VS Code extension if it's installed.
+   * Attempts to activate the ECLAIR VS Code extension if it's installed.
    */
   private async tryActivateEclairExtension(ctx: string): Promise<void> {
     const out = getOutputChannel();
@@ -347,28 +347,28 @@ export class EclairManagerPanel {
     try {
       const eclairExt = vscode.extensions.getExtension<IEclairExtension>('bugseng.eclair');
       if (!eclairExt) {
-        out.appendLine(`[${ctx}] Eclair extension not found.`);
-        vscode.window.showInformationMessage("Eclair VS Code extension not found. To install it, use the VSIX file provided with ECLAIR (see manual for details).");
+        out.appendLine(`[${ctx}] ECLAIR extension not found.`);
+        vscode.window.showInformationMessage("ECLAIR VS Code extension not found. To install it, use the VSIX file provided with ECLAIR (see manual for details).");
         return;
       }
 
       if (!eclairExt.isActive) {
-        out.appendLine(`[${ctx}] Activating Eclair extension...`);
+        out.appendLine(`[${ctx}] Activating ECLAIR extension...`);
         await eclairExt.activate();
-        out.appendLine(`[${ctx}] Eclair extension activated.`);
+        out.appendLine(`[${ctx}] ECLAIR extension activated.`);
       }
 
       if (!eclairExt.exports || typeof eclairExt.exports.enable !== 'function') {
-        out.appendLine(`[${ctx}] Eclair extension enable function not found.`);
-        vscode.window.showWarningMessage("Eclair VS Code extension may be outdated. The enable function is not available. Please make sure the extension is up to date.");
+        out.appendLine(`[${ctx}] ECLAIR extension enable function not found.`);
+        vscode.window.showWarningMessage("ECLAIR VS Code extension may be outdated. The enable function is not available. Please make sure the extension is up to date.");
         return;
       }
 
-      out.appendLine(`[${ctx}] Enabling Eclair extension...`);
+      out.appendLine(`[${ctx}] Enabling ECLAIR extension...`);
       eclairExt.exports.enable();
-      out.appendLine(`[${ctx}] Eclair extension enabled.`);
+      out.appendLine(`[${ctx}] ECLAIR extension enabled.`);
     } catch (err: any) {
-      let e = `Could not activate Eclair extension: ${err.message || err}`;
+      let e = `Could not activate ECLAIR extension: ${err.message || err}`;
       out.appendLine(`[${ctx}] ${e}`);
       vscode.window.showErrorMessage(e);
     }
@@ -415,8 +415,8 @@ export class EclairManagerPanel {
   }
 
   /**
-   * Returns the Eclair path from env.yml (EXTRA_TOOLS), if present.
-   * Used to display the current Eclair path in the UI and for auto-detection logic.
+   * Returns the ECLAIR path from env.yml (EXTRA_TOOLS), if present.
+   * Used to display the current ECLAIR path in the UI and for auto-detection logic.
    */
   private getEclairPathFromEnv(): { path: string | undefined, index: number } {
     try {
@@ -438,8 +438,8 @@ export class EclairManagerPanel {
   }
 
   /**
-   * Persists the Eclair install path to env.yml (EXTRA_TOOLS).
-   * Called when the user sets or updates the Eclair path from the UI.
+   * Persists the ECLAIR install path to env.yml (EXTRA_TOOLS).
+   * Called when the user sets or updates the ECLAIR path from the UI.
    */
   private saveEclairPathToEnv(installPath?: string) {
     const dir = this.toInstallDir(installPath);
@@ -464,7 +464,7 @@ export class EclairManagerPanel {
   }
 
   /**
-   * Minimal: Save the detected Eclair path ONCE if EXTRA_TOOLS.path is not an array
+   * Minimal: Save the detected ECLAIR path ONCE if EXTRA_TOOLS.path is not an array
    * with at least one value. This will never append or touch the file if the
    * path array already exists and has entries.
    */
@@ -497,9 +497,9 @@ export class EclairManagerPanel {
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
     this._setWebviewMessageListener(this._panel.webview);
 
-    // Save the Eclair path in env.yml as soon as you open the panel, if it's installed and there's no path.
+    // Save the ECLAIR path in env.yml as soon as you open the panel, if it's installed and there's no path.
     try {
-      // Detect Eclair in system PATH
+      // Detect ECLAIR in system PATH
       let exePath: string | undefined = undefined;
       if (process.platform === "win32") {
         const whichCmd = 'powershell -NoProfile -Command "$c=Get-Command eclair -ErrorAction SilentlyContinue; if ($c) { $c.Source }"';
@@ -522,7 +522,7 @@ export class EclairManagerPanel {
         }
       }
     } catch (err) {
-      vscode.window.showErrorMessage("Eclair is not installed. Please install Eclair and try again.");
+      vscode.window.showErrorMessage("ECLAIR is not installed. Please install ECLAIR and try again.");
     }
 
     // Read .ecl config path from active sca object and send to webview
@@ -627,7 +627,7 @@ export class EclairManagerPanel {
         case "browse-path": {
           const { tool } = m;
           if (tool === "eclair") {
-            const pick = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: "Select the Eclair installation" });
+            const pick = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: "Select the ECLAIR installation" });
             if (pick && pick[0]) {
               const chosen = pick[0].fsPath.trim();
               this.saveEclairPathToEnv(chosen);
@@ -673,7 +673,7 @@ export class EclairManagerPanel {
             canSelectFiles: false,
             canSelectFolders: true,
             canSelectMany: false,
-            title: "Select Eclair installation"
+            title: "Select ECLAIR installation"
           });
           if (pick && pick[0]) {
             webview.postMessage({ command: "set-install-path", path: pick[0].fsPath });
@@ -742,7 +742,7 @@ export class EclairManagerPanel {
 
           if (!board) {
             vscode.window.showErrorMessage(
-              "BOARD not set. Please set it before running Eclair analysis."
+              "BOARD not set. Please set it before running ECLAIR analysis."
             );
             break;
           }
@@ -791,7 +791,7 @@ export class EclairManagerPanel {
           if (existsSync(westFromInstaller)) {
             extraPaths.push(westFromInstaller);
           }
-          // Add Eclair dir
+          // Add ECLAIR dir
           const eclairDir = await this.detectEclairDir();
           if (eclairDir && existsSync(eclairDir)) {
             extraPaths.push(eclairDir);
@@ -804,7 +804,7 @@ export class EclairManagerPanel {
             else mergedEnv[k] = "";
           }
 
-          // Disable ccache for SCA/Eclair (breaks wrapper script)
+          // Disable ccache for SCA/ECLAIR (breaks wrapper script)
           mergedEnv.CCACHE_DISABLE = "1";
           mergedEnv.PATH =
             (extraPaths.length ? extraPaths.join(path.delimiter) + path.delimiter : "") +
@@ -834,19 +834,19 @@ export class EclairManagerPanel {
           }
 
           const out = getOutputChannel();
-          out.appendLine(`[Eclair] cwd: ${westTopdir}`);
-          out.appendLine(`[Eclair] cmd: ${cmd}`);
-          out.appendLine(`[Eclair] ZEPHYR_SDK_INSTALL_DIR=${mergedEnv.ZEPHYR_SDK_INSTALL_DIR}`);
-          out.appendLine(`[Eclair] ZEPHYR_TOOLCHAIN_VARIANT=${mergedEnv.ZEPHYR_TOOLCHAIN_VARIANT}`);
-          out.appendLine(`[Eclair] CMAKE_PREFIX_PATH=${mergedEnv.CMAKE_PREFIX_PATH}`);
+          out.appendLine(`[ECLAIR cwd: ${westTopdir}`);
+          out.appendLine(`[ECLAIR cmd: ${cmd}`);
+          out.appendLine(`[ECLAIR ZEPHYR_SDK_INSTALL_DIR=${mergedEnv.ZEPHYR_SDK_INSTALL_DIR}`);
+          out.appendLine(`[ECLAIR ZEPHYR_TOOLCHAIN_VARIANT=${mergedEnv.ZEPHYR_TOOLCHAIN_VARIANT}`);
+          out.appendLine(`[ECLAIR CMAKE_PREFIX_PATH=${mergedEnv.CMAKE_PREFIX_PATH}`);
 
           try {
-            await execShellCommandWithEnv("Eclair Analysis", cmd, {
+            await execShellCommandWithEnv("ECLAIR Analysis", cmd, {
               cwd: westTopdir,
               env: mergedEnv,
             });
           } catch (err: any) {
-            vscode.window.showErrorMessage(`Failed to run Eclair: ${err}`);
+            vscode.window.showErrorMessage(`Failed to run ECLAIR: ${err}`);
           }
           break;
         }
@@ -1035,8 +1035,8 @@ export class EclairManagerPanel {
   }
 
   /**
-   * Probes the system for Eclair installation, gets version, and updates the UI accordingly.
-   * If Eclair is found and not present in env.yml, adds it automatically.
+   * Probes the system for ECLAIR installation, gets version, and updates the UI accordingly.
+   * If ECLAIR is found and not present in env.yml, adds it automatically.
    */
   private async runEclair() {
     this.loadEnvYaml();
@@ -1082,7 +1082,7 @@ export class EclairManagerPanel {
 
 
     let eclairInfo = this.getEclairPathFromEnv();
-    // Eclair is detected but not present in env.yml, add it automatically (minimal approach)
+    // ECLAIR is detected but not present in env.yml, add it automatically (minimal approach)
     if (
       installed &&
       exePath &&
@@ -1117,18 +1117,18 @@ export class EclairManagerPanel {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; img-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 <link rel="stylesheet" nonce="${nonce}" href="${styleUri}">
 <link rel="stylesheet" nonce="${nonce}" href="${codiconUri}">
-<title>Eclair Manager</title>
+<title>ECLAIR Manager</title>
 </head>
 <body>
-<h1>Eclair Manager</h1>
+<h1>ECLAIR Manager</h1>
 
 <div class="summary">
-  <div class="summary-title"><strong>Eclair</strong></div>
+  <div class="summary-title"><strong>ECLAIR</strong></div>
   <div>
     <strong>Version:</strong> <span id="eclair-version">Checking</span>
     &nbsp;|&nbsp;
     <strong>Status:</strong> <span id="eclair-status-icon" class="codicon"></span> <span id="eclair-status-text">Checking</span>
-    <span id="em-spinner" class="codicon codicon-loading codicon-modifier-spin hidden" title="Detecting Eclair"></span>
+    <span id="em-spinner" class="codicon codicon-loading codicon-modifier-spin hidden" title="Detecting ECLAIR"></span>
   </div>
   <div class="summary-actions">
     <div class="actions-title"><strong>Actions</strong></div>

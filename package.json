@@ -265,7 +265,7 @@
       },
       {
         "command": "zephyr-workbench.eclair-manager.open",
-        "title": "Eclair Manager",
+        "title": "ECLAIR Manager",
         "icon": "$(beaker)",
         "category": "Zephyr Workbench"
       },

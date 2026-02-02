@@ -23,7 +23,7 @@ function setEditMode(inputEl: HTMLInputElement | null, browseBtn: HTMLElement | 
 }
 
 /**
- * Handles Edit/Done logic for the Eclair install path field.
+ * Handles Edit/Done logic for the ECLAIR install path field.
  * On Done, sends the new path to the backend to update env.yml.
  */
 function toggleInstallEdit() {
@@ -362,7 +362,7 @@ function main() {
   updateUserRulesetVisibility();
   handleReportsAllToggle();
   // Trigger a status refresh immediately on load so backend detects and
-  // persists Eclair path if needed (minimal, single-shot request).
+  // persists ECLAIR path if needed (minimal, single-shot request).
   try { webviewApi.postMessage({ command: 'refresh-status' }); } catch (e) { /* ignore */ }
 }
 
