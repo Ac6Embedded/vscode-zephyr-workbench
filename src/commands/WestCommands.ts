@@ -443,6 +443,48 @@ export async function getSupportedShields(
   });
 }
 
+export async function getSupportedSnippets(
+  parent: ZephyrAppProject | WestWorkspace,
+): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    try {
+      // Get extension path from vscode extensions API
+      const extension = vscode.extensions.getExtension('Ac6.zephyr-workbench');
+      if (!extension) {
+        console.error('Extension not found');
+        return resolve([]);
+      }
+
+      const snippetsPath = path.join(extension.extensionPath, 'scripts', 'snippets', 'snippets.yml');
+      
+      if (!fileExists(snippetsPath)) {
+        console.error('Snippets file not found at:', snippetsPath);
+        return resolve([]);
+      }
+
+      const content = fs.readFileSync(snippetsPath, 'utf-8');
+      const yaml = require('yaml');
+      const data = yaml.parse(content);
+
+      // If single snippet, return as array of name 
+      if (data && data.name) {
+        return resolve([data.name]);
+      }
+
+      // if multiple snippets, return array of names
+      if (Array.isArray(data)) {
+        const snippetNames = data.filter(s => s && s.name).map(s => s.name);
+        return resolve(snippetNames);
+      }
+
+      resolve([]);
+    } catch (error) {
+      console.error('Error reading snippets:', error);
+      resolve([]);
+    }
+  });
+}
+
 export async function getBoardsDirectoriesFromIdentifier(boardIdentifier: string, parent: ZephyrAppProject | WestWorkspace, boardRoots?: string[]): Promise<string[]> {
   return new Promise((resolve, reject) => {
     let boardName = boardIdentifier;
