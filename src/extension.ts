@@ -2297,6 +2297,8 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 	}
 
 	return new Promise<vscode.TaskExecution[] | undefined>(async resolve => {
+		// These specific commands below are executed directly, they are not saved in tasks.json
+		const tasks = ['DT Doctor', 'West ROM Report', 'West RAM Report', 'Gui Config', 'Menu Config', 'Harden Config'];
 		// Execute task
 		if (listTasks.length > 0) {
 			try {
@@ -2310,8 +2312,7 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 				resolve(undefined);
 			}
 		} else {
-			// These specific commands below are executed directly, they are not saved in tasks.json
-			if (taskName === 'DT Doctor' || taskName === 'West ROM Report' || taskName === 'West RAM Report') {
+			if (tasks) {
 				resolve(undefined);
 			}
 			else{
