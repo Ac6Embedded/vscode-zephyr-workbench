@@ -2310,8 +2310,15 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 				resolve(undefined);
 			}
 		} else {
-			vscode.window.showErrorMessage(`Cannot find "${taskName}" task.`);
-			resolve(undefined);
+			// These specific commands below are executed directly, they are not saved in tasks.json
+			if (taskName === 'DT Doctor' || taskName === 'West ROM Report' || taskName === 'West RAM Report') {
+				resolve(undefined);
+			}
+			else{
+				vscode.window.showErrorMessage(`Cannot find "${taskName}" task.`);
+				resolve(undefined);
+			}
+			
 		}
 	});
 }

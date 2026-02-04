@@ -490,7 +490,11 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
   }
 
   changed = ensureRunnerInput(config) || changed;
-  changed = ensureTasks(config, Array.from(tasksMap.values())) || changed;
+  
+  // Only save essential tasks to tasks.json
+  const persistentTasks = [westBuildTask, rebuildTask, flashTask, spdxInitTask, spdxTask];
+  
+  changed = ensureTasks(config, persistentTasks) || changed;
 
   if (changed) {
     await writeTasksJson(tasksJsonPath, config, serialized);
@@ -498,6 +502,18 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
 }
 
 export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder, taskName: string): Promise<boolean> {
+  // Tasks that run directly without saving to tasks.json
+  const directTasks = ['DT Doctor', 'West ROM Report', 'West RAM Report', 'Menuconfig', 'Gui config', 'Harden Config'];
+  
+  if (directTasks.includes(taskName)) {
+    const taskDef = tasksMap.get(taskName);
+    if (taskDef) {
+      const task = new vscode.Task(taskDef, workspaceFolder, taskName, ZephyrTaskProvider.ZephyrType);
+      await vscode.tasks.executeTask(ZephyrTaskProvider.resolve(task));
+    }
+    return true;
+  }
+
   const { config, tasksJsonPath, serialized } = await ensureTasksFile(workspaceFolder);
 
   const taskExists = config.tasks.some(task => task.label === taskName && task.type === ZephyrTaskProvider.ZephyrType);
