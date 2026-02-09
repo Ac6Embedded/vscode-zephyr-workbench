@@ -8,7 +8,7 @@ import { ZephyrProject } from '../models/ZephyrProject';
 import { ZephyrSDK } from '../models/ZephyrSDK';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
-import { concatCommands, execShellCommandWithEnv, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
+import { concatCommands, execShellCommandWithEnv, execCommandWithEnvCB, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
 import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from '../utils/utils'; 
 
 function quote(p: string): string {
@@ -199,6 +199,11 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
 
   const sysbuildFlag = sysbuildEnabled ? " --sysbuild" : "";
 
+  const snippets = buildConfig.envVars?.['SNIPPETS'];
+  const snippetsFlag = Array.isArray(snippets) && snippets.length > 0
+    ? snippets.map(s => ` -S ${s}`).join('')
+    : '';
+
   const folderUri = vscode.Uri.file(zephyrProject.folderPath);
   const folder = vscode.workspace.getWorkspaceFolder(folderUri);
   const cfg = vscode.workspace.getConfiguration(
@@ -230,7 +235,7 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
   const command =
   `west build -p always` +
   ` --board ${buildConfig.boardIdentifier}` +
-  ` --build-dir "${buildDir}"${sysbuildFlag}` +
+  ` --build-dir "${buildDir}"${sysbuildFlag}${snippetsFlag}` +
   ` "${zephyrProject.folderPath}"` +
   (westArgs ? ` ${westArgs}` : '');
 
@@ -447,41 +452,21 @@ export async function getSupportedSnippets(
   parent: ZephyrAppProject | WestWorkspace,
 ): Promise<string[]> {
   return new Promise((resolve, reject) => {
-    try {
-      // Get extension path from vscode extensions API
-      const extension = vscode.extensions.getExtension('Ac6.zephyr-workbench');
-      if (!extension) {
-        console.error('Extension not found');
-        return resolve([]);
+    const ws =
+      parent instanceof ZephyrAppProject
+        ? getWestWorkspace(parent.westWorkspacePath)
+        : (parent as WestWorkspace);
+
+    if (ws?.kernelUri?.fsPath) {
+      const snippetsDir = path.join(ws.kernelUri.fsPath, 'snippets');
+      if (fs.existsSync(snippetsDir)) {
+        const names = fs.readdirSync(snippetsDir, { withFileTypes: true })
+          .filter(d => d.isDirectory())
+          .map(d => d.name);
+        return resolve(names);
       }
-
-      const snippetsPath = path.join(extension.extensionPath, 'scripts', 'snippets', 'snippets.yml');
-      
-      if (!fileExists(snippetsPath)) {
-        console.error('Snippets file not found at:', snippetsPath);
-        return resolve([]);
-      }
-
-      const content = fs.readFileSync(snippetsPath, 'utf-8');
-      const yaml = require('yaml');
-      const data = yaml.parse(content);
-
-      // If single snippet, return as array of name 
-      if (data && data.name) {
-        return resolve([data.name]);
-      }
-
-      // if multiple snippets, return array of names
-      if (Array.isArray(data)) {
-        const snippetNames = data.filter(s => s && s.name).map(s => s.name);
-        return resolve(snippetNames);
-      }
-
-      resolve([]);
-    } catch (error) {
-      console.error('Error reading snippets:', error);
-      resolve([]);
     }
+    reject('No snippets found. Please make sure you have generated the west workspace correctly.');
   });
 }
 

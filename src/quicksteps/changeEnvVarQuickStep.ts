@@ -61,29 +61,25 @@ export async function changeEnvVarQuickStep(
     
     if (project) {
       const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-      if (westWorkspace) {
-        const snippets = await getSupportedSnippets(westWorkspace);
-        if (snippets.length > 0) {
-          const snippetItems: vscode.QuickPickItem[] = snippets.map(snippetName => ({
-            label: snippetName
-          }));
+      const snippets = westWorkspace ? await getSupportedSnippets(westWorkspace) : [];
+      if (snippets.length > 0) {
+        const snippetItems: vscode.QuickPickItem[] = snippets.map(snippetName => ({
+          label: snippetName
+        }));
 
-          const options: vscode.QuickPickOptions = {
-            title: "Select Snippet",
-            placeHolder: "Select a snippet",
-            canPickMany: false,
-            ignoreFocusOut: true
-          };
+        const options: vscode.QuickPickOptions = {
+          title: "Select Snippet",
+          placeHolder: "Select a snippet",
+          canPickMany: false,
+          ignoreFocusOut: true
+        };
 
-          const result = await vscode.window.showQuickPick(snippetItems, options);
-          if (result) {
-            return result.label;
-          }
-        } else {
-          vscode.window.showInformationMessage("No snippets found in the workspace.");
+        const result = await vscode.window.showQuickPick(snippetItems, options);
+        if (result) {
+          return result.label;
         }
       } else {
-        vscode.window.showErrorMessage("Unable to locate the west workspace for snippet selection.");
+        vscode.window.showInformationMessage("No snippets found in the workspace. Please make sure you have generated the west workspace correctly.");
       }
     }
     return undefined;
