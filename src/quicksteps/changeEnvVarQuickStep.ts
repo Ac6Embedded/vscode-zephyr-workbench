@@ -3,7 +3,7 @@ import { WestWorkspace } from "../models/WestWorkspace";
 import { ZephyrProject } from "../models/ZephyrProject";
 import { saveConfigSetting } from '../utils/zephyrEnvUtils';
 import { getWestWorkspace } from "../utils/utils";
-import { getSupportedShields } from '../commands/WestCommands';
+import { getSupportedShields, getSupportedSnippets } from '../commands/WestCommands';
 
 export async function changeEnvVarQuickStep(
   context: WestWorkspace | ZephyrProject | any,
@@ -44,6 +44,45 @@ export async function changeEnvVarQuickStep(
         vscode.window.showErrorMessage("Unable to locate the west workspace for shield selection.");
       }
     }
+  }
+  
+  if (key === 'SNIPPETS') {
+    let project: ZephyrProject | undefined;
+    
+    if (context instanceof ZephyrProject) {
+      project = context;
+    }
+    else if (value instanceof ZephyrProject) {
+      project = value;
+    } 
+    else if (value && (value as any).project) {
+      project = (value as any).project;
+    }
+    
+    if (project) {
+      const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+      const snippets = westWorkspace ? await getSupportedSnippets(westWorkspace) : [];
+      if (snippets.length > 0) {
+        const snippetItems: vscode.QuickPickItem[] = snippets.map(snippetName => ({
+          label: snippetName
+        }));
+
+        const options: vscode.QuickPickOptions = {
+          title: "Select Snippet",
+          placeHolder: "Select a snippet",
+          canPickMany: false,
+          ignoreFocusOut: true
+        };
+
+        const result = await vscode.window.showQuickPick(snippetItems, options);
+        if (result) {
+          return result.label;
+        }
+      } else {
+        vscode.window.showInformationMessage("No snippets found in the workspace. Please make sure you have generated the west workspace correctly.");
+      }
+    }
+    return undefined;
   }
   class BrowseButton implements vscode.QuickInputButton {
     constructor(public iconPath: vscode.ThemeIcon, public tooltip: string) { }

@@ -21,6 +21,7 @@ export class ZephyrProjectBuildConfiguration {
     EXTRA_DTC_OVERLAY_FILE: [],
     EXTRA_ZEPHYR_MODULES: [],
     SHIELD: [],
+    SNIPPETS: [],
   };
   westArgs: string = '';
   // Preferred west runner for this configuration (used for Run/Flash)

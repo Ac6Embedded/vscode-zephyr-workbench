@@ -23,10 +23,11 @@ export class ZephyrProject {
     EXTRA_DTC_OVERLAY_FILE: [],
     EXTRA_ZEPHYR_MODULES: [],
     SHIELD: [],
+    SNIPPETS: [],
   };
   westArgs: string = '';
 
-  static envVarKeys = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES', 'SHIELD'];
+  static envVarKeys = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES', 'SHIELD', 'SNIPPETS'];
 
   public constructor(
     workspaceContext: any,

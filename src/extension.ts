@@ -1231,7 +1231,7 @@ export function activate(context: vscode.ExtensionContext) {
 				if (node.config) {
 					const project = node.project;
 					const config = node.config;
-					let value = await changeEnvVarQuickStep(config, node.envKey, node.envValue);
+					let value = await changeEnvVarQuickStep(project, node.envKey, node.envValue);
 					if (value) {
 						replaceEnvValue(config.envVars, node.envKey, node.envValue, value);
 						let workspaceFolder = getWorkspaceFolder(project.folderPath);
