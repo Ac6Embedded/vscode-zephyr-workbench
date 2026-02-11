@@ -909,22 +909,12 @@ export class EclairManagerPanel {
       }
     }
 
-    if (process.platform === "win32") {
-      // Windows needs empty values to unset the launchers
-      parts.push(
-        "-DZEPHYR_SCA_VARIANT=eclair",
-        "-DCMAKE_C_COMPILER_LAUNCHER=",
-        "-DCMAKE_CXX_COMPILER_LAUNCHER="
-      );
-    }
-    else{
-      // Linux and macOS can use -U to unset the launchers
-      parts.push(
-        "-DZEPHYR_SCA_VARIANT=eclair",
-        "-UCMAKE_C_COMPILER_LAUNCHER",
-        "-UCMAKE_CXX_COMPILER_LAUNCHER"
-      );
-    }
+    // disable ccache for ECLAIR (breaks wrapper script)
+    parts.push(
+      "-DZEPHYR_SCA_VARIANT=eclair",
+      "-DCMAKE_C_COMPILER_LAUNCHER=",
+      "-DCMAKE_CXX_COMPILER_LAUNCHER="
+    );
 
     if (cfg.ruleset === "USER") {
       parts.push("-DECLAIR_RULESET_USER=ON");
