@@ -4,6 +4,29 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.3.0]
+
+### UI
+- Improved text details in action buttons
+  - Changed Run to Flash in the inline button
+  - Changed Run to Flash/Run in the context menu
+
+### Static Code Analysis
+- Fixed DT Doctor
+- Fixed and improved ECLAIR Manager
+
+### Commands
+- Run commands in the background without creating entries in tasks.json for
+  - DT Doctor
+  - ROM Report
+  - RAM Report
+  - GUI Config
+  - Menu Config
+  - Harden Config
+
+### Snippets
+- Added support for snippets
+
 ## [2.2.1]
 - Remove support for PowerShell 7
 
@@ -505,3 +528,4 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Initial release
 
 [2.0.0]: https://github.com/Ac6Embedded/vscode-zephyr-workbench/compare/v1.3.38...version-2
+
