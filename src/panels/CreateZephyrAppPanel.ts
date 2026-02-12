@@ -456,6 +456,11 @@ function checkCreateParameters(message: any) {
     return false;
   }
 
+  if (message.projectName.indexOf(' ') >= 0) {
+    vscode.window.showErrorMessage('The project name cannot contain spaces');
+    return false;
+  }
+
   if (message.boardYamlPath.length === 0) {
     vscode.window.showErrorMessage('Missing target board');
     return false;
