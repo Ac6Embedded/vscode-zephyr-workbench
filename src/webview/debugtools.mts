@@ -10,7 +10,8 @@ const webviewApi = acquireVsCodeApi();
 window.addEventListener("load", main);
 
 function main() {
-    setVSCodeMessageListener();
+  setVSCodeMessageListener();
+  webviewApi.postMessage({ command: 'webview-ready' });
 
   const installButtons = document.querySelectorAll('.install-button');
   installButtons.forEach(button => {
@@ -341,7 +342,9 @@ function setVSCodeMessageListener() {
         const versionCell = document.getElementById(`version-${event.data.tool}`) as HTMLElement;
         const statusCell = document.getElementById(`detect-${event.data.tool}`) as HTMLElement;
         versionCell.textContent = event.data.version;
-        if(event.data.version !== '') {
+        if (typeof event.data.status === 'string') {
+          statusCell.textContent = event.data.status;
+        } else if(event.data.version !== '') {
           statusCell.textContent = 'Installed';
         } else {
           statusCell.textContent = 'Not installed';

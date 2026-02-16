@@ -55,15 +55,11 @@ export class DebugToolsPanel {
   public async createContent() {
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
     this._setWebviewMessageListener(this._panel.webview);
-    // Load versions after panel is shown
-    this.loadVersions();
 
     // when panel becomes visible again, re-generate HTML so env.yml is re-read
     this._panel.onDidChangeViewState(async () => {
       if (this._panel.visible) {
         this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
-        // reload versions / re-run any detection
-        this.loadVersions();
         //we do NOT call _setWebviewMessageListener again (already registered)
       }
     }, null, this._disposables);
@@ -71,16 +67,56 @@ export class DebugToolsPanel {
 
   private async loadVersions() {
     const versionPromises = this.data.debug_tools.map(async (tool: any) => {
+      if (tool.alias === 'openocd') {
+        const installed = this.isOpenocdVariantInstalled(tool.tool);
+        const status = installed ? 'Installed' : 'Not installed';
+        this._panel.webview.postMessage({
+          command: "detect-done",
+          tool: tool.tool,
+          version: "",
+          status,
+        });
+
+        if (this.getDefaultToolForAlias('openocd') === tool.tool) {
+          if (installed) {
+            await this.ensureOpenocdAliasEntry(tool.tool);
+          }
+          this._panel.webview.postMessage({
+            command: "detect-done",
+            tool: "openocd",
+            version: tool.version || "",
+            status,
+          });
+        }
+        return;
+      }
+
+      // For alias groups (e.g. OpenOCD variants), detect only the configured default tool.
+      if (tool.alias) {
+        const defaultTool = this.getDefaultToolForAlias(tool.alias);
+        if (defaultTool && tool.tool !== defaultTool) {
+          this._panel.webview.postMessage({
+            command: "detect-done",
+            tool: tool.tool,
+            version: tool.version || "",
+            status: "Not installed",
+          });
+          return;
+        }
+      }
+
       // Use alias if present, otherwise use tool
       const runnerAlias = tool.alias || tool.tool;
+
       const runner = getRunner(runnerAlias);
       
       if (!runner) {
-        // if runner is not defined/found, keep YAML values
+        // Unknown runner -> consider not installed
         this._panel.webview.postMessage({
           command: "detect-done",
           tool: tool.tool,
           version: tool.version || "",
+          status: "Not installed",
         });
         return;
       }
@@ -89,6 +125,10 @@ export class DebugToolsPanel {
       try {
         const installedVersion = await runner.detectVersion();
         const actualVersion = tool.version;
+        const status = installedVersion
+          ? (tool.os && actualVersion !== installedVersion ? "New Version Available" : "Installed")
+          : "Not installed";
+        const reportedVersion = installedVersion || actualVersion || "";
 
         if (installedVersion) {
           tool.version = installedVersion;
@@ -102,15 +142,33 @@ export class DebugToolsPanel {
         this._panel.webview.postMessage({
           command: "detect-done",
           tool: tool.tool,
-          version: installedVersion || "",
+          version: reportedVersion,
+          status,
         });
+        if (tool.alias && this.getDefaultToolForAlias(tool.alias) === tool.tool) {
+          this._panel.webview.postMessage({
+            command: "detect-done",
+            tool: tool.alias,
+            version: reportedVersion,
+            status,
+          });
+        }
       } catch (err) {
         console.warn(`Version check failed for ${tool.tool}:`, err);
         this._panel.webview.postMessage({
           command: "detect-done",
           tool: tool.tool,
-          version: "",
+          version: tool.version || "",
+          status: "Not installed",
         });
+        if (tool.alias && this.getDefaultToolForAlias(tool.alias) === tool.tool) {
+          this._panel.webview.postMessage({
+            command: "detect-done",
+            tool: tool.alias,
+            version: tool.version || "",
+            status: "Not installed",
+          });
+        }
       }
     });
 
@@ -264,6 +322,7 @@ export class DebugToolsPanel {
       for (let tool of tools) {
         const childToolName = tool.name;
         const isDefault = tool.tool === defaultEnvYml;
+        const childVersion = alias === 'openocd' ? '' : (tool.version || '');
         
         toolsHTML += `<tr id="row-${tool.tool}" class="details-row hidden alias-variant-row">
           <td></td>
@@ -271,7 +330,7 @@ export class DebugToolsPanel {
             ${childToolName}
             <vscode-checkbox class="set-default-checkbox" data-tool="${tool.tool}" data-alias="${alias}" ${isDefault ? 'checked' : ''}> Set default</vscode-checkbox>
           </td>
-          <td id="version-${tool.tool}">${tool.version || ''}</td>
+          <td id="version-${tool.tool}">${childVersion}</td>
           <td id="detect-${tool.tool}">${tool.found || ''}</td>
           <td id="buttons-${tool.tool}">`;
         
@@ -535,6 +594,10 @@ export class DebugToolsPanel {
         const command = message.command;
 
         switch (command) {
+          case 'webview-ready': {
+            await this.loadVersions();
+            break;
+          }
           case 'refresh-all': {
             // Re-run detection for all tools; UI already cleared by webview
             await this.loadVersions();
@@ -554,16 +617,85 @@ export class DebugToolsPanel {
           }
           case 'detect': {
             const tool = this.data.debug_tools.find((t: { tool: string; }) => t.tool === message.tool);
+            if (!tool) {
+              webview.postMessage({
+                command: 'detect-done',
+                tool: message.tool,
+                version: '',
+                status: 'Not installed',
+              });
+              break;
+            }
+
+            if (tool.alias === 'openocd') {
+              const status = this.isOpenocdVariantInstalled(tool.tool) ? 'Installed' : 'Not installed';
+              webview.postMessage({
+                command: 'detect-done',
+                tool: message.tool,
+                version: '',
+                status,
+              });
+              if (this.getDefaultToolForAlias('openocd') === tool.tool) {
+                webview.postMessage({
+                  command: 'detect-done',
+                  tool: 'openocd',
+                  version: tool.version || '',
+                  status,
+                });
+              }
+              break;
+            }
+
+            if (tool.alias) {
+              const defaultTool = this.getDefaultToolForAlias(tool.alias);
+              if (defaultTool && tool.tool !== defaultTool) {
+                webview.postMessage({
+                  command: 'detect-done',
+                  tool: message.tool,
+                  version: tool.version || '',
+                  status: 'Not installed',
+                });
+                break;
+              }
+            }
+
             const runnerAlias = tool?.alias || message.tool;
+
             let runner = getRunner(runnerAlias);
             if(runner) {
               runner.loadArgs(undefined);
               let version = await runner.detectVersion();
+              const reportedVersion = version || tool.version || '';
+              const status = version ? 'Installed' : 'Not installed';
               webview.postMessage({ 
                 command: 'detect-done', 
                 tool: message.tool,
-                version: version || '',
+                version: reportedVersion,
+                status,
               });
+              if (tool.alias && this.getDefaultToolForAlias(tool.alias) === tool.tool) {
+                webview.postMessage({
+                  command: 'detect-done',
+                  tool: tool.alias,
+                  version: reportedVersion,
+                  status,
+                });
+              }
+            } else {
+              webview.postMessage({
+                command: 'detect-done',
+                tool: message.tool,
+                version: tool.version || '',
+                status: 'Not installed',
+              });
+              if (tool.alias && this.getDefaultToolForAlias(tool.alias) === tool.tool) {
+                webview.postMessage({
+                  command: 'detect-done',
+                  tool: tool.alias,
+                  version: tool.version || '',
+                  status: 'Not installed',
+                });
+              }
             }
             break;
           }
@@ -614,10 +746,37 @@ export class DebugToolsPanel {
               }
               
               doc.setIn(['runners', alias, 'default'], tool);
+
+              // For OpenOCD alias, keep only runners.openocd.* and remove variant keys
+              // like runners.openocd-zephyr / runners.openocd-esp32 previously persisted.
+              if (alias === 'openocd') {
+                const openocdVariants = this.data.debug_tools
+                  .filter((t: any) => t.alias === 'openocd')
+                  .map((t: any) => t.tool);
+                for (const variantId of openocdVariants) {
+                  doc.deleteIn(['runners', variantId]);
+                }
+              }
+
+              // Keep alias path/version aligned with the selected default variant
+              const selectedTool = this.data.debug_tools.find((t: any) => t.tool === tool);
+              let selectedPath = this.getRunnerPath(tool);
+              if (!selectedPath && selectedTool?.install_dir) {
+                selectedPath = path.join(getInternalDirRealPath(), 'tools', selectedTool.install_dir, 'bin').replace(/\\/g, '/');
+              }
+              if (selectedPath) {
+                doc.setIn(['runners', alias, 'path'], selectedPath);
+              }
+              if (selectedTool?.version) {
+                doc.setIn(['runners', alias, 'version'], selectedTool.version);
+              }
+
               formatYml(doc.contents);
               const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
               fs.writeFileSync(envYamlPath, yamlText, 'utf8');
+              this.reloadEnvYaml();
               vscode.window.showInformationMessage(`Set ${tool} as default for ${alias}`);
+              webview.postMessage({ command: 'exec-install-finished' });
             } catch (e) {
               vscode.window.showErrorMessage(`Failed to set default`);
             }
@@ -781,6 +940,66 @@ export class DebugToolsPanel {
       }
     }
     return false;
+  }
+
+  private getDefaultToolForAlias(alias: string): string | undefined {
+    const defaultDebugToolsYml = this.data.aliases?.find((a: Aliases) => a.alias === alias)?.default;
+    const firstAliasTool = this.data.debug_tools.find((t: any) => t.alias === alias)?.tool;
+    return this.envData?.runners?.[alias]?.default || defaultDebugToolsYml || firstAliasTool;
+  }
+
+  // Ensure env.yml has runners.openocd aligned with the installed default variant.
+  private async ensureOpenocdAliasEntry(defaultToolId: string): Promise<void> {
+    try {
+      const selectedTool = this.data.debug_tools.find((t: any) => t.tool === defaultToolId);
+      if (!selectedTool?.install_dir) { return; }
+
+      const aliasPath = path.join(getInternalDirRealPath(), 'tools', selectedTool.install_dir, 'bin').replace(/\\/g, '/');
+      const aliasVersion = selectedTool.version || '';
+      const current = this.envData?.runners?.openocd;
+      const same =
+        current?.default === defaultToolId &&
+        current?.path === aliasPath &&
+        current?.version === aliasVersion;
+      if (same) { return; }
+
+      const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+      let doc: any;
+      if (fs.existsSync(envYamlPath)) {
+        doc = yaml.parseDocument(fs.readFileSync(envYamlPath, 'utf8'));
+      } else if (this.envYamlDoc) {
+        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
+      } else {
+        doc = yaml.parseDocument('{}');
+      }
+
+      doc.setIn(['runners', 'openocd', 'default'], defaultToolId);
+      doc.setIn(['runners', 'openocd', 'path'], aliasPath);
+      doc.setIn(['runners', 'openocd', 'version'], aliasVersion);
+      if (typeof doc.getIn(['runners', 'openocd', 'do_not_use']) === 'undefined') {
+        doc.setIn(['runners', 'openocd', 'do_not_use'], false);
+      }
+
+      formatYml(doc.contents);
+      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
+      fs.writeFileSync(envYamlPath, yamlText, 'utf8');
+
+      this.envYamlDoc = doc;
+      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
+    } catch {
+      // best effort only
+    }
+  }
+
+  // OpenOCD variants are considered installed when their folder exists:
+  // <internal>/.zinstaller/tools/openocds/<tool-id>
+  private isOpenocdVariantInstalled(toolId: string): boolean {
+    try {
+      const variantDir = path.join(getInternalDirRealPath(), 'tools', 'openocds', toolId);
+      return fs.existsSync(variantDir) && fs.statSync(variantDir).isDirectory();
+    } catch {
+      return false;
+    }
   }
 
   private getRunnerPath(toolId: string): string | undefined {
