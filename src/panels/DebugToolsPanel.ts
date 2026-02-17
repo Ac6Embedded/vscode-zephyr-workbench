@@ -329,7 +329,7 @@ export class DebugToolsPanel {
         toolsHTML += `<tr id="row-${tool.tool}" class="details-row hidden alias-variant-row">
           <td></td>
           <td style="padding-left:20px">
-            ${childToolName}
+            <span class="alias-variant-name">${childToolName}</span>
             <vscode-checkbox class="set-default-checkbox" data-tool="${tool.tool}" data-alias="${alias}" ${isDefault ? 'checked' : ''}> Set default</vscode-checkbox>
           </td>
           <td id="version-${tool.tool}">${childVersion}</td>

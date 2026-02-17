@@ -841,3 +841,8 @@ vscode-button {
   display: inline-flex;
   align-items: center;
 }
+
+.alias-variant-name {
+  display: inline-block;
+  min-width: 150px;
+}
