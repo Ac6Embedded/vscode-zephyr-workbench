@@ -147,6 +147,7 @@ fieldset.no-border  {
 .hidden { display: none !important; }
 
 #boardImg {
+  display: block;
   min-width: 20vw;
   min-height: 20vh;
   max-width: 50vw;
@@ -154,6 +155,11 @@ fieldset.no-border  {
   width: 100%;
   height: auto;
   object-fit: contain; 
+}
+
+.board-image-container {
+  position: sticky;
+  top: 16px;
 }
 
 vscode-dropdown {
@@ -845,4 +851,82 @@ vscode-button {
 .alias-variant-name {
   display: inline-block;
   min-width: 150px;
+}
+
+.advanced-options {
+  display: block;
+  width: min(100%, calc(var(--design-unit) * 114px + 98px));
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
+.advanced-options > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  margin: 0;
+  padding: 4px 0;
+  min-height: 32px;
+  box-sizing: border-box;
+}
+
+.advanced-options > summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-options > summary::marker {
+  content: "";
+}
+
+.advanced-options .advanced-arrow {
+  margin-left: 0;
+  pointer-events: none;
+}
+
+.advanced-options-content {
+  display: none;
+  padding: 10px 12px 2px 12px;
+}
+
+.advanced-options[open] .advanced-options-content {
+  display: block;
+  background-color: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent);
+}
+
+/* Prevent scroll jitter caused by tooltip overflow/reflow */
+.create-app-panel .stable-tooltip::after {
+  content: none;
+  top: auto;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%) translateZ(0);
+  opacity: 1;
+  visibility: visible;
+  transition: none;
+}
+
+.create-app-panel .stable-tooltip:hover::after {
+  content: attr(data-tooltip);
+}
+
+.create-app-panel .stable-tooltip[data-tooltip]:hover::after {
+  left: 50%;
+  transform: translateX(-50%) translateZ(0);
+  white-space: pre-line;
+}
+
+.create-app-panel .debug-preset-tooltip {
+  margin-left: 6px;
+  vertical-align: middle;
+  top: 1px;
+}
+
+.create-app-panel .debug-preset-tooltip:hover::after {
+  width: min(300px, calc(100vw - 40px));
+  max-width: calc(100vw - 40px);
+  padding: 10px 12px;
 }

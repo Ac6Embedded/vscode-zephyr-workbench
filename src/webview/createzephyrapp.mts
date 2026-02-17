@@ -33,6 +33,8 @@ function main() {
   const createButton = document.getElementById("createButton") as Button;
   const appTypeGroup = document.getElementById('appTypeGroup') as RadioGroup;
   const createOnlyElems = document.querySelectorAll<HTMLElement>('.create-only');
+  const advancedDetails = document.querySelector('.advanced-options') as HTMLDetailsElement | null;
+  const advancedArrow = document.querySelector('.advanced-arrow') as HTMLElement | null;
 
 
   if (listWorkspaces && boardDropdown && samplesDropdown) {
@@ -233,6 +235,15 @@ function main() {
   appTypeGroup.addEventListener('change', refreshCreateOnlyRows);
   refreshCreateOnlyRows();        // call once on load
 
+  if (advancedDetails && advancedArrow) {
+    const syncAdvancedArrow = () => {
+      const isOpen = advancedDetails.open;
+      advancedArrow.classList.toggle('codicon-chevron-right', !isOpen);
+      advancedArrow.classList.toggle('codicon-chevron-down', isOpen);
+    };
+    advancedDetails.addEventListener('toggle', syncAdvancedArrow);
+    syncAdvancedArrow();
+  }
 }
 
 function addDropdownItemEventListeners(dropdown: HTMLElement,
@@ -396,6 +407,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const pristineRadioGroup = document.getElementById("pristineMode") as RadioGroup;
   const appTypeGroup = document.getElementById('appTypeGroup') as RadioGroup;
   const venvRadioGroup = document.getElementById('venvMode') as RadioGroup;
+  const debugPresetCheckbox = document.getElementById('debugPresetCheckbox') as HTMLInputElement | null;
 
   webviewApi.postMessage(
     {
@@ -409,6 +421,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       projectParentPath: projectParentPathText.value,
       pristine: pristineRadioGroup.value,
       venv: venvRadioGroup?.value ?? 'global',
+      debugPreset: !!debugPresetCheckbox?.checked,
     }
   );
 }
