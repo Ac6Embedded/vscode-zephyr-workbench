@@ -67,7 +67,8 @@ export class DebugToolsPanel {
 
   private async loadVersions() {
     const versionPromises = this.data.debug_tools.map(async (tool: any) => {
-      if (tool.alias === 'openocd') {
+      if (tool.alias) {
+        const alias = tool.alias;
         const installed = this.isOpenocdVariantInstalled(tool.tool);
         const status = installed ? 'Installed' : 'Not installed';
         this._panel.webview.postMessage({
@@ -77,14 +78,14 @@ export class DebugToolsPanel {
           status,
         });
 
-        if (this.getDefaultToolForAlias('openocd') === tool.tool) {
+        if (this.getDefaultToolForAlias(alias) === tool.tool) {
           if (installed) {
-            await this.ensureOpenocdAliasEntry(tool.tool);
+            await this.ensureOpenocdAliasEntry(alias, tool.tool);
           }
           this._panel.webview.postMessage({
             command: "detect-done",
-            tool: "openocd",
-            version: tool.version || "",
+            tool: alias,
+            version: installed ? (tool.version || "") : "",
             status,
           });
         }
@@ -128,7 +129,11 @@ export class DebugToolsPanel {
         const status = installedVersion
           ? (tool.os && actualVersion !== installedVersion ? "New Version Available" : "Installed")
           : "Not installed";
-        const reportedVersion = installedVersion || actualVersion || "";
+        let reportedVersion = installedVersion || actualVersion || "";
+
+        if (status === "Not installed") {
+          reportedVersion = "";
+        }
 
         if (installedVersion) {
           tool.version = installedVersion;
@@ -322,7 +327,7 @@ export class DebugToolsPanel {
       for (let tool of tools) {
         const childToolName = tool.name;
         const isDefault = tool.tool === defaultEnvYml;
-        const childVersion = alias === 'openocd' ? '' : (tool.version || '');
+        const childVersion = alias ? '' : (tool.version || '');
         
         toolsHTML += `<tr id="row-${tool.tool}" class="details-row hidden alias-variant-row">
           <td></td>
@@ -627,7 +632,8 @@ export class DebugToolsPanel {
               break;
             }
 
-            if (tool.alias === 'openocd') {
+            if (tool.alias) {
+              const alias = tool.alias;
               const status = this.isOpenocdVariantInstalled(tool.tool) ? 'Installed' : 'Not installed';
               webview.postMessage({
                 command: 'detect-done',
@@ -635,11 +641,11 @@ export class DebugToolsPanel {
                 version: '',
                 status,
               });
-              if (this.getDefaultToolForAlias('openocd') === tool.tool) {
+              if (this.getDefaultToolForAlias(alias) === tool.tool) {
                 webview.postMessage({
                   command: 'detect-done',
-                  tool: 'openocd',
-                  version: tool.version || '',
+                  tool: alias,
+                  version: status === 'Installed' ? (tool.version || '') : '',
                   status,
                 });
               }
@@ -665,8 +671,11 @@ export class DebugToolsPanel {
             if(runner) {
               runner.loadArgs(undefined);
               let version = await runner.detectVersion();
-              const reportedVersion = version || tool.version || '';
               const status = version ? 'Installed' : 'Not installed';
+              let reportedVersion = version || tool.version || '';
+              if (status === 'Not installed') {
+                reportedVersion = '';
+              }
               webview.postMessage({ 
                 command: 'detect-done', 
                 tool: message.tool,
@@ -747,13 +756,12 @@ export class DebugToolsPanel {
               
               doc.setIn(['runners', alias, 'default'], tool);
 
-              // For OpenOCD alias, keep only runners.openocd.* and remove variant keys
-              // like runners.openocd-zephyr / runners.openocd-esp32 previously persisted.
-              if (alias === 'openocd') {
-                const openocdVariants = this.data.debug_tools
-                  .filter((t: any) => t.alias === 'openocd')
+              // For OpenOCD alias, keep only runners.openocd and remove variant keys
+              if (alias) {
+                const aliasVariants = this.data.debug_tools
+                  .filter((t: any) => t.alias === alias)
                   .map((t: any) => t.tool);
-                for (const variantId of openocdVariants) {
+                for (const variantId of aliasVariants) {
                   doc.deleteIn(['runners', variantId]);
                 }
               }
@@ -949,14 +957,14 @@ export class DebugToolsPanel {
   }
 
   // Ensure env.yml has runners.openocd aligned with the installed default variant.
-  private async ensureOpenocdAliasEntry(defaultToolId: string): Promise<void> {
+  private async ensureOpenocdAliasEntry(alias: string, defaultToolId: string): Promise<void> {
     try {
       const selectedTool = this.data.debug_tools.find((t: any) => t.tool === defaultToolId);
       if (!selectedTool?.install_dir) { return; }
 
       const aliasPath = path.join(getInternalDirRealPath(), 'tools', selectedTool.install_dir, 'bin').replace(/\\/g, '/');
       const aliasVersion = selectedTool.version || '';
-      const current = this.envData?.runners?.openocd;
+      const current = this.envData?.runners?.[alias];
       const same =
         current?.default === defaultToolId &&
         current?.path === aliasPath &&
@@ -973,11 +981,11 @@ export class DebugToolsPanel {
         doc = yaml.parseDocument('{}');
       }
 
-      doc.setIn(['runners', 'openocd', 'default'], defaultToolId);
-      doc.setIn(['runners', 'openocd', 'path'], aliasPath);
-      doc.setIn(['runners', 'openocd', 'version'], aliasVersion);
-      if (typeof doc.getIn(['runners', 'openocd', 'do_not_use']) === 'undefined') {
-        doc.setIn(['runners', 'openocd', 'do_not_use'], false);
+      doc.setIn(['runners', alias, 'default'], defaultToolId);
+      doc.setIn(['runners', alias, 'path'], aliasPath);
+      doc.setIn(['runners', alias, 'version'], aliasVersion);
+      if (typeof doc.getIn(['runners', alias, 'do_not_use']) === 'undefined') {
+        doc.setIn(['runners', alias, 'do_not_use'], false);
       }
 
       formatYml(doc.contents);
@@ -995,7 +1003,9 @@ export class DebugToolsPanel {
   // <internal>/.zinstaller/tools/openocds/<tool-id>
   private isOpenocdVariantInstalled(toolId: string): boolean {
     try {
-      const variantDir = path.join(getInternalDirRealPath(), 'tools', 'openocds', toolId);
+      const tool = this.data.debug_tools.find((t: any) => t.tool === toolId);
+      if (!tool?.install_dir) { return false; }
+      const variantDir = path.join(getInternalDirRealPath(), 'tools', tool.install_dir);
       return fs.existsSync(variantDir) && fs.statSync(variantDir).isDirectory();
     } catch {
       return false;
