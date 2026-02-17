@@ -126,8 +126,9 @@ export class DebugToolsPanel {
       try {
         const installedVersion = await runner.detectVersion();
         const actualVersion = tool.version;
+        const hasDifferentVersion = this.hasNewVersionByEnv(tool.tool, actualVersion);
         const status = installedVersion
-          ? (tool.os && actualVersion !== installedVersion ? "New Version Available" : "Installed")
+          ? (hasDifferentVersion ? "New Version Available" : "Installed")
           : "Not installed";
         let reportedVersion = installedVersion || actualVersion || "";
 
@@ -136,11 +137,7 @@ export class DebugToolsPanel {
         }
 
         if (installedVersion) {
-          tool.version = installedVersion;
-          tool.found = "Installed";
-          if (tool.os && actualVersion !== installedVersion) {
-            tool.found = "New Version Available";
-          }
+          tool.found = hasDifferentVersion ? "New Version Available" : "Installed";
         }
 
         // Update UI immediately after each finishes
@@ -377,9 +374,9 @@ export class DebugToolsPanel {
       let toolHTML = '';
       let hasSource = false;
 
-      // Initially set empty version and status
-      tool.version = "";
-      tool.found = "";
+      // Keep YAML version for comparisons; render empty cells initially.
+      const initialVersion = '';
+      const initialStatus = '';
 
       toolHTML += `<tr id="row-${tool.tool}">`;
       // Show expand button only if no_edit is not true
@@ -390,8 +387,8 @@ export class DebugToolsPanel {
       }
 
       toolHTML += `<td id="name-${tool.tool}">${tool.name}</td>
-        <td id="version-${tool.tool}">${tool.version}</td>
-        <td id="detect-${tool.tool}">${tool.found}</td>
+        <td id="version-${tool.tool}">${initialVersion}</td>
+        <td id="detect-${tool.tool}">${initialStatus}</td>
         <td id="buttons-${tool.tool}">`;
 
       if(tool.os) {
@@ -671,8 +668,12 @@ export class DebugToolsPanel {
             if(runner) {
               runner.loadArgs(undefined);
               let version = await runner.detectVersion();
-              const status = version ? 'Installed' : 'Not installed';
-              let reportedVersion = version || tool.version || '';
+              const expectedVersion = tool?.version || '';
+              const hasDifferentVersion = this.hasNewVersionByEnv(message.tool, expectedVersion);
+              const status = version
+                ? (hasDifferentVersion ? 'New Version Available' : 'Installed')
+                : 'Not installed';
+              let reportedVersion = version || expectedVersion || '';
               if (status === 'Not installed') {
                 reportedVersion = '';
               }
@@ -952,6 +953,18 @@ export class DebugToolsPanel {
       }
     }
     return false;
+  }
+
+  private hasNewVersionByEnv(toolId: string, expectedVersion: unknown): boolean {
+    try {
+      const normalize = (v: unknown) => String(v ?? '').trim().toLowerCase().replace(/^v/, '');
+      const envVersion = (this.envData as any)?.runners?.[toolId]?.version;
+      const expectedNorm = normalize(expectedVersion);
+      const envNorm = normalize(envVersion);
+      return expectedNorm.length > 0 && envNorm.length > 0 && expectedNorm !== envNorm;
+    } catch {
+      return false;
+    }
   }
 
   private getDefaultToolForAlias(alias: string): string | undefined {

@@ -78,7 +78,7 @@ debug_tools:
       sha256: 956dd02ccf35116d565be2b148e041bd47c135e551a1f5097eae756d7d4dd079
 - tool: openocd-xpack
   alias: openocd
-  name: OpenOCD XPACK
+  name: OpenOCD xPack
   version: 0.12.0
   website: https://github.com/xpack-dev-tools/openocd-xpack/releases
   type: debug_server
@@ -95,14 +95,14 @@ debug_tools:
     darwin:
       source: https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-7/xpack-openocd-0.12.0-7-darwin-x64.tar.gz
       sha256: 668ad25350103a4357e11629ec833eae5982e973889ce25bad0c2963e37fa8bf
-- tool: openocd-stm32
+- tool: openocd-custom
   alias: openocd
-  name: OpenOCD STM32
+  name: OpenOCD Custom 
   version: 0.12.0
-  website: https://www.st.com/en/development-tools/stm32cubeclt.html
+  website: https://openocd.org/
   type: debug_server
   group: Openocds
-  install_dir: openocds/openocd-stm32
+  install_dir: openocds/openocd-custom
   root: false
   os:
     windows: false

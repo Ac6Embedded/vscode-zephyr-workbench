@@ -341,12 +341,14 @@ function setVSCodeMessageListener() {
         console.log(event.data.version);
         const versionCell = document.getElementById(`version-${event.data.tool}`) as HTMLElement;
         const statusCell = document.getElementById(`detect-${event.data.tool}`) as HTMLElement;
-        versionCell.textContent = event.data.version;
         if (typeof event.data.status === 'string') {
           statusCell.textContent = event.data.status;
+          versionCell.textContent = event.data.status === 'Not installed' ? '' : (event.data.version || '');
         } else if(event.data.version !== '') {
+          versionCell.textContent = event.data.version;
           statusCell.textContent = 'Installed';
         } else {
+          versionCell.textContent = '';
           statusCell.textContent = 'Not installed';
         }
         break;
