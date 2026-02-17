@@ -754,8 +754,6 @@ export class DebugToolsPanel {
                 doc = yaml.parseDocument('{}');
               }
               
-              doc.setIn(['runners', alias, 'default'], tool);
-
               // For OpenOCD alias, keep only runners.openocd and remove variant keys
               if (alias) {
                 const aliasVariants = this.data.debug_tools
@@ -777,6 +775,12 @@ export class DebugToolsPanel {
               }
               if (selectedTool?.version) {
                 doc.setIn(['runners', alias, 'version'], selectedTool.version);
+              }
+              const defaultFromDebugTools = this.data.aliases?.find((a: Aliases) => a.alias === alias)?.default;
+              if (tool !== defaultFromDebugTools) {
+                doc.setIn(['runners', alias, 'default'], tool);
+              } else {
+                doc.deleteIn(['runners', alias, 'default']);
               }
 
               formatYml(doc.contents);
@@ -965,8 +969,10 @@ export class DebugToolsPanel {
       const aliasPath = path.join(getInternalDirRealPath(), 'tools', selectedTool.install_dir, 'bin').replace(/\\/g, '/');
       const aliasVersion = selectedTool.version || '';
       const current = this.envData?.runners?.[alias];
+      const defaultFromDebugTools = this.data.aliases?.find((a: Aliases) => a.alias === alias)?.default;
+      const expectedDefault = defaultToolId !== defaultFromDebugTools ? defaultToolId : undefined;
       const same =
-        current?.default === defaultToolId &&
+        current?.default === expectedDefault &&
         current?.path === aliasPath &&
         current?.version === aliasVersion;
       if (same) { return; }
@@ -981,11 +987,15 @@ export class DebugToolsPanel {
         doc = yaml.parseDocument('{}');
       }
 
-      doc.setIn(['runners', alias, 'default'], defaultToolId);
       doc.setIn(['runners', alias, 'path'], aliasPath);
       doc.setIn(['runners', alias, 'version'], aliasVersion);
       if (typeof doc.getIn(['runners', alias, 'do_not_use']) === 'undefined') {
         doc.setIn(['runners', alias, 'do_not_use'], false);
+      }
+      if (defaultToolId !== defaultFromDebugTools) {
+        doc.setIn(['runners', alias, 'default'], defaultToolId);
+      } else {
+        doc.deleteIn(['runners', alias, 'default']);
       }
 
       formatYml(doc.contents);
