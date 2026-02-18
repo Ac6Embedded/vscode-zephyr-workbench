@@ -60,10 +60,20 @@ form {
   margin-bottom: 6px;
 }
 
-.app-form-table {
+.app-form-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 36vw);
+  gap: 20px;
+  align-items: start;
   width: 100%;
-  padding: 0px;
-  margin: 0px;
+}
+
+.app-form-main {
+  min-width: 0;
+}
+
+.app-form-side {
+  min-width: 0;
 }
 
 .debug-tools-table {
@@ -160,6 +170,20 @@ fieldset.no-border  {
 .board-image-container {
   position: sticky;
   top: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+@media screen and (max-width: 900px) {
+  .app-form-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .board-image-container {
+    position: static;
+    justify-content: flex-start;
+  }
 }
 
 vscode-dropdown {

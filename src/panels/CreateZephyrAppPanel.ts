@@ -99,9 +99,8 @@ export class CreateZephyrAppPanel {
           <h1>Create a new Zephyr Application Project</h1>
           <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/application">Read Docs</a>
           <form>
-            <table class="app-form-table">
-              <td>
-                <form>
+            <div class="app-form-layout">
+              <div class="app-form-main">
                   <div class="grid-group-div">
                     <div class="grid-header-div">
                       <label for="listWorkspaces">Select West Workspace:</label>
@@ -255,15 +254,13 @@ export class CreateZephyrAppPanel {
                       </div>
                     </details>
                   </div>
-
-                </form>
-              </td>
-              <td style="vertical-align: top;">
+              </div>
+              <div class="app-form-side">
                 <div class="board-image-container">
                   <img id="boardImg" src="" alt="No board image">
                 </div>
-              </td>
-            </table>
+              </div>
+            </div>
             <div class="grid-group-div">
               <vscode-button id="createButton">Create</vscode-button>
             </div>
