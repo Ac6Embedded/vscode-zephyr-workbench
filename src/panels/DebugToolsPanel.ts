@@ -771,7 +771,9 @@ export class DebugToolsPanel {
               if (!selectedPath && selectedTool?.install_dir) {
                 selectedPath = path.join(getInternalDirRealPath(), 'tools', selectedTool.install_dir, 'bin').replace(/\\/g, '/');
               }
-              if (selectedPath) {
+              if (tool === 'openocd-custom'){
+                doc.setIn(['runners', alias, 'path'], '');
+              } else if (selectedPath) {
                 doc.setIn(['runners', alias, 'path'], selectedPath);
               }
               if (selectedTool?.version) {
