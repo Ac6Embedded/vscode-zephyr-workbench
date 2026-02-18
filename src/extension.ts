@@ -1947,7 +1947,7 @@ export function activate(context: vscode.ExtensionContext) {
 				let workspaceFolder = getWorkspaceFolder(projLoc);
 				if (workspaceFolder) {
 					if (debugPreset) {
-						await ensureDebugPresetInPrjConf(workspaceFolder.uri.fsPath);
+						await debugPresetContent(workspaceFolder.uri.fsPath);
 					}
 
 					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchain);
@@ -2228,10 +2228,8 @@ async function updateCompileSetting(project: ZephyrAppProject, configName: strin
 	}
 }
 
-async function ensureDebugPresetInPrjConf(projectRoot: string): Promise<void> {
+async function debugPresetContent(projectRoot: string): Promise<void> {
 	const prjConfPath = path.join(projectRoot, 'prj.conf');
-	const marker = '# Added automatically by Workbench for Zephyr';
-
 	let content = '';
 	if (fs.existsSync(prjConfPath)) {
 		content = fs.readFileSync(prjConfPath, 'utf8');
@@ -2253,10 +2251,9 @@ async function ensureDebugPresetInPrjConf(projectRoot: string): Promise<void> {
 	}
 
 	const block = [
-		marker,
-		'#######################',
-		'#### DEBUG PROFILE ####',
-		'#######################',
+		'',
+		'# Added automatically by Workbench for Zephyr',
+		'#--- DEBUG PRESET - BEGIN ---#',
 		'# Set to -Og',
 		'CONFIG_DEBUG_OPTIMIZATIONS=y',
 		'# Thread awareness support',
@@ -2270,7 +2267,7 @@ async function ensureDebugPresetInPrjConf(projectRoot: string): Promise<void> {
 		'CONFIG_OUTPUT_STAT=y',
 		'CONFIG_OUTPUT_DISASSEMBLY=y',
 		'CONFIG_OUTPUT_PRINT_MEMORY_USAGE=y',
-		'#######################',
+		'#--- DEBUG PRESET - END ---#',
 		''
 	].join('\n');
 
