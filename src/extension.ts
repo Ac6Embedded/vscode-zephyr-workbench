@@ -1895,7 +1895,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchain, pristineValue = 'auto', venvMode = 'global') => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchain, pristineValue = 'auto', venvMode = 'global', debugPreset = false) => {
 			if (!westWorkspace) {
 				vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
 				return;
@@ -1946,6 +1946,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 				let workspaceFolder = getWorkspaceFolder(projLoc);
 				if (workspaceFolder) {
+					if (debugPreset) {
+						await debugPresetContent(workspaceFolder.uri.fsPath);
+					}
+
 					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchain);
 					await createTasksJson(workspaceFolder);
 					await createExtensionsJson(workspaceFolder);
@@ -2222,6 +2226,52 @@ async function updateCompileSetting(project: ZephyrAppProject, configName: strin
 			await vscode.workspace.getConfiguration('C_Cpp', project.workspaceFolder).update('default.compilerPath', zephyrSDK.getCompilerPath(board.arch, socToolchainName), vscode.ConfigurationTarget.WorkspaceFolder);
 		}
 	}
+}
+
+async function debugPresetContent(projectRoot: string): Promise<void> {
+	const prjConfPath = path.join(projectRoot, 'prj.conf');
+	let content = '';
+	if (fs.existsSync(prjConfPath)) {
+		content = fs.readFileSync(prjConfPath, 'utf8');
+	}
+
+	// Avoid adding the block more than once.
+	if (/^\s*CONFIG_DEBUG_OPTIMIZATIONS=y\s*$/m.test(content)) {
+		return;
+	}
+
+	// Remove placeholder comments like "# nothing here" when debug preset is enabled.
+	content = content
+		.split(/\r?\n/)
+		.filter(line => !/^\s*#\s*nothing\s+here\s*$/i.test(line))
+		.join('\n');
+
+	if (content.length > 0 && !content.endsWith('\n')) {
+		content += '\n';
+	}
+
+	const block = [
+		'',
+		'# Added automatically by Workbench for Zephyr',
+		'#--- DEBUG PRESET - BEGIN ---#',
+		'# Set to -Og',
+		'CONFIG_DEBUG_OPTIMIZATIONS=y',
+		'# Thread awareness support',
+		'CONFIG_DEBUG_THREAD_INFO=y',
+		'# Generate stack usage per-function',
+		'CONFIG_STACK_USAGE=y',
+		'# Other options in case not set by default',
+		'CONFIG_BUILD_OUTPUT_HEX=y',
+		'CONFIG_BUILD_OUTPUT_META=y',
+		'CONFIG_OUTPUT_SYMBOLS=y',
+		'CONFIG_OUTPUT_STAT=y',
+		'CONFIG_OUTPUT_DISASSEMBLY=y',
+		'CONFIG_OUTPUT_PRINT_MEMORY_USAGE=y',
+		'#--- DEBUG PRESET - END ---#',
+		''
+	].join('\n');
+
+	fs.writeFileSync(prjConfPath, `${content}${block}`, 'utf8');
 }
 
 export async function showConfirmMessage(message: string): Promise<boolean> {

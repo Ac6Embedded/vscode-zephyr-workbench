@@ -711,13 +711,13 @@ export async function installHostDebugToolsSilent(context: vscode.ExtensionConte
 export async function installOpenOcdRunnerSilently(context: vscode.ExtensionContext): Promise<void> {
   try {
     // Run the same installer that the Debug Tools panel uses, but silently
-    await installHostDebugToolsSilent(context, [{ tool: 'openocd' }]);
+    await installHostDebugToolsSilent(context, [{ tool: 'openocd-zephyr' }]);
 
     // Verify installation by checking expected executable path
     const runner = getRunner('openocd');
     let execName = 'openocd';
     if (runner && runner.executable) { execName = runner.executable; }
-    const exePath = path.join(getInternalDirRealPath(), 'tools', 'openocd', 'bin', execName);
+    const exePath = path.join(getInternalDirRealPath(), 'tools', 'openocds', 'openocd-zephyr', 'bin', execName);
 
     if (fileExists(exePath)) {
       vscode.window.showInformationMessage('OpenOCD runner installation successful');

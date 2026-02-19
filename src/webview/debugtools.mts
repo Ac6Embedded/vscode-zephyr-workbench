@@ -10,7 +10,8 @@ const webviewApi = acquireVsCodeApi();
 window.addEventListener("load", main);
 
 function main() {
-    setVSCodeMessageListener();
+  setVSCodeMessageListener();
+  webviewApi.postMessage({ command: 'webview-ready' });
 
   const installButtons = document.querySelectorAll('.install-button');
   installButtons.forEach(button => {
@@ -63,6 +64,23 @@ function main() {
     pw.style.display = 'none';
   });
 
+  // Set default checkbox
+  const setDefaultCheckboxes = document.querySelectorAll('.set-default-checkbox');
+  setDefaultCheckboxes.forEach(checkbox => {
+    checkbox.addEventListener('change', (e) => {
+      const target = e.target as HTMLElement;
+      const tool = target.getAttribute('data-tool');
+      const alias = target.getAttribute('data-alias');
+      if ((e.target as HTMLInputElement).checked) {
+        webviewApi.postMessage({
+          command: 'set-default',
+          tool: tool,
+          alias: alias
+        });
+      }
+    });
+  });
+
   // Refresh all runner statuses: clear cells and ask backend to re-detect
   const refreshBtn = document.getElementById('refresh-status-btn');
   if (refreshBtn) {
@@ -85,28 +103,47 @@ function main() {
       const tool = button.getAttribute('data-tool');
       const extraIdx = button.getAttribute('data-extra-idx');
       if (tool) {
-        const row = document.getElementById(`details-${tool}`) as HTMLElement | null;
-        if(!row) return;
-        const isHidden = row.classList.contains('hidden');
-        // toggle chevron
-        button.classList.toggle('codicon-chevron-right', !isHidden);
-        button.classList.toggle('codicon-chevron-down', isHidden);
-        // lazy fill placeholder content if empty
-        const container = document.getElementById(`details-content-${tool}`) as HTMLElement | null;
-        if(container && container.childElementCount === 0) {
-          // Check if the input field is empty or not for the path
-          const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
-          const path = input?.value ?? '';
-          if (path && path !== 'empty') {
-            container.innerHTML = `<div class="details-line">Path detected: <strong>${path}</strong></div>`;
+        // Check if this is an alias group (has details row)
+        const detailsRow = document.getElementById(`details-${tool}`) as HTMLElement | null;
+        
+        if (detailsRow) {
+          const isHidden = detailsRow.classList.contains('hidden');
+          // toggle chevron
+          button.classList.toggle('codicon-chevron-right', !isHidden);
+          button.classList.toggle('codicon-chevron-down', isHidden);
+          
+          // Toggle details row
+          if (isHidden) {
+            detailsRow.classList.remove('hidden');
           } else {
-            container.innerHTML = `<div class="details-line">No path detected for <strong>${tool}</strong>.</div>`;
+            detailsRow.classList.add('hidden');
           }
-        }
-        if(isHidden) {
-          row.classList.remove('hidden');
-        } else {
-          row.classList.add('hidden');
+          
+          // Also toggle all variant rows if they exist
+          const variantRows = document.querySelectorAll(`.alias-variant-row`);
+          variantRows.forEach(row => {
+            // Check if this variant belongs to current alias
+            const rowId = row.getAttribute('id') || '';
+            if (rowId.includes(tool) || row.previousElementSibling?.getAttribute('id')?.startsWith('details-' + tool)) {
+              if (isHidden) {
+                row.classList.remove('hidden');
+              } else {
+                row.classList.add('hidden');
+              }
+            }
+          });
+          
+          // Lazy fill placeholder content if empty
+          const container = document.getElementById(`details-content-${tool}`) as HTMLElement | null;
+          if(container && container.childElementCount > 0 && container.querySelector('.grid-group-div')) {
+            // Already has content, skip
+          } else if (container) {
+            const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
+            const path = input?.value ?? '';
+            if (!path || path === 'empty') {
+              // Content already generated in HTML
+            }
+          }
         }
       } else if (extraIdx) {
         const row = document.getElementById(`extra-details-${extraIdx}`) as HTMLElement | null;
@@ -304,10 +341,14 @@ function setVSCodeMessageListener() {
         console.log(event.data.version);
         const versionCell = document.getElementById(`version-${event.data.tool}`) as HTMLElement;
         const statusCell = document.getElementById(`detect-${event.data.tool}`) as HTMLElement;
-        versionCell.textContent = event.data.version;
-        if(event.data.version !== '') {
+        if (typeof event.data.status === 'string') {
+          statusCell.textContent = event.data.status;
+          versionCell.textContent = event.data.status === 'Not installed' ? '' : (event.data.version || '');
+        } else if(event.data.version !== '') {
+          versionCell.textContent = event.data.version;
           statusCell.textContent = 'Installed';
         } else {
+          versionCell.textContent = '';
           statusCell.textContent = 'Not installed';
         }
         break;

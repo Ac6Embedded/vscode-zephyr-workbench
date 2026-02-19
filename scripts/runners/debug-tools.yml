@@ -38,13 +38,14 @@ other_content:
       source: https://repo.msys2.org/msys/x86_64/libyaml-0.2.5-2-x86_64.pkg.tar.zst
       sha256: 11509c6e3133b3fc63f99cc04e89a1cc5685aa746e96bd5f481e3424fbd4f6c1
 debug_tools:
-- tool: openocd
+- tool: openocd-zephyr
+  alias: openocd
   name: OpenOCD Zephyr
   version: 0.12.0
   website: https://github.com/zephyrproject-rtos/openocd
   type: debug_server
-  group: Common
-  install_dir: openocd
+  group: Openocds
+  install_dir: openocds/openocd-zephyr
   root: false
   os:
     windows:
@@ -56,6 +57,57 @@ debug_tools:
     darwin:
       source: https://www.ac6-tools.com/downloads/zephyr-workbench/runners/common/openocd-zephyr/darwin/openocd-zephyr-0.12.0-darwin-arm64.tar.xz
       sha256: 3123f6d42454cbb2af03bbea48e5c4f93fe7c556119d64b4372f249e4ba14ee9
+- tool: openocd-esp32
+  alias: openocd
+  name: OpenOCD ESP32
+  version: 0.12.0
+  website: https://github.com/espressif/openocd-esp32/releases
+  type: debug_server
+  group: Openocds
+  install_dir: openocds/openocd-esp32
+  root: false
+  os:
+    windows:
+      source: https://github.com/espressif/openocd-esp32/releases/download/v0.12.0-esp32-20251215/openocd-esp32-win32-0.12.0-esp32-20251215.zip
+      sha256: 032a3791c256c974bceced073dc8cf0e18c07a75f39592110cbe71fc8de914b2
+    linux:
+      source: https://github.com/espressif/openocd-esp32/releases/download/v0.12.0-esp32-20251215/openocd-esp32-linux-amd64-0.12.0-esp32-20251215.tar.gz
+      sha256: 5e6ff40aeca23bdd203cde04d60bc808c0e6bff110eadcbce3d602618c880531
+    darwin:
+      source: https://github.com/espressif/openocd-esp32/releases/download/v0.12.0-esp32-20251215/openocd-esp32-macos-0.12.0-esp32-20251215.tar.gz
+      sha256: 956dd02ccf35116d565be2b148e041bd47c135e551a1f5097eae756d7d4dd079
+- tool: openocd-xpack
+  alias: openocd
+  name: OpenOCD xPack
+  version: 0.12.0
+  website: https://github.com/xpack-dev-tools/openocd-xpack/releases
+  type: debug_server
+  group: Openocds
+  install_dir: openocds/openocd-xpack
+  root: false
+  os:
+    windows:
+      source: https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-7/xpack-openocd-0.12.0-7-win32-x64.zip
+      sha256: 6bfd3c97135aafef8affc9af1acf34fd0e2b9ca26044506f6abd7f95b7630052
+    linux:
+      source: https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-7/xpack-openocd-0.12.0-7-linux-x64.tar.gz
+      sha256: 94b3790983beaf8ed57e646c0620dd66d705fddae03d290823a6ed3b439468d6
+    darwin:
+      source: https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-7/xpack-openocd-0.12.0-7-darwin-x64.tar.gz
+      sha256: 668ad25350103a4357e11629ec833eae5982e973889ce25bad0c2963e37fa8bf
+- tool: openocd-custom
+  alias: openocd
+  name: OpenOCD Custom 
+  version: 0.12.0
+  website: https://openocd.org/
+  type: debug_server
+  group: Openocds
+  install_dir: openocds/openocd-custom
+  root: false
+  os:
+    windows: false
+    linux: false
+    darwin: false
 - tool: jlink
   name: J-Link Software
   version: 8.78
@@ -234,3 +286,8 @@ packs:
 - pack: esp32
   name: ESP32
   tools: [cp210x]
+
+aliases:
+- alias: openocd
+  name: OpenOCD
+  default: openocd-zephyr 

@@ -95,13 +95,12 @@ export class CreateZephyrAppPanel {
           <title>Create Zephyr Application</title>
         </head>
         
-        <body>
+        <body class="create-app-panel">
           <h1>Create a new Zephyr Application Project</h1>
           <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/application">Read Docs</a>
           <form>
-            <table class="app-form-table">
-              <td>
-                <form>
+            <div class="app-form-layout">
+              <div class="app-form-main">
                   <div class="grid-group-div">
                     <div class="grid-header-div">
                       <label for="listWorkspaces">Select West Workspace:</label>
@@ -205,35 +204,63 @@ export class CreateZephyrAppPanel {
                     </div>
                   </div>
 
-                  <div class="grid-group-div">
-                    <vscode-radio-group id="pristineMode" orientation="horizontal">
-                      <label slot="label">Pristine Builds option:&nbsp;&nbsp;
-                        <span class="tooltip" 
-                              data-tooltip="Indicate if the build folder must be clean before each build:\n
-                                            - (auto): detect if build directory needs to be made pristine before build\n
-                                            - (always): force the build directory pristine before build">?</span>
-                      </label>
-                      <vscode-radio value="auto" checked>auto</vscode-radio>
-                      <vscode-radio value="always">always</vscode-radio>
-                      <vscode-radio value="never">never</vscode-radio>
-                    </vscode-radio-group>
+                  <div class="grid-group-div create-only">
+                    <vscode-checkbox id="debugPresetCheckbox" checked>
+                      Debug preset
+                      <span class="tooltip stable-tooltip debug-preset-tooltip"
+                            data-tooltip="Enable debug options in prj.conf:\n
+                                          CONFIG_DEBUG_OPTIMIZATIONS=y\n
+                                          CONFIG_DEBUG_THREAD_INFO=y\n
+                                          CONFIG_STACK_USAGE=y\n
+                                          CONFIG_BUILD_OUTPUT_HEX=y\n
+                                          CONFIG_BUILD_OUTPUT_META=y\n
+                                          CONFIG_OUTPUT_SYMBOLS=y\n
+                                          CONFIG_OUTPUT_STAT=y\n
+                                          CONFIG_OUTPUT_DISASSEMBLY=y\n
+                                          CONFIG_OUTPUT_PRINT_MEMORY_USAGE=y">?</span>
+                    </vscode-checkbox>
                   </div>
 
                   <div class="grid-group-div">
-                    <vscode-radio-group id="venvMode" orientation="horizontal">
-                      <label slot="label">Python virtual environment:&nbsp;&nbsp;
-                        <span class="tooltip" data-tooltip="Use global if you are not sure">?</span>
-                      </label>
-                      <vscode-radio value="global" checked>global</vscode-radio>
-                      <vscode-radio value="local">local</vscode-radio>
-                    </vscode-radio-group>
+                    <details class="advanced-options">
+                      <summary>
+                        <button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right advanced-arrow" aria-hidden="true" tabindex="-1"></button>
+                        <span>Advanced options</span>
+                      </summary>
+                      <div class="advanced-options-content">
+                        <div class="grid-group-div">
+                          <vscode-radio-group id="pristineMode" orientation="horizontal">
+                            <label slot="label">Pristine Builds option:&nbsp;&nbsp;
+                              <span class="tooltip stable-tooltip" 
+                                    data-tooltip="Indicate if the build folder must be clean before each build:\n
+                                                - (auto): detect if build directory needs to be made pristine before build\n
+                                                - (always): force the build directory pristine before build">?</span>
+                            </label>
+                            <vscode-radio value="auto" checked>auto</vscode-radio>
+                            <vscode-radio value="always">always</vscode-radio>
+                            <vscode-radio value="never">never</vscode-radio>
+                          </vscode-radio-group>
+                        </div>
+
+                        <div class="grid-group-div">
+                          <vscode-radio-group id="venvMode" orientation="horizontal">
+                            <label slot="label">Python virtual environment:&nbsp;&nbsp;
+                              <span class="tooltip stable-tooltip" data-tooltip="Use global if you are not sure">?</span>
+                            </label>
+                            <vscode-radio value="global" checked>global</vscode-radio>
+                            <vscode-radio value="local">local</vscode-radio>
+                          </vscode-radio-group>
+                        </div>
+                      </div>
+                    </details>
                   </div>
-                </form>
-              </td>
-              <td style="text-align: top">
-                <img id="boardImg" src="" alt="No board image">
-              <td>
-            </table>
+              </div>
+              <div class="app-form-side">
+                <div class="board-image-container">
+                  <img id="boardImg" src="" alt="No board image">
+                </div>
+              </div>
+            </div>
             <div class="grid-group-div">
               <vscode-button id="createButton">Create</vscode-button>
             </div>
@@ -287,7 +314,7 @@ export class CreateZephyrAppPanel {
               vscode.commands.executeCommand(
                 "zephyr-workbench-app-explorer.create-app",
                 westWorkspace, sample, board, projectLoc,
-                message.projectName, toolchain, message.pristine, message.venv);
+                message.projectName, toolchain, message.pristine, message.venv, message.debugPreset);
 
             } else {
               const err = await validateProjectLocation(projectLoc);
