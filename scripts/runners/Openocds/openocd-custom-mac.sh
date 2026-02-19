@@ -16,7 +16,10 @@ WORK_DIR="$(mktemp -d)"
 if [[ -n "$FILE" ]]; then
   tar -xf "$FILE" -C "$WORK_DIR"
 
-  mapfile -t TOP_DIRS < <(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d)
+  TOP_DIRS=()
+  while IFS= read -r dir; do
+    TOP_DIRS+=("$dir")
+  done < <(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d)
   SRC_DIR=""
 
   if [[ ${#TOP_DIRS[@]} -eq 1 ]]; then
