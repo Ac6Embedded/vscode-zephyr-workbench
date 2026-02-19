@@ -4,6 +4,21 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.4.0]
+
+### Install Runners
+- Added support for OpenOCD variants in Install Runners
+  - OpenOCD Zephyr
+  - OpenOCD ESP32
+  - OpenOCD xPack
+  - OpenOCD Custom
+
+### Applications
+- Added debug preset support and related UI improvements
+
+### Project
+- Refactored application context menu organization
+
 ## [2.3.0]
 
 ### UI
@@ -52,15 +67,24 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [2.1.0]
 
-- Fix Debug Manager default reset and avoid scanning until the view is opened
-- Pre-fill “Select the application to debug” when launching Debug from an application
-- Add remove actions in Multi-build for build configs and default runner
-- Disable “Sample project” selection while samples are loading
-- Refresh Host Tools versions after project creation (no VS Code reload needed)
-- Refresh runner “path” from YAML immediately after install
-- Warn when initializing into a path that already have a west workspace
-- Ensure west manifest revision/version updates correctly after `west update`
-- Add Minimal/Full option when creating west workspace from template
+### Debug Manager
+- Fixed default reset behavior and avoided scanning until the view is opened
+- Pre-filled "Select the application to debug" when launching Debug from an application
+
+### Multi-build
+- Added remove actions for build configurations and default runner
+
+### UI
+- Disabled "Sample project" selection while samples are loading
+
+### Host Tools & Runners
+- Refreshed Host Tools versions after project creation (no VS Code reload needed)
+- Refreshed runner `path` from YAML immediately after install
+
+### West Workspace
+- Added warning when initializing into a path that already has a west workspace
+- Ensured west manifest revision/version updates correctly after `west update`
+- Added Minimal/Full option when creating west workspace from template
 
 ## [2.0.4]
 
@@ -528,4 +552,3 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Initial release
 
 [2.0.0]: https://github.com/Ac6Embedded/vscode-zephyr-workbench/compare/v1.3.38...version-2
-

@@ -1,6 +1,6 @@
-# Workbench for Zephyr (VS Code)
+# Workbench for Zephyr (VSCode)
 
-Ac6 Workbench for Zephyr is a VS Code extension that adds support of Zephyr development to Visual Studio Code, including SDK management, Project wizard, build and debugging features. 
+Workbench for Zephyr is a VSCode extension that adds support of Zephyr development to Visual Studio Code, including SDK management, Project wizard, build and debugging features. 
 
 ## Features
 * Install native Host Tools (python, cmake, ...)
