@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://z-workbench.com",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -221,11 +221,6 @@
                   "type": "string",
                   "default": "false",
                   "description": "When true, the --sysbuild flag will be appended to west build commands."
-                },
-                "env.CONF_FILE": {
-                  "type": "string",
-                  "default": "",
-                  "description": "Kconfig configuration fragment files"
                 },
                 "env.EXTRA_CONF_FILE": {
                   "type": "array",

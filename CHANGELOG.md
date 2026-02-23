@@ -4,6 +4,12 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.5.0]
+
+### Applications
+- Removed `CONF_FILE` from build configuration environment variables
+- Reorganized `EXTRA_*` variables under a single `EXTRA` parent node in the Applications tree
+
 ## [2.4.0]
 
 ### Install Runners
