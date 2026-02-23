@@ -5,6 +5,8 @@ import { getWestWorkspace } from '../utils/utils';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY } from '../constants';
 
+const EXTRA_ENV_KEYS = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES'];
+
 export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
 	private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | void>();
 	readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | void> = this._onDidChangeTreeData.event;
@@ -53,8 +55,12 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
         }
         const westArgsItem = new ZephyrConfigArgTreeItem(element.project, config, 'west arguments', config.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
         items.push(westArgsItem);
+        items.push(new ZephyrConfigExtraEnvTreeItem(element.project, config));
 
         for(let key of Object.keys(config.envVars)) {
+          if (EXTRA_ENV_KEYS.includes(key)) {
+            continue;
+          }
           let envItem;
           if(Array.isArray(config.envVars[key])) {
             envItem = new ZephyrConfigEnvTreeItem(element.project, config, key);
@@ -78,8 +84,12 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       }
       const westArgsItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, 'west arguments', element.buildConfig.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
       items.push(westArgsItem);
+      items.push(new ZephyrConfigExtraEnvTreeItem(element.project, element.buildConfig));
 
       for(let key of Object.keys(element.buildConfig.envVars)) {
+        if (EXTRA_ENV_KEYS.includes(key)) {
+          continue;
+        }
         let envItem;
         if(Array.isArray(element.buildConfig.envVars[key])) {
           envItem = new ZephyrConfigEnvTreeItem(element.project, element.buildConfig, key);
@@ -114,6 +124,15 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       } 
       return Promise.resolve(items);
     } 
+
+    if(element instanceof ZephyrConfigExtraEnvTreeItem) {
+      for (const key of EXTRA_ENV_KEYS) {
+        if (Array.isArray(element.config.envVars[key])) {
+          items.push(new ZephyrConfigEnvTreeItem(element.project, element.config, key));
+        }
+      }
+      return Promise.resolve(items);
+    }
 
     if(element instanceof ZephyrConfigEnvTreeItem) {
       // Get Zephyr environment variables
@@ -272,6 +291,20 @@ export class ZephyrApplicationEnvTreeItem extends vscode.TreeItem {
 	}
   
   contextValue = 'zephyr-application-env';
+}
+
+export class ZephyrConfigExtraEnvTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly project: ZephyrAppProject,
+    public readonly config: ZephyrProjectBuildConfiguration,
+  ) {
+    super('EXTRA', vscode.TreeItemCollapsibleState.Collapsed);
+    const hasAnyValue = EXTRA_ENV_KEYS.some((key) => Array.isArray(config.envVars[key]) && config.envVars[key].length > 0);
+    this.description = hasAnyValue ? '' : '[not set]';
+    this.tooltip = 'EXTRA';
+    this.iconPath = new vscode.ThemeIcon('variable');
+  }
+  contextValue = 'zephyr-application-extra';
 }
 
 export class ZephyrConfigEnvTreeItem extends vscode.TreeItem {

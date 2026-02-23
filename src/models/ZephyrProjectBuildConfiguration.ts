@@ -16,7 +16,6 @@ export class ZephyrProjectBuildConfiguration {
   // westWorkspacePath!: string;
   // sdkPath!: string;
   envVars: { [key: string]: any } = {
-    CONF_FILE: '',
     EXTRA_CONF_FILE: [],
     EXTRA_DTC_OVERLAY_FILE: [],
     EXTRA_ZEPHYR_MODULES: [],
@@ -99,9 +98,8 @@ export class ZephyrProjectBuildConfiguration {
     // Make a copy of envVars to modify
     let envVars = { ...this.envVars };
 
-    // If sysbuild is true, remove CONF_FILE and EXTRA_CONF_FILE from envVars
+    // If sysbuild is true, remove EXTRA_CONF_FILE from envVars
     if (this.sysbuild === "true") {
-      delete envVars.CONF_FILE;
       delete envVars.EXTRA_CONF_FILE;
     }
 
@@ -120,9 +118,8 @@ export class ZephyrProjectBuildConfiguration {
     // Make a copy of envVars to modify
     let envVars = { ...this.envVars };
 
-    // If sysbuild is true, remove CONF_FILE and EXTRA_CONF_FILE from envVars
+    // If sysbuild is true, remove EXTRA_CONF_FILE from envVars
     if (this.sysbuild === "true") {
-      delete envVars.CONF_FILE;
       delete envVars.EXTRA_CONF_FILE;
     }
 

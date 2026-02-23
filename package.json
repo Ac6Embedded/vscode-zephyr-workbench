@@ -222,11 +222,6 @@
                   "default": "false",
                   "description": "When true, the --sysbuild flag will be appended to west build commands."
                 },
-                "env.CONF_FILE": {
-                  "type": "string",
-                  "default": "",
-                  "description": "Kconfig configuration fragment files"
-                },
                 "env.EXTRA_CONF_FILE": {
                   "type": "array",
                   "default": "",
