@@ -164,7 +164,8 @@ function setVSCodeMessageListener() {
       }
       case 'updateRunnerDetect': {
         const runnerDetect = event.data.runnerDetect;
-        updateRunnerDetect(runnerDetect === 'true' ? true : false);
+        const runnerName = event.data.runnerName;
+        updateRunnerDetect(runnerDetect === 'true' ? true : false, runnerName);
         break;
       }
       case 'resetStarted': {
@@ -536,14 +537,15 @@ function updateRunnerConfig(runnerPath: string, runnerArgs: string) {
   if ((runnerPath ?? '').trim().length > 0) {hideSpinner('runnerPathSpinner');}
 }
 
-function updateRunnerDetect(runnerDetect: boolean) {
+function updateRunnerDetect(runnerDetect: boolean, runnerName: string ) {
   const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
+  const resolvedRunnerName = runnerName;
   hideSpinner('runnerPathSpinner');
   if (runnerDetect === true) {
-    runnerDetectSpan.innerHTML = "(Runner executable found)";
+    runnerDetectSpan.textContent = `${resolvedRunnerName} is installed`;
     runnerDetectSpan.style.color = "#00aa00";
   } else if (runnerDetect === false) {
-    runnerDetectSpan.innerHTML = "(Runner not found in PATH, please enter runner location)";
+    runnerDetectSpan.textContent = `${resolvedRunnerName} is NOT installed`;
     runnerDetectSpan.style.color = "#aa0000";
   } else {
     console.warn('Unexpected value for runnerDetect:', runnerDetect);
