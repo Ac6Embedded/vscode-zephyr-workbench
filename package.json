@@ -1,7 +1,7 @@
 {
   "name": "zephyr-workbench",
   "displayName": "Workbench for Zephyr",
-  "description": "Zephyr project support for Visual Studio Code - previously Zephyr Workbench",
+  "description": "Zephyr project support for Visual Studio Code",
   "publisher": "Ac6",
   "icon": "res/zephyr-workbench.png",
   "repository": {
