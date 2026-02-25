@@ -1,7 +1,5 @@
 import fs from 'fs';
-import path from 'path';
 import { RunnerType, WestRunner } from "./WestRunner";
-import { execCommandWithEnv } from "../../utils/execUtils";
 
 /**
  * Runner for ST-LINK GDB Server.
@@ -61,18 +59,7 @@ export class StlinkGdbserver extends WestRunner {
     return args;
   }
 
-  override async loadInternalArgs() {
-    if (this.serverPath && this.serverPath.trim().length > 0) {
-      return;
-    }
-
-    const discovered = this.findFromCubeCLT();
-    if (discovered) {
-      this.serverPath = discovered;
-    }
-  }
-
-  private findFromCubeCLT(): string | undefined {
+  private hasCubeCLTFolder(): boolean {
     const roots =
       process.platform === 'win32' ? ['C:\\ST\\'] :
       process.platform === 'darwin' ? ['/opt/ST/'] :
@@ -84,50 +71,24 @@ export class StlinkGdbserver extends WestRunner {
           continue;
         }
 
-        const dirs = fs.readdirSync(root, { withFileTypes: true })
-          .filter(d => d.isDirectory())
-          .map(d => d.name)
-          .filter(name => name.toLowerCase().startsWith('stm32cubeclt_'))
-          .sort((a, b) => b.localeCompare(a));
-
-        for (const dir of dirs) {
-          const base = path.join(root, dir);
-
-          // Check typical installation path
-          const candidate = path.join(base, 'STLink-gdb-server', 'bin', this.executable);
-          if (fs.existsSync(candidate)) {
-            return candidate;
-          }
+        const found = fs.readdirSync(root, { withFileTypes: true })
+          .some(d => d.isDirectory() && d.name.toLowerCase().startsWith('stm32cubeclt_'));
+        if (found) {
+          return true;
         }
       } catch {
         // ignore and try next root
       }
     }
 
-    return undefined;
+    return false;
   }
 
   /**
-   * Detect if STM32CubeCLT is available in PATH.
-   * Simply runs `<executable> --version` and checks if it executes successfully.
+   * Detect if STM32CubeCLT is installed by scanning known installation roots.
+   * Only checks folder existence: STM32CubeCLT_*.
    */
   override async detect(): Promise<boolean> {
-    await this.loadInternalArgs();
-
-    // If we found a full path, prefer it
-    if (this.serverPath && fs.existsSync(this.serverPath)) {
-      return true;
-    }
-
-    // Fallback: try PATH (avoid relying on runner-specific version output)
-    const cmd = process.platform === 'win32'
-      ? `where ${this.executable}`
-      : `which ${this.executable}`;
-
-    return new Promise<boolean>((resolve) => {
-      execCommandWithEnv(cmd, undefined, (error: any) => {
-        resolve(!error);
-      });
-    });
+    return this.hasCubeCLTFolder();
   }
 }

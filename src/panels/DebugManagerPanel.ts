@@ -515,6 +515,7 @@ export class DebugManagerPanel {
       webview.postMessage({ 
         command: 'updateRunnerDetect', 
         runnerDetect: found?'true':'false',
+        runnerName: runner.label ? runner.label : (runner.name ? runner.name : ''),
         runnerPath: runner.serverPath? runner.serverPath:'',
       });
     }
