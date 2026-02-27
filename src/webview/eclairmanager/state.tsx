@@ -25,7 +25,6 @@ function default_repos(): EclairRepos {
 
 export interface EclairState {
   status: StatusState;
-  report_server: ReportServerState;
   current_context?: {
     workspace: string;
     build_config: string;
@@ -56,9 +55,6 @@ export function default_eclair_state(): EclairState {
       version: "Checking",
       installed: false,
       showSpinner: false,
-    },
-    report_server: {
-      running: false,
     },
     by_workspace_and_build_config: {},
   };
@@ -165,10 +161,6 @@ export interface ReportsState {
   selected: string[];
 }
 
-export interface ReportServerState {
-  running: boolean;
-}
-
 /** Tracks the scan/load status of a single preset repository. */
 export type RepoScanState =
   | { status: "idle" }
@@ -216,8 +208,6 @@ export type EclairStateAction =
   | { type: "set-install-path"; path: string }
   | { type: "set-install-path-placeholder"; text: string }
   | { type: "set-path-status"; text: string }
-  | { type: "report-server-started" }
-  | { type: "report-server-stopped" }
   | { type: "preset-content"; source: EclairPresetTemplateSource; template: EclairTemplate | { loading: string } | { error: string }; workspace?: string; build_config?: string }
   // Repo management actions
   | { type: "add-repo"; name: string; origin: string; ref: string; rev?: string }
@@ -617,12 +607,6 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
         selected.state.install_path.path = text;
         selected.state.install_path.placeholder = "";
       }
-    })
-    .with({ type: "report-server-started" }, () => {
-      draft.report_server.running = true;
-    })
-    .with({ type: "report-server-stopped" }, () => {
-      draft.report_server.running = false;
     })
     .with({ type: "preset-content" }, ({ source, template, workspace, build_config }) => {
       const selected = get_selected_context(draft, workspace, build_config);

@@ -38,10 +38,6 @@ export type ExtensionMessage = {
   workspace: string,
   build_config: string,
 } | {
-  command: "report-server-started",
-} | {
-  command: "report-server-stopped",
-} | {
   command: "preset-content",
   source: EclairPresetTemplateSource,
   template: EclairTemplate | { loading: string } | { error: string },
@@ -110,8 +106,6 @@ export type WebviewMessage = {
   command: "start-report-server",
   workspace: string,
   build_config: string,
-} | {
-  command: "stop-report-server",
 } | {
   command: "about-eclair",
 } | {

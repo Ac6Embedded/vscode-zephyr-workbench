@@ -213,29 +213,10 @@ export class EclairManagerPanel {
 
       // Store terminal reference
       this._reportServerTerminal = terminal;
-      const post_message = (m: ExtensionMessage) => this._panel.webview.postMessage(m);
-      post_message({ command: "report-server-started" });
       vscode.window.showInformationMessage("ECLAIR report server started. Check your browser.");
     } catch (err: any) {
       vscode.window.showErrorMessage(`Failed to start ECLAIR report server: ${err.message || err}`);
     }
-  }
-
-  /**
-   * Stops the ECLAIR report server.
-   */
-  private async stopReportServer() {
-    if (!this._reportServerTerminal) {
-      vscode.window.showInformationMessage("ECLAIR report server is not running.");
-      return;
-    }
-
-    // Dispose the terminal (this will kill the process)
-    this._reportServerTerminal.dispose();
-    this._reportServerTerminal = undefined;
-    const post_message = (m: ExtensionMessage) => this._panel.webview.postMessage(m);
-    post_message({ command: "report-server-stopped" });
-    vscode.window.showInformationMessage("ECLAIR report server stopped.");
   }
 
   /**
@@ -451,12 +432,6 @@ export class EclairManagerPanel {
       }
     }
     
-    // Initialize report server button states
-    if (this._reportServerTerminal) {
-      post_message({ command: "report-server-started" });
-    } else {
-      post_message({ command: "report-server-stopped" });
-    }
   }
 
   /**
@@ -690,7 +665,6 @@ export class EclairManagerPanel {
         }
         await this.startReportServer(workspace, build_config);
       })
-      .with({ command: "stop-report-server" }, async () => this.stopReportServer())
       .with({ command: "load-preset" }, async ({ source, repos, workspace, build_config }) => {
         let r = await load_preset_from_ref(
           source,

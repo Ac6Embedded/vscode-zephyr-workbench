@@ -306,7 +306,6 @@ function EclairManagerWithConfigs({
     />
 
     <ReportViewerSection
-      reportServer={state.report_server}
       workspace={workspace}
       build_config={build_config}
       post_message={post_message}
@@ -364,8 +363,6 @@ function handleMessage(
         action: { type: "set-custom-ecl-path", path: String(path ?? "") },
       },
     }))
-    .with({ command: "report-server-started" }, () => dispatch({ type: "report-server-started" }))
-    .with({ command: "report-server-stopped" }, () => dispatch({ type: "report-server-stopped" }))
     .with({ command: "preset-content" }, ({ source, template, workspace, build_config }) => dispatch({
       type: "preset-content",
       source,
