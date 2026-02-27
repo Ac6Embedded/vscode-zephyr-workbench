@@ -17,6 +17,11 @@ import { enableMapSet } from "immer";
 
 const BODY_ID = "eclair-manager-body";
 
+function workspace_label(workspace: string): string {
+  const parts = workspace.split(/[\\/]/).filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : workspace;
+}
+
 // VSCode API type
 declare const acquireVsCodeApi: any;
 
@@ -71,7 +76,12 @@ function EclairManagerPanel() {
   const current_context_state = workspace && build_config ? build_configs?.[build_config] : undefined;
 
   const workspace_items = useMemo(
-    () => Object.keys(state.by_workspace_and_build_config).map((name) => ({ id: name, name, description: "", value: name })),
+    () => Object.keys(state.by_workspace_and_build_config).map((key) => ({
+      id: key,
+      name: workspace_label(key),
+      description: key,
+      value: key,
+    })),
     [state.by_workspace_and_build_config],
   );
   const current_workspace_item = workspace_items.find((item) => item.value === workspace);

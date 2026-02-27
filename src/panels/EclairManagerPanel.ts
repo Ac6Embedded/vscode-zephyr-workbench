@@ -957,13 +957,9 @@ export class EclairManagerPanel {
 
   private resolveApplicationFolderUri(workspace?: string): vscode.Uri | undefined {
     if (workspace && vscode.workspace.workspaceFolders) {
-      const byName = vscode.workspace.workspaceFolders.find((f) => f.name === workspace);
-      if (byName) {
-        return byName.uri;
-      }
-      const byBasename = vscode.workspace.workspaceFolders.find((f) => path.basename(f.uri.fsPath) === workspace);
-      if (byBasename) {
-        return byBasename.uri;
+      const byUri = vscode.workspace.workspaceFolders.find((f) => f.uri.toString() === workspace);
+      if (byUri) {
+        return byUri.uri;
       }
     }
 
@@ -1465,7 +1461,7 @@ function resolve_application(
 /**
  * Recursively walks `obj` and replaces every string that starts with the
  * workspace folder path with `${workspaceFolder}/...`.
- * TODO: this is a blunt recursive string replacement — a more precise
+ * TODO: this is a blunt recursive string replacement, a more precise
  * approach would target known path fields explicitly.
  */
 function deepTokenizePaths(obj: any, folderUri: vscode.Uri): any {
@@ -1659,7 +1655,7 @@ async function load_all_sca_configs(): Promise<Result<Record<string, Record<stri
         continue;
       }
       const sca_configs = sca_configs_r.ok;
-      const workspace = app.folderName; // TODO this very weak key... multiple folders could have the same name
+      const workspace = app.workspaceFolder.uri.toString();
       by_workspace[workspace] = sca_configs;
     }
 
