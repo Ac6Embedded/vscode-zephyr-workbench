@@ -9,6 +9,8 @@ import { match } from "ts-pattern";
 import { EasyMark, EasyMarkInline } from "../easymark_render.js";
 
 export function PresetSelection(props: {
+  workspace: string;
+  build_config: string;
   state: PresetsSelectionState;
   available_presets: AvailablePresetsState;
   repos: EclairRepos;
@@ -32,6 +34,8 @@ export function PresetSelection(props: {
       </RichHelpTooltip>
     </h3>
     <RepoManagementSection
+      workspace={props.workspace}
+      build_config={props.build_config}
       repos={props.repos}
       repos_scan_state={props.repos_scan_state}
       available_presets={props.available_presets}
@@ -53,6 +57,8 @@ export function PresetSelection(props: {
 
     <SinglePresetSelection
       kind="ruleset"
+      workspace={props.workspace}
+      build_config={props.build_config}
       state={props.state.ruleset_state}
       available_presets={props.available_presets}
       dispatch_state={props.dispatch_state}
@@ -66,6 +72,8 @@ export function PresetSelection(props: {
 
     <MultiPresetSelection 
       kind="variant" 
+      workspace={props.workspace}
+      build_config={props.build_config}
       state={props.state.variants_state} 
       available_presets={props.available_presets}
       dispatch_state={props.dispatch_state}
@@ -80,6 +88,8 @@ export function PresetSelection(props: {
 
     <MultiPresetSelection 
       kind="tailoring" 
+      workspace={props.workspace}
+      build_config={props.build_config}
       state={props.state.tailorings_state} 
       available_presets={props.available_presets}
       dispatch_state={props.dispatch_state}
@@ -90,6 +100,8 @@ export function PresetSelection(props: {
 
 function SinglePresetSelection(props: {
   kind: EclairTemplateKind;
+  workspace: string;
+  build_config: string;
   state: SinglePresetSelectionState;
   available_presets: AvailablePresetsState;
   dispatch_state: React.Dispatch<EclairStateAction>;
@@ -103,7 +115,13 @@ function SinglePresetSelection(props: {
     const template = get_preset_template_by_source(props.available_presets, source);
 
     const on_remove = () => {
-      props.dispatch_state({ type: "remove-selected-preset", kind: props.kind, index: -1 });
+      props.dispatch_state({
+        type: "with-selected-workspace",
+        action: {
+          type: "with-selected-configuration",
+          action: { type: "remove-selected-preset", kind: props.kind, index: -1 },
+        },
+      });
     };
 
     return (
@@ -144,6 +162,8 @@ function SinglePresetSelection(props: {
     {showPicker && (
       <PresetPicker
         kind={props.kind}
+        workspace={props.workspace}
+        build_config={props.build_config}
         available_presets={props.available_presets}
         edit_path={props.state.edit_path}
         dispatch_state={props.dispatch_state}
@@ -155,6 +175,8 @@ function SinglePresetSelection(props: {
 
 function MultiPresetSelection(props: {
   kind: EclairTemplateKind;
+  workspace: string;
+  build_config: string;
   state: MultiPresetSelectionState;
   available_presets: AvailablePresetsState;
   dispatch_state: React.Dispatch<EclairStateAction>;
@@ -171,7 +193,13 @@ function MultiPresetSelection(props: {
           const template = get_preset_template_by_source(props.available_presets, source);
 
           const on_remove = () => {
-            props.dispatch_state({ type: "remove-selected-preset", kind: props.kind, index });
+            props.dispatch_state({
+              type: "with-selected-workspace",
+              action: {
+                type: "with-selected-configuration",
+                action: { type: "remove-selected-preset", kind: props.kind, index },
+              },
+            });
           };
 
           return (
@@ -213,6 +241,8 @@ function MultiPresetSelection(props: {
     {showPicker && (
       <PresetPicker
         kind={props.kind}
+        workspace={props.workspace}
+        build_config={props.build_config}
         available_presets={props.available_presets}
         edit_path={props.state.edit_path}
         already_selected_sources={presets.map(p => p.source)}
@@ -226,6 +256,8 @@ function MultiPresetSelection(props: {
 
 function PresetPicker(props: {
   kind: EclairTemplateKind;
+  workspace: string;
+  build_config: string;
   available_presets: AvailablePresetsState;
   edit_path: string;
   already_selected_sources?: EclairPresetTemplateSource[];
@@ -308,7 +340,13 @@ function PresetPicker(props: {
       selectedItem={selectedPreset}
       onSelectItem={(preset: Item) => {
         setSelectedPreset(preset);
-        props.dispatch_state({ type: "set-or-add-preset", kind: props.kind, source: preset.source });
+        props.dispatch_state({
+          type: "with-selected-workspace",
+          action: {
+            type: "with-selected-configuration",
+            action: { type: "set-or-add-preset", kind: props.kind, source: preset.source },
+          },
+        });
         // TODO props.post_message({ command: "load-preset-from-source", source: preset.source });
         props.onPresetSelected?.();
       }}
@@ -321,8 +359,20 @@ function PresetPicker(props: {
       value={props.edit_path}
       placeholder="Path to analysis_<RULESET>.<ecl|yaml>"
       on_selected={(path) => {
-        props.dispatch_state({ type: "set-or-add-preset", kind: props.kind, source: { type: "system-path", path } });
-        props.post_message({ command: "load-preset", source: { type: "system-path", path }, repos: {} });
+        props.dispatch_state({
+          type: "with-selected-workspace",
+          action: {
+            type: "with-selected-configuration",
+            action: { type: "set-or-add-preset", kind: props.kind, source: { type: "system-path", path } },
+          },
+        });
+        props.post_message({
+          command: "load-preset",
+          source: { type: "system-path", path },
+          repos: {},
+          workspace: props.workspace,
+          build_config: props.build_config,
+        });
         props.onPresetSelected?.();
       }}
       on_pick={() => {
@@ -383,15 +433,27 @@ function PresetSettings({
               level={0}
               editedFlags={preset.edited_flags ?? {}}
               onSetFlag={(option_id, value) => dispatch_state({
-                type: "set-preset-option",
-                source: preset.source,
-                option_id,
-                value,
+                type: "with-selected-workspace",
+                action: {
+                  type: "with-selected-configuration",
+                  action: {
+                    type: "set-preset-option",
+                    source: preset.source,
+                    option_id,
+                    value,
+                  },
+                },
               })}
               onClearFlag={(option_id) => dispatch_state({
-                type: "clear-preset-option",
-                source: preset.source,
-                option_id,
+                type: "with-selected-workspace",
+                action: {
+                  type: "with-selected-configuration",
+                  action: {
+                    type: "clear-preset-option",
+                    source: preset.source,
+                    option_id,
+                  },
+                },
               })}
             />
           ))}

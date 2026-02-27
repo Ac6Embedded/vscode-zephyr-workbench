@@ -5,6 +5,8 @@ import { WebviewMessage } from "../../../utils/eclairEvent";
 
 export function ReportViewerSection(props: {
   reportServer: ReportServerState;
+  workspace: string;
+  build_config: string;
   post_message: (message: WebviewMessage) => void;
 }) {
   return (
@@ -17,7 +19,7 @@ export function ReportViewerSection(props: {
             if (props.reportServer.running) {
               props.post_message({ command: "stop-report-server" });
             }
-            props.post_message({ command: "start-report-server" });
+            props.post_message({ command: "start-report-server", workspace: props.workspace, build_config: props.build_config });
           }}
         >
           <span className="codicon codicon-preview"></span> Open Report Viewer

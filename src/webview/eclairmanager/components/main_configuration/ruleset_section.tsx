@@ -4,6 +4,8 @@ import { PickPath, VscodeButton, VscodeRadio, VscodeRadioGroup, VscodeTextField 
 import { WebviewMessage } from "../../../../utils/eclairEvent";
 
 export function RulesetSection(props: {
+  workspace: string;
+  build_config: string;
   ruleset: ZephyrRulesetState;
   dispatch_state: React.Dispatch<EclairStateAction>;
   post_message: (message: WebviewMessage) => void;
@@ -21,7 +23,13 @@ export function RulesetSection(props: {
   const showUserFields = props.ruleset.selected === "USER";
 
   const handleUserRulesetNameEdit = () => {
-    props.dispatch_state({ type: "toggle-user-ruleset-name-editing" });
+    props.dispatch_state({
+      type: "with-selected-workspace",
+      action: {
+        type: "with-selected-configuration",
+        action: { type: "toggle-user-ruleset-name-editing" },
+      },
+    });
   };
 
   return (
@@ -30,7 +38,13 @@ export function RulesetSection(props: {
       <VscodeRadioGroup
         orientation="vertical"
         value={props.ruleset.selected}
-        onChange={(e: any) => props.dispatch_state({ type: "update-ruleset-selection", ruleset: e.target.value })}
+        onChange={(e: any) => props.dispatch_state({
+          type: "with-selected-workspace",
+          action: {
+            type: "with-selected-configuration",
+            action: { type: "update-ruleset-selection", ruleset: e.target.value },
+          },
+        })}
       >
         {rulesets.map((r) => (
           <VscodeRadio key={r} name="ruleset" value={r}>
@@ -45,7 +59,13 @@ export function RulesetSection(props: {
           size="30"
           value={props.ruleset.userRulesetName}
           disabled={!props.ruleset.userRulesetNameEditing}
-          onChange={(e: any) => props.dispatch_state({ type: "update-user-ruleset-name", name: e.target.value })}
+          onChange={(e: any) => props.dispatch_state({
+            type: "with-selected-workspace",
+            action: {
+              type: "with-selected-configuration",
+              action: { type: "update-user-ruleset-name", name: e.target.value },
+            },
+          })}
           onKeyDown={(e: any) => {
             if (e.key === "Enter" && props.ruleset.userRulesetNameEditing) {
               handleUserRulesetNameEdit();
@@ -61,8 +81,14 @@ export function RulesetSection(props: {
           value={props.ruleset.userRulesetPath || ""}
           name="Ruleset file"
           placeholder="path/to/analysis_config.ecl"
-          on_selected={(value) => props.dispatch_state({ type: "update-user-ruleset-path", path: value })}
-          on_pick={() => props.post_message({ command: "browse-user-ruleset-path" })}
+          on_selected={(value) => props.dispatch_state({
+            type: "with-selected-workspace",
+            action: {
+              type: "with-selected-configuration",
+              action: { type: "update-user-ruleset-path", path: value },
+            },
+          })}
+          on_pick={() => props.post_message({ command: "browse-user-ruleset-path", workspace: props.workspace, build_config: props.build_config })}
         />
       </div>
     </div>

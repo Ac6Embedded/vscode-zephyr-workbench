@@ -8,3 +8,10 @@ export function unwrap_or_throw<Ok, Err>(result: Result<Ok, Err>): Ok {
     throw new Error(String(result.err));
   }
 }
+
+/**
+ * A helper function to mark a code path as TODO.
+ */
+export function todo(): never {
+  throw new Error("TODO");
+}

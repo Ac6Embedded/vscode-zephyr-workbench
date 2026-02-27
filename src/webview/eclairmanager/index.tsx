@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useReducer, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import type { ExtensionMessage, WebviewMessage } from "../../utils/eclairEvent.js";
-import { MainAnalysisConfigurationState, EclairState, EclairStateAction, ExtraConfigState, InstallPathState, PresetsSelectionState, ReportsState, default_eclair_state, default_ruleset_state, eclairReducer, EclairConfig } from "./state.js";
+import { MainAnalysisConfigurationState, EclairStateAction, PresetsSelectionState, default_eclair_state, default_install_path_state, eclairReducer, EclairConfig, EclairWorkspaceBuildState, EclairState } from "./state.js";
 import { Summary } from "./components/summary.js";
 import { ReportsSection } from "./components/reports_section.js";
 import { ExtraConfigSection } from "./components/extra_config_section.js";
@@ -9,7 +9,7 @@ import { CommandSection } from "./components/command_section.js";
 import { ReportViewerSection } from "./components/report_viewer.js";
 import { MainAnalysisConfigurationSection } from "./components/main_configuration.js";
 import { match } from "ts-pattern";
-import { EclairRepos, FullEclairScaConfig, EclairScaMainConfig, EclairScaPresetConfig, EclairScaConfig } from "../../utils/eclair/config.js";
+import { FullEclairScaConfig, EclairScaMainConfig, EclairScaPresetConfig, EclairScaConfig } from "../../utils/eclair/config.js";
 import { Result } from "../../utils/typing_utils.js";
 import { EditableTextField, RichHelpTooltip, SearchableDropdown, VscodeButton, VscodePanel } from "./components/common_components.js";
 import { EasyMark } from "./components/easymark_render.js";
@@ -43,35 +43,10 @@ export async function import_wui() {
 function EclairManagerPanel() {
   const [api] = useState(() => acquireVsCodeApi());
   const [state, dispatch_state] = useReducer(eclairReducer, default_eclair_state());
-  const [collected_config, set_collected_config] = useState<Result<FullEclairScaConfig, string>>({ err: "Not configured" });
 
   const post_message = useCallback((message: WebviewMessage) => {
     api.postMessage(message);
   }, [api]);
-
-  // Collect config for sending to backend
-  // Note: this does not depend on the full state but only on the relevant parts
-  // TODO refactor the state to group the relevant parts together and avoid passing
-  // so many individual dependencies to this function (because this requires
-  // keeping the reps and the args in sync here).
-  useEffect(() => {
-    try {
-      let config = collect_config_from_state({
-        install_path: state.install_path,
-        configs: state.configs,
-        current_config_index: state.current_config_index,
-        repos: state.repos,
-      });
-      set_collected_config({ ok: config });
-    } catch (e) {
-      set_collected_config({ err: e instanceof Error ? e.message : String(e) });
-    }
-  }, [
-    state.install_path,
-    state.configs,
-    state.current_config_index,
-    state.repos,
-  ]);
 
   // setup message handler
   useEffect(() => {
@@ -89,10 +64,23 @@ function EclairManagerPanel() {
     }
   }, [post_message]);
 
-  const current: EclairConfig | undefined = state.configs[state.current_config_index];
+  const current_context = state.current_context;
+  const workspace = current_context?.workspace;
+  const build_config = current_context?.build_config;
+  const build_configs = workspace ? state.by_workspace_and_build_config[workspace] : undefined;
+  const current_context_state = workspace && build_config ? build_configs?.[build_config] : undefined;
 
-  const config_items = useMemo(() => state.configs.map((config, index) => ({ id: index, name: config.name, description: "", index })), [state.configs]);
-  const current_config_item = config_items[state.current_config_index];
+  const workspace_items = useMemo(
+    () => Object.keys(state.by_workspace_and_build_config).map((name) => ({ id: name, name, description: "", value: name })),
+    [state.by_workspace_and_build_config],
+  );
+  const current_workspace_item = workspace_items.find((item) => item.value === workspace);
+
+  const build_config_items = useMemo(
+    () => Object.keys(state.by_workspace_and_build_config[workspace || ""] ?? {}).map((name) => ({ id: name, name, description: "", value: name })),
+    [state.by_workspace_and_build_config, workspace],
+  );
+  const current_build_config_item = build_config_items.find((item) => item.value === build_config);
 
   return (
     <div>
@@ -108,96 +96,204 @@ function EclairManagerPanel() {
         </RichHelpTooltip>
       </h1>
 
-      <Summary
-        status={state.status}
-        installPath={state.install_path}
-        post_message={post_message}
-        dispatch_state={dispatch_state}
-      />
-
-
       <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "10px" }}>
-        Configuration:
+        Workspace:
         <SearchableDropdown
-          id="configuration-selector"
+          id="workspace-selector"
           label=""
-          placeholder="Select configuration"
-          items={config_items}
-          selectedItem={current_config_item || null}
-          onSelectItem={(item) => dispatch_state({ type: "select-configuration", index: item.index })}
-        />
-        <VscodeButton
-          appearance="primary"
-          onClick={() => {
-            dispatch_state({ type: "add-new-configuration", name: `Config ${state.configs.length + 1}` });
+          placeholder="Select workspace"
+          items={workspace_items}
+          selectedItem={current_workspace_item || null}
+          onSelectItem={(item) => {
+            const next_workspace = item.value;
+            const build_configs = state.by_workspace_and_build_config[next_workspace] ?? {};
+            const next_build_config = Object.keys(build_configs)[0];
+            if (!next_build_config) {
+              console.warn("No build configurations available for workspace", next_workspace);
+              return;
+            }
+            dispatch_state({ type: "select-context", workspace: next_workspace, build_config: next_build_config });
           }}
-        >
-          New
-        </VscodeButton>
-        {current && (
-          <VscodeButton
-            appearance="secondary"
-            onClick={() => {
-              dispatch_state({ type: "delete-configuration", index: state.current_config_index });
-            }}
-          >
-            <span className="codicon codicon-trash" />
-          </VscodeButton>
-        )/* TODO maybe an export/import button */}
+        />
+        Build Config:
+        {workspace && (<SearchableDropdown
+          id="build-config-selector"
+          label=""
+          placeholder="Select build config"
+          items={build_config_items}
+          selectedItem={current_build_config_item || null}
+          onSelectItem={(item) => dispatch_state({ type: "select-context", workspace, build_config: item.value })}
+        />)}
       </div>
 
-      {current && (<>
-        <VscodePanel style={{ marginBottom: "12px" }}>
-          <EditableTextField
-            name="Name"
-            value={current.name}
-            placeholder="Configuration name"
-            style={{ margin: "0", maxWidth: "10em", flexShrink: 1 }}
-            on_selected={(new_name) => {
-              const trimmed = new_name.trim();
-              if (!trimmed || trimmed === current.name) {
-                return;
-              }
-              dispatch_state({ type: "update-configuration-name", name: trimmed });
-            }}
-          />
-          <EditableConfigDescription
-            value={current.description_md}
-            onSave={(description_md) => dispatch_state({ type: "update-configuration-description", description_md })}
-          />
-        </VscodePanel>
-
-        <MainAnalysisConfigurationSection
-          state={state}
-          current={current}
-          dispatch_state={dispatch_state}
-          post_message={post_message}
-        />
-
-        <ReportsSection
-          reports={current.reports}
-          dispatch_state={dispatch_state}
-        />
-
-        <ExtraConfigSection
-          extra_config={current.extra_config}
-          dispatch_state={dispatch_state}
-          post_message={post_message}
-        />
-      </>)}
-
-      <CommandSection
+      <Summary
+        status={state.status}
+        installPath={current_context_state?.install_path ?? default_install_path_state()}
         post_message={post_message}
-        config={collected_config}
         dispatch_state={dispatch_state}
       />
 
-      <ReportViewerSection
-        reportServer={state.report_server}
+      {current_context_state && workspace && build_config && (<EclairManagerWithConfigs
+        workspace={workspace}
+        build_config={build_config}
+        by_workspace_and_build_config={state.by_workspace_and_build_config}
+        context_state={current_context_state}
+        dispatch_state={dispatch_state}
         post_message={post_message}
-      />
+        state={state}
+      />)}
     </div>
   );
+}
+
+function EclairManagerWithConfigs({
+  workspace,
+  build_config,
+  by_workspace_and_build_config,
+  context_state,
+  dispatch_state,
+  post_message,
+  state,
+}: {
+  workspace: string;
+  build_config: string;
+  by_workspace_and_build_config: Record<string, Record<string, EclairWorkspaceBuildState>>;
+  context_state: EclairWorkspaceBuildState;
+  dispatch_state: React.Dispatch<EclairStateAction>;
+  post_message: (message: WebviewMessage) => void;
+  state: EclairState;
+}) {
+  const configs = context_state.configs;
+  const current: EclairConfig | undefined = configs[context_state.current_config_index];
+  const [collected_config, set_collected_config] = useState<Result<FullEclairScaConfig, string>>({ err: "Not configured" });
+
+  const config_items = useMemo(() => configs.map((config, index) => ({ id: index, name: config.name, description: "", index })), [configs]);
+  const current_config_item = config_items[context_state.current_config_index];
+
+  // Collect config for sending to backend
+  // Note: this does not depend on the full state but only on the relevant parts
+  // TODO refactor the state to group the relevant parts together and avoid passing
+  // so many individual dependencies to this function (because this requires
+  // keeping the reps and the args in sync here).
+  useEffect(() => {
+    try {
+      let config = collect_config_from_state(context_state);
+      set_collected_config({ ok: config });
+    } catch (e) {
+      set_collected_config({ err: e instanceof Error ? e.message : String(e) });
+    }
+  }, [context_state]);
+
+  return (<>
+    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "10px" }}>
+      Configuration:
+      <SearchableDropdown
+        id="configuration-selector"
+        label=""
+        placeholder="Select configuration"
+        items={config_items}
+        selectedItem={current_config_item || null}
+        onSelectItem={(item) => dispatch_state({ type: "select-configuration", index: item.index })}
+      />
+      <VscodeButton
+        appearance="primary"
+        onClick={() => {
+          dispatch_state({
+            type: "with-selected-workspace",
+            action: { type: "add-new-configuration", name: `Config ${configs.length + 1}` },
+          });
+        }}
+      >
+        New
+      </VscodeButton>
+      {current && (
+        <VscodeButton
+          appearance="secondary"
+          onClick={() => {
+            dispatch_state({
+              type: "with-selected-workspace",
+              action: { type: "delete-configuration", index: context_state.current_config_index },
+            });
+          }}
+        >
+          <span className="codicon codicon-trash" />
+        </VscodeButton>
+      )/* TODO maybe an export/import button */}
+    </div>
+
+    {current && (<>
+      <VscodePanel style={{ marginBottom: "12px" }}>
+        <EditableTextField
+          name="Name"
+          value={current.name}
+          placeholder="Configuration name"
+          style={{ margin: "0", maxWidth: "10em", flexShrink: 1 }}
+          on_selected={(new_name) => {
+            const trimmed = new_name.trim();
+            if (!trimmed || trimmed === current.name) {
+              return;
+            }
+            dispatch_state({
+              type: "with-selected-workspace",
+              action: {
+                type: "with-selected-configuration",
+                action: { type: "update-configuration-name", name: trimmed },
+              },
+            });
+          }}
+        />
+        <EditableConfigDescription
+          value={current.description_md}
+          onSave={(description_md) => dispatch_state({
+            type: "with-selected-workspace",
+            action: {
+              type: "with-selected-configuration",
+              action: { type: "update-configuration-description", description_md },
+            },
+          })}
+        />
+      </VscodePanel>
+
+      <MainAnalysisConfigurationSection
+        workspace={workspace}
+        build_config={build_config}
+        available_presets={context_state.available_presets}
+        repos={context_state.repos}
+        repos_scan_state={context_state.repos_scan_state}
+        current={current}
+        dispatch_state={dispatch_state}
+        post_message={post_message}
+      />
+
+      <ReportsSection
+        reports={current.reports}
+        dispatch_state={dispatch_state}
+      />
+
+      <ExtraConfigSection
+        workspace={workspace}
+        build_config={build_config}
+        extra_config={current.extra_config}
+        dispatch_state={dispatch_state}
+        post_message={post_message}
+      />
+    </>)}
+
+    <CommandSection
+      post_message={post_message}
+      config={collected_config}
+      workspace={workspace}
+      build_config={build_config}
+      dispatch_state={dispatch_state}
+    />
+
+    <ReportViewerSection
+      reportServer={state.report_server}
+      workspace={workspace}
+      build_config={build_config}
+      post_message={post_message}
+    />
+  </>);
 }
 
 window.addEventListener("load", main);
@@ -218,42 +314,82 @@ function handleMessage(
     }))
     .with({ command: "set-install-path" }, ({ path }) => dispatch({ type: "set-install-path", path: String(path ?? "") }))
     .with({ command: "set-install-path-placeholder" }, ({ text }) => dispatch({ type: "set-install-path-placeholder", text: String(text ?? "") }))
-    .with({ command: "set-extra-config" }, ({ path }) => dispatch({ type: "set-extra-config", path: String(path ?? "") }))
+    .with({ command: "set-extra-config" }, ({ path, workspace, build_config }) => dispatch({
+      type: "with-selected-workspace",
+      ...(workspace && build_config ? { workspace, build_config } : {}),
+      action: {
+        type: "with-selected-configuration",
+        action: { type: "set-extra-config", path: String(path ?? "") },
+      },
+    }))
     .with({ command: "set-path-status" }, ({ text }) => dispatch({ type: "set-path-status", text: String(text ?? "") }))
-    .with({ command: "set-user-ruleset-name" }, ({ name }) => dispatch({ type: "set-user-ruleset-name", name: String(name ?? "") }))
-    .with({ command: "set-user-ruleset-path" }, ({ path }) => dispatch({ type: "set-user-ruleset-path", path: String(path ?? "") }))
-    .with({ command: "set-custom-ecl-path" }, ({ path }) => dispatch({ type: "set-custom-ecl-path", path: String(path ?? "") }))
+    .with({ command: "set-user-ruleset-name" }, ({ name }) => dispatch({
+      type: "with-selected-workspace",
+      action: {
+        type: "with-selected-configuration",
+        action: { type: "set-user-ruleset-name", name: String(name ?? "") },
+      },
+    }))
+    .with({ command: "set-user-ruleset-path" }, ({ path, workspace, build_config }) => dispatch({
+      type: "with-selected-workspace",
+      ...(workspace && build_config ? { workspace, build_config } : {}),
+      action: {
+        type: "with-selected-configuration",
+        action: { type: "set-user-ruleset-path", path: String(path ?? "") },
+      },
+    }))
+    .with({ command: "set-custom-ecl-path" }, ({ path, workspace, build_config }) => dispatch({
+      type: "with-selected-workspace",
+      ...(workspace && build_config ? { workspace, build_config } : {}),
+      action: {
+        type: "with-selected-configuration",
+        action: { type: "set-custom-ecl-path", path: String(path ?? "") },
+      },
+    }))
     .with({ command: "report-server-started" }, () => dispatch({ type: "report-server-started" }))
     .with({ command: "report-server-stopped" }, () => dispatch({ type: "report-server-stopped" }))
-    .with({ command: "preset-content" }, ({ source, template }) => dispatch({ type: "preset-content", source, template }))
-    .with({ command: "template-path-picked" }, ({ kind, path }) => dispatch({ type: "set-preset-path", kind, path }))
-    .with({ command: "set-sca-config" }, ({ config }) => dispatch({ type: "load-sca-config", config }))
-    .with({ command: "repo-scan-done" }, ({ name }) => dispatch({ type: "repo-scan-done", name }))
-    .with({ command: "repo-scan-failed" }, ({ name, message }) => dispatch({ type: "repo-scan-failed", name, message: String(message ?? "") }))
+    .with({ command: "preset-content" }, ({ source, template, workspace, build_config }) => dispatch({
+      type: "preset-content",
+      source,
+      template,
+      ...(workspace && build_config ? { workspace, build_config } : {}),
+    }))
+    .with({ command: "template-path-picked" }, ({ kind, path }) => dispatch({
+      type: "with-selected-workspace",
+      action: {
+        type: "with-selected-configuration",
+        action: { type: "set-preset-path", kind, path },
+      },
+    }))
+    .with({ command: "set-sca-config" }, ({ by_workspace_and_build_config }) => dispatch({ type: "load-sca-config", by_workspace_and_build_config }))
+    .with({ command: "repo-scan-done" }, ({ name, workspace, build_config }) => dispatch({
+      type: "repo-scan-done",
+      name,
+      ...(workspace && build_config ? { workspace, build_config } : {}),
+    }))
+    .with({ command: "repo-scan-failed" }, ({ name, message, workspace, build_config }) => dispatch({
+      type: "repo-scan-failed",
+      name,
+      message: String(message ?? ""),
+      ...(workspace && build_config ? { workspace, build_config } : {}),
+    }))
     .exhaustive();
 }
 
-function collect_config_from_state(state: {
-  install_path: InstallPathState,
-  configs: EclairConfig[],
-  current_config_index: number;
-  repos: EclairRepos,
-}): FullEclairScaConfig {
-  const configs: EclairScaConfig[] = state.configs.map(config => {
-    return {
-      name: config.name,
-      description_md: config.description_md,
-      main_config: collect_eclair_analysis_config(config.main_config),
-      extra_config: config.extra_config.path,
-      reports: config.reports.selected,
-    };
-  });
+function collect_config_from_state(context_state: EclairWorkspaceBuildState): FullEclairScaConfig {
+  const configs: EclairScaConfig[] = context_state.configs.map(config => ({
+    name: config.name,
+    description_md: config.description_md,
+    main_config: collect_eclair_analysis_config(config.main_config),
+    extra_config: config.extra_config.path,
+    reports: config.reports.selected,
+  }));
 
   return {
-    install_path: state.install_path.path,
-    configs: configs,
-    current_config_index: state.current_config_index,
-    repos: state.repos,
+    install_path: context_state.install_path.path,
+    configs,
+    current_config_index: context_state.current_config_index,
+    repos: context_state.repos,
   };
 }
 

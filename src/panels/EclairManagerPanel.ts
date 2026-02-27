@@ -11,128 +11,27 @@ import { getExtraPaths, normalizePath, setExtraPath } from "../utils/envYamlUtil
 import type { IEclairExtension } from "../ext/eclair_api";
 import type { ExtensionMessage, WebviewMessage } from "../utils/eclairEvent";
 import { extract_yaml_from_ecl_content, format_option_settings, parse_eclair_template_from_any } from "../utils/eclair/template_utils";
-import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, FullEclairScaConfig, PresetSelectionState } from "../utils/eclair/config";
+import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, FullEclairScaConfig, FullEclairScaConfigSchema, PresetSelectionState } from "../utils/eclair/config";
 import { ensureRepoCheckout, deleteRepoCheckout } from "./EclairManagerPanel/repo_manage";
 import { Result, unwrap_or_throw } from "../utils/typing_utils";
 import { match } from "ts-pattern";
 import { load_preset_from_ref } from "./EclairManagerPanel/templates";
+import { ZephyrAppProject } from "../models/ZephyrAppProject";
+import { z } from "zod";
+
+const BuildConfigurationSchema = z.object({
+  name: z.string(),
+  board: z.string(),
+  sca: z.array(z.object({
+    name: z.string(),
+    cfg: z.record(z.string(), z.any())
+  })).optional(),
+  active: z.union([z.boolean(), z.string()]).optional(),
+});
+
+type BuildConfiguration = z.infer<typeof BuildConfigurationSchema>;
 
 export class EclairManagerPanel {
-  /**
-   * Recursively walks `obj` and replaces every string that starts with the
-   * workspace folder path with `${workspaceFolder}/...`.
-   * TODO: this is a blunt recursive string replacement — a more precise
-   * approach would target known path fields explicitly.
-   */
-  private deepTokenizePaths(obj: any): any {
-    const folderUri = this.resolveApplicationFolderUri();
-    if (!folderUri) return obj;
-    const wsPath = folderUri.fsPath.replace(/\\/g, "/");
-    const walk = (val: any): any => {
-      if (typeof val === "string") {
-        const n = val.replace(/\\/g, "/");
-        if (n === wsPath || n.startsWith(wsPath + "/")) {
-          return "${workspaceFolder}" + n.slice(wsPath.length);
-        }
-        return val;
-      }
-      if (Array.isArray(val)) return val.map(walk);
-      if (val && typeof val === "object") {
-        const out: any = {};
-        for (const k of Object.keys(val)) out[k] = walk(val[k]);
-        return out;
-      }
-      return val;
-    };
-    return walk(obj);
-  }
-
-  // TODO: deepResolvePaths is a blunt recursive replacement, replace with targeted field handling.
-  /**
-   * Recursively walks `obj` and expands `${workspaceFolder}` in every string
-   * to the actual workspace folder path.
-   */
-  private deepResolvePaths(obj: any): any {
-    const folderUri = this.resolveApplicationFolderUri();
-    if (!folderUri) return obj;
-    const fsPath = folderUri.fsPath;
-    const walk = (val: any): any => {
-      if (typeof val === "string") {
-        return val.replace(/\$\{workspaceFolder\}/g, fsPath);
-      }
-      if (Array.isArray(val)) return val.map(walk);
-      if (val && typeof val === "object") {
-        const out: any = {};
-        for (const k of Object.keys(val)) out[k] = walk(val[k]);
-        return out;
-      }
-      return val;
-    };
-    return walk(obj);
-  }
-
-  /**
-   * Expands `${workspaceFolder}` in a single string.
-   * Used when sending stored paths back to the webview.
-   */
-  private resolveVsCodeVariables(p: string): string {
-    if (!p || !p.includes("${workspaceFolder}")) return p;
-    const folderUri = this.resolveApplicationFolderUri();
-    if (!folderUri) return p;
-    return p.replace(/\$\{workspaceFolder\}/g, folderUri.fsPath);
-  }
-
-  // Gets the west workspace path from settings.json configuration.
-  private getWestWorkspacePath(): string | undefined {
-    const folderUri = this.resolveApplicationFolderUri();
-    if (!folderUri) return undefined;
-    
-    const config = vscode.workspace.getConfiguration(undefined, folderUri);
-    const westWorkspace = config.get<string>("zephyr-workbench.westWorkspace");
-    
-    if (westWorkspace && fs.existsSync(westWorkspace)) {
-      // Verify it has .west folder
-      if (fs.existsSync(path.join(westWorkspace, ".west"))) {
-        return westWorkspace;
-      }
-    }
-    
-    return undefined;
-  }
-
-  // Find the most likely application folder (prefers one with CMakeLists.txt)
-  private resolveApplicationFolderUri(): vscode.Uri | undefined {
-    const folders = vscode.workspace.workspaceFolders ?? [];
-
-    const hasTopLevelCMakeLists = (uri: vscode.Uri | undefined) => {
-      if (!uri) return false;
-      try {
-        return fs.existsSync(path.join(uri.fsPath, "CMakeLists.txt"));
-      } catch {
-        return false;
-      }
-    };
-
-    // 1) Prefer the folder that created the panel, if it looks like an app
-    if (hasTopLevelCMakeLists(this._workspaceFolder?.uri)) {
-      return this._workspaceFolder!.uri;
-    }
-
-    // 2) Prefer active editor's workspace folder, if it looks like an app
-    const activeEditor = vscode.window.activeTextEditor;
-    if (activeEditor) {
-      const wf = vscode.workspace.getWorkspaceFolder(activeEditor.document.uri);
-      if (hasTopLevelCMakeLists(wf?.uri)) return wf!.uri;
-    }
-
-    // 3) Find any workspace folder that looks like an app
-    const match = folders.find(f => hasTopLevelCMakeLists(f.uri));
-    if (match) return match.uri;
-
-    // 4) Fall back (best effort)
-    return this._workspaceFolder?.uri ?? folders[0]?.uri;
-  }
-
   /**
    * Save the ECLAIR path in env.yml without checks, always overwrites.
    * Usage: EclairManagerPanel.saveEclairAbsolutePath("/path/to/eclair");
@@ -151,30 +50,6 @@ export class EclairManagerPanel {
     } catch (err) {
       vscode.window.showErrorMessage("ECLAIR is not installed. Please install ECLAIR and try again.");
     }
-  }
-
-  /**
-   * Detects the Zephyr SDK installation directory from common environment variables and paths.
-   */
-  private detectZephyrSdkDir(): string | undefined {
-    // Try reading settings.json (user/project configuration)
-    const folderUri = this.resolveApplicationFolderUri();
-    const config = vscode.workspace.getConfiguration(undefined, folderUri);
-    const sdkFromSettings = config.get<string>("zephyr-workbench.sdk");
-    if (sdkFromSettings && fs.existsSync(sdkFromSettings)) {
-      return sdkFromSettings;
-    }
-
-    // TODO: Improve the Fallback  
-    const candidates = [
-      process.env.ZEPHYR_SDK_INSTALL_DIR,
-      path.join(process.env.USERPROFILE ?? "", ".zinstaller", "tools", "zephyr-sdk"),
-    ];
-
-    for (const c of candidates) {
-      if (c && fs.existsSync(c)) return c;
-    }
-    return undefined;
   }
 
   public static currentPanel: EclairManagerPanel | undefined;
@@ -292,37 +167,17 @@ export class EclairManagerPanel {
   }
 
   /**
-   * Finds the ECLAIR PROJECT.ecd database file in the build directory.
-   * Searches in build/sca/eclair/PROJECT.ecd path.
-   */
-  private findEclairDatabase(): string | undefined {
-    const folderUri = this.resolveApplicationFolderUri();
-    if (!folderUri) {
-      return undefined;
-    }
-
-    const appDir = folderUri.fsPath;
-    const config = vscode.workspace.getConfiguration(undefined, folderUri);
-    const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
-    const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
-    const idx = activeIdx >= 0 ? activeIdx : 0;
-
-    const buildDir = this.getBuildDir(configs, idx, appDir);
-    const ecdPath = path.join(buildDir, "sca", "eclair", "PROJECT.ecd");
-
-    if (fs.existsSync(ecdPath)) {
-      return ecdPath;
-    }
-
-    return undefined;
-  }
-
-  /**
    * Starts the ECLAIR report server and opens it in the browser.
    */
-  private async startReportServer(): Promise<void> {
-    const dbPath = this.findEclairDatabase();
-    
+  private async startReportServer(workspace: string, build_config: string): Promise<void> {
+    const folderUri = this.resolveApplicationFolderUri(workspace);
+    if (!folderUri) {
+      vscode.window.showErrorMessage(`Workspace '${workspace}' not found.`);
+      return;
+    }
+
+    const dbPath = findEclairDatabase(folderUri, build_config);
+
     if (!dbPath) {
       vscode.window.showErrorMessage("ECLAIR database (PROJECT.ecd) not found. Please run an analysis first.");
       return;
@@ -649,8 +504,8 @@ export class EclairManagerPanel {
       .with({ command: "request-trial" }, () => open_link("https://www.bugseng.com/eclair-request-trial/"))
       .with({ command: "about-eclair" }, () => open_link("https://www.bugseng.com/eclair-static-analysis-tool/"))
       .with({ command: "refresh-status" }, async () => this.refresh_status())
-      .with({ command: "browse-extra-config" }, async () => {
-        const folderUri = this.resolveApplicationFolderUri();
+      .with({ command: "browse-extra-config" }, async ({ workspace, build_config }) => {
+        const folderUri = this.resolveApplicationFolderUri(workspace);
         const pick = await vscode.window.showOpenDialog({
           canSelectFiles: true,
           canSelectFolders: false,
@@ -664,30 +519,45 @@ export class EclairManagerPanel {
         });
         if (pick?.[0]) {
           const chosen = pick[0].fsPath;
-          this.post_message({ command: "set-extra-config", path: chosen });
+          this.post_message({ command: "set-extra-config", path: chosen, workspace, build_config });
         }
       })
-      .with({ command: "save-sca-config" }, async ({ config: cfg }) => {
-        await this.saveScaConfig(cfg);
+      .with({ command: "save-sca-config" }, async ({ config: cfg, workspace, build_config }) => {
+        if (!workspace || !build_config) {
+          vscode.window.showErrorMessage("Cannot save ECLAIR config: workspace/build configuration not provided.");
+          return;
+        }
+        await this.saveScaConfig(cfg, workspace, build_config);
       })
-      .with({ command: "run-command" }, async ({ config: cfg }) => {
-        await this.saveScaConfig(cfg);
+      .with({ command: "run-command" }, async ({ config: cfg, workspace, build_config }) => {
+        if (!workspace || !build_config) {
+          vscode.window.showErrorMessage("Cannot run ECLAIR analysis: workspace/build configuration not provided.");
+          return;
+        }
+
+        await this.saveScaConfig(cfg, workspace, build_config);
 
         try {
+          const folderUri = this.resolveApplicationFolderUri(workspace);
+          if (!folderUri) {
+            throw new Error(`Workspace '${workspace}' not found.`);
+          }
+
           const {
             app_dir,
             board,
             build_dir,
             west_top_dir,
-          } = this._prepare_for_analysis();
+          } = this._prepare_for_analysis(folderUri, build_config);
 
-          const merged_env = await this._get_analysis_env(west_top_dir);
+          const merged_env = await this._get_analysis_env(folderUri, build_dir);
 
-          if (!cfg.configs[cfg.current_config_index]) {
-            throw new Error("Could not find configuration at index " + cfg.current_config_index);
+          const current_index = cfg.current_config_index ?? 0;
+          if (!cfg.configs[current_index]) {
+            throw new Error("Could not find configuration at index " + current_index);
           }
 
-          const config = cfg.configs[cfg.current_config_index];
+          const config = cfg.configs[current_index];
 
           let cmd = await match(config.main_config)
             .with({ type: "preset" }, async (c) => {
@@ -765,7 +635,7 @@ export class EclairManagerPanel {
         }
       })
       .with({ command: "probe-eclair" }, () => this.runEclair())
-      .with({ command: "browse-user-ruleset-path" }, async () => {
+      .with({ command: "browse-user-ruleset-path" }, async ({ workspace, build_config }) => {
         const pick = await vscode.window.showOpenDialog({
           canSelectFiles: false,
           canSelectFolders: true,
@@ -774,22 +644,28 @@ export class EclairManagerPanel {
         });
         if (pick && pick[0]) {
           const chosen = pick[0].fsPath.trim();
-          this.post_message({ command: "set-user-ruleset-path", path: chosen });
+          this.post_message({ command: "set-user-ruleset-path", path: chosen, workspace, build_config });
           // save path select from the browse dialog
-          const folderUri = this.resolveApplicationFolderUri();
+          const folderUri = this.resolveApplicationFolderUri(workspace);
           if (!folderUri) return;
           const config = vscode.workspace.getConfiguration(undefined, folderUri);
           const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
-          const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
-          const idx = activeIdx >= 0 ? activeIdx : 0;
-          if (configs[idx] && Array.isArray(configs[idx].sca) && configs[idx].sca.length > 0) {
-            configs[idx].sca[0].userRulesetPath = this.deepTokenizePaths(chosen);
-            await config.update("zephyr-workbench.build.configurations", configs, vscode.ConfigurationTarget.WorkspaceFolder);
-          }
+          if (!build_config) return;
+          const idx = find_build_config_index(configs, build_config);
+          if (idx === undefined || !configs[idx]) return;
+          const scaEntries = configs[idx].sca;
+          if (!Array.isArray(scaEntries) || scaEntries.length === 0) return;
+          const eclairEntry = scaEntries.find((c: any) => c?.name === "eclair");
+          if (!eclairEntry?.cfg || !Array.isArray(eclairEntry.cfg.configs)) return;
+          const current_index = typeof eclairEntry.cfg.current_config_index === "number" ? eclairEntry.cfg.current_config_index : 0;
+          const target_config = eclairEntry.cfg.configs[current_index];
+          if (!target_config || target_config.main_config?.type !== "zephyr-ruleset") return;
+          target_config.main_config.userRulesetPath = deepTokenizePaths(chosen, folderUri);
+          await config.update("zephyr-workbench.build.configurations", configs, vscode.ConfigurationTarget.WorkspaceFolder);
         }
       })
-      .with({ command: "browse-custom-ecl-path" }, async () => {
-        const folderUri = this.resolveApplicationFolderUri();
+      .with({ command: "browse-custom-ecl-path" }, async ({ workspace, build_config }) => {
+        const folderUri = this.resolveApplicationFolderUri(workspace);
         const pick = await vscode.window.showOpenDialog({
           canSelectFiles: true,
           canSelectFolders: false,
@@ -803,40 +679,46 @@ export class EclairManagerPanel {
         });
         if (pick && pick[0]) {
           const chosen = pick[0].fsPath.trim();
-          this.post_message({ command: "set-custom-ecl-path", path: chosen });
+          this.post_message({ command: "set-custom-ecl-path", path: chosen, workspace, build_config });
         }
       })
-      .with({ command: "start-report-server" }, async () => this.startReportServer())
+      .with({ command: "start-report-server" }, async ({ workspace, build_config }) => {
+        if (!workspace || !build_config) {
+          vscode.window.showErrorMessage("Cannot start report server: workspace/build configuration not provided.");
+          return;
+        }
+        await this.startReportServer(workspace, build_config);
+      })
       .with({ command: "stop-report-server" }, async () => this.stopReportServer())
-      .with({ command: "load-preset" }, async ({ source, repos }) => {
+      .with({ command: "load-preset" }, async ({ source, repos, workspace, build_config }) => {
         let r = await load_preset_from_ref(
           source,
           repos,
-          (message) => this.post_message({ command: "preset-content", source, template: { loading: message } }),
+          (message) => this.post_message({ command: "preset-content", source, template: { loading: message }, workspace, build_config }),
         );
 
         if ("err" in r) {
-          this.post_message({ command: "preset-content", source, template: { error: r.err } });
+          this.post_message({ command: "preset-content", source, template: { error: r.err }, workspace, build_config });
         } else {
-          this.post_message({ command: "preset-content", source, template: r.ok[0] });
+          this.post_message({ command: "preset-content", source, template: r.ok[0], workspace, build_config });
         }
       })
-      .with({ command: "scan-repo" }, ({ name, origin, ref }) => {
+      .with({ command: "scan-repo" }, ({ name, origin, ref, workspace, build_config }) => {
         // Immediately check out the repo and scan all .ecl files, sending
         // back preset-content messages so the webview picker is updated.
-        scanAllRepoPresets(name, origin, ref, this.post_message.bind(this));
+        scanAllRepoPresets(name, origin, ref, workspace, build_config, this.post_message.bind(this));
       })
-      .with({ command: "update-repo-checkout" }, async ({ name, origin, ref }) => {
+      .with({ command: "update-repo-checkout" }, async ({ name, origin, ref, workspace, build_config }) => {
         const out = getOutputChannel();
         out.appendLine(`[EclairManagerPanel] Deleting cached checkout for '${name}' to force update...`);
         try {
           await deleteRepoCheckout(origin, ref);
         } catch (err: any) {
           out.appendLine(`[EclairManagerPanel] Failed to delete checkout for '${name}': ${err}`);
-          this.post_message({ command: "repo-scan-failed", name, message: err?.message || String(err) });
+          this.post_message({ command: "repo-scan-failed", name, message: err?.message || String(err), workspace, build_config });
           return;
         }
-        scanAllRepoPresets(name, origin, ref, this.post_message.bind(this));
+        scanAllRepoPresets(name, origin, ref, workspace, build_config, this.post_message.bind(this));
       })
       .with({ command: "pick-preset-path" }, async ({ kind }) => {
         const pick = await vscode.window.showOpenDialog({
@@ -857,14 +739,6 @@ export class EclairManagerPanel {
       .exhaustive();
   }
 
-  private getBuildDir(configs: any, idx: number, appDir: string): string {
-    return (
-      configs[idx]?.build?.dir ||
-        configs[idx]?.buildDir ||
-        path.join(appDir, "build", configs[idx]?.name || "primary")
-    );
-  }
-
   /**
    * Reads the saved SCA configuration from settings.json and sends it back to
    * the webview so the UI can restore its full state.  This is called both on
@@ -874,62 +748,32 @@ export class EclairManagerPanel {
     const post_message = (m: ExtensionMessage) => this._panel.webview.postMessage(m);
     const out = getOutputChannel();
     try {
-      const folderUri = this.resolveApplicationFolderUri();
-      if (!folderUri) return;
-      const config = vscode.workspace.getConfiguration(undefined, folderUri);
-      const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
-      const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
-      const idx = activeIdx >= 0 ? activeIdx : 0;
-      if (!configs[idx] || !Array.isArray(configs[idx].sca) || configs[idx].sca.length === 0) {
-        return;
+      const configs_r = await load_all_sca_configs();
+      if ("err" in configs_r) {
+        throw new Error(configs_r.err);
       }
-      const raw = configs[idx].sca[0]?.cfg;
-      if (!raw) return;
-      // Expand ${workspaceFolder} tokens that were stored during save
-      const resolved = this.deepResolvePaths(raw);
-      // Validate the shape before sending; if it doesn't parse, just skip
-      const { FullEclairScaConfigSchema: EclairScaConfigSchema } = await import("../utils/eclair/config.js");
-      const parsed = EclairScaConfigSchema.safeParse(resolved);
-      if (!parsed.success) {
-        console.warn("[EclairManagerPanel] loadScaConfig: saved config failed validation:", parsed.error);
-        return;
-      }
-      post_message({ command: "set-sca-config", config: parsed.data });
+      const configs = configs_r.ok;
+      post_message({ command: "set-sca-config", by_workspace_and_build_config: configs });
+      await preload_presets_from_configs(configs, post_message);
+      out.appendLine("[EclairManagerPanel] Loaded SCA configs:");
+      out.appendLine(JSON.stringify(configs, null, 2));
 
-      for (const config of parsed.data.configs) {
-        // If the config references system-path presets, load them now so the
-        // webview has the template content when it renders the restored config.
-        if (config.main_config.type === "preset") {
-          const { ruleset, variants, tailorings } = config.main_config;
-          const allPresets = [ruleset, ...variants, ...tailorings];
-          for (const p of allPresets) {
-            await load_preset_from_ref(
-              p.source,
-              parsed.data.repos ?? {},
-              (message) => post_message({ command: "preset-content", source: p.source, template: { loading: message } }),
-            ).then(r => {
-              if ("err" in r) {
-                post_message({ command: "preset-content", source: p.source, template: { error: r.err } });
-              } else {
-                post_message({ command: "preset-content", source: p.source, template: r.ok[0] });
-              }
-            });
+      const scan_requests: Array<{ workspace: string; build_config: string; repos: Record<string, { origin: string; ref: string }> }> = [];
+      for (const [workspace, build_configs] of Object.entries(configs)) {
+        for (const [build_config, cfg] of Object.entries(build_configs)) {
+          if (!cfg?.repos || Object.keys(cfg.repos).length === 0) continue;
+          const reposForScan: Record<string, { origin: string; ref: string }> = {};
+          for (const [name, entry] of Object.entries(cfg.repos)) {
+            reposForScan[name] = { origin: entry.origin, ref: entry.ref };
           }
+          scan_requests.push({ workspace, build_config, repos: reposForScan });
         }
       }
-
-      out.appendLine("[EclairManagerPanel] Loaded SCA config:");
-      out.appendLine(JSON.stringify(parsed.data, null, 2));
-      // Scan all configured repos so the frontend has the full preset catalogue.
-      if (parsed.data.repos && Object.keys(parsed.data.repos).length > 0) {
-        // Don't await — scanning may involve network I/O; let it stream results.
+      if (scan_requests.length > 0) {
         out.appendLine("[EclairManagerPanel] Scanning configured repos for presets...");
-        // EclairRepos uses `ref`; scanRepoPresets expects `ref` — remap here.
-        const reposForScan: Record<string, { origin: string; ref: string }> = {};
-        for (const [name, entry] of Object.entries(parsed.data.repos)) {
-          reposForScan[name] = { origin: entry.origin, ref: entry.ref };
-        }
-        this.scanRepoPresets(reposForScan);
+        void Promise.allSettled(
+          scan_requests.map((req) => this.scanRepoPresets(req.repos, req.workspace, req.build_config))
+        );
       }
     } catch (err) {
       out.appendLine(`[EclairManagerPanel] Error loading SCA config: ${err}`);
@@ -947,19 +791,22 @@ export class EclairManagerPanel {
    * Called automatically at the end of `loadScaConfig` so the frontend always
    * has an up-to-date view of what the configured repos provide.
    */
-  private async scanRepoPresets(repos: Record<string, { origin: string; ref: string }>) {
+  private async scanRepoPresets(repos: Record<string, { origin: string; ref: string }>, workspace: string, build_config: string) {
     const post_message = (m: ExtensionMessage) => this._panel.webview.postMessage(m);
     // Fire off all repos concurrently — each one is independent.
     await Promise.allSettled(
       Object.entries(repos).map(([name, entry]) =>
-        scanAllRepoPresets(name, entry.origin, entry.ref, post_message)
+        scanAllRepoPresets(name, entry.origin, entry.ref, workspace, build_config, post_message)
       )
     );
   }
 
-  private async saveScaConfig(cfg: FullEclairScaConfig) {
-    const folderUri = this.resolveApplicationFolderUri();
-    if (!folderUri) return;
+  private async saveScaConfig(cfg: FullEclairScaConfig, workspace: string, build_config: string) {
+    const folderUri = this.resolveApplicationFolderUri(workspace);
+    if (!folderUri) {
+      vscode.window.showErrorMessage(`Workspace '${workspace}' not found.`);
+      return;
+    }
 
     // If an installPath was provided in the UI, persist it to env.yml
     if (cfg.install_path) {
@@ -969,16 +816,18 @@ export class EclairManagerPanel {
     const config = vscode.workspace.getConfiguration(undefined, folderUri);
     const existing = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
     const configs: any[] = Array.isArray(existing) ? [...existing] : [];
-    const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
-    const idx = activeIdx >= 0 ? activeIdx : 0;
-    if (!configs[idx]) {
-      configs[idx] = { name: "primary", active: true };
+    let idx = find_build_config_index(configs, build_config);
+    if (idx === undefined) {
+      configs.push({ name: build_config || "primary", active: true });
+      idx = configs.length - 1;
+    } else if (!configs[idx]) {
+      configs[idx] = { name: build_config || "primary", active: true };
     }
 
     const scaArray: { [key: string]: any } = {
       name: "eclair",
       // TODO: deepTokenizePaths is a blunt recursive replacement, replace with targeted field handling.
-      cfg: this.deepTokenizePaths(cfg),
+      cfg: deepTokenizePaths(cfg, folderUri),
     };
 
     // TODO maybe useless now
@@ -1105,6 +954,25 @@ export class EclairManagerPanel {
     this._panel.webview.postMessage(m);
   }
 
+  private resolveApplicationFolderUri(workspace?: string): vscode.Uri | undefined {
+    if (workspace && vscode.workspace.workspaceFolders) {
+      const byName = vscode.workspace.workspaceFolders.find((f) => f.name === workspace);
+      if (byName) {
+        return byName.uri;
+      }
+      const byBasename = vscode.workspace.workspaceFolders.find((f) => path.basename(f.uri.fsPath) === workspace);
+      if (byBasename) {
+        return byBasename.uri;
+      }
+    }
+
+    if (this._workspaceFolder) {
+      return this._workspaceFolder.uri;
+    }
+
+    return vscode.workspace.workspaceFolders?.[0]?.uri;
+  }
+
   get_repos(): EclairRepos {
     // Look up origin & ref from the stored config — the webview only knows
     // the logical name and the relative file path.
@@ -1119,9 +987,8 @@ export class EclairManagerPanel {
     return repos;
   }
 
-  _prepare_for_analysis() {
+  _prepare_for_analysis(folderUri: vscode.Uri, build_config: string) {
     // Determine application directory
-    const folderUri = this.resolveApplicationFolderUri();
     const app_dir = folderUri?.fsPath;
 
     if (!app_dir) {
@@ -1131,8 +998,10 @@ export class EclairManagerPanel {
     // Determine folder URI for configuration
     const config = vscode.workspace.getConfiguration(undefined, folderUri);
     const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
-    const active_idx = configs.findIndex(c => c?.active === true || c?.active === "true");
-    const idx = active_idx >= 0 ? active_idx : 0;
+    const idx = find_build_config_index(configs, build_config);
+    if (idx === undefined) {
+      throw new Error(`Build configuration '${build_config}' not found.`);
+    }
 
     // Resolve BOARD from configuration (configurations[].board > zephyr-workbench.board > env)
     const board =
@@ -1144,9 +1013,9 @@ export class EclairManagerPanel {
       throw new Error("BOARD not set. Please set it before running ECLAIR analysis.");
     }
 
-    const build_dir = this.getBuildDir(configs, idx, app_dir);
+    const build_dir = get_build_dir(configs, idx, app_dir);
 
-    const west_top_dir = this.getWestWorkspacePath();
+    const west_top_dir = getWestWorkspacePath(folderUri);
     if (!west_top_dir) {
       throw new Error("West workspace not found.");
     }
@@ -1160,6 +1029,7 @@ export class EclairManagerPanel {
   }
 
   async _get_analysis_env(
+    folderUri: vscode.Uri,
     build_dir: string,
   ): Promise<Record<string, string>> {
     // Determine extra paths for environment
@@ -1200,7 +1070,7 @@ export class EclairManagerPanel {
 
     // Inject Zephyr SDK and essential variables into the environment
     // Detect SDK (can be hardcoded for your test case)
-    let zephyr_sdk_dir = this.detectZephyrSdkDir();
+    let zephyr_sdk_dir = detectZephyrSdkDir(folderUri);
     // If not found, try buildDir (in case SDK is in the project)
     if (!zephyr_sdk_dir && build_dir) {
       const guess = path.join(path.dirname(build_dir), "zephyr-sdk-0.17.4");
@@ -1261,6 +1131,8 @@ async function scanAllRepoPresets(
   name: string,
   origin: string,
   ref: string,
+  workspace: string,
+  build_config: string,
   post_message: (m: ExtensionMessage) => void,
 ): Promise<void> {
   let checkoutDir: string;
@@ -1275,6 +1147,8 @@ async function scanAllRepoPresets(
       command: "repo-scan-failed",
       name,
       message: err?.message || String(err),
+      workspace,
+      build_config,
     });
     return;
   }
@@ -1291,7 +1165,7 @@ async function scanAllRepoPresets(
       try {
         content = await fs.promises.readFile(absPath, { encoding: "utf8" });
       } catch (err: any) {
-        post_message({ command: "preset-content", source, template: { error: `Could not read file: ${err?.message || err}` } });
+        post_message({ command: "preset-content", source, template: { error: `Could not read file: ${err?.message || err}` }, workspace, build_config });
         return;
       }
 
@@ -1305,21 +1179,21 @@ async function scanAllRepoPresets(
       try {
         data = yaml.parse(yaml_content);
       } catch (err: any) {
-        post_message({ command: "preset-content", source, template: { error: `Failed to parse preset: ${err?.message || err}` } });
+        post_message({ command: "preset-content", source, template: { error: `Failed to parse preset: ${err?.message || err}` }, workspace, build_config });
         return;
       }
 
       try {
         const template = parse_eclair_template_from_any(data);
-        post_message({ command: "preset-content", source, template });
+        post_message({ command: "preset-content", source, template, workspace, build_config });
       } catch (err: any) {
-        post_message({ command: "preset-content", source, template: { error: `Invalid preset content: ${err?.message || err}` } });
+        post_message({ command: "preset-content", source, template: { error: `Invalid preset content: ${err?.message || err}` }, workspace, build_config });
       }
     })
   );
 
   // All files have been processed — notify the webview so it can update the status badge.
-  post_message({ command: "repo-scan-done", name });
+  post_message({ command: "repo-scan-done", name, workspace, build_config });
 }
 
 function build_analysis_command(
@@ -1510,4 +1384,393 @@ async function handle_source(
   let eclair_commands = format_option_settings(preset, sel.edited_flags).map(s => s.statement);
   eclair_commands.push("-eval_file=\"" + path.replace(/\\/g, "/") + "\"");
   return { ok: eclair_commands };
+}
+
+async function load_applications(): Promise<ZephyrAppProject[]> {
+  if (!vscode.workspace.workspaceFolders) {
+    return [];
+  }
+
+  let applications: ZephyrAppProject[] = [];
+  for (const workspace_folder of vscode.workspace.workspaceFolders) {
+    try {
+      if (!await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspace_folder)) {
+        continue;
+      }
+
+      const app_project = new ZephyrAppProject(workspace_folder, workspace_folder.uri.fsPath);
+      applications.push(app_project);
+    } catch {
+      // TODO consider returning Result<...>[] instead
+    }
+  }
+
+  return applications;
+}
+
+/**
+ * Resolves the most appropriate application (workspace folder) to use for the ECLAIR analysis based on the following priority:
+ * @param applications The list of available applications
+ * @param current_workspace_folder The current workspace folder associated with the panel (if any) (e.g. the one that was active when the panel was created)
+ * @returns 
+ */
+function resolve_application(
+  applications: ZephyrAppProject[],
+  current_workspace_folder: vscode.WorkspaceFolder | undefined,
+): number | undefined {
+  const hasTopLevelCMakeLists = (uri: vscode.Uri | undefined) => {
+    if (!uri) return false;
+    try {
+      return fs.existsSync(path.join(uri.fsPath, "CMakeLists.txt"));
+    } catch {
+      return false;
+    }
+  };
+
+  const find_app_by_uri = (uri: vscode.Uri | undefined) => {
+    if (!uri) return undefined;
+    for (const [i, app] of applications.entries()) {
+      if (app.workspaceFolder.uri.toString() === uri.toString()) {
+        return i;
+      }
+    }
+    return undefined;
+  };
+
+  // 1) Prefer the folder that created the panel, if it looks like an app
+  if (current_workspace_folder) {
+    const idx = find_app_by_uri(current_workspace_folder.uri);
+    if (idx !== undefined) {
+      return idx;
+    }
+  }
+
+  // 2) Prefer active editor's workspace folder, if it looks like an app
+  const active_editor = vscode.window.activeTextEditor;
+  if (active_editor) {
+    const wf = vscode.workspace.getWorkspaceFolder(active_editor.document.uri);
+    if (wf && hasTopLevelCMakeLists(wf.uri)) {
+      const idx = find_app_by_uri(wf.uri);
+      if (idx !== undefined) {
+        return idx;
+      }
+    }
+  }
+
+  // 4) Fall back first folder
+  return applications.length > 0 ? 0 : undefined;
+}
+
+/**
+ * Recursively walks `obj` and replaces every string that starts with the
+ * workspace folder path with `${workspaceFolder}/...`.
+ * TODO: this is a blunt recursive string replacement — a more precise
+ * approach would target known path fields explicitly.
+ */
+function deepTokenizePaths(obj: any, folderUri: vscode.Uri): any {
+  if (!folderUri) return obj;
+  const wsPath = folderUri.fsPath.replace(/\\/g, "/");
+  const walk = (val: any): any => {
+    if (typeof val === "string") {
+      const n = val.replace(/\\/g, "/");
+      if (n === wsPath || n.startsWith(wsPath + "/")) {
+        return "${workspaceFolder}" + n.slice(wsPath.length);
+      }
+      return val;
+    }
+    if (Array.isArray(val)) return val.map(walk);
+    if (val && typeof val === "object") {
+      const out: any = {};
+      for (const k of Object.keys(val)) out[k] = walk(val[k]);
+      return out;
+    }
+    return val;
+  };
+  return walk(obj);
+}
+
+// TODO: deepResolvePaths is a blunt recursive replacement, replace with targeted field handling.
+/**
+ * Recursively walks `obj` and expands `${workspaceFolder}` in every string
+ * to the actual workspace folder path.
+ */
+function deepResolvePaths(obj: any, folderUri: vscode.Uri): any {
+  const fsPath = folderUri.fsPath;
+  const walk = (val: any): any => {
+    if (typeof val === "string") {
+      return val.replace(/\$\{workspaceFolder\}/g, fsPath);
+    }
+    if (Array.isArray(val)) return val.map(walk);
+    if (val && typeof val === "object") {
+      const out: any = {};
+      for (const k of Object.keys(val)) out[k] = walk(val[k]);
+      return out;
+    }
+    return val;
+  };
+  return walk(obj);
+}
+
+/**
+ * Expands `${workspaceFolder}` in a single string.
+ * Used when sending stored paths back to the webview.
+ */
+function resolveVsCodeVariables(p: string, folderUri: vscode.Uri): string {
+  if (!p || !p.includes("${workspaceFolder}")) return p;
+  return p.replace(/\$\{workspaceFolder\}/g, folderUri.fsPath);
+}
+
+// Gets the west workspace path from settings.json configuration.
+function getWestWorkspacePath(folderUri: vscode.Uri): string | undefined {
+  const config = vscode.workspace.getConfiguration(undefined, folderUri);
+  const westWorkspace = config.get<string>("zephyr-workbench.westWorkspace");
+  
+  if (westWorkspace && fs.existsSync(westWorkspace)) {
+    // Verify it has .west folder
+    if (fs.existsSync(path.join(westWorkspace, ".west"))) {
+      return westWorkspace;
+    }
+  }
+  
+  return undefined;
+}
+
+/**
+ * Detects the Zephyr SDK installation directory from common environment variables and paths.
+ */
+function detectZephyrSdkDir(folderUri: vscode.Uri): string | undefined {
+  // Try reading settings.json (user/project configuration)
+  const config = vscode.workspace.getConfiguration(undefined, folderUri);
+  const sdkFromSettings = config.get<string>("zephyr-workbench.sdk");
+  if (sdkFromSettings && fs.existsSync(sdkFromSettings)) {
+    return sdkFromSettings;
+  }
+
+  // TODO: Improve the Fallback  
+  const candidates = [
+    process.env.ZEPHYR_SDK_INSTALL_DIR,
+    path.join(process.env.USERPROFILE ?? "", ".zinstaller", "tools", "zephyr-sdk"),
+  ];
+
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  return undefined;
+}
+
+/**
+ * Finds the ECLAIR PROJECT.ecd database file in the build directory.
+ * Searches in build/sca/eclair/PROJECT.ecd path.
+ */
+function findEclairDatabase(folderUri: vscode.Uri, build_config_name?: string): string | undefined {
+  const appDir = folderUri.fsPath;
+  const config = vscode.workspace.getConfiguration(undefined, folderUri);
+  const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
+  const idx = build_config_name ? find_build_config_index(configs, build_config_name) : get_build_config_index(configs);
+  if (idx === undefined) {
+    return undefined;
+  }
+
+  const buildDir = get_build_dir(configs, idx, appDir);
+  const ecdPath = path.join(buildDir, "sca", "eclair", "PROJECT.ecd");
+
+  if (fs.existsSync(ecdPath)) {
+    return ecdPath;
+  }
+
+  return undefined;
+}
+
+function get_build_dir(configs: any, idx: number, appDir: string): string {
+  return (
+    configs[idx]?.build?.dir ||
+      configs[idx]?.buildDir ||
+      path.join(appDir, "build", configs[idx]?.name || "primary")
+  );
+}
+
+function get_build_config_index(configs: any[], build_config_name?: string): number {
+  if (build_config_name) {
+    const idx = configs.findIndex(c => c?.name === build_config_name);
+    if (idx >= 0) {
+      return idx;
+    }
+  }
+  const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
+  return activeIdx >= 0 ? activeIdx : 0;
+}
+
+function find_build_config_index(configs: any[], build_config_name: string): number | undefined {
+  const idx = configs.findIndex(c => c?.name === build_config_name);
+  return idx >= 0 ? idx : undefined;
+}
+
+async function load_sca_config(): Promise<Result<FullEclairScaConfig, string>> {
+  try {
+    const apps = await load_applications();
+    if (apps.length === 0) {
+      return { err: "No Zephyr applications found in workspace." };
+    }
+
+    const idx = resolve_application(apps, undefined);
+    if (idx === undefined) {
+      return { err: "Unable to resolve a Zephyr application." };
+    }
+
+    const app = apps[idx];
+    const build_configs_r = load_project_build_configs(app);
+    if ("err" in build_configs_r) {
+      return { err: build_configs_r.err };
+    }
+    const build_configs = build_configs_r.ok;
+    const active_idx = build_configs.findIndex(c => c?.active === true || c?.active === "true");
+    const cfg_idx = active_idx >= 0 ? active_idx : 0;
+    const selected_name = build_configs[cfg_idx]?.name;
+
+    const sca_configs_r = await load_app_sca_configs(app);
+    if ("err" in sca_configs_r) {
+      return { err: sca_configs_r.err };
+    }
+    const sca_configs = sca_configs_r.ok;
+    const sca_config = (selected_name && sca_configs[selected_name])
+      ? sca_configs[selected_name]
+      : sca_configs[Object.keys(sca_configs)[0]];
+    if (!sca_config) {
+      return { err: "No ECLAIR SCA config found for selected build configuration." };
+    }
+
+    return { ok: sca_config };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    return { err: `Failed to load SCA config: ${msg}` };
+  }
+}
+
+async function load_all_sca_configs(): Promise<Result<Record<string, Record<string, FullEclairScaConfig>>, string>> {
+  try {
+    const apps = await load_applications();
+
+    const by_workspace: Record<string, Record<string, FullEclairScaConfig>> = {};
+    for (const app of apps) {
+      const sca_configs_r = await load_app_sca_configs(app);
+      if ("err" in sca_configs_r) {
+        // TODO consider aggregating errors
+        continue;
+      }
+      const sca_configs = sca_configs_r.ok;
+      const workspace = app.folderName; // TODO this very weak key... multiple folders could have the same name
+      by_workspace[workspace] = sca_configs;
+    }
+
+    return { ok: by_workspace };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    return { err: `Failed to load SCA configs for all apps: ${msg}` };
+  }
+}
+
+function preset_source_key(source: EclairPresetTemplateSource, repos: EclairRepos): string {
+  if (source.type === "repo-path") {
+    const repo = repos[source.repo];
+    return JSON.stringify({
+      source,
+      repo: repo ? { origin: repo.origin, ref: repo.ref } : undefined,
+    });
+  }
+  return JSON.stringify(source);
+}
+
+async function preload_presets_from_configs(
+  by_workspace_and_build_config: Record<string, Record<string, FullEclairScaConfig>>,
+  post_message: (m: ExtensionMessage) => void,
+): Promise<void> {
+  for (const [workspace, build_configs] of Object.entries(by_workspace_and_build_config)) {
+    for (const [build_config, cfg] of Object.entries(build_configs)) {
+      if (!cfg) continue;
+      const seen = new Set<string>();
+      const repos = cfg.repos ?? {};
+      for (const config of cfg.configs) {
+        if (config.main_config.type !== "preset") {
+          continue;
+        }
+        const { ruleset, variants, tailorings } = config.main_config;
+        const allPresets = [ruleset, ...variants, ...tailorings];
+        for (const p of allPresets) {
+          const key = preset_source_key(p.source, repos);
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          await load_preset_from_ref(
+            p.source,
+            repos,
+            (message) => post_message({ command: "preset-content", source: p.source, template: { loading: message }, workspace, build_config }),
+          ).then(r => {
+            if ("err" in r) {
+              post_message({ command: "preset-content", source: p.source, template: { error: r.err }, workspace, build_config });
+            } else {
+              post_message({ command: "preset-content", source: p.source, template: r.ok[0], workspace, build_config });
+            }
+          });
+        }
+      }
+    }
+  }
+}
+
+async function load_app_sca_configs(app: ZephyrAppProject): Promise<Result<Record<string, FullEclairScaConfig>, string>> {
+  try {
+    const build_configs_r = load_project_build_configs(app);
+    if ("err" in build_configs_r) {
+      throw new Error(build_configs_r.err);
+    }
+    const build_configs = build_configs_r.ok;
+
+    const sca_configs: Record<string, FullEclairScaConfig> = {};
+    for (const build_config of build_configs) {
+      const sca = build_config.sca;
+      const eclair_cfg_raw = sca?.find((c: any) => c.name === "eclair")?.cfg;
+      if (!eclair_cfg_raw) {
+        sca_configs[build_config.name] = { configs: [] };
+        continue;
+      }
+      const eclair_resolved_cfg = deepResolvePaths(eclair_cfg_raw, app.workspaceFolder.uri);
+      const parsed = FullEclairScaConfigSchema.safeParse(eclair_resolved_cfg);
+      if (!parsed.success) {
+        // TODO not to console but to the output channel, and ideally also surface in the UI so users know their config is not being loaded
+        console.warn(`Saved SCA config for app '${app.folderName}' failed validation and will be reset:`, parsed.error);
+        sca_configs[build_config.name] = { configs: [] };
+        continue;
+      }
+      sca_configs[build_config.name] = parsed.data;
+    }
+
+    return { ok: sca_configs };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    return { err: `Failed to load SCA config for app '${app.folderName}': ${msg}` };
+  }
+}
+
+function load_project_build_configs(app: ZephyrAppProject): Result<BuildConfiguration[], string> {
+  try {
+    const folder_uri = app.workspaceFolder.uri;
+    const folder_config = vscode.workspace.getConfiguration(undefined, folder_uri);
+    const raw_configs = folder_config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
+    const configs: BuildConfiguration[] = [];
+    for (const c of raw_configs) {
+      const parsed = BuildConfigurationSchema.safeParse(c);
+      if (parsed.success) {
+        configs.push(parsed.data);
+      } else {
+        const idx = raw_configs.indexOf(c);
+        // TODO not to console but to the output channel, and ideally also surface in the UI so users know their config is not being loaded
+        console.warn(`Configuration at index ${idx} failed validation and will be skipped:`, parsed.error);
+      }
+    }
+    return { ok: configs };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    return { err: `Failed to load SCA config for app '${app.folderName}': ${msg}` };
+  }
 }

@@ -1,20 +1,28 @@
 import React, { JSX } from "react";
 import { WebviewMessage } from "../../../utils/eclairEvent";
-import { BUGSENG_REPO_LINK, EclairConfig, EclairState, EclairStateAction, ZephyrRulesetState } from "../state";
+import { AvailablePresetsState, BUGSENG_REPO_LINK, EclairConfig, EclairStateAction, RepoScanState } from "../state";
 import { Monospace, RichHelpTooltip, VscodeRadio, VscodeRadioGroup } from "./common_components";
 import { RulesetSection } from "./main_configuration/ruleset_section";
 import { CustomEclSection } from "./main_configuration/custom_ecl";
 import { PresetSelection } from "./main_configuration/preset_selection";
-import { EclairScaConfigType } from "../../../utils/eclair/config";
+import { EclairRepos, EclairScaConfigType } from "../../../utils/eclair/config";
 
 
 export function MainAnalysisConfigurationSection({
-  state,
+  workspace,
+  build_config,
+  available_presets,
+  repos,
+  repos_scan_state,
   current,
   dispatch_state,
   post_message,
 }: {
-  state: EclairState;
+  workspace: string;
+  build_config: string;
+  available_presets: AvailablePresetsState;
+  repos: EclairRepos;
+  repos_scan_state: Record<string, RepoScanState>;
   current: EclairConfig,
   dispatch_state: React.Dispatch<EclairStateAction>;
   post_message: (message: WebviewMessage) => void;
@@ -30,7 +38,13 @@ export function MainAnalysisConfigurationSection({
         value={current.main_config.type}
         onChange={(e: any) => {
           const type = e.target.value as EclairScaConfigType;
-          dispatch_state({ type: "update-configuration-type", configurationType: type });
+          dispatch_state({
+            type: "with-selected-workspace",
+            action: {
+              type: "with-selected-configuration",
+              action: { type: "update-configuration-type", configurationType: type },
+            },
+          });
         }}
       >
         {rulesets.map((r) => (
@@ -42,6 +56,8 @@ export function MainAnalysisConfigurationSection({
 
       {current.main_config.type === "zephyr-ruleset" && (
         <RulesetSection
+          workspace={workspace}
+          build_config={build_config}
           ruleset={current.main_config.ruleset}
           dispatch_state={dispatch_state}
           post_message={post_message}
@@ -50,10 +66,12 @@ export function MainAnalysisConfigurationSection({
 
       {current.main_config.type === "preset" && (
         <PresetSelection
+          workspace={workspace}
+          build_config={build_config}
           state={current.main_config.state}
-          available_presets={state.available_presets}
-          repos={state.repos}
-          repos_scan_state={state.repos_scan_state}
+          available_presets={available_presets}
+          repos={repos}
+          repos_scan_state={repos_scan_state}
           dispatch_state={dispatch_state}
           post_message={post_message}
         />
@@ -61,6 +79,8 @@ export function MainAnalysisConfigurationSection({
 
       {current.main_config.type === "custom-ecl" && (
         <CustomEclSection
+          workspace={workspace}
+          build_config={build_config}
           state={current.main_config.state}
           dispatch_state={dispatch_state}
           post_message={post_message}

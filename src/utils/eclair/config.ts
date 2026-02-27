@@ -115,7 +115,7 @@ export type EclairScaConfig = z.infer<typeof EclairScaConfigSchema>;
 export const FullEclairScaConfigSchema = z.object({
   install_path: z.string().optional(),
   configs: z.array(EclairScaConfigSchema),
-  current_config_index: z.number(),
+  current_config_index: z.number().optional(),
   repos: EclairReposSchema.optional(),
 });
 

@@ -10,6 +10,8 @@ const EMPTY_REPO_FORM = { name: "", origin: "", rev: "" };
  * UI section for managing preset repositories.
  */
 export function RepoManagementSection(props: {
+  workspace: string;
+  build_config: string;
   repos: EclairRepos;
   repos_scan_state: Record<string, RepoScanState>;
   available_presets: AvailablePresetsState;
@@ -29,7 +31,7 @@ export function RepoManagementSection(props: {
     if (!name || !origin || !rev) { return; }
     props.dispatch_state({ type: "add-repo", name, origin, rev });
     props.dispatch_state({ type: "repo-scan-started", name });
-    props.post_message({ command: "scan-repo", name, origin, ref: rev });
+    props.post_message({ command: "scan-repo", name, origin, ref: rev, workspace: props.workspace, build_config: props.build_config });
     set_form(EMPTY_REPO_FORM);
   }
 
@@ -44,7 +46,7 @@ export function RepoManagementSection(props: {
     if (!origin || !rev) { return; }
     props.dispatch_state({ type: "update-repo", name: editingName, origin, rev });
     props.dispatch_state({ type: "repo-scan-started", name: editingName });
-    props.post_message({ command: "scan-repo", name: editingName, origin, ref: rev });
+    props.post_message({ command: "scan-repo", name: editingName, origin, ref: rev, workspace: props.workspace, build_config: props.build_config });
     set_editing_name(null);
     set_form(EMPTY_REPO_FORM);
   }
@@ -52,7 +54,7 @@ export function RepoManagementSection(props: {
   function handle_reload_all() {
     for (const [name, entry] of Object.entries(props.repos)) {
       props.dispatch_state({ type: "repo-scan-started", name });
-      props.post_message({ command: "scan-repo", name, origin: entry.origin, ref: entry.ref });
+      props.post_message({ command: "scan-repo", name, origin: entry.origin, ref: entry.ref, workspace: props.workspace, build_config: props.build_config });
     }
   }
 
@@ -89,13 +91,13 @@ export function RepoManagementSection(props: {
             const entry = props.repos[name];
             if (!entry) { return; }
             props.dispatch_state({ type: "repo-scan-started", name });
-            props.post_message({ command: "scan-repo", name, origin: entry.origin, ref: entry.ref });
+            props.post_message({ command: "scan-repo", name, origin: entry.origin, ref: entry.ref, workspace: props.workspace, build_config: props.build_config });
           }}
           handle_update={(name: string) => {
             const entry = props.repos[name];
             if (!entry) { return; }
             props.dispatch_state({ type: "repo-scan-started", name });
-            props.post_message({ command: "update-repo-checkout", name, origin: entry.origin, ref: entry.ref });
+            props.post_message({ command: "update-repo-checkout", name, origin: entry.origin, ref: entry.ref, workspace: props.workspace, build_config: props.build_config });
           }}
           handle_edit_start={(name: string) => {
             const entry = props.repos[name];

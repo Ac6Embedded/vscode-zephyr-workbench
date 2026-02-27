@@ -31,7 +31,13 @@ export function ReportsSection(props: {
               className="report-chk"
               value={r}
               checked={props.reports.selected.includes(r)}
-              onChange={(e: any) => props.dispatch_state({ type: "toggle-report", report: r, checked: e.target.checked })}
+              onChange={(e: any) => props.dispatch_state({
+                type: "with-selected-workspace",
+                action: {
+                  type: "with-selected-configuration",
+                  action: { type: "toggle-report", report: r, checked: e.target.checked },
+                },
+              })}
             >
               {r}
             </VscodeCheckbox>
