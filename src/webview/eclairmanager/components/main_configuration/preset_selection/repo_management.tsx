@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { EclairRepos } from "../../../../../utils/eclair/config";
 import { AvailablePresetsState, EclairStateAction, RepoScanState } from "../../../state";
 import { WebviewMessage } from "../../../../../utils/eclairEvent";
-import { StatusBadge, StatusBadgeState, VscodeBadge, VscodeButton, VscodePanel, VscodeTextField } from "../../common_components";
+import { Monospace, StatusBadge, StatusBadgeState, VscodeBadge, VscodeButton, VscodePanel, VscodeTextField } from "../../common_components";
 
 const EMPTY_REPO_FORM = { name: "", origin: "", rev: "" };
 
@@ -146,6 +146,81 @@ function ReposTable({
   handle_edit_start: (name: string) => void;
   handle_remove: (name: string) => void;
 }) {
+  const entry_row = (name: string, entry: { origin: string; ref: string }) => {
+    const [is_expanded, set_expanded] = React.useState(false);
+
+    const presets = available_presets.by_repo_and_path.get(name);
+    const preset_count = presets?.size ?? 0;
+
+    return (<>
+      <tr key={name} style={{ borderTop: "1px solid var(--vscode-panel-border, #444)" }}>
+        <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{name}</td>
+        <td style={{ padding: "4px 8px", fontFamily: "monospace", wordBreak: "break-all" }}>{entry.origin}</td>
+        <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{entry.ref}</td>
+        <td style={{ padding: "4px 8px" }}>
+          <StatusBadge status={repo_scan_state_to_badge_status(repos_scan_state[name], available_presets.by_repo_and_path.get(name)?.size ?? 0)} />
+        </td>
+        <td style={{ padding: "4px 8px", whiteSpace: "nowrap", gap: "4px", display: "flex" }}>
+          <VscodeButton
+            appearance="secondary"
+            onClick={() => handle_reload(name)}
+            title="Re-scan this repository for preset templates (uses cached checkout)"
+            disabled={repos_scan_state[name]?.status === "loading"}
+          >
+            Reload
+          </VscodeButton>
+          <VscodeButton
+            appearance="secondary"
+            onClick={() => handle_update(name)}
+            title="Delete the cached checkout and re-clone from remote to get the latest changes"
+            disabled={repos_scan_state[name]?.status === "loading"}
+          >
+            Update
+          </VscodeButton>
+          <VscodeButton
+            appearance="secondary"
+            onClick={() => handle_edit_start(name)}
+          >
+            Edit
+          </VscodeButton>
+          <VscodeButton appearance="secondary" onClick={() => handle_remove(name)}>
+            Remove
+          </VscodeButton>
+          <VscodeButton
+            appearance="secondary"
+            disabled={preset_count === 0}
+            onClick={() => set_expanded((v) => !v)}
+          >
+            Presets
+          </VscodeButton>
+        </td>
+      </tr>
+      {is_expanded && presets && (<tr>
+        <td colSpan={5} style={{ padding: "8px", background: "var(--vscode-editor-background)" }}>
+          <div style={{ fontSize: "0.9em", color: "var(--vscode-descriptionForeground)" }}>
+            {repos_scan_state[name]?.status === "loading" && "Scanning repository..."}
+            {repos_scan_state[name]?.status !== "loading" && presets.size === 0 && "No presets loaded."}
+          </div>
+          {presets.size > 0 && (
+            <div style={{ marginTop: "6px", maxHeight: "12em", overflowY: "auto" }}>
+              <ul style={{ margin: 0, paddingLeft: "18px" }}>
+                {Array.from(presets.entries()).map(([path, preset]) => (
+                  <li key={path} style={{ marginBottom: "4px" }}>
+                    <Monospace>{path}</Monospace>{": "}
+                    {"loading" in preset && <span>Loading...</span>}
+                    {"error" in preset && <span style={{ color: "var(--vscode-errorForeground)" }}>Error: {preset.error}</span>}
+                    {"title" in preset && <span>{preset.title} ({preset.kind})</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </td>
+      </tr>)}
+    </>);
+  };
+
+
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "12px", fontSize: "0.9em" }}>
       <thead>
@@ -158,46 +233,7 @@ function ReposTable({
         </tr>
       </thead>
       <tbody>
-        {repoEntries.map(([name, entry]) => (
-          <tr key={name} style={{ borderTop: "1px solid var(--vscode-panel-border, #444)" }}>
-            <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{name}</td>
-            <td style={{ padding: "4px 8px", fontFamily: "monospace", wordBreak: "break-all" }}>{entry.origin}</td>
-            <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{entry.ref}</td>
-            <td style={{ padding: "4px 8px" }}>
-              <StatusBadge status={repo_scan_state_to_badge_status(repos_scan_state[name], available_presets.by_repo_path.get(name)?.size ?? 0)} />
-            </td>
-            <td style={{ padding: "4px 8px", whiteSpace: "nowrap" }}>
-              <VscodeButton
-                appearance="secondary"
-                onClick={() => handle_reload(name)}
-                title="Re-scan this repository for preset templates (uses cached checkout)"
-                style={{ marginRight: "4px" }}
-                disabled={repos_scan_state[name]?.status === "loading"}
-              >
-                Reload
-              </VscodeButton>
-              <VscodeButton
-                appearance="secondary"
-                onClick={() => handle_update(name)}
-                title="Delete the cached checkout and re-clone from remote to get the latest changes"
-                style={{ marginRight: "4px" }}
-                disabled={repos_scan_state[name]?.status === "loading"}
-              >
-                Update
-              </VscodeButton>
-              <VscodeButton
-                appearance="secondary"
-                onClick={() => handle_edit_start(name)}
-                style={{ marginRight: "4px" }}
-              >
-                Edit
-              </VscodeButton>
-              <VscodeButton appearance="secondary" onClick={() => handle_remove(name)}>
-                Remove
-              </VscodeButton>
-            </td>
-          </tr>
-        ))}
+        {repoEntries.map(([name, entry]) => entry_row(name, entry))}
       </tbody>
     </table>
   );

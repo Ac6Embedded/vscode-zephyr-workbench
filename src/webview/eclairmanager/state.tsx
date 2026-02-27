@@ -137,13 +137,13 @@ export interface AvailablePresetsState {
    * Outer key: logical repo name (matches EclairScaConfig.repos key).
    * Inner key: file path relative to the repo root.
    */
-  by_repo_path: Map<string, Map<string, EclairTemplate | { loading: string } | { error: string }>>;
+  by_repo_and_path: Map<string, Map<string, EclairTemplate | { loading: string } | { error: string }>>;
 }
 
 export function get_preset_template_by_source(presets: AvailablePresetsState, source: EclairPresetTemplateSource): EclairTemplate | { loading: string } | { error: string } | undefined {
   return match(source)
     .with({ type: "system-path" }, ({ path }) => presets.by_path.get(path))
-    .with({ type: "repo-path" }, ({ repo, path }) => presets.by_repo_path.get(repo)?.get(path))
+    .with({ type: "repo-path" }, ({ repo, path }) => presets.by_repo_and_path.get(repo)?.get(path))
     .exhaustive();
 }
 
@@ -307,7 +307,7 @@ function build_workspace_build_state(cfg: FullEclairScaConfig, prev?: EclairWork
   }
   const available_presets = prev && are_repos_equal(repos, prev.repos)
     ? prev.available_presets
-    : { by_path: new Map(), by_repo_path: new Map() };
+    : { by_path: new Map(), by_repo_and_path: new Map() };
 
   return {
     install_path: build_install_path_state(cfg.install_path, prev?.install_path),
@@ -629,10 +629,10 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
           selected.state.available_presets.by_path.set(path, template);
         })
         .with({ type: "repo-path" }, ({ repo, path }) => {
-          let byPath = selected.state.available_presets.by_repo_path.get(repo);
+          let byPath = selected.state.available_presets.by_repo_and_path.get(repo);
           if (!byPath) {
             byPath = new Map();
-            selected.state.available_presets.by_repo_path.set(repo, byPath);
+            selected.state.available_presets.by_repo_and_path.set(repo, byPath);
           }
           byPath.set(path, template);
         })
@@ -658,7 +658,7 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
       delete selected.state.repos[name];
       delete selected.state.repos_scan_state[name];
       // Also clear all preset-content entries for this repo.
-      selected.state.available_presets.by_repo_path.delete(name);
+      selected.state.available_presets.by_repo_and_path.delete(name);
     })
     .with({ type: "repo-scan-started" }, ({ name, workspace, build_config }) => {
       const selected = get_selected_context(draft, workspace, build_config);
@@ -669,7 +669,7 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
       const selected = get_selected_context(draft, workspace, build_config);
       if (!selected) return;
       // Count successfully loaded templates for this repo.
-      const byPath = selected.state.available_presets.by_repo_path.get(name);
+      const byPath = selected.state.available_presets.by_repo_and_path.get(name);
       const templateCount = byPath
         ? [...byPath.values()].filter(t => !("loading" in t) && !("error" in t)).length
         : 0;

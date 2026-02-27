@@ -293,7 +293,7 @@ function PresetPicker(props: {
         source: { type: "system-path", path },
       });
     }
-    for (const [repo, by_path] of props.available_presets.by_repo_path) {
+    for (const [repo, by_path] of props.available_presets.by_repo_and_path) {
       for (const [path, preset] of by_path) {
         if ("loading" in preset || "error" in preset) {
           continue;
