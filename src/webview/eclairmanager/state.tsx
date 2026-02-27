@@ -173,7 +173,7 @@ export interface ReportServerState {
 export type RepoScanState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "success"; templateCount: number }
+  | { status: "success"; templateCount: number; checkoutDir?: string }
   | { status: "error"; message: string };
 
 
@@ -220,12 +220,12 @@ export type EclairStateAction =
   | { type: "report-server-stopped" }
   | { type: "preset-content"; source: EclairPresetTemplateSource; template: EclairTemplate | { loading: string } | { error: string }; workspace?: string; build_config?: string }
   // Repo management actions
-  | { type: "add-repo"; name: string; origin: string; rev: string }
+  | { type: "add-repo"; name: string; origin: string; ref: string; rev?: string }
   | { type: "remove-repo"; name: string }
-  | { type: "update-repo"; name: string; origin: string; rev: string }
+  | { type: "update-repo"; name: string; origin: string; ref: string; rev?: string }
   // Repo scan status actions
   | { type: "repo-scan-started"; name: string; workspace?: string; build_config?: string }
-  | { type: "repo-scan-done"; name: string; workspace?: string; build_config?: string }
+  | { type: "repo-scan-done"; name: string; workspace?: string; build_config?: string; rev?: string; checkout_dir?: string }
   | { type: "repo-scan-failed"; name: string; message: string; workspace?: string; build_config?: string }
   | { type: "update-state", updater: (state: WritableDraft<EclairState>) => EclairState | undefined };
 
@@ -286,7 +286,10 @@ function are_repos_equal(a: EclairRepos, b: EclairRepos | undefined): boolean {
   return a_keys.every((name) => {
     const entry_a = a[name];
     const entry_b = b[name];
-    return !!entry_b && entry_a.origin === entry_b.origin && entry_a.ref === entry_b.ref;
+    return !!entry_b
+      && entry_a.origin === entry_b.origin
+      && entry_a.ref === entry_b.ref
+      && (entry_a.rev ?? "") === (entry_b.rev ?? "");
   });
 }
 
@@ -638,17 +641,17 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
         })
         .exhaustive();
     })
-    .with({ type: "add-repo" }, ({ name, origin, rev }) => {
+    .with({ type: "add-repo" }, ({ name, origin, ref, rev }) => {
       const selected = get_selected_context(draft);
       if (!selected) return;
-      selected.state.repos[name] = { origin, ref: rev };
+      selected.state.repos[name] = { origin, ref, ...(rev ? { rev } : {}) };
       // Reset scan state when a repo is added or its configuration changes.
       selected.state.repos_scan_state[name] = { status: "idle" };
     })
-    .with({ type: "update-repo" }, ({ name, origin, rev }) => {
+    .with({ type: "update-repo" }, ({ name, origin, ref, rev }) => {
       const selected = get_selected_context(draft);
       if (!selected) return;
-      selected.state.repos[name] = { origin, ref: rev };
+      selected.state.repos[name] = { origin, ref, ...(rev ? { rev } : {}) };
       // Reset scan state when a repo's configuration changes.
       selected.state.repos_scan_state[name] = { status: "idle" };
     })
@@ -665,7 +668,7 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
       if (!selected) return;
       selected.state.repos_scan_state[name] = { status: "loading" };
     })
-    .with({ type: "repo-scan-done" }, ({ name, workspace, build_config }) => {
+    .with({ type: "repo-scan-done" }, ({ name, workspace, build_config, rev, checkout_dir }) => {
       const selected = get_selected_context(draft, workspace, build_config);
       if (!selected) return;
       // Count successfully loaded templates for this repo.
@@ -673,7 +676,13 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
       const templateCount = byPath
         ? [...byPath.values()].filter(t => !("loading" in t) && !("error" in t)).length
         : 0;
-      selected.state.repos_scan_state[name] = { status: "success", templateCount };
+      selected.state.repos_scan_state[name] = { status: "success", templateCount, checkoutDir: checkout_dir };
+      if (rev) {
+        const entry = selected.state.repos[name];
+        if (entry && !entry.rev) {
+          entry.rev = rev;
+        }
+      }
     })
     .with({ type: "repo-scan-failed" }, ({ name, message, workspace, build_config }) => {
       const selected = get_selected_context(draft, workspace, build_config);

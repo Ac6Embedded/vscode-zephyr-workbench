@@ -83,6 +83,11 @@ export type EclairScaReportOption = typeof ALL_ECLAIR_REPORTS[number];
 export const EclairRepoEntrySchema = z.object({
   origin: z.string(),
   ref: z.string(),
+  /**
+   * Optional locked commit hash. When set, the repo checkout is pinned
+   * to this exact revision.
+   */
+  rev: z.string().optional(),
 });
 
 export type EclairRepoEntry = z.infer<typeof EclairRepoEntrySchema>;

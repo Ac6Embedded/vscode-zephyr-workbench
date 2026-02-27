@@ -61,6 +61,8 @@ export type ExtensionMessage = {
   name: string,
   workspace: string,
   build_config: string,
+  rev?: string,
+  checkout_dir?: string,
 } | {
   /** Sent when an entire repository scan fails (e.g. checkout error). */
   command: "repo-scan-failed",
@@ -138,6 +140,7 @@ export type WebviewMessage = {
   ref: string,
   workspace: string,
   build_config: string,
+  rev?: string,
 } | {
   command: "update-repo-checkout",
   name: string,
@@ -145,4 +148,6 @@ export type WebviewMessage = {
   ref: string,
   workspace: string,
   build_config: string,
+  rev?: string,
+  delete_rev?: string,
 };

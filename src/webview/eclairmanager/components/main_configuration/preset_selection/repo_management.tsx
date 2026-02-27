@@ -4,7 +4,7 @@ import { AvailablePresetsState, EclairStateAction, RepoScanState } from "../../.
 import { WebviewMessage } from "../../../../../utils/eclairEvent";
 import { Monospace, StatusBadge, StatusBadgeState, VscodeBadge, VscodeButton, VscodePanel, VscodeTextField } from "../../common_components";
 
-const EMPTY_REPO_FORM = { name: "", origin: "", rev: "" };
+const EMPTY_REPO_FORM = { name: "", origin: "", ref: "", rev: "" };
 
 /**
  * UI section for managing preset repositories.
@@ -27,11 +27,12 @@ export function RepoManagementSection(props: {
   function handle_add() {
     const name = form.name.trim();
     const origin = form.origin.trim();
+    const ref = form.ref.trim();
     const rev = form.rev.trim();
-    if (!name || !origin || !rev) { return; }
-    props.dispatch_state({ type: "add-repo", name, origin, rev });
+    if (!name || !origin || !ref) { return; }
+    props.dispatch_state({ type: "add-repo", name, origin, ref, ...(rev ? { rev } : {}) });
     props.dispatch_state({ type: "repo-scan-started", name });
-    props.post_message({ command: "scan-repo", name, origin, ref: rev, workspace: props.workspace, build_config: props.build_config });
+    props.post_message({ command: "scan-repo", name, origin, ref, rev: rev || undefined, workspace: props.workspace, build_config: props.build_config });
     set_form(EMPTY_REPO_FORM);
   }
 
@@ -42,11 +43,12 @@ export function RepoManagementSection(props: {
   function handle_edit_save() {
     if (!editingName) { return; }
     const origin = form.origin.trim();
+    const ref = form.ref.trim();
     const rev = form.rev.trim();
-    if (!origin || !rev) { return; }
-    props.dispatch_state({ type: "update-repo", name: editingName, origin, rev });
+    if (!origin || !ref) { return; }
+    props.dispatch_state({ type: "update-repo", name: editingName, origin, ref, ...(rev ? { rev } : {}) });
     props.dispatch_state({ type: "repo-scan-started", name: editingName });
-    props.post_message({ command: "scan-repo", name: editingName, origin, ref: rev, workspace: props.workspace, build_config: props.build_config });
+    props.post_message({ command: "scan-repo", name: editingName, origin, ref, rev: rev || undefined, workspace: props.workspace, build_config: props.build_config });
     set_editing_name(null);
     set_form(EMPTY_REPO_FORM);
   }
@@ -54,7 +56,7 @@ export function RepoManagementSection(props: {
   function handle_reload_all() {
     for (const [name, entry] of Object.entries(props.repos)) {
       props.dispatch_state({ type: "repo-scan-started", name });
-      props.post_message({ command: "scan-repo", name, origin: entry.origin, ref: entry.ref, workspace: props.workspace, build_config: props.build_config });
+      props.post_message({ command: "scan-repo", name, origin: entry.origin, ref: entry.ref, rev: entry.rev, workspace: props.workspace, build_config: props.build_config });
     }
   }
 
@@ -91,18 +93,31 @@ export function RepoManagementSection(props: {
             const entry = props.repos[name];
             if (!entry) { return; }
             props.dispatch_state({ type: "repo-scan-started", name });
-            props.post_message({ command: "scan-repo", name, origin: entry.origin, ref: entry.ref, workspace: props.workspace, build_config: props.build_config });
+            props.post_message({ command: "scan-repo", name, origin: entry.origin, ref: entry.ref, rev: entry.rev, workspace: props.workspace, build_config: props.build_config });
           }}
           handle_update={(name: string) => {
             const entry = props.repos[name];
             if (!entry) { return; }
+            const locked_rev = entry.rev;
+            if (locked_rev) {
+              props.dispatch_state({ type: "update-repo", name, origin: entry.origin, ref: entry.ref });
+            }
             props.dispatch_state({ type: "repo-scan-started", name });
-            props.post_message({ command: "update-repo-checkout", name, origin: entry.origin, ref: entry.ref, workspace: props.workspace, build_config: props.build_config });
+            props.post_message({
+              command: "update-repo-checkout",
+              name,
+              origin: entry.origin,
+              ref: entry.ref,
+              rev: undefined,
+              delete_rev: locked_rev,
+              workspace: props.workspace,
+              build_config: props.build_config,
+            });
           }}
           handle_edit_start={(name: string) => {
             const entry = props.repos[name];
             set_editing_name(name);
-            set_form({ name, origin: entry.origin, rev: entry.ref });
+            set_form({ name, origin: entry.origin, ref: entry.ref, rev: entry.rev ?? "" });
           }}
           handle_remove={handle_remove}
         />}
@@ -138,7 +153,7 @@ function ReposTable({
   handle_edit_start,
   handle_remove,
 }: {
-  repoEntries: [string, { origin: string; ref: string }][];
+  repoEntries: [string, { origin: string; ref: string; rev?: string }][];
   repos_scan_state: Record<string, RepoScanState>;
   available_presets: AvailablePresetsState;
   handle_reload: (name: string) => void;
@@ -146,78 +161,9 @@ function ReposTable({
   handle_edit_start: (name: string) => void;
   handle_remove: (name: string) => void;
 }) {
-  const entry_row = (name: string, entry: { origin: string; ref: string }) => {
-    const [is_expanded, set_expanded] = React.useState(false);
-
-    const presets = available_presets.by_repo_and_path.get(name);
-    const preset_count = presets?.size ?? 0;
-
-    return (<>
-      <tr key={name} style={{ borderTop: "1px solid var(--vscode-panel-border, #444)" }}>
-        <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{name}</td>
-        <td style={{ padding: "4px 8px", fontFamily: "monospace", wordBreak: "break-all" }}>{entry.origin}</td>
-        <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{entry.ref}</td>
-        <td style={{ padding: "4px 8px" }}>
-          <StatusBadge status={repo_scan_state_to_badge_status(repos_scan_state[name], available_presets.by_repo_and_path.get(name)?.size ?? 0)} />
-        </td>
-        <td style={{ padding: "4px 8px", whiteSpace: "nowrap", gap: "4px", display: "flex" }}>
-          <VscodeButton
-            appearance="secondary"
-            onClick={() => handle_reload(name)}
-            title="Re-scan this repository for preset templates (uses cached checkout)"
-            disabled={repos_scan_state[name]?.status === "loading"}
-          >
-            Reload
-          </VscodeButton>
-          <VscodeButton
-            appearance="secondary"
-            onClick={() => handle_update(name)}
-            title="Delete the cached checkout and re-clone from remote to get the latest changes"
-            disabled={repos_scan_state[name]?.status === "loading"}
-          >
-            Update
-          </VscodeButton>
-          <VscodeButton
-            appearance="secondary"
-            onClick={() => handle_edit_start(name)}
-          >
-            Edit
-          </VscodeButton>
-          <VscodeButton appearance="secondary" onClick={() => handle_remove(name)}>
-            Remove
-          </VscodeButton>
-          <VscodeButton
-            appearance="secondary"
-            disabled={preset_count === 0}
-            onClick={() => set_expanded((v) => !v)}
-          >
-            Presets
-          </VscodeButton>
-        </td>
-      </tr>
-      {is_expanded && presets && (<tr>
-        <td colSpan={5} style={{ padding: "8px", background: "var(--vscode-editor-background)" }}>
-          <div style={{ fontSize: "0.9em", color: "var(--vscode-descriptionForeground)" }}>
-            {repos_scan_state[name]?.status === "loading" && "Scanning repository..."}
-            {repos_scan_state[name]?.status !== "loading" && presets.size === 0 && "No presets loaded."}
-          </div>
-          {presets.size > 0 && (
-            <div style={{ marginTop: "6px", maxHeight: "12em", overflowY: "auto" }}>
-              <ul style={{ margin: 0, paddingLeft: "18px" }}>
-                {Array.from(presets.entries()).map(([path, preset]) => (
-                  <li key={path} style={{ marginBottom: "4px" }}>
-                    <Monospace>{path}</Monospace>{": "}
-                    {"loading" in preset && <span>Loading...</span>}
-                    {"error" in preset && <span style={{ color: "var(--vscode-errorForeground)" }}>Error: {preset.error}</span>}
-                    {"title" in preset && <span>{preset.title} ({preset.kind})</span>}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </td>
-      </tr>)}
-    </>);
+  const [expandedRepos, setExpandedRepos] = useState<Record<string, boolean>>({});
+  const toggle_presets = (name: string) => {
+    setExpandedRepos((prev) => ({ ...prev, [name]: !prev[name] }));
   };
 
 
@@ -233,7 +179,106 @@ function ReposTable({
         </tr>
       </thead>
       <tbody>
-        {repoEntries.map(([name, entry]) => entry_row(name, entry))}
+        {repoEntries.map(([name, entry]) => {
+          const presets = available_presets.by_repo_and_path.get(name);
+          const preset_entries = presets ? Array.from(presets.entries()) : [];
+          const preset_count = presets?.size ?? 0;
+          const is_expanded = !!expandedRepos[name];
+          const scan_state = repos_scan_state[name];
+          const checkout_dir = scan_state?.status === "success" ? scan_state.checkoutDir : undefined;
+          const normalized_checkout = checkout_dir ? checkout_dir.replace(/\\/g, "/") : undefined;
+          const locked_rev = entry.rev;
+
+          return (
+            <React.Fragment key={name}>
+              <tr style={{ borderTop: "1px solid var(--vscode-panel-border, #444)" }}>
+                <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{name}</td>
+                <td style={{ padding: "4px 8px", fontFamily: "monospace", wordBreak: "break-all" }}>{entry.origin}</td>
+                <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{entry.ref}</td>
+                <td style={{ padding: "4px 8px" }}>
+                  <StatusBadge status={repo_scan_state_to_badge_status(scan_state, preset_count)} />
+                </td>
+                <td style={{ padding: "4px 8px", whiteSpace: "nowrap", gap: "4px", display: "flex" }}>
+                  <VscodeButton
+                    appearance="secondary"
+                    onClick={() => handle_reload(name)}
+                    title="Re-scan this repository for preset templates (uses cached checkout)"
+                    disabled={scan_state?.status === "loading"}
+                  >
+                    Reload
+                  </VscodeButton>
+                  <VscodeButton
+                    appearance="secondary"
+                    onClick={() => handle_update(name)}
+                    title="Delete the cached checkout and re-clone from remote to get the latest changes"
+                    disabled={scan_state?.status === "loading"}
+                  >
+                    Update
+                  </VscodeButton>
+                  <VscodeButton
+                    appearance="secondary"
+                    onClick={() => handle_edit_start(name)}
+                  >
+                    Edit
+                  </VscodeButton>
+                  <VscodeButton appearance="secondary" onClick={() => handle_remove(name)}>
+                    Remove
+                  </VscodeButton>
+                  <VscodeButton
+                    appearance="secondary"
+                    onClick={() => toggle_presets(name)}
+                  >
+                    Presets ({preset_count})
+                  </VscodeButton>
+                </td>
+              </tr>
+              {is_expanded && (
+                <tr>
+                  <td colSpan={5} style={{ padding: "8px", background: "var(--vscode-editor-background)" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "6px" }}>
+                      <div style={{ fontSize: "0.9em", color: "var(--vscode-descriptionForeground)" }}>
+                        Locked rev: {locked_rev ? <Monospace>{locked_rev}</Monospace> : "(not locked)"}
+                      </div>
+                      {normalized_checkout && (
+                        <div style={{ fontSize: "0.9em", color: "var(--vscode-descriptionForeground)" }}>
+                          Checkout: <Monospace>{normalized_checkout}</Monospace>
+                        </div>
+                      )}
+                      <div style={{ fontSize: "0.9em", color: "var(--vscode-descriptionForeground)" }}>
+                        {scan_state?.status === "loading" && "Scanning repository..."}
+                        {scan_state?.status !== "loading" && preset_entries.length === 0 && "No presets loaded."}
+                      </div>
+                    </div>
+                    {preset_entries.length > 0 && (
+                      <div style={{ maxHeight: "12em", overflowY: "auto" }}>
+                        <ul style={{ margin: 0, paddingLeft: "18px" }}>
+                          {preset_entries.map(([path, preset]) => {
+                            const absolute = normalized_checkout ? `${normalized_checkout}/${path}` : undefined;
+                            return (
+                              <li key={path} style={{ marginBottom: "6px" }}>
+                                <div>
+                                  <Monospace>{path}</Monospace>{" "}
+                                  {"loading" in preset && <span>Loading...</span>}
+                                  {"error" in preset && <span style={{ color: "var(--vscode-errorForeground)" }}>Error: {preset.error}</span>}
+                                  {"title" in preset && <span>{preset.title} ({preset.kind})</span>}
+                                </div>
+                                {absolute && (
+                                  <div style={{ color: "var(--vscode-descriptionForeground)", fontSize: "0.85em" }}>
+                                    <Monospace>{absolute}</Monospace>
+                                  </div>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -247,14 +292,14 @@ function EditForm({
   handle_edit_save,
   handle_edit_cancel,
 }: {
-  form: { name: string; origin: string; rev: string };
+  form: { name: string; origin: string; ref: string; rev: string };
   is_adding: boolean;
-  set_form: React.Dispatch<React.SetStateAction<{ name: string; origin: string; rev: string }>>;
+  set_form: React.Dispatch<React.SetStateAction<{ name: string; origin: string; ref: string; rev: string }>>;
   handle_add: () => void;
   handle_edit_save: () => void;
   handle_edit_cancel: () => void;
 }) {
-  return (<div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr auto", gap: "6px", alignItems: "end" }}>
+  return (<div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr auto", gap: "6px", alignItems: "end" }}>
     <div>
       <VscodeTextField
         value={form.name}
@@ -275,23 +320,31 @@ function EditForm({
     <div>
       <VscodeTextField
         placeholder="Branch, tag, or commit SHA"
+        value={form.ref}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => set_form((f) => ({ ...f, ref: e.target.value }))}
+        style={{ width: "100%", boxSizing: "border-box" }}
+      >Ref</VscodeTextField>
+    </div>
+    <div>
+      <VscodeTextField
+        placeholder="Optional locked commit SHA"
         value={form.rev}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => set_form((f) => ({ ...f, rev: e.target.value }))}
         style={{ width: "100%", boxSizing: "border-box" }}
-      >Ref</VscodeTextField>
+      >Rev (lock)</VscodeTextField>
     </div>
     <div style={{ display: "flex", gap: "4px" }}>
       {is_adding ? (
         <VscodeButton
           appearance="primary"
           onClick={handle_add}
-          disabled={!form.name.trim() || !form.origin.trim() || !form.rev.trim()}
+          disabled={!form.name.trim() || !form.origin.trim() || !form.ref.trim()}
         >
           Add
         </VscodeButton>
       ) : (
         <>
-          <VscodeButton appearance="primary" onClick={handle_edit_save} disabled={!form.origin.trim() || !form.rev.trim()}>
+          <VscodeButton appearance="primary" onClick={handle_edit_save} disabled={!form.origin.trim() || !form.ref.trim()}>
             Save
           </VscodeButton>
           <VscodeButton appearance="secondary" onClick={handle_edit_cancel}>

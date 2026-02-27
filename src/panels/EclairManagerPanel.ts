@@ -12,7 +12,7 @@ import type { IEclairExtension } from "../ext/eclair_api";
 import type { ExtensionMessage, WebviewMessage } from "../utils/eclairEvent";
 import { extract_yaml_from_ecl_content, format_option_settings, parse_eclair_template_from_any } from "../utils/eclair/template_utils";
 import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, FullEclairScaConfig, FullEclairScaConfigSchema, PresetSelectionState } from "../utils/eclair/config";
-import { ensureRepoCheckout, deleteRepoCheckout } from "./EclairManagerPanel/repo_manage";
+import { ensureRepoCheckout, deleteRepoCheckout, getRepoHeadRevision } from "./EclairManagerPanel/repo_manage";
 import { Result, unwrap_or_throw } from "../utils/typing_utils";
 import { match } from "ts-pattern";
 import { load_preset_from_ref } from "./EclairManagerPanel/templates";
@@ -704,22 +704,27 @@ export class EclairManagerPanel {
           this.post_message({ command: "preset-content", source, template: r.ok[0], workspace, build_config });
         }
       })
-      .with({ command: "scan-repo" }, ({ name, origin, ref, workspace, build_config }) => {
+      .with({ command: "scan-repo" }, ({ name, origin, ref, rev, workspace, build_config }) => {
         // Immediately check out the repo and scan all .ecl files, sending
         // back preset-content messages so the webview picker is updated.
-        scanAllRepoPresets(name, origin, ref, workspace, build_config, this.post_message.bind(this));
+        scanAllRepoPresets(name, origin, ref, rev, workspace, build_config, this.post_message.bind(this));
       })
-      .with({ command: "update-repo-checkout" }, async ({ name, origin, ref, workspace, build_config }) => {
+      .with({ command: "update-repo-checkout" }, async ({ name, origin, ref, rev, delete_rev, workspace, build_config }) => {
         const out = getOutputChannel();
         out.appendLine(`[EclairManagerPanel] Deleting cached checkout for '${name}' to force update...`);
         try {
+          const delete_target = delete_rev ?? rev;
+          if (delete_target) {
+            await deleteRepoCheckout(origin, ref, delete_target);
+          }
+          // Always delete the ref-based checkout so a fresh fetch happens.
           await deleteRepoCheckout(origin, ref);
         } catch (err: any) {
           out.appendLine(`[EclairManagerPanel] Failed to delete checkout for '${name}': ${err}`);
           this.post_message({ command: "repo-scan-failed", name, message: err?.message || String(err), workspace, build_config });
           return;
         }
-        scanAllRepoPresets(name, origin, ref, workspace, build_config, this.post_message.bind(this));
+        scanAllRepoPresets(name, origin, ref, rev, workspace, build_config, this.post_message.bind(this));
       })
       .with({ command: "pick-preset-path" }, async ({ kind }) => {
         const pick = await vscode.window.showOpenDialog({
@@ -763,10 +768,10 @@ export class EclairManagerPanel {
       for (const [workspace, build_configs] of Object.entries(configs)) {
         for (const [build_config, cfg] of Object.entries(build_configs)) {
           if (!cfg?.repos || Object.keys(cfg.repos).length === 0) continue;
-          const reposForScan: Record<string, { origin: string; ref: string }> = {};
-          for (const [name, entry] of Object.entries(cfg.repos)) {
-            reposForScan[name] = { origin: entry.origin, ref: entry.ref };
-          }
+        const reposForScan: Record<string, { origin: string; ref: string; rev?: string }> = {};
+        for (const [name, entry] of Object.entries(cfg.repos)) {
+          reposForScan[name] = { origin: entry.origin, ref: entry.ref, rev: entry.rev };
+        }
           scan_requests.push({ workspace, build_config, repos: reposForScan });
         }
       }
@@ -792,12 +797,12 @@ export class EclairManagerPanel {
    * Called automatically at the end of `loadScaConfig` so the frontend always
    * has an up-to-date view of what the configured repos provide.
    */
-  private async scanRepoPresets(repos: Record<string, { origin: string; ref: string }>, workspace: string, build_config: string) {
+  private async scanRepoPresets(repos: Record<string, { origin: string; ref: string; rev?: string }>, workspace: string, build_config: string) {
     const post_message = (m: ExtensionMessage) => this._panel.webview.postMessage(m);
     // Fire off all repos concurrently — each one is independent.
     await Promise.allSettled(
       Object.entries(repos).map(([name, entry]) =>
-        scanAllRepoPresets(name, entry.origin, entry.ref, workspace, build_config, post_message)
+        scanAllRepoPresets(name, entry.origin, entry.ref, entry.rev, workspace, build_config, post_message)
       )
     );
   }
@@ -1128,6 +1133,7 @@ async function scanAllRepoPresets(
   name: string,
   origin: string,
   ref: string,
+  rev: string | undefined,
   workspace: string,
   build_config: string,
   post_message: (m: ExtensionMessage) => void,
@@ -1136,7 +1142,7 @@ async function scanAllRepoPresets(
   const out = getOutputChannel();
   try {
     out.appendLine(`[EclairManagerPanel] Scanning repo '${name}' for presets...`);
-    checkoutDir = await ensureRepoCheckout(name, origin, ref);
+    checkoutDir = await ensureRepoCheckout(name, origin, ref, rev);
     out.appendLine(`[EclairManagerPanel] Checked out repo '${name}' to '${checkoutDir}'.`);
   } catch (err: any) {
     out.appendLine(`[EclairManagerPanel] Failed to checkout repo '${name}': ${err}`);
@@ -1189,8 +1195,9 @@ async function scanAllRepoPresets(
     })
   );
 
+  const head_rev = await getRepoHeadRevision(checkoutDir);
   // All files have been processed — notify the webview so it can update the status badge.
-  post_message({ command: "repo-scan-done", name, workspace, build_config });
+  post_message({ command: "repo-scan-done", name, workspace, build_config, rev: head_rev, checkout_dir: checkoutDir });
 }
 
 function build_analysis_command(
@@ -1671,7 +1678,7 @@ function preset_source_key(source: EclairPresetTemplateSource, repos: EclairRepo
     const repo = repos[source.repo];
     return JSON.stringify({
       source,
-      repo: repo ? { origin: repo.origin, ref: repo.ref } : undefined,
+      repo: repo ? { origin: repo.origin, ref: repo.ref, rev: repo.rev } : undefined,
     });
   }
   return JSON.stringify(source);

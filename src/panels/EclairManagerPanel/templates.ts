@@ -56,7 +56,8 @@ export async function load_preset_from_path(
  *
  * @param name Logical repo name (matches EclairScaConfig.repos key).
  * @param origin Git remote URL (internal only).
- * @param ref Branch, tag, or commit SHA (internal only).
+ * @param ref Branch or tag used to resolve revisions (internal only).
+ * @param rev Optional locked commit SHA (internal only).
  * @param filePath Preset file path relative to the repository root.
  * @param on_progress Progress callback.
  */
@@ -64,6 +65,7 @@ export async function load_preset_from_repo(
   name: string,
   origin: string,
   ref: string,
+  rev: string | undefined,
   filePath: string,
   on_progress: (message: string) => void,
 ): Promise<Result<[EclairTemplate, string], string>> {
@@ -71,7 +73,7 @@ export async function load_preset_from_repo(
 
   let checkoutDir: string;
   try {
-    checkoutDir = await ensureRepoCheckout(name, origin, ref);
+    checkoutDir = await ensureRepoCheckout(name, origin, ref, rev);
   } catch (err: any) {
     return { err: `Failed to checkout repository: ${err?.message || err}` };
   }
@@ -104,7 +106,7 @@ export async function load_preset_from_ref(
       if (!entry) {
         return { err: `Repository '${repo}' not found in repos configuration.` };
       }
-      return await load_preset_from_repo(repo, entry.origin, entry.ref, path, on_progress);
+      return await load_preset_from_repo(repo, entry.origin, entry.ref, entry.rev, path, on_progress);
     })
     .exhaustive();
 }

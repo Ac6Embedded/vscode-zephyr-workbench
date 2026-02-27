@@ -380,9 +380,11 @@ function handleMessage(
       },
     }))
     .with({ command: "set-sca-config" }, ({ by_workspace_and_build_config }) => dispatch({ type: "load-sca-config", by_workspace_and_build_config }))
-    .with({ command: "repo-scan-done" }, ({ name, workspace, build_config }) => dispatch({
+    .with({ command: "repo-scan-done" }, ({ name, workspace, build_config, rev, checkout_dir }) => dispatch({
       type: "repo-scan-done",
       name,
+      rev,
+      checkout_dir,
       ...(workspace && build_config ? { workspace, build_config } : {}),
     }))
     .with({ command: "repo-scan-failed" }, ({ name, message, workspace, build_config }) => dispatch({
