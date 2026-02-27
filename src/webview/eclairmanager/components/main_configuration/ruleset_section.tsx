@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { ZephyrRulesetState, EclairStateAction } from "../../state";
 import { PickPath, VscodeButton, VscodeRadio, VscodeRadioGroup, VscodeTextField } from "../common_components";
 import { WebviewMessage } from "../../../../utils/eclairEvent";
 
 export function RulesetSection(props: {
+  config_key: number;
   workspace: string;
   build_config: string;
   ruleset: ZephyrRulesetState;
@@ -21,16 +22,17 @@ export function RulesetSection(props: {
   ];
 
   const showUserFields = props.ruleset.selected === "USER";
+  const [nameEditing, setNameEditing] = useState(false);
 
-  const handleUserRulesetNameEdit = () => {
-    props.dispatch_state({
-      type: "with-selected-workspace",
-      action: {
-        type: "with-selected-configuration",
-        action: { type: "toggle-user-ruleset-name-editing" },
-      },
-    });
-  };
+  useEffect(() => {
+    setNameEditing(false);
+  }, [props.config_key]);
+
+  useEffect(() => {
+    if (!showUserFields) {
+      setNameEditing(false);
+    }
+  }, [showUserFields]);
 
   return (
     <div className="section">
@@ -58,7 +60,7 @@ export function RulesetSection(props: {
           placeholder="Ruleset name (e.g. MYRULESET)"
           size="30"
           value={props.ruleset.userRulesetName}
-          disabled={!props.ruleset.userRulesetNameEditing}
+          disabled={!nameEditing}
           onChange={(e: any) => props.dispatch_state({
             type: "with-selected-workspace",
             action: {
@@ -67,15 +69,15 @@ export function RulesetSection(props: {
             },
           })}
           onKeyDown={(e: any) => {
-            if (e.key === "Enter" && props.ruleset.userRulesetNameEditing) {
-              handleUserRulesetNameEdit();
+            if (e.key === "Enter" && nameEditing) {
+              setNameEditing(false);
             }
           }}
         >
           Ruleset Name:
         </VscodeTextField>
-        <VscodeButton appearance="primary" onClick={handleUserRulesetNameEdit}>
-          {props.ruleset.userRulesetNameEditing ? "Done" : "Edit"}
+        <VscodeButton appearance="primary" onClick={() => setNameEditing((v) => !v)}>
+          {nameEditing ? "Done" : "Edit"}
         </VscodeButton>
         <PickPath
           value={props.ruleset.userRulesetPath || ""}

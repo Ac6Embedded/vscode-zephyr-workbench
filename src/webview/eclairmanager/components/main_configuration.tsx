@@ -9,6 +9,7 @@ import { EclairRepos, EclairScaConfigType } from "../../../utils/eclair/config";
 
 
 export function MainAnalysisConfigurationSection({
+  config_index,
   workspace,
   build_config,
   available_presets,
@@ -18,6 +19,7 @@ export function MainAnalysisConfigurationSection({
   dispatch_state,
   post_message,
 }: {
+  config_index: number;
   workspace: string;
   build_config: string;
   available_presets: AvailablePresetsState;
@@ -56,6 +58,7 @@ export function MainAnalysisConfigurationSection({
 
       {current.main_config.type === "zephyr-ruleset" && (
         <RulesetSection
+          config_key={config_index}
           workspace={workspace}
           build_config={build_config}
           ruleset={current.main_config.ruleset}

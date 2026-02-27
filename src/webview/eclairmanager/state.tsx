@@ -84,16 +84,12 @@ export type MainAnalysisConfigurationState = {
 export interface InstallPathState {
   path: string;
   placeholder: string;
-  disabled: boolean;
-  editing: boolean;
 }
 
 export function default_install_path_state(): InstallPathState {
   return {
     path: "",
     placeholder: DEFAULT_INSTALL_PATH_PLACEHOLDER,
-    disabled: true,
-    editing: false,
   };
 }
 
@@ -104,18 +100,14 @@ export interface ExtraConfigState {
 export interface ZephyrRulesetState {
   selected: string;
   userRulesetName: string;
-  userRulesetNameEditing: boolean;
   userRulesetPath: string;
-  userRulesetPathEditing: boolean;
 }
 
 export function default_ruleset_state(): ZephyrRulesetState {
   return {
     selected: "ECLAIR_RULESET_FIRST_ANALYSIS",
     userRulesetName: "",
-    userRulesetNameEditing: false,
     userRulesetPath: "",
-    userRulesetPathEditing: false,
   };
 }
 
@@ -204,8 +196,6 @@ export type EclairStateAction =
        | { type: "update-user-ruleset-path"; path: string }
        | { type: "update-custom-ecl-path"; path: string }
        | { type: "toggle-report"; report: string; checked: boolean }
-       | { type: "toggle-user-ruleset-name-editing" }
-       | { type: "toggle-user-ruleset-path-editing" }
        | { type: "update-extra-config-path"; path: string }
        | { type: "set-extra-config"; path: string }
        | { type: "set-user-ruleset-name"; name: string }
@@ -218,7 +208,6 @@ export type EclairStateAction =
        | { type: "set-or-add-preset"; kind: EclairTemplateKind; source: EclairPresetTemplateSource; }
     }
   }
-  | { type: "toggle-install-path-editing" }
   // Update actions
   | { type: "update-install-path"; path: string }
   // Message-based actions
@@ -248,9 +237,7 @@ function build_configs(cfg: FullEclairScaConfig): EclairConfig[] {
         ruleset: {
           selected: c.ruleset,
           userRulesetName: c.userRulesetName ?? "",
-          userRulesetNameEditing: false,
           userRulesetPath: c.userRulesetPath ?? "",
-          userRulesetPathEditing: false,
         },
       }))
       .with({ type: "custom-ecl" }, (c) => ({
@@ -288,8 +275,6 @@ function build_install_path_state(path: string | undefined, prev?: InstallPathSt
   return {
     path,
     placeholder: path ? "" : DEFAULT_INSTALL_PATH_PLACEHOLDER,
-    disabled: false,
-    editing: false,
   };
 }
 
@@ -502,23 +487,6 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
                 }
               }
             })
-            .with({ type: "toggle-user-ruleset-name-editing" }, () => {
-              const main_config = current.main_config;
-
-              if (main_config === null || main_config.type !== "zephyr-ruleset") {
-                console.error("Cannot toggle user ruleset name editing: configuration is not zephyr-ruleset type");
-                return;
-              }
-              main_config.ruleset.userRulesetNameEditing = !main_config.ruleset.userRulesetNameEditing;
-            })
-            .with({ type: "toggle-user-ruleset-path-editing" }, () => {
-              const main_config = current.main_config;
-              if (main_config === null || main_config.type !== "zephyr-ruleset") {
-                console.error("Cannot toggle user ruleset path editing: configuration is not zephyr-ruleset type");
-                return;
-              }
-              main_config.ruleset.userRulesetPathEditing = !main_config.ruleset.userRulesetPathEditing;
-            })
             .with({ type: "update-extra-config-path" }, ({ path }) => {
               current.extra_config.path = path;
             })
@@ -531,7 +499,6 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
                 return;
               }
               current.main_config.ruleset.userRulesetName = name;
-              current.main_config.ruleset.userRulesetNameEditing = false;
             })
             .with({ type: "set-user-ruleset-path" }, ({ path }) => {
               if (current.main_config.type !== "zephyr-ruleset") {
@@ -539,7 +506,6 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
                 return;
               }
               current.main_config.ruleset.userRulesetPath = path;
-              current.main_config.ruleset.userRulesetPathEditing = false;
             })
             .with({ type: "set-custom-ecl-path" }, ({ path }) => {
               if (current.main_config.type !== "custom-ecl") {
@@ -613,12 +579,6 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
         })
         .exhaustive();
     })
-    .with({ type: "toggle-install-path-editing" }, () => {
-      const selected = get_selected_context(draft);
-      if (!selected) return;
-      selected.state.install_path.editing = !selected.state.install_path.editing;
-      selected.state.install_path.disabled = !selected.state.install_path.editing;
-    })
     .with({ type: "update-install-path" }, ({ path }) => {
       const selected = get_selected_context(draft);
       if (!selected) return;
@@ -636,8 +596,6 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
       if (!selected) return;
       selected.state.install_path.path = path;
       selected.state.install_path.placeholder = path ? "" : DEFAULT_INSTALL_PATH_PLACEHOLDER;
-      selected.state.install_path.disabled = false;
-      selected.state.install_path.editing = false;
     })
     .with({ type: "set-install-path-placeholder" }, ({ text }) => {
       const selected = get_selected_context(draft);
@@ -648,15 +606,13 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
       const selected = get_selected_context(draft);
       if (!selected) return;
       if (text.trim().toLowerCase() === "checking") {
-        selected.state.install_path = { path: "", placeholder: "Checking", disabled: true, editing: false };
+        selected.state.install_path = { path: "", placeholder: "Checking" };
       } else if (text.trim() === "") {
         selected.state.install_path.path = "";
         selected.state.install_path.placeholder = DEFAULT_INSTALL_PATH_PLACEHOLDER;
-        selected.state.install_path.disabled = true;
       } else {
         selected.state.install_path.path = text;
         selected.state.install_path.placeholder = "";
-        selected.state.install_path.disabled = true;
       }
     })
     .with({ type: "report-server-started" }, () => {

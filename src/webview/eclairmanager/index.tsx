@@ -272,6 +272,7 @@ function EclairManagerWithConfigs({
       </VscodePanel>
 
       <MainAnalysisConfigurationSection
+        config_index={context_state.current_config_index}
         workspace={workspace}
         build_config={build_config}
         available_presets={context_state.available_presets}
