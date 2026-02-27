@@ -504,6 +504,7 @@ export class EclairManagerPanel {
       .with({ command: "request-trial" }, () => open_link("https://www.bugseng.com/eclair-request-trial/"))
       .with({ command: "about-eclair" }, () => open_link("https://www.bugseng.com/eclair-static-analysis-tool/"))
       .with({ command: "refresh-status" }, async () => this.refresh_status())
+      .with({ command: "reload-sca-config" }, async () => this.loadScaConfig())
       .with({ command: "browse-extra-config" }, async ({ workspace, build_config }) => {
         const folderUri = this.resolveApplicationFolderUri(workspace);
         const pick = await vscode.window.showOpenDialog({

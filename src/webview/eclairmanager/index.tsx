@@ -124,6 +124,13 @@ function EclairManagerPanel() {
           selectedItem={current_build_config_item || null}
           onSelectItem={(item) => dispatch_state({ type: "select-context", workspace, build_config: item.value })}
         />)}
+        <VscodeButton
+          appearance="secondary"
+          title="Discard unsaved changes and reload from settings.json"
+          onClick={() => post_message({ command: "reload-sca-config" })}
+        >
+          Reload Configs
+        </VscodeButton>
       </div>
 
       <Summary

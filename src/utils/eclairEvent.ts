@@ -74,6 +74,8 @@ export type ExtensionMessage = {
 export type WebviewMessage = {
   command: "refresh-status",
 } | {
+  command: "reload-sca-config",
+} | {
   command: "probe-eclair",
 } | {
   command: "update-path",
