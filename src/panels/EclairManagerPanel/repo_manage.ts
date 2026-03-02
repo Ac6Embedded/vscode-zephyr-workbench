@@ -3,6 +3,128 @@ import fs from "fs";
 import os from "os";
 import crypto from "crypto";
 import { getInternalToolsDirRealPath } from "../../utils/utils";
+import { Result } from "../../utils/typing_utils";
+import { exec } from "child_process";
+import yaml from "yaml";
+import type { ExtensionMessage } from "../../utils/eclairEvent";
+import { extract_yaml_from_ecl_content, parse_eclair_template_from_any } from "../../utils/eclair/template_utils";
+import type { EclairPresetTemplateSource } from "../../utils/eclair/config";
+
+export class PresetRepositories {
+  private readonly post_message: (m: ExtensionMessage) => void;
+  private readonly log: (line: string) => void;
+
+  constructor(post_message: (m: ExtensionMessage) => void, log: (line: string) => void) {
+    this.post_message = post_message;
+    this.log = log;
+  }
+
+  async scanRepoPresets(
+    name: string,
+    origin: string,
+    ref: string,
+    rev: string | undefined,
+    workspace: string,
+  ): Promise<void> {
+    let checkoutDir: string;
+    try {
+      this.log(`[PresetRepositories] Scanning repo '${name}' for presets...`);
+      checkoutDir = await ensureRepoCheckout(name, origin, ref, rev);
+      this.log(`[PresetRepositories] Checked out repo '${name}' to '${checkoutDir}'.`);
+    } catch (err: any) {
+      this.log(`[PresetRepositories] Failed to checkout repo '${name}': ${err}`);
+      this.post_message({
+        command: "repo-scan-failed",
+        name,
+        message: err?.message || String(err),
+        workspace,
+      });
+      return;
+    }
+
+    const eclFiles = await findEclFiles(checkoutDir);
+
+    await Promise.allSettled(
+      eclFiles.map(async (absPath) => {
+        const relPath = path.relative(checkoutDir, absPath).replace(/\\/g, "/");
+        const source: EclairPresetTemplateSource = { type: "repo-path", repo: name, path: relPath };
+
+        let content: string;
+        try {
+          content = await fs.promises.readFile(absPath, { encoding: "utf8" });
+        } catch (err: any) {
+          this.post_message({ command: "preset-content", source, template: { error: `Could not read file: ${err?.message || err}` }, workspace });
+          return;
+        }
+
+        const yaml_content = extract_yaml_from_ecl_content(content);
+        if (yaml_content === undefined) {
+          return;
+        }
+
+        let data: any;
+        try {
+          data = yaml.parse(yaml_content);
+        } catch (err: any) {
+          this.post_message({ command: "preset-content", source, template: { error: `Failed to parse preset: ${err?.message || err}` }, workspace });
+          return;
+        }
+
+        try {
+          const template = parse_eclair_template_from_any(data);
+          this.post_message({ command: "preset-content", source, template, workspace });
+        } catch (err: any) {
+          this.post_message({ command: "preset-content", source, template: { error: `Invalid preset content: ${err?.message || err}` }, workspace });
+        }
+      })
+    );
+  }
+
+  async updateRepoCheckout(
+    name: string,
+    origin: string,
+    ref: string,
+    rev: string | undefined,
+    delete_rev: string | undefined,
+    workspace: string,
+  ): Promise<void> {
+    this.log(`[PresetRepositories] Deleting cached checkout for '${name}' to force update...`);
+    try {
+      const delete_target = delete_rev ?? rev;
+      if (delete_target) {
+        await deleteRepoCheckout(origin, ref, delete_target);
+      }
+      await deleteRepoCheckout(origin, ref);
+    } catch (err: any) {
+      this.log(`[PresetRepositories] Failed to delete checkout for '${name}': ${err}`);
+      this.post_message({ command: "repo-scan-failed", name, message: err?.message || String(err), workspace });
+      return;
+    }
+    await this.scanRepoPresets(name, origin, ref, rev, workspace);
+  }
+}
+
+/**
+ * Recurses through `dir` and collects all files whose name ends with `.ecl`.
+ */
+async function findEclFiles(dir: string): Promise<string[]> {
+  const results: string[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...await findEclFiles(full));
+    } else if (entry.isFile() && entry.name.endsWith(".ecl")) {
+      results.push(full);
+    }
+  }
+  return results;
+}
 
 /**
  * Returns the root directory used to cache repo checkouts.
@@ -73,49 +195,23 @@ function looks_like_sha(value: string): boolean {
 
 async function resolve_ref_to_rev(origin: string, ref: string): Promise<string | undefined> {
   const trimmed = ref.trim();
-  if (!trimmed) return undefined;
+  if (!trimmed) {
+    return undefined;
+  }
   if (looks_like_sha(trimmed)) {
     return trimmed;
   }
-  const patterns = [
-    `refs/heads/${trimmed}`,
-    `refs/tags/${trimmed}`,
-    `refs/tags/${trimmed}^{}`,
-    trimmed,
-  ];
-  const pattern_args = patterns.map(p => JSON.stringify(p)).join(" ");
-  return new Promise((resolve) => {
-    const { exec } = require("child_process") as typeof import("child_process");
-    exec(`git ls-remote ${JSON.stringify(origin)} ${pattern_args}`, (err, stdout) => {
-      if (err) {
-        resolve(undefined);
-        return;
-      }
-      const lines = stdout
-        .split(/\r?\n/)
-        .map(l => l.trim())
-        .filter(Boolean);
-      if (lines.length === 0) {
-        resolve(undefined);
-        return;
-      }
-      const parsed = lines.map((line) => {
-        const [hash, refName] = line.split(/\s+/);
-        return { hash, refName };
-      }).filter((p) => !!p.hash);
-      const peeled = parsed.find((p) =>
-        p.refName === `refs/tags/${trimmed}^{}`
-      );
-      if (peeled) {
-        resolve(peeled.hash);
-        return;
-      }
-      const exact = parsed.find((p) =>
-        p.refName === `refs/heads/${trimmed}` || p.refName === `refs/tags/${trimmed}` || p.refName === trimmed
-      );
-      resolve((exact ?? parsed[0])?.hash);
-    });
-  });
+  const refsResult = await ls_remote(origin);
+  if ("err" in refsResult) {
+    return undefined;
+  }
+  const refs = refsResult.ok;
+  return (
+    refs[`refs/tags/${trimmed}^{}`] ||
+    refs[`refs/heads/${trimmed}`] ||
+    refs[`refs/tags/${trimmed}`] ||
+    refs[trimmed]
+  );
 }
 
 async function read_head_rev(dir: string): Promise<string | undefined> {
@@ -129,10 +225,14 @@ async function read_head_rev(dir: string): Promise<string | undefined> {
 
 async function is_checkout_usable(dir: string, origin: string, expected_rev?: string): Promise<boolean> {
   const isGitDir = fs.existsSync(path.join(dir, ".git")) || fs.existsSync(path.join(dir, "HEAD"));
-  if (!isGitDir) return false;
+  if (!isGitDir) {
+    return false;
+  }
 
   const storedOrigin = await read_remote_origin(dir);
-  if (storedOrigin !== origin) return false;
+  if (storedOrigin !== origin) {
+    return false;
+  }
 
   if (expected_rev) {
     const head = await read_head_rev(dir);
@@ -275,4 +375,39 @@ export async function deleteRepoCheckout(origin: string, ref: string, rev?: stri
 
 export async function getRepoHeadRevision(dir: string): Promise<string | undefined> {
   return read_head_rev(dir);
+}
+
+/**
+ * Returns a mapping of all refs (branches and tags) to their corresponding commit hashes for the given remote URL.
+ * 
+ * Uses `git ls-remote` under the hood.
+ *
+ * @param url The Git remote URL to query.
+ * @returns A promise that resolves to an object mapping ref names to commit hashes, or an error message if the command fails.
+ */
+async function ls_remote(
+  url: string,
+): Promise<Result<{ [ref: string]: string }, string>> {
+  try {
+    const stdout = await new Promise<string>((resolve, reject) => {
+      exec(`git ls-remote ${JSON.stringify(url)}`, (err, stdout, stderr) => {
+        if (err) {
+          reject(new Error(`Failed to list remote refs: ${stderr || err.message}`));
+        } else {
+          resolve(stdout);
+        }
+      });
+    });
+
+    const refs: { [ref: string]: string } = {};
+    stdout.split(/\r?\n/).forEach((line) => {
+      const [hash, ref] = line.split(/\s+/);
+      if (hash && ref) {
+        refs[ref] = hash;
+      }
+    });
+    return { ok: refs };
+  } catch (err) {
+    return { err: (err as Error).message };
+  }
 }

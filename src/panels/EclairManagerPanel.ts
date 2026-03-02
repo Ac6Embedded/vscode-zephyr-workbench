@@ -11,9 +11,9 @@ import { getExtraPaths, normalizePath, setExtraPath } from "../utils/envYamlUtil
 import type { IEclairExtension } from "../ext/eclair_api";
 import type { BuildConfigInfo, ExtensionMessage, RpcRequestMessage, WebviewMessage } from "../utils/eclairEvent";
 import type { EclairRpcMethods, OpenDialog, RpcHandlerMap } from "../utils/eclairRpcTypes";
-import { extract_yaml_from_ecl_content, format_option_settings, parse_eclair_template_from_any } from "../utils/eclair/template_utils";
+import { format_option_settings, parse_eclair_template_from_any } from "../utils/eclair/template_utils";
 import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, EclairScaConfig, EclairScaConfigSchema, FullEclairScaConfig, FullEclairScaConfigSchema, PresetSelectionState } from "../utils/eclair/config";
-import { ensureRepoCheckout, deleteRepoCheckout, getRepoHeadRevision } from "./EclairManagerPanel/repo_manage";
+import { PresetRepositories } from "./EclairManagerPanel/repo_manage";
 import { Result, todo, unwrap_or_throw } from "../utils/typing_utils";
 import { match } from "ts-pattern";
 import { load_preset_from_ref } from "./EclairManagerPanel/templates";
@@ -68,6 +68,7 @@ export class EclairManagerPanel {
   private envData: any | undefined;
   private envYamlDoc: any | undefined;
   private _reportServerTerminal: vscode.Terminal | undefined;
+  private _presetRepos: PresetRepositories;
   private _rpcHandlers: RpcHandlerMap<EclairRpcMethods> = {
     "open-dialog": this._rpcOpenDialog.bind(this),
   };
@@ -106,6 +107,10 @@ export class EclairManagerPanel {
     this._workspaceFolder = workspaceFolder;
     this._settingsRoot = settingsRoot;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    this._presetRepos = new PresetRepositories(
+      this.post_message.bind(this),
+      (line) => getOutputChannel().appendLine(line),
+    );
 
     // Load env.yml and watch for external edits so the path field stays in sync
     this.loadEnvYaml();
@@ -634,24 +639,10 @@ export class EclairManagerPanel {
       .with({ command: "scan-repo" }, ({ name, origin, ref, rev, workspace }) => {
         // Immediately check out the repo and scan all .ecl files, sending
         // back preset-content messages so the webview picker is updated.
-        scanAllRepoPresets(name, origin, ref, rev, workspace, this.post_message.bind(this));
+        this._presetRepos.scanRepoPresets(name, origin, ref, rev, workspace);
       })
       .with({ command: "update-repo-checkout" }, async ({ name, origin, ref, rev, delete_rev, workspace }) => {
-        const out = getOutputChannel();
-        out.appendLine(`[EclairManagerPanel] Deleting cached checkout for '${name}' to force update...`);
-        try {
-          const delete_target = delete_rev ?? rev;
-          if (delete_target) {
-            await deleteRepoCheckout(origin, ref, delete_target);
-          }
-          // Always delete the ref-based checkout so a fresh fetch happens.
-          await deleteRepoCheckout(origin, ref);
-        } catch (err: any) {
-          out.appendLine(`[EclairManagerPanel] Failed to delete checkout for '${name}': ${err}`);
-          this.post_message({ command: "repo-scan-failed", name, message: err?.message || String(err), workspace });
-          return;
-        }
-        scanAllRepoPresets(name, origin, ref, rev, workspace, this.post_message.bind(this));
+        await this._presetRepos.updateRepoCheckout(name, origin, ref, rev, delete_rev, workspace);
       })
       .exhaustive();
   }
@@ -718,7 +709,7 @@ export class EclairManagerPanel {
     // Fire off all repos concurrently — each one is independent.
     await Promise.allSettled(
       Object.entries(repos).map(([name, entry]) =>
-        scanAllRepoPresets(name, entry.origin, entry.ref, entry.rev, workspace, post_message)
+        this._presetRepos.scanRepoPresets(name, entry.origin, entry.ref, entry.rev, workspace)
       )
     );
   }
@@ -1055,107 +1046,6 @@ export class EclairManagerPanel {
 
     return merged_env;
   }
-}
-
-/**
- * Recurses through `dir` and collects all files whose name ends with `.ecl`.
- */
-async function findEclFiles(dir: string): Promise<string[]> {
-  const results: string[] = [];
-  let entries: fs.Dirent[];
-  try {
-    entries = await fs.promises.readdir(dir, { withFileTypes: true });
-  } catch {
-    return results;
-  }
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...await findEclFiles(full));
-    } else if (entry.isFile() && entry.name.endsWith(".ecl")) {
-      results.push(full);
-    }
-  }
-  return results;
-}
-
-/**
- * Checks out the repository identified by `name`/`origin`@`ref`, then walks
- * every `.ecl` file in the working tree and attempts to parse each as an
- * ECLAIR preset template.  For every file a `preset-content` message is
- * posted — either with the parsed template on success or an error/skip on
- * failure.  Files that contain no YAML front-matter are silently skipped.
- *
- * This is the batch counterpart of `load_preset_from_repo` and is called
- * automatically from `EclairManagerPanel.scanRepoPresets`.
- */
-async function scanAllRepoPresets(
-  name: string,
-  origin: string,
-  ref: string,
-  rev: string | undefined,
-  workspace: string,
-  post_message: (m: ExtensionMessage) => void,
-): Promise<void> {
-  let checkoutDir: string;
-  const out = getOutputChannel();
-  try {
-    out.appendLine(`[EclairManagerPanel] Scanning repo '${name}' for presets...`);
-    checkoutDir = await ensureRepoCheckout(name, origin, ref, rev);
-    out.appendLine(`[EclairManagerPanel] Checked out repo '${name}' to '${checkoutDir}'.`);
-  } catch (err: any) {
-    out.appendLine(`[EclairManagerPanel] Failed to checkout repo '${name}': ${err}`);
-    post_message({
-      command: "repo-scan-failed",
-      name,
-      message: err?.message || String(err),
-      workspace,
-    });
-    return;
-  }
-
-  const eclFiles = await findEclFiles(checkoutDir);
-
-  // Fire off all files concurrently within the repo.
-  await Promise.allSettled(
-    eclFiles.map(async (absPath) => {
-      const relPath = path.relative(checkoutDir, absPath).replace(/\\/g, "/");
-      const source: EclairPresetTemplateSource = { type: "repo-path", repo: name, path: relPath };
-
-      let content: string;
-      try {
-        content = await fs.promises.readFile(absPath, { encoding: "utf8" });
-      } catch (err: any) {
-        post_message({ command: "preset-content", source, template: { error: `Could not read file: ${err?.message || err}` }, workspace });
-        return;
-      }
-
-      const yaml_content = extract_yaml_from_ecl_content(content);
-      if (yaml_content === undefined) {
-        // Not a template file — silently skip.
-        return;
-      }
-
-      let data: any;
-      try {
-        data = yaml.parse(yaml_content);
-      } catch (err: any) {
-        post_message({ command: "preset-content", source, template: { error: `Failed to parse preset: ${err?.message || err}` }, workspace });
-        return;
-      }
-
-      try {
-        const template = parse_eclair_template_from_any(data);
-        post_message({ command: "preset-content", source, template, workspace });
-      } catch (err: any) {
-        post_message({ command: "preset-content", source, template: { error: `Invalid preset content: ${err?.message || err}` }, workspace });
-      }
-    })
-  );
-
-  const head_rev = await getRepoHeadRevision(checkoutDir);
-  // All files have been processed — notify the webview so it can update the status badge.
-  post_message({ command: "repo-scan-done", name, workspace, rev: head_rev, checkout_dir: checkoutDir });
 }
 
 function build_analysis_command(
