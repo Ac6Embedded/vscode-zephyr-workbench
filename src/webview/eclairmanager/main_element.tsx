@@ -109,7 +109,7 @@ export function EclairManagerPanel() {
           />
           {workspace && (<SearchableDropdown
             id="build-config-selector"
-            label="Select the build configuration to use."
+            label="Select the build configuration to use:"
             style={{ width: "300px" }}
             placeholder="Select build config"
             items={build_config_items}
