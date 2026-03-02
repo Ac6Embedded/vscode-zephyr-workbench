@@ -9,7 +9,7 @@ import { execCommandWithEnv, execShellCommandWithEnv, getOutputChannel, classify
 import { getInternalDirRealPath, getZephyrSDK } from "../utils/utils";
 import { getExtraPaths, normalizePath, setExtraPath } from "../utils/envYamlUtils";
 import type { IEclairExtension } from "../ext/eclair_api";
-import type { ExtensionMessage, WebviewMessage } from "../utils/eclairEvent";
+import type { BuildConfigInfo, ExtensionMessage, WebviewMessage } from "../utils/eclairEvent";
 import { extract_yaml_from_ecl_content, format_option_settings, parse_eclair_template_from_any } from "../utils/eclair/template_utils";
 import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, EclairScaConfig, EclairScaConfigSchema, FullEclairScaConfig, FullEclairScaConfigSchema, PresetSelectionState } from "../utils/eclair/config";
 import { ensureRepoCheckout, deleteRepoCheckout, getRepoHeadRevision } from "./EclairManagerPanel/repo_manage";
@@ -717,7 +717,7 @@ export class EclairManagerPanel {
       }
       const configs_m = configs_r.ok;
       const configs: Record<string, FullEclairScaConfig> = {};
-      const build_configs_by_workspace: Record<string, string[]> = {};
+      const build_configs_by_workspace: Record<string, BuildConfigInfo[]> = {};
       for (const [workspace, [cfg, build_configs]] of Object.entries(configs_m)) {
         configs[workspace] = cfg;
         if (build_configs.length > 0) {
@@ -1550,11 +1550,11 @@ function find_build_config_index(configs: any[], build_config_name: string): num
   return idx >= 0 ? idx : undefined;
 }
 
-async function load_all_sca_configs(): Promise<Result<Record<string, [FullEclairScaConfig, string[]]>, string>> {
+async function load_all_sca_configs(): Promise<Result<Record<string, [FullEclairScaConfig, BuildConfigInfo[]]>, string>> {
   try {
     const apps = await load_applications();
 
-    const by_workspace: Record<string, [FullEclairScaConfig, string[]]> = {};
+    const by_workspace: Record<string, [FullEclairScaConfig, BuildConfigInfo[]]> = {};
     for (const app of apps) {
       const sca_configs_r = await load_app_eclair_sca_config(app);
       if ("err" in sca_configs_r) {
@@ -1565,8 +1565,8 @@ async function load_all_sca_configs(): Promise<Result<Record<string, [FullEclair
       const workspace = app.workspaceFolder.uri.toString();
       const build_configs_r = load_project_build_configs(app);
       const build_configs = "err" in build_configs_r ? [] : build_configs_r.ok;
-      const build_configs_names = build_configs.map(c => c.name);
-      by_workspace[workspace] = [sca_configs, build_configs_names];
+      const build_configs_info = build_configs.map(c => ({ name: c.name, board: c.board }));
+      by_workspace[workspace] = [sca_configs, build_configs_info];
     }
 
     return { ok: by_workspace };

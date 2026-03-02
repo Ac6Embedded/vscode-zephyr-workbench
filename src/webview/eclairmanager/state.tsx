@@ -4,6 +4,7 @@ import { EclairTemplate, EclairTemplateKind } from "../../utils/eclair/template"
 import { match } from "ts-pattern";
 import { produce, WritableDraft } from "immer";
 import { Monospace } from "./components/common_components";
+import { BuildConfigInfo } from "../../utils/eclairEvent";
 
 export const DEFAULT_INSTALL_PATH_PLACEHOLDER = "Enter the tool's path if not in the global PATH";
 const BUGSENG_REPO_URL = "https://github.com/BUGSENG/zephyr-workbench-eclair-presets";
@@ -30,7 +31,7 @@ export interface EclairState {
     build_config?: string;
   };
   by_workspace: Record<string, EclairWorkspaceBuildState>;
-  build_configs_by_workspace: Record<string, string[]>;
+  build_configs_by_workspace: Record<string, BuildConfigInfo[]>;
 }
 
 export interface EclairWorkspaceBuildState {
@@ -169,7 +170,7 @@ export type RepoScanState =
 export type EclairStateAction =
   // Bulk actions
   | { type: "reset-to-defaults" }
-  | { type: "load-sca-config"; by_workspace: Record<string, FullEclairScaConfig>, build_configs_by_workspace: Record<string, string[]> }
+  | { type: "load-sca-config"; by_workspace: Record<string, FullEclairScaConfig>, build_configs_by_workspace: Record<string, BuildConfigInfo[]> }
   | { type: "select-context"; workspace: string; build_config: string }
   // Toggle actions
   | { type: "select-configuration"; index: number }

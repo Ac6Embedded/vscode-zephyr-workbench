@@ -88,11 +88,11 @@ function EclairManagerPanel() {
   const build_config_items = useMemo(
     () => {
       const build_configs = state.build_configs_by_workspace[workspace || ""] || [];
-      return build_configs.map((name) => ({ id: name, name, description: "", value: name }));
+      return build_configs.map((config) => ({ id: config.name, name: config.name, description: config.board, value: config }));
     },
     [state.build_configs_by_workspace, workspace],
   );
-  const current_build_config_item = build_config_items.find((item) => item.value === build_config);
+  const current_build_config_item = build_config_items.find((item) => item.value.name === build_config);
 
   return (
     <div>
@@ -120,8 +120,8 @@ function EclairManagerPanel() {
           selectedItem={current_workspace_item || null}
           onSelectItem={(item) => {
             const next_workspace = item.value;
-            const build_configs = state.build_configs_by_workspace[next_workspace] ?? {};
-            const next_build_config = Object.keys(build_configs)[0];
+            const build_configs = state.build_configs_by_workspace[next_workspace] ?? [];
+            const next_build_config = build_configs[0]?.name;
             if (!next_build_config) {
               console.warn("No build configurations available for workspace", next_workspace);
               return;
@@ -137,7 +137,7 @@ function EclairManagerPanel() {
           placeholder="Select build config"
           items={build_config_items}
           selectedItem={current_build_config_item || null}
-          onSelectItem={(item) => dispatch_state({ type: "select-context", workspace, build_config: item.value })}
+          onSelectItem={(item) => dispatch_state({ type: "select-context", workspace, build_config: item.value.name })}
         />)}
       </fieldset>
 

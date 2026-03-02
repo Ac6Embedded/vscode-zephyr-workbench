@@ -47,7 +47,7 @@ export type ExtensionMessage = {
   // Restore the full saved SCA configuration into the webview
   command: "set-sca-config",
   by_workspace: Record<string, FullEclairScaConfig>,
-  build_configs_by_workspace: Record<string, string[]>,
+  build_configs_by_workspace: Record<string, BuildConfigInfo[]>,
 } | {
   /** Sent when the backend begins scanning a repository for preset templates. */
   command: "repo-scan-done",
@@ -132,4 +132,9 @@ export type WebviewMessage = {
   workspace: string,
   rev?: string,
   delete_rev?: string,
+};
+
+export type BuildConfigInfo = {
+  name: string;
+  board: string;
 };
