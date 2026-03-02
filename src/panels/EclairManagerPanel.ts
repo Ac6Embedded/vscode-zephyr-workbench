@@ -9,7 +9,8 @@ import { execCommandWithEnv, execShellCommandWithEnv, getOutputChannel, classify
 import { getInternalDirRealPath, getZephyrSDK } from "../utils/utils";
 import { getExtraPaths, normalizePath, setExtraPath } from "../utils/envYamlUtils";
 import type { IEclairExtension } from "../ext/eclair_api";
-import type { BuildConfigInfo, ExtensionMessage, WebviewMessage } from "../utils/eclairEvent";
+import type { BuildConfigInfo, ExtensionMessage, RpcRequestMessage, WebviewMessage } from "../utils/eclairEvent";
+import type { EclairRpcMethods, OpenDialog, RpcHandlerMap } from "../utils/eclairRpcTypes";
 import { extract_yaml_from_ecl_content, format_option_settings, parse_eclair_template_from_any } from "../utils/eclair/template_utils";
 import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, EclairScaConfig, EclairScaConfigSchema, FullEclairScaConfig, FullEclairScaConfigSchema, PresetSelectionState } from "../utils/eclair/config";
 import { ensureRepoCheckout, deleteRepoCheckout, getRepoHeadRevision } from "./EclairManagerPanel/repo_manage";
@@ -67,6 +68,9 @@ export class EclairManagerPanel {
   private envData: any | undefined;
   private envYamlDoc: any | undefined;
   private _reportServerTerminal: vscode.Terminal | undefined;
+  private _rpcHandlers: RpcHandlerMap<EclairRpcMethods> = {
+    "open-dialog": this._rpcOpenDialog.bind(this),
+  };
 
   /**
    * Dynamically detects the ECLAIR directory for PATH (env.yml, PATH, system).
@@ -488,46 +492,12 @@ export class EclairManagerPanel {
         const path = eclairInfo.path || "";
         // TODO post_message({ command: "path-updated", tool, path, success: true });
       })
-      .with({ command: "browse-path" }, async () => {
-        const pick = await vscode.window.showOpenDialog({
-          canSelectFiles: false,
-          canSelectFolders: true,
-          canSelectMany: false,
-          title: "Select the ECLAIR installation",
-        });
-        if (!pick || !pick[0]) {
-          return;
-        }
-
-        const chosen = pick[0].fsPath.trim();
-        this.saveEclairPathToEnv(chosen);
-        const eclairInfo = this.getEclairPathFromEnv();
-        const path = eclairInfo?.path || "";
-        // TODO post_message({ command: "path-updated", tool, path, success: true, FromBrowse: true });
-      })
       .with({ command: "manage-license" }, () => open_link("http://localhost:1947"))
       .with({ command: "request-trial" }, () => open_link("https://www.bugseng.com/eclair-request-trial/"))
       .with({ command: "about-eclair" }, () => open_link("https://www.bugseng.com/eclair-static-analysis-tool/"))
       .with({ command: "refresh-status" }, async () => this.refresh_status())
+      .with({ command: "rpc-request" }, async (req) => this._handleRpcRequest(req))
       .with({ command: "reload-sca-config" }, async () => this.loadScaConfig())
-      .with({ command: "browse-extra-config" }, async ({ workspace }) => {
-        const folderUri = this.resolveApplicationFolderUri(workspace);
-        const pick = await vscode.window.showOpenDialog({
-          canSelectFiles: true,
-          canSelectFolders: false,
-          canSelectMany: false,
-          defaultUri: folderUri,
-          title: "Select the additional configuration",
-          filters: {
-            "ECL file": ["ecl", "eclair", "cmake"],
-            "All files": ["*"]
-          }
-        });
-        if (pick?.[0]) {
-          const chosen = pick[0].fsPath;
-          this.post_message({ command: "set-extra-config", path: chosen, workspace });
-        }
-      })
       .with({ command: "save-sca-config" }, async ({ config: cfg, workspace }) => {
         if (!workspace) {
           vscode.window.showErrorMessage("Cannot save ECLAIR config: workspace not provided.");
@@ -641,36 +611,6 @@ export class EclairManagerPanel {
         }
       })
       .with({ command: "probe-eclair" }, () => this.runEclair())
-      .with({ command: "browse-user-ruleset-path" }, async ({ workspace }) => {
-        const pick = await vscode.window.showOpenDialog({
-          canSelectFiles: false,
-          canSelectFolders: true,
-          canSelectMany: false,
-          title: "Select Ruleset path"
-        });
-        if (pick && pick[0]) {
-          const chosen = pick[0].fsPath.trim();
-          this.post_message({ command: "set-user-ruleset-path", path: chosen, workspace });
-        }
-      })
-      .with({ command: "browse-custom-ecl-path" }, async ({ workspace }) => {
-        const folderUri = this.resolveApplicationFolderUri(workspace);
-        const pick = await vscode.window.showOpenDialog({
-          canSelectFiles: true,
-          canSelectFolders: false,
-          canSelectMany: false,
-          defaultUri: folderUri,
-          title: "Select custom ECL configuration file",
-          filters: {
-            "ECL file": ["ecl"],
-            "All files": ["*"]
-          }
-        });
-        if (pick && pick[0]) {
-          const chosen = pick[0].fsPath.trim();
-          this.post_message({ command: "set-custom-ecl-path", path: chosen, workspace });
-        }
-      })
       .with({ command: "start-report-server" }, async ({ workspace, build_config }) => {
         if (!workspace || !build_config) {
           vscode.window.showErrorMessage("Cannot start report server: workspace/build configuration not provided.");
@@ -712,22 +652,6 @@ export class EclairManagerPanel {
           return;
         }
         scanAllRepoPresets(name, origin, ref, rev, workspace, this.post_message.bind(this));
-      })
-      .with({ command: "pick-preset-path" }, async ({ kind }) => {
-        const pick = await vscode.window.showOpenDialog({
-          canSelectFiles: true,
-          canSelectFolders: false,
-          canSelectMany: false,
-          title: "Select preset file",
-          filters: {
-            "ECL presets": ["ecl"],
-            "All files": ["*"]
-          }
-        });
-        if (pick && pick[0]) {
-          const chosen = pick[0].fsPath.trim();
-          this.post_message({ command: "template-path-picked", kind, path: chosen });
-        }
       })
       .exhaustive();
   }
@@ -932,6 +856,63 @@ export class EclairManagerPanel {
 
   post_message(m: ExtensionMessage) {
     this._panel.webview.postMessage(m);
+  }
+
+  private async _handleRpcRequest(req: RpcRequestMessage) {
+    const handler = this._rpcHandlers[req.method as keyof EclairRpcMethods];
+    if (!handler) {
+      this.post_message({
+        command: "rpc-response",
+        id: req.id,
+        error: { message: `Unknown RPC method '${req.method}'` },
+      });
+      return;
+    }
+    try {
+      const result = await handler(req.params);
+      this.post_message({ command: "rpc-response", id: req.id, result });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.post_message({ command: "rpc-response", id: req.id, error: { message } });
+    }
+  }
+
+  private async _rpcOpenDialog(params: OpenDialog["params"]): Promise<OpenDialog["result"]> {
+    const options: vscode.OpenDialogOptions = {
+      canSelectFiles: !!params?.canSelectFiles,
+      canSelectFolders: !!params?.canSelectFolders,
+      canSelectMany: !!params?.canSelectMany,
+      title: typeof params?.title === "string" ? params.title : undefined,
+    };
+
+    if (!options.canSelectFiles && !options.canSelectFolders) {
+      throw new Error("open-dialog requires canSelectFiles and/or canSelectFolders");
+    }
+
+    const defaultUri = this._parseUriParam(params?.defaultUri);
+    if (defaultUri) {
+      options.defaultUri = defaultUri;
+    }
+
+    const pick = await vscode.window.showOpenDialog(options);
+    if (!pick || pick.length === 0) {
+      return { canceled: true, paths: [] };
+    }
+    return { canceled: false, paths: pick.map((p) => p.fsPath) };
+  }
+
+  private _parseUriParam(value: any): vscode.Uri | undefined {
+    if (typeof value !== "string" || value.trim() === "") {
+      return undefined;
+    }
+    if (value.startsWith("file://")) {
+      try {
+        return vscode.Uri.parse(value);
+      } catch {
+        return undefined;
+      }
+    }
+    return vscode.Uri.file(value);
   }
 
   private resolveApplicationFolderUri(workspace?: string): vscode.Uri | undefined {

@@ -1,15 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { ZephyrRulesetState, EclairStateAction } from "../../state";
 import { PickPath, VscodeButton, VscodeRadio, VscodeRadioGroup, VscodeTextField } from "../common_components";
-import { WebviewMessage } from "../../../../utils/eclairEvent";
+import { useRpc } from "../../rpc.js";
 
 export function RulesetSection(props: {
   config_key: number;
-  workspace: string;
   ruleset: ZephyrRulesetState;
   dispatch_state: React.Dispatch<EclairStateAction>;
-  post_message: (message: WebviewMessage) => void;
 }) {
+  const rpc = useRpc();
   const rulesets = [
     "ECLAIR_RULESET_FIRST_ANALYSIS",
     "ECLAIR_RULESET_STU",
@@ -89,7 +88,26 @@ export function RulesetSection(props: {
               action: { type: "update-user-ruleset-path", path: value },
             },
           })}
-          on_pick={() => props.post_message({ command: "browse-user-ruleset-path", workspace: props.workspace })}
+          on_pick={async () => {
+            const result = await rpc.call("open-dialog", {
+              canSelectFiles: true,
+              canSelectFolders: false,
+              canSelectMany: false,
+              title: "Select the ruleset file",
+              defaultUri: props.ruleset.userRulesetPath || undefined,
+            });
+            if (result?.canceled || !result?.paths?.[0]) {
+              return;
+            }
+            const picked = String(result.paths[0]);
+            props.dispatch_state({
+              type: "with-selected-workspace",
+              action: {
+                type: "with-selected-configuration",
+                action: { type: "update-user-ruleset-path", path: picked },
+              },
+            });
+          }}
         />
       </div>
     </div>

@@ -13,7 +13,8 @@ import { FullEclairScaConfig, EclairScaMainConfig, EclairScaPresetConfig, Eclair
 import { Result } from "../../utils/typing_utils.js";
 import { EditableTextField, RichHelpTooltip, SearchableDropdown, VscodeButton, VscodePanel } from "./components/common_components.js";
 import { EasyMark } from "./components/easymark_render.js";
-import { enableMapSet } from "immer";
+import { RpcClient, RpcProvider } from "./rpc";
+import type { EclairRpcMethods } from "../../utils/eclairRpcTypes.js";
 
 function workspace_label(workspace: string): string {
   const parts = workspace.split(/[\\/]/).filter(Boolean);
@@ -31,12 +32,16 @@ export function EclairManagerPanel() {
     api.postMessage(message);
   }, [api]);
 
+  const [rpc] = useState(() => new RpcClient<EclairRpcMethods>(post_message, { timeoutMs: 15000 }));
+
   // setup message handler
   useEffect(() => {
-    const handle_message = (message: MessageEvent) => handleMessage(dispatch_state, message);
+    const handle_message = (message: MessageEvent) => handleMessage(dispatch_state, message, rpc);
     window.addEventListener("message", handle_message);
     return () => window.removeEventListener("message", handle_message);
-  }, [api]);
+  }, [api, rpc]);
+
+  useEffect(() => () => rpc.dispose(), [rpc]);
 
   // Trigger initial status refresh on mount
   useEffect(() => {
@@ -72,7 +77,7 @@ export function EclairManagerPanel() {
   );
   const current_build_config_item = build_config_items.find((item) => item.value.name === build_config);
 
-  return (
+  return (<RpcProvider client={rpc}>
     <div>
       <h1>
         ECLAIR Manager
@@ -136,7 +141,7 @@ export function EclairManagerPanel() {
         state={state}
       />)}
     </div>
-  );
+  </RpcProvider>);
 }
 
 function EclairManagerWithConfigs({
@@ -288,10 +293,8 @@ function EclairManagerWithConfigs({
       />
 
       <ExtraConfigSection
-        workspace={workspace}
         extra_config={current.extra_config}
         dispatch_state={dispatch_state}
-        post_message={post_message}
       />
     </>)}
 
@@ -314,11 +317,13 @@ function EclairManagerWithConfigs({
 
 function handleMessage(
   dispatch: React.Dispatch<EclairStateAction>,
-  event: MessageEvent
+  event: MessageEvent,
+  rpc: RpcClient
 ) {
   const msg: ExtensionMessage = event.data;
 
   match(msg)
+    .with({ command: "rpc-response" }, (message) => rpc.handleMessage(message))
     .with({ command: "toggle-spinner" }, ({ show }) => dispatch({ type: "toggle-spinner", show: !!show }))
     .with({ command: "eclair-status" }, ({ installed, version }) => dispatch({
       type: "set-eclair-status",
@@ -327,50 +332,12 @@ function handleMessage(
     }))
     .with({ command: "set-install-path" }, ({ path }) => dispatch({ type: "set-install-path", path: String(path ?? "") }))
     .with({ command: "set-install-path-placeholder" }, ({ text }) => dispatch({ type: "set-install-path-placeholder", text: String(text ?? "") }))
-    .with({ command: "set-extra-config" }, ({ path, workspace }) => dispatch({
-      type: "with-selected-workspace",
-      ...(workspace ? { workspace } : {}),
-      action: {
-        type: "with-selected-configuration",
-        action: { type: "set-extra-config", path: String(path ?? "") },
-      },
-    }))
     .with({ command: "set-path-status" }, ({ text }) => dispatch({ type: "set-path-status", text: String(text ?? "") }))
-    .with({ command: "set-user-ruleset-name" }, ({ name }) => dispatch({
-      type: "with-selected-workspace",
-      action: {
-        type: "with-selected-configuration",
-        action: { type: "set-user-ruleset-name", name: String(name ?? "") },
-      },
-    }))
-    .with({ command: "set-user-ruleset-path" }, ({ path, workspace }) => dispatch({
-      type: "with-selected-workspace",
-      ...(workspace ? { workspace } : {}),
-      action: {
-        type: "with-selected-configuration",
-        action: { type: "set-user-ruleset-path", path: String(path ?? "") },
-      },
-    }))
-    .with({ command: "set-custom-ecl-path" }, ({ path, workspace }) => dispatch({
-      type: "with-selected-workspace",
-      ...(workspace ? { workspace } : {}),
-      action: {
-        type: "with-selected-configuration",
-        action: { type: "set-custom-ecl-path", path: String(path ?? "") },
-      },
-    }))
     .with({ command: "preset-content" }, ({ source, template, workspace }) => dispatch({
       type: "preset-content",
       source,
       template,
       ...(workspace ? { workspace } : {}),
-    }))
-    .with({ command: "template-path-picked" }, ({ kind, path }) => dispatch({
-      type: "with-selected-workspace",
-      action: {
-        type: "with-selected-configuration",
-        action: { type: "set-preset-path", kind, path },
-      },
     }))
     .with({ command: "set-sca-config" }, ({ by_workspace, build_configs_by_workspace }) => dispatch({ type: "load-sca-config", by_workspace, build_configs_by_workspace }))
     .with({ command: "repo-scan-done" }, ({ name, workspace, rev, checkout_dir }) => dispatch({

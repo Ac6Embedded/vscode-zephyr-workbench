@@ -6,7 +6,8 @@ import { EclairTemplate, EclairTemplateKind, EclairTemplateOption } from "../../
 import { EclairPresetTemplateSource, EclairRepos, PresetSelectionState } from "../../../../utils/eclair/config";
 import { RepoManagementSection } from "./preset_selection/repo_management";
 import { match } from "ts-pattern";
-import { EasyMark, EasyMarkInline } from "../easymark_render.js";
+import { EasyMark, EasyMarkInline } from "../easymark_render";
+import { useRpc } from "../../rpc";
 
 export function PresetSelection(props: {
   workspace: string;
@@ -168,7 +169,6 @@ function MultiPresetSelection(props: {
         kind={props.kind}
         workspace={props.workspace}
         available_presets={props.available_presets}
-        edit_path={props.state.edit_path}
         already_selected_sources={presets.map(p => p.source)}
         dispatch_state={props.dispatch_state}
         post_message={props.post_message}
@@ -178,18 +178,23 @@ function MultiPresetSelection(props: {
   </>);
 }
 
+// Best effort to keep the file picker anchored to the last folder the user chose,
+// regardless of workspace/kind, since presets are often stored in a shared directory.
+let last_selected_path = "";
+
 function PresetPicker(props: {
   kind: EclairTemplateKind;
   workspace: string;
   available_presets: AvailablePresetsState;
-  edit_path: string;
   already_selected_sources?: EclairPresetTemplateSource[];
   dispatch_state: React.Dispatch<EclairStateAction>;
   post_message: (message: WebviewMessage) => void;
   onPresetSelected?: () => void;
 }) {
+  const rpc = useRpc();
   type Item = SearchableItem & { source: EclairPresetTemplateSource };
   const [selectedPreset, setSelectedPreset] = React.useState<Item | null>(null);
+  const [edit_path, set_edit_path] = React.useState<string>("");
 
   const available_preset_items: Item[] = useMemo(() => {
     let items: Item[] = [];
@@ -252,7 +257,7 @@ function PresetPicker(props: {
     backgroundColor: 'var(--vscode-editor-background)'
   }}>
     <div style={{ marginBottom: '10px', fontSize: '0.9em', color: 'var(--vscode-descriptionForeground)' }}>
-      You can either select one of the available presets below, or provide a custom preset by specifying the path to a <Monospace>.ecl</Monospace> or <Monospace>.yaml</Monospace> file.
+      You can either select one of the available presets below, or provide a custom preset by specifying the path to a <Monospace>.ecl</Monospace> file.
     </div>
 
     <SearchableDropdown
@@ -276,12 +281,13 @@ function PresetPicker(props: {
     />
 
     <div style={{ marginTop: '10px' }}>
-      Or provide a custom preset by specifying the path to a <Monospace>.ecl</Monospace> or <Monospace>.yaml</Monospace> file:
+      Or provide a custom preset by specifying the path to a <Monospace>.ecl</Monospace> file:
     </div>
     <PickPath
-      value={props.edit_path}
-      placeholder="Path to analysis_<RULESET>.<ecl|yaml>"
+      value={edit_path}
+      placeholder="Path to analysis_<RULESET>.ecl"
       on_selected={(path) => {
+        set_edit_path(path);
         props.dispatch_state({
           type: "with-selected-workspace",
           action: {
@@ -297,8 +303,34 @@ function PresetPicker(props: {
         });
         props.onPresetSelected?.();
       }}
-      on_pick={() => {
-        props.post_message({ command: "pick-preset-path", kind: props.kind });
+      on_pick={async () => {
+        const result = await rpc.call("open-dialog", {
+          canSelectFiles: true,
+          canSelectFolders: false,
+          canSelectMany: false,
+          title: "Select a preset file",
+          defaultUri: edit_path || last_selected_path || undefined,
+        });
+        if (result?.canceled || !result?.paths?.[0]) {
+          return;
+        }
+        const path = String(result.paths[0]);
+        last_selected_path = path;
+        set_edit_path(path);
+        props.dispatch_state({
+          type: "with-selected-workspace",
+          action: {
+            type: "with-selected-configuration",
+            action: { type: "set-or-add-preset", kind: props.kind, source: { type: "system-path", path } },
+          },
+        });
+        props.post_message({
+          command: "load-preset",
+          source: { type: "system-path", path },
+          repos: {},
+          workspace: props.workspace,
+        });
+        props.onPresetSelected?.();
       }}
     />
   </div>);

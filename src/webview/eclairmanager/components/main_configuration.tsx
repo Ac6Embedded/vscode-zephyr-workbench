@@ -57,10 +57,8 @@ export function MainAnalysisConfigurationSection({
       {current.main_config.type === "zephyr-ruleset" && (
         <RulesetSection
           config_key={config_index}
-          workspace={workspace}
           ruleset={current.main_config.ruleset}
           dispatch_state={dispatch_state}
-          post_message={post_message}
         />
       )}
 
@@ -78,10 +76,8 @@ export function MainAnalysisConfigurationSection({
 
       {current.main_config.type === "custom-ecl" && (
         <CustomEclSection
-          workspace={workspace}
           state={current.main_config.state}
           dispatch_state={dispatch_state}
-          post_message={post_message}
         />
       )}
     </div>

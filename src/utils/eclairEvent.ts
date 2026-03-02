@@ -14,35 +14,17 @@ export type ExtensionMessage = {
   command: "set-install-path",
   path: string,
 } | {
-  command: "set-extra-config",
-  path: string,
-  workspace: string,
-} | {
   command: "set-path-status",
   text: string,
 } | {
+  // TODO using the placeholder for status reporting is undesirable
   command: "set-install-path-placeholder",
   text: string,
-} | {
-  command: "set-user-ruleset-name",
-  name: string,
-} | {
-  command: "set-user-ruleset-path",
-  path: string,
-  workspace: string,
-} | {
-  command: "set-custom-ecl-path",
-  path: string,
-  workspace: string,
 } | {
   command: "preset-content",
   source: EclairPresetTemplateSource,
   template: EclairTemplate | { loading: string } | { error: string },
   workspace: string,
-} | {
-  command: "template-path-picked",
-  kind: EclairTemplateKind,
-  path: string,
 } | {
   // Restore the full saved SCA configuration into the webview
   command: "set-sca-config",
@@ -61,7 +43,7 @@ export type ExtensionMessage = {
   name: string,
   message: string,
   workspace: string,
-};
+} | RpcResponseMessage;
 
 // Commands sent FROM webview frontend TO extension backend
 export type WebviewMessage = {
@@ -73,17 +55,6 @@ export type WebviewMessage = {
 } | {
   command: "update-path",
   newPath: string,
-} | {
-  command: "browse-path",
-} | {
-  command: "browse-extra-config",
-  workspace: string,
-} | {
-  command: "browse-user-ruleset-path",
-  workspace: string,
-} | {
-  command: "browse-custom-ecl-path",
-  workspace: string,
 } | {
   command: "save-sca-config",
   config: FullEclairScaConfig,
@@ -109,9 +80,6 @@ export type WebviewMessage = {
   repos: EclairRepos,
   workspace: string,
 } | {
-  command: "pick-preset-path",
-  kind: EclairTemplateKind,
-} | {
   /**
    * Ask the backend to check out a named repository and scan it for preset
    * templates, sending back `preset-content` messages for each discovered
@@ -132,6 +100,26 @@ export type WebviewMessage = {
   workspace: string,
   rev?: string,
   delete_rev?: string,
+} | RpcRequestMessage;
+
+export type RpcError = {
+  message: string;
+  code?: string;
+  data?: any;
+};
+
+export type RpcRequestMessage = {
+  command: "rpc-request";
+  id: string;
+  method: string;
+  params?: any;
+};
+
+export type RpcResponseMessage = {
+  command: "rpc-response";
+  id: string;
+  result?: any;
+  error?: RpcError;
 };
 
 export type BuildConfigInfo = {

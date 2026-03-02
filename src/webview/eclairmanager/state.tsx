@@ -122,9 +122,9 @@ export interface PresetsSelectionState {
 
 function default_presets_selection_state(): PresetsSelectionState {
   return {
-    rulesets_state: { presets: [], edit_path: "" },
-    variants_state: { presets: [], edit_path: "" },
-    tailorings_state: { presets: [], edit_path: "" },
+    rulesets_state: { presets: [] },
+    variants_state: { presets: [] },
+    tailorings_state: { presets: [] },
   };
 };
 
@@ -148,7 +148,6 @@ export function get_preset_template_by_source(presets: AvailablePresetsState, so
 
 export interface MultiPresetSelectionState {
   presets: PresetSelectionState[];
-  edit_path: string;
 }
 
 export function preset_template_source_id(source: EclairPresetTemplateSource): string {
@@ -188,14 +187,9 @@ export type EclairStateAction =
        | { type: "update-custom-ecl-path"; path: string }
        | { type: "toggle-report"; report: string; checked: boolean }
        | { type: "update-extra-config-path"; path: string }
-       | { type: "set-extra-config"; path: string }
-       | { type: "set-user-ruleset-name"; name: string }
-       | { type: "set-user-ruleset-path"; path: string }
-       | { type: "set-custom-ecl-path"; path: string }
        | { type: "set-preset-option"; source: EclairPresetTemplateSource; option_id: string; value: boolean | string }
        | { type: "clear-preset-option"; source: EclairPresetTemplateSource; option_id: string }
        | { type: "remove-selected-preset"; kind: EclairTemplateKind; index: number }
-       | { type: "set-preset-path"; kind: EclairTemplateKind; path: string }
        | { type: "set-or-add-preset"; kind: EclairTemplateKind; source: EclairPresetTemplateSource; }
     }
   }
@@ -238,9 +232,9 @@ function build_configs(cfg: FullEclairScaConfig): EclairConfig[] {
         return {
           type: "preset" as const,
           state: {
-            rulesets_state: { presets: c.rulesets.map(to_preset), edit_path: "" },
-            variants_state: { presets: c.variants.map(to_preset), edit_path: "" },
-            tailorings_state: { presets: c.tailorings.map(to_preset), edit_path: "" },
+            rulesets_state: { presets: c.rulesets.map(to_preset) },
+            variants_state: { presets: c.variants.map(to_preset) },
+            tailorings_state: { presets: c.tailorings.map(to_preset) },
           },
         };
       })
@@ -268,10 +262,14 @@ function build_install_path_state(path: string | undefined, prev?: InstallPathSt
 }
 
 function are_repos_equal(a: EclairRepos, b: EclairRepos | undefined): boolean {
-  if (!b) return false;
+  if (!b) {
+    return false;
+  }
   const a_keys = Object.keys(a);
   const b_keys = Object.keys(b);
-  if (a_keys.length !== b_keys.length) return false;
+  if (a_keys.length !== b_keys.length) {
+    return false;
+  }
   return a_keys.every((name) => {
     const entry_a = a[name];
     const entry_b = b[name];
@@ -342,7 +340,6 @@ function clone_preset_selection(preset: PresetSelectionState): PresetSelectionSt
 function clone_multi_preset_state(state: MultiPresetSelectionState): MultiPresetSelectionState {
   return {
     presets: state.presets.map(clone_preset_selection),
-    edit_path: state.edit_path,
   };
 }
 
@@ -385,7 +382,9 @@ function make_unique_clone_name(configs: EclairConfig[], original_name: string):
   const names = new Set(configs.map((config) => config.name));
   const base = original_name.trim() || "Config";
   const preferred = `${base} (Copy)`;
-  if (!names.has(preferred)) return preferred;
+  if (!names.has(preferred)) {
+    return preferred;
+  }
   let index = 2;
   while (names.has(`${preferred} ${index}`)) {
     index += 1;
@@ -430,7 +429,9 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
     })
     .with({ type: "select-configuration" }, ({ index }) => {
       const selected = get_selected_context(draft);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       if (index < 0 || index >= selected.state.configs.length) {
         console.error("Cannot select configuration: index out of range", index);
         return;
@@ -439,7 +440,9 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
     })
     .with({ type: "with-selected-workspace" }, ({ action, workspace, build_config }) => {
       const selected = get_selected_context(draft, workspace, build_config);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       const configs = selected.state.configs;
       match(action)
         .with({ type: "add-new-configuration" }, ({ name }) => {
@@ -546,36 +549,18 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
             .with({ type: "update-extra-config-path" }, ({ path }) => {
               current.extra_config.path = path;
             })
-            .with({ type: "set-extra-config" }, ({ path }) => {
-              current.extra_config.path = path;
-            })
-            .with({ type: "set-user-ruleset-name" }, ({ name }) => {
-              if (current.main_config.type !== "zephyr-ruleset") {
-                console.error("Cannot set user ruleset name: configuration is not zephyr-ruleset type");
-                return;
-              }
-              current.main_config.ruleset.userRulesetName = name;
-            })
-            .with({ type: "set-user-ruleset-path" }, ({ path }) => {
-              if (current.main_config.type !== "zephyr-ruleset") {
-                console.error("Cannot set user ruleset path: configuration is not zephyr-ruleset type");
-                return;
-              }
-              current.main_config.ruleset.userRulesetPath = path;
-            })
-            .with({ type: "set-custom-ecl-path" }, ({ path }) => {
-              if (current.main_config.type !== "custom-ecl") {
-                console.error("Cannot set custom ECL path: configuration is not custom-ecl type");
-                return;
-              }
-              current.main_config.state.ecl = path;
-            })
             .with({ type: "set-preset-option" }, ({ source, option_id, value }) => {
-              if (current.main_config.type !== "preset") return;
+              if (current.main_config.type !== "preset") {
+                return;
+              }
               const sourceId = preset_template_source_id(source);
               const update_preset = (preset: WritableDraft<PresetSelectionState>) => {
-                if (preset_template_source_id(preset.source) !== sourceId) return;
-                if (!preset.edited_flags) preset.edited_flags = {};
+                if (preset_template_source_id(preset.source) !== sourceId) {
+                  return;
+                }
+                if (!preset.edited_flags) {
+                  preset.edited_flags = {};
+                }
                 preset.edited_flags[option_id] = value;
               };
               const s = current.main_config.state;
@@ -584,11 +569,17 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
               s.tailorings_state.presets.forEach(update_preset);
             })
             .with({ type: "clear-preset-option" }, ({ source, option_id }) => {
-              if (current.main_config.type !== "preset") return;
+              if (current.main_config.type !== "preset") {
+                return;
+              }
               const sourceId = preset_template_source_id(source);
               const update_preset = (preset: WritableDraft<PresetSelectionState>) => {
-                if (preset_template_source_id(preset.source) !== sourceId) return;
-                if (preset.edited_flags) delete preset.edited_flags[option_id];
+                if (preset_template_source_id(preset.source) !== sourceId) {
+                  return;
+                }
+                if (preset.edited_flags) {
+                  delete preset.edited_flags[option_id];
+                }
               };
               const s = current.main_config.state;
               s.rulesets_state.presets.forEach(update_preset);
@@ -596,7 +587,9 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
               s.tailorings_state.presets.forEach(update_preset);
             })
             .with({ type: "remove-selected-preset" }, ({ kind, index }) => {
-              if (current.main_config.type !== "preset") return;
+              if (current.main_config.type !== "preset") {
+                return;
+              }
               const s = current.main_config.state;
               match(kind)
                 .with("ruleset", () => s.rulesets_state.presets.splice(index, 1))
@@ -604,17 +597,10 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
                 .with("tailoring", () => s.tailorings_state.presets.splice(index, 1))
                 .exhaustive();
             })
-            .with({ type: "set-preset-path" }, ({ kind, path }) => {
-              if (current.main_config.type !== "preset") return;
-              const s = current.main_config.state;
-              match(kind)
-                .with("ruleset", () => { s.rulesets_state.edit_path = path; })
-                .with("variant", () => { s.variants_state.edit_path = path; })
-                .with("tailoring", () => { s.tailorings_state.edit_path = path; })
-                .exhaustive();
-            })
             .with({ type: "set-or-add-preset" }, ({ kind, source }) => {
-              if (current.main_config.type !== "preset") return;
+              if (current.main_config.type !== "preset") {
+                return;
+              }
               const s = current.main_config.state;
               const new_preset = { source, edited_flags: {} };
               match(kind)
@@ -629,7 +615,9 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
     })
     .with({ type: "update-install-path" }, ({ path }) => {
       const selected = get_selected_context(draft);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       selected.state.install_path.path = path;
     })
     .with({ type: "toggle-spinner" }, ({ show }) => {
@@ -641,18 +629,24 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
     })
     .with({ type: "set-install-path" }, ({ path }) => {
       const selected = get_selected_context(draft);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       selected.state.install_path.path = path;
       selected.state.install_path.placeholder = path ? "" : DEFAULT_INSTALL_PATH_PLACEHOLDER;
     })
     .with({ type: "set-install-path-placeholder" }, ({ text }) => {
       const selected = get_selected_context(draft);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       selected.state.install_path.placeholder = text;
     })
     .with({ type: "set-path-status" }, ({ text }) => {
       const selected = get_selected_context(draft);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       if (text.trim().toLowerCase() === "checking") {
         selected.state.install_path = { path: "", placeholder: "Checking" };
       } else if (text.trim() === "") {
@@ -665,7 +659,9 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
     })
     .with({ type: "preset-content" }, ({ source, template, workspace, build_config }) => {
       const selected = get_selected_context(draft, workspace, build_config);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       match(source)
         .with({ type: "system-path" }, ({ path }) => {
           selected.state.available_presets.by_path.set(path, template);
@@ -682,21 +678,27 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
     })
     .with({ type: "add-repo" }, ({ name, origin, ref, rev }) => {
       const selected = get_selected_context(draft);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       selected.state.repos[name] = { origin, ref, ...(rev ? { rev } : {}) };
       // Reset scan state when a repo is added or its configuration changes.
       selected.state.repos_scan_state[name] = { status: "idle" };
     })
     .with({ type: "update-repo" }, ({ name, origin, ref, rev }) => {
       const selected = get_selected_context(draft);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       selected.state.repos[name] = { origin, ref, ...(rev ? { rev } : {}) };
       // Reset scan state when a repo's configuration changes.
       selected.state.repos_scan_state[name] = { status: "idle" };
     })
     .with({ type: "remove-repo" }, ({ name }) => {
       const selected = get_selected_context(draft);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       delete selected.state.repos[name];
       delete selected.state.repos_scan_state[name];
       // Also clear all preset-content entries for this repo.
@@ -704,12 +706,16 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
     })
     .with({ type: "repo-scan-started" }, ({ name, workspace, build_config }) => {
       const selected = get_selected_context(draft, workspace, build_config);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       selected.state.repos_scan_state[name] = { status: "loading" };
     })
     .with({ type: "repo-scan-done" }, ({ name, workspace, build_config, rev, checkout_dir }) => {
       const selected = get_selected_context(draft, workspace, build_config);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       // Count successfully loaded templates for this repo.
       const byPath = selected.state.available_presets.by_repo_and_path.get(name);
       const templateCount = byPath
@@ -725,7 +731,9 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
     })
     .with({ type: "repo-scan-failed" }, ({ name, message, workspace, build_config }) => {
       const selected = get_selected_context(draft, workspace, build_config);
-      if (!selected) return;
+      if (!selected) {
+        return;
+      }
       selected.state.repos_scan_state[name] = { status: "error", message };
     })
     .with({ type: "update-state" }, ({ updater }) => updater(draft))

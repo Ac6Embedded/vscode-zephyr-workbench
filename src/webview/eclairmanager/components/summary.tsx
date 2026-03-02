@@ -2,6 +2,7 @@ import React from "react";
 import { StatusState, InstallPathState, EclairStateAction } from "../state";
 import { VscodeButton, PickPath } from "./common_components";
 import { WebviewMessage } from "../../../utils/eclairEvent";
+import { useRpc } from "../rpc.js";
 
 export function Summary(props: {
   status: StatusState;
@@ -13,6 +14,7 @@ export function Summary(props: {
   const statusText = props.status.installed ? "Installed" : "Not installed";
 
   const post_message = props.post_message;
+  const rpc = useRpc();
 
   return (
     <div className="summary">
@@ -52,7 +54,24 @@ export function Summary(props: {
             newPath: newPath.trim(),
           });
         }}
-        on_pick={() => props.post_message({ command: "browse-path" })}
+        on_pick={async () => {
+          const result = await rpc.call("open-dialog", {
+            canSelectFiles: false,
+            canSelectFolders: true,
+            canSelectMany: false,
+            title: "Select the ECLAIR installation",
+            defaultUri: props.installPath.path || undefined,
+          });
+          if (result?.canceled || !result?.paths?.[0]) {
+            return;
+          }
+          const picked = String(result.paths[0]);
+          props.dispatch_state({ type: "update-install-path", path: picked });
+          props.post_message({
+            command: "update-path",
+            newPath: picked.trim(),
+          });
+        }}
       />
     </div>
   );

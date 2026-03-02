@@ -1,19 +1,17 @@
 import React from "react";
-import { WebviewMessage } from "../../../../utils/eclairEvent";
 import { CustomEclState, EclairStateAction } from "../../state";
 import { PickPath } from "../common_components";
+import { useRpc } from "../../rpc.js";
 
 export function CustomEclSection({
   state,
   dispatch_state,
-  post_message,
-  workspace,
 }: {
   state: CustomEclState;
   dispatch_state: React.Dispatch<EclairStateAction>;
-  post_message: (message: WebviewMessage) => void;
-  workspace: string;
 }) {
+  const rpc = useRpc();
+
   return (<>
     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
       <PickPath
@@ -27,7 +25,26 @@ export function CustomEclSection({
             action: { type: "update-custom-ecl-path", path: value },
           },
         })}
-        on_pick={() => post_message({ command: "browse-custom-ecl-path", workspace })}
+        on_pick={async () => {
+          const result = await rpc.call("open-dialog", {
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: false,
+            title: "Select the ECL configuration",
+            defaultUri: state.ecl || undefined,
+          });
+          if (result?.canceled || !result?.paths?.[0]) {
+            return;
+          }
+          const picked = String(result.paths[0]);
+          dispatch_state({
+            type: "with-selected-workspace",
+            action: {
+              type: "with-selected-configuration",
+              action: { type: "update-custom-ecl-path", path: picked },
+            },
+          });
+        }}
       />
     </div>
   </>);
