@@ -118,7 +118,7 @@ const webviewEclairManagerConfig = {
   ...baseConfig,
   target: "es2020",
   format: "esm",
-  entryPoints: ["./src/webview/eclairmanager/index.tsx"],
+  entryPoints: ["./src/webview/eclairmanager/index.mts"],
   outfile: "./out/eclairmanager.js",
 };
 

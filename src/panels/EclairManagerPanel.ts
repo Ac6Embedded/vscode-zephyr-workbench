@@ -877,7 +877,8 @@ export class EclairManagerPanel {
 <link rel="stylesheet" nonce="${nonce}" href="${codiconUri}">
 <title>ECLAIR Manager</title>
 </head>
-<body id="eclair-manager-body">
+<body>
+<div id="eclair-manager-content"></div>
 <script nonce="${nonce}" type="module" src="${scriptUri}"></script>
 </body>
 </html>`;

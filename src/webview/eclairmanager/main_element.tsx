@@ -15,8 +15,6 @@ import { EditableTextField, RichHelpTooltip, SearchableDropdown, VscodeButton, V
 import { EasyMark } from "./components/easymark_render.js";
 import { enableMapSet } from "immer";
 
-const BODY_ID = "eclair-manager-body";
-
 function workspace_label(workspace: string): string {
   const parts = workspace.split(/[\\/]/).filter(Boolean);
   return parts.length > 0 ? parts[parts.length - 1] : workspace;
@@ -25,27 +23,7 @@ function workspace_label(workspace: string): string {
 // VSCode API type
 declare const acquireVsCodeApi: any;
 
-export async function main() {
-  enableMapSet();
-
-  const body = document.getElementById(BODY_ID);
-  if (!body) return;
-
-  const root = createRoot(body);
-  root.render(<EclairManagerPanel />);
-
-  import_wui().catch((e) => {
-    console.error("Failed to load VSCode Webview UI Toolkit:", e);
-  });
-}
-
-export async function import_wui() {
-  const mod = await import("@vscode/webview-ui-toolkit");
-  const { provideVSCodeDesignSystem, allComponents } = mod as any;
-  provideVSCodeDesignSystem().register(allComponents);
-}
-
-function EclairManagerPanel() {
+export function EclairManagerPanel() {
   const [api] = useState(() => acquireVsCodeApi());
   const [state, dispatch_state] = useReducer(eclairReducer, default_eclair_state());
 
@@ -110,35 +88,35 @@ function EclairManagerPanel() {
 
       <fieldset style={{ width: "100%", boxSizing: "border-box" }}>
         <legend>Context</legend>
-        Select the application to analyze:
-        <SearchableDropdown
-          id="workspace-selector"
-          label=""
-          style={{ maxWidth: "300px" }}
-          placeholder="Select workspace"
-          items={workspace_items}
-          selectedItem={current_workspace_item || null}
-          onSelectItem={(item) => {
-            const next_workspace = item.value;
-            const build_configs = state.build_configs_by_workspace[next_workspace] ?? [];
-            const next_build_config = build_configs[0]?.name;
-            if (!next_build_config) {
-              console.warn("No build configurations available for workspace", next_workspace);
-              return;
-            }
-            dispatch_state({ type: "select-context", workspace: next_workspace, build_config: next_build_config });
-          }}
-        />
-        Select the build configuration to use.
-        {workspace && (<SearchableDropdown
-          id="build-config-selector"
-          label=""
-          style={{ maxWidth: "300px" }}
-          placeholder="Select build config"
-          items={build_config_items}
-          selectedItem={current_build_config_item || null}
-          onSelectItem={(item) => dispatch_state({ type: "select-context", workspace, build_config: item.value.name })}
-        />)}
+        <div style={{ display: "flex", alignItems: "end", gap: "10px", flexWrap: "wrap" }}>
+          <SearchableDropdown
+            id="workspace-selector"
+            label="Select the application to analyze:"
+            style={{ width: "300px" }}
+            placeholder="Select workspace"
+            items={workspace_items}
+            selectedItem={current_workspace_item || null}
+            onSelectItem={(item) => {
+              const next_workspace = item.value;
+              const build_configs = state.build_configs_by_workspace[next_workspace] ?? [];
+              const next_build_config = build_configs[0]?.name;
+              if (!next_build_config) {
+                console.warn("No build configurations available for workspace", next_workspace);
+                return;
+              }
+              dispatch_state({ type: "select-context", workspace: next_workspace, build_config: next_build_config });
+            }}
+          />
+          {workspace && (<SearchableDropdown
+            id="build-config-selector"
+            label="Select the build configuration to use."
+            style={{ width: "300px" }}
+            placeholder="Select build config"
+            items={build_config_items}
+            selectedItem={current_build_config_item || null}
+            onSelectItem={(item) => dispatch_state({ type: "select-context", workspace, build_config: item.value.name })}
+          />)}
+        </div>
       </fieldset>
 
       <Summary
@@ -332,8 +310,6 @@ function EclairManagerWithConfigs({
     />
   </>);
 }
-
-window.addEventListener("load", main);
 
 
 function handleMessage(
