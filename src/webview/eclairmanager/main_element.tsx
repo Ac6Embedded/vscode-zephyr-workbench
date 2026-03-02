@@ -178,7 +178,7 @@ function EclairManagerWithConfigs({
   }, [context_state]);
 
   return (<>
-    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "10px" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "10px", marginBottom: "10px" }}>
       Configuration:
       <SearchableDropdown
         id="configuration-selector"

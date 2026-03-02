@@ -272,9 +272,9 @@ export function SearchableDropdown<Item extends SearchableItem>(props: {
   }, []);
 
   return (
-    <div style={{ marginBottom: '10px', ...props.style }}>
-      <label htmlFor={props.id}>{props.label}</label>
-      <div ref={dropdownRef} style={{ position: 'relative', marginTop: '5px' }}>
+    <div style={{ ...props.style }}>
+      {props.label && <label style={{ marginBottom: "5px", display: "block" }} htmlFor={props.id}>{props.label}</label>}
+      <div ref={dropdownRef} style={{ position: 'relative' }}>
         <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
           <input
             id={props.id}
