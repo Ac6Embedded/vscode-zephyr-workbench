@@ -43,8 +43,12 @@ export class EclairManagerPanel {
       if (fs.existsSync(envYamlPath)) {
         envObj = yaml.parse(fs.readFileSync(envYamlPath, "utf8")) || {};
       }
-      if (!envObj.other) envObj.other = {};
-      if (!envObj.other.EXTRA_TOOLS) envObj.other.EXTRA_TOOLS = {};
+      if (!envObj.other) {
+        envObj.other = {};
+      }
+      if (!envObj.other.EXTRA_TOOLS) {
+        envObj.other.EXTRA_TOOLS = {};
+      }
       envObj.other.EXTRA_TOOLS.path = [normalizePath(dir)];
       fs.writeFileSync(envYamlPath, yaml.stringify(envObj), "utf8");
     } catch (err) {
@@ -146,7 +150,9 @@ export class EclairManagerPanel {
     this._panel.dispose();
     while (this._disposables.length) {
       const d = this._disposables.pop();
-      if (d) d.dispose();
+      if (d) {
+        d.dispose();
+      }
     }
   }
 
@@ -155,12 +161,18 @@ export class EclairManagerPanel {
    * Used to normalize the ECLAIR install path.
    */
   private toInstallDir(p?: string): string | undefined {
-    if (!p) return undefined;
+    if (!p) {
+      return undefined;
+    }
     const trimmed = p.trim();
-    if (!trimmed) return undefined;
+    if (!trimmed) {
+      return undefined;
+    }
     if (trimmed.toLowerCase().endsWith("eclair.exe")) {
       const d = path.dirname(trimmed);
-      if (d === "." || d === "") return undefined;
+      if (d === "." || d === "") {
+        return undefined;
+      }
       return d;
     }
     return trimmed;
@@ -278,9 +290,13 @@ export class EclairManagerPanel {
    * Keeps the UI fields in sync with manual edits or other tools.
    */
   private startEnvWatcher() {
-    if (this._envWatcher) return;
+    if (this._envWatcher) {
+      return;
+    }
     const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-    if (!fs.existsSync(envYamlPath)) return;
+    if (!fs.existsSync(envYamlPath)) {
+      return;
+    }
 
     this._envWatcher = fs.watch(envYamlPath, async () => {
       this.loadEnvYaml();
@@ -325,15 +341,21 @@ export class EclairManagerPanel {
    */
   private saveEclairPathToEnv(installPath?: string) {
     const dir = this.toInstallDir(installPath);
-    if (!dir) return;
+    if (!dir) {
+      return;
+    }
     const normalized = normalizePath(dir);
     // Allows you to save any value
-    if (!normalized) return;
+    if (!normalized) {
+      return;
+    }
     // get current paths
     const arr = getExtraPaths("EXTRA_TOOLS");
     // find index where eclair is detected or matches current UI
     let idx = this.getEclairPathFromEnv().index;
-    if (idx < 0) idx = 0;
+    if (idx < 0) {
+      idx = 0;
+    }
     // use setExtraPath helper to update env.yml
     require("../utils/envYamlUtils").setExtraPath("EXTRA_TOOLS", idx, normalized);
     // reload in-memory state
@@ -357,8 +379,12 @@ export class EclairManagerPanel {
       if (fs.existsSync(envYamlPath)) {
         envObj = yaml.parse(fs.readFileSync(envYamlPath, "utf8")) || {};
       }
-      if (!envObj.other) envObj.other = {};
-      if (!envObj.other.EXTRA_TOOLS) envObj.other.EXTRA_TOOLS = {};
+      if (!envObj.other) {
+        envObj.other = {};
+      }
+      if (!envObj.other.EXTRA_TOOLS) {
+        envObj.other.EXTRA_TOOLS = {};
+      }
       const current = envObj.other.EXTRA_TOOLS.path;
       // If it's already a non-empty array with a valid first entry, do nothing
       if (Array.isArray(current) && current.length > 0 && current[0] && String(current[0]).trim() !== "") {
@@ -388,12 +414,16 @@ export class EclairManagerPanel {
         const execSync = require("child_process").execSync;
         const out = execSync(whichCmd, { encoding: "utf8" });
         const lines = out.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
-        if (lines[0] && fs.existsSync(lines[0])) exePath = lines[0];
+        if (lines[0] && fs.existsSync(lines[0])) {
+          exePath = lines[0];
+        }
       } else {
         const execSync = require("child_process").execSync;
         const out = execSync("which eclair", { encoding: "utf8" });
         const lines = out.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
-        if (lines[0] && fs.existsSync(lines[0])) exePath = lines[0];
+        if (lines[0] && fs.existsSync(lines[0])) {
+          exePath = lines[0];
+        }
       }
       if (exePath) {
         // Check if we already have a valid path in env.yml
@@ -1004,8 +1034,11 @@ export class EclairManagerPanel {
     // Ensure all env values are strings (not undefined)
     const merged_env: { [key: string]: string } = {};
     for (const [k, v] of Object.entries(process.env)) {
-      if (typeof v === "string") merged_env[k] = v;
-      else merged_env[k] = "";
+      if (typeof v === "string") {
+        merged_env[k] = v;
+      } else {
+        merged_env[k] = "";
+      }
     }
 
     // Disable ccache for SCA/ECLAIR (breaks wrapper script)
@@ -1020,7 +1053,9 @@ export class EclairManagerPanel {
     // If not found, try buildDir (in case SDK is in the project)
     if (!zephyr_sdk_dir && build_dir) {
       const guess = path.join(path.dirname(build_dir), "zephyr-sdk-0.17.4");
-      if (fs.existsSync(guess)) zephyr_sdk_dir = guess;
+      if (fs.existsSync(guess)) {
+        zephyr_sdk_dir = guess;
+      }
     }
     if (zephyr_sdk_dir) {
       merged_env.ZEPHYR_SDK_INSTALL_DIR = zephyr_sdk_dir;
@@ -1203,8 +1238,12 @@ function cmake_ruleset_selection_options(
     cmake_args.push("-DECLAIR_RULESET_USER=ON");
     const name = (user_ruleset_name || "").trim();
     const p = (user_ruleset_path || "").trim();
-    if (name) cmake_args.push(`-DECLAIR_USER_RULESET_NAME=\"${name}\"`);
-    if (p) cmake_args.push(`-DECLAIR_USER_RULESET_PATH=\"${p}\"`);
+    if (name) {
+      cmake_args.push(`-DECLAIR_USER_RULESET_NAME=\"${name}\"`);
+    }
+    if (p) {
+      cmake_args.push(`-DECLAIR_USER_RULESET_PATH=\"${p}\"`);
+    }
     cmake_args.push("-DECLAIR_RULESET_FIRST_ANALYSIS=OFF");
   } else if (ruleset) {
     cmake_args.push(`-D${ruleset}=ON`);
@@ -1365,7 +1404,9 @@ function resolve_application(
   current_workspace_folder: vscode.WorkspaceFolder | undefined,
 ): number | undefined {
   const hasTopLevelCMakeLists = (uri: vscode.Uri | undefined) => {
-    if (!uri) return false;
+    if (!uri) {
+      return false;
+    }
     try {
       return fs.existsSync(path.join(uri.fsPath, "CMakeLists.txt"));
     } catch {
@@ -1374,7 +1415,9 @@ function resolve_application(
   };
 
   const find_app_by_uri = (uri: vscode.Uri | undefined) => {
-    if (!uri) return undefined;
+    if (!uri) {
+      return undefined;
+    }
     for (const [i, app] of applications.entries()) {
       if (app.workspaceFolder.uri.toString() === uri.toString()) {
         return i;
@@ -1414,7 +1457,9 @@ function resolve_application(
  * approach would target known path fields explicitly.
  */
 function deep_tokenize_paths(obj: any, folderUri: vscode.Uri): any {
-  if (!folderUri) return obj;
+  if (!folderUri) {
+    return obj;
+  }
   const wsPath = folderUri.fsPath.replace(/\\/g, "/");
   const walk = (val: any): any => {
     if (typeof val === "string") {
@@ -1424,10 +1469,14 @@ function deep_tokenize_paths(obj: any, folderUri: vscode.Uri): any {
       }
       return val;
     }
-    if (Array.isArray(val)) return val.map(walk);
+    if (Array.isArray(val)) {
+      return val.map(walk);
+    }
     if (val && typeof val === "object") {
       const out: any = {};
-      for (const k of Object.keys(val)) out[k] = walk(val[k]);
+      for (const k of Object.keys(val)) {
+        out[k] = walk(val[k]);
+      }
       return out;
     }
     return val;
@@ -1446,10 +1495,14 @@ function deep_resolve_paths(obj: any, folderUri: vscode.Uri): any {
     if (typeof val === "string") {
       return val.replace(/\$\{workspaceFolder\}/g, fsPath);
     }
-    if (Array.isArray(val)) return val.map(walk);
+    if (Array.isArray(val)) {
+      return val.map(walk);
+    }
     if (val && typeof val === "object") {
       const out: any = {};
-      for (const k of Object.keys(val)) out[k] = walk(val[k]);
+      for (const k of Object.keys(val)) {
+        out[k] = walk(val[k]);
+      }
       return out;
     }
     return val;
@@ -1462,7 +1515,9 @@ function deep_resolve_paths(obj: any, folderUri: vscode.Uri): any {
  * Used when sending stored paths back to the webview.
  */
 function resolveVsCodeVariables(p: string, folderUri: vscode.Uri): string {
-  if (!p || !p.includes("${workspaceFolder}")) return p;
+  if (!p || !p.includes("${workspaceFolder}")) {
+    return p;
+  }
   return p.replace(/\$\{workspaceFolder\}/g, folderUri.fsPath);
 }
 
@@ -1499,7 +1554,9 @@ function detectZephyrSdkDir(folderUri: vscode.Uri): string | undefined {
   ];
 
   for (const c of candidates) {
-    if (c && fs.existsSync(c)) return c;
+    if (c && fs.existsSync(c)) {
+      return c;
+    }
   }
   return undefined;
 }

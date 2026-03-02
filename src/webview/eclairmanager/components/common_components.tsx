@@ -188,14 +188,18 @@ export function RichHelpTooltip(props: {
   const showTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const show = () => {
-    if (hideTimer.current) clearTimeout(hideTimer.current);
+    if (hideTimer.current) {
+      clearTimeout(hideTimer.current);
+    }
     if (!visible) {
       showTimer.current = setTimeout(() => setVisible(true), 400);
     }
   };
 
   const hide = () => {
-    if (showTimer.current) clearTimeout(showTimer.current);
+    if (showTimer.current) {
+      clearTimeout(showTimer.current);
+    }
     hideTimer.current = setTimeout(() => setVisible(false), 200);
   };
 
