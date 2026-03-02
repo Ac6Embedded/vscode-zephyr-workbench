@@ -227,6 +227,19 @@ function EclairManagerWithConfigs({
           onClick={() => {
             dispatch_state({
               type: "with-selected-workspace",
+              action: { type: "clone-configuration", index: context_state.current_config_index },
+            });
+          }}
+        >
+          Clone
+        </VscodeButton>
+      )}
+      {current && (
+        <VscodeButton
+          appearance="secondary"
+          onClick={() => {
+            dispatch_state({
+              type: "with-selected-workspace",
               action: { type: "delete-configuration", index: context_state.current_config_index },
             });
           }}

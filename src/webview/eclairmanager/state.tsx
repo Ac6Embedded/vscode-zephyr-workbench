@@ -176,6 +176,7 @@ export type EclairStateAction =
   | { type: "select-configuration"; index: number }
   | { type: "with-selected-workspace"; workspace?: string; build_config?: string; action:
     | { type: "add-new-configuration"; name: string }
+    | { type: "clone-configuration"; index: number }
     | { type: "delete-configuration"; index: number }
     | { type: "with-selected-configuration"; action:
        | { type: "update-configuration-name"; name: string }
@@ -331,6 +332,67 @@ function get_selected_context(
   return { workspace: target_workspace, state };
 }
 
+function clone_preset_selection(preset: PresetSelectionState): PresetSelectionState {
+  return {
+    source: { ...preset.source },
+    edited_flags: { ...preset.edited_flags },
+  };
+}
+
+function clone_multi_preset_state(state: MultiPresetSelectionState): MultiPresetSelectionState {
+  return {
+    presets: state.presets.map(clone_preset_selection),
+    edit_path: state.edit_path,
+  };
+}
+
+function clone_main_config(config: MainAnalysisConfigurationState): MainAnalysisConfigurationState {
+  return match(config)
+    .with({ type: "preset" }, ({ state }) => ({
+      type: "preset" as const,
+      state: {
+        rulesets_state: clone_multi_preset_state(state.rulesets_state),
+        variants_state: clone_multi_preset_state(state.variants_state),
+        tailorings_state: clone_multi_preset_state(state.tailorings_state),
+      },
+    }))
+    .with({ type: "custom-ecl" }, ({ state }) => ({
+      type: "custom-ecl" as const,
+      state: { ecl: state.ecl },
+    }))
+    .with({ type: "zephyr-ruleset" }, ({ ruleset }) => ({
+      type: "zephyr-ruleset" as const,
+      ruleset: {
+        selected: ruleset.selected,
+        userRulesetName: ruleset.userRulesetName,
+        userRulesetPath: ruleset.userRulesetPath,
+      },
+    }))
+    .exhaustive();
+}
+
+function clone_config(config: EclairConfig): EclairConfig {
+  return {
+    name: config.name,
+    description_md: config.description_md,
+    main_config: clone_main_config(config.main_config),
+    extra_config: { path: config.extra_config.path },
+    reports: { selected: [...config.reports.selected] },
+  };
+}
+
+function make_unique_clone_name(configs: EclairConfig[], original_name: string): string {
+  const names = new Set(configs.map((config) => config.name));
+  const base = original_name.trim() || "Config";
+  const preferred = `${base} (Copy)`;
+  if (!names.has(preferred)) return preferred;
+  let index = 2;
+  while (names.has(`${preferred} ${index}`)) {
+    index += 1;
+  }
+  return `${preferred} ${index}`;
+}
+
 export function eclairReducer(state: EclairState, action: EclairStateAction): EclairState {
   return produce(state, draft => match(action)
     .with({ type: "reset-to-defaults" }, () => {
@@ -389,6 +451,18 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
             reports: { selected: ["ALL"] },
           });
           selected.state.current_config_index = configs.length - 1;
+        })
+        .with({ type: "clone-configuration" }, ({ index }) => {
+          if (index < 0 || index >= configs.length) {
+            console.error("Cannot clone configuration: index out of range", index);
+            return;
+          }
+          const original = configs[index];
+          const cloned = clone_config(original);
+          cloned.name = make_unique_clone_name(configs, original.name);
+          const insert_index = index + 1;
+          configs.splice(insert_index, 0, cloned);
+          selected.state.current_config_index = insert_index;
         })
         .with({ type: "delete-configuration" }, ({ index }) => {
           if (index < 0 || index >= configs.length) {
