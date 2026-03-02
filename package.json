@@ -97,6 +97,12 @@
             "description": "The identifier of target board",
             "scope": "resource"
           },
+          "zephyr-workbench.sca.eclair": {
+            "type": "object",
+            "default": {},
+            "description": "ECLAIR SCA configuration",
+            "scope": "resource"
+          },
           "zephyr-workbench.sdk": {
             "type": "string",
             "default": "",

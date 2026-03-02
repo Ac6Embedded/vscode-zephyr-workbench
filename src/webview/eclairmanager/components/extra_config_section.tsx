@@ -5,7 +5,6 @@ import { WebviewMessage } from "../../../utils/eclairEvent";
 
 export function ExtraConfigSection(props: {
   workspace: string;
-  build_config: string;
   extra_config: ExtraConfigState;
   dispatch_state: React.Dispatch<EclairStateAction>;
   post_message: (message: WebviewMessage) => void;
@@ -25,7 +24,8 @@ export function ExtraConfigSection(props: {
             },
           });
         }}
-        on_pick={() => props.post_message({ command: "browse-extra-config", workspace: props.workspace, build_config: props.build_config })}
+        on_pick={() => props.post_message({ command: "browse-extra-config", workspace: props.workspace
+         })}
       />
     </div>
   );

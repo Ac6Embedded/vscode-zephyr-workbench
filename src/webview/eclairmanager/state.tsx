@@ -27,9 +27,10 @@ export interface EclairState {
   status: StatusState;
   current_context?: {
     workspace: string;
-    build_config: string;
+    build_config?: string;
   };
-  by_workspace_and_build_config: Record<string, Record<string, EclairWorkspaceBuildState>>;
+  by_workspace: Record<string, EclairWorkspaceBuildState>;
+  build_configs_by_workspace: Record<string, string[]>;
 }
 
 export interface EclairWorkspaceBuildState {
@@ -56,7 +57,8 @@ export function default_eclair_state(): EclairState {
       installed: false,
       showSpinner: false,
     },
-    by_workspace_and_build_config: {},
+    by_workspace: {},
+    build_configs_by_workspace: {},
   };
 }
 
@@ -167,7 +169,7 @@ export type RepoScanState =
 export type EclairStateAction =
   // Bulk actions
   | { type: "reset-to-defaults" }
-  | { type: "load-sca-config"; by_workspace_and_build_config: Record<string, Record<string, FullEclairScaConfig>> }
+  | { type: "load-sca-config"; by_workspace: Record<string, FullEclairScaConfig>, build_configs_by_workspace: Record<string, string[]> }
   | { type: "select-context"; workspace: string; build_config: string }
   // Toggle actions
   | { type: "select-configuration"; index: number }
@@ -311,27 +313,21 @@ function get_selected_context(
   draft: WritableDraft<EclairState>,
   workspace?: string,
   build_config?: string,
-): { workspace: string; build_config: string; state: WritableDraft<EclairWorkspaceBuildState> } | undefined {
+): { workspace: string; state: WritableDraft<EclairWorkspaceBuildState> } | undefined {
   const has_override = workspace !== undefined || build_config !== undefined;
   const target_workspace = has_override ? workspace : draft.current_context?.workspace;
-  const target_build_config = has_override ? build_config : draft.current_context?.build_config;
 
-  if (!target_workspace || !target_build_config) {
-    console.error("No workspace/build configuration selected");
+  if (!target_workspace) {
+    console.error("No workspace selected");
     return;
   }
 
-  const by_build = draft.by_workspace_and_build_config[target_workspace];
-  if (!by_build) {
+  const state = draft.by_workspace[target_workspace];
+  if (!state) {
     console.error("Cannot find workspace", target_workspace);
     return;
   }
-  const state = by_build[target_build_config];
-  if (!state) {
-    console.error("Cannot find build configuration", target_build_config);
-    return;
-  }
-  return { workspace: target_workspace, build_config: target_build_config, state };
+  return { workspace: target_workspace, state };
 }
 
 export function eclairReducer(state: EclairState, action: EclairStateAction): EclairState {
@@ -341,33 +337,30 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
       if (!selected) {
         return default_eclair_state();
       }
-      draft.by_workspace_and_build_config[selected.workspace][selected.build_config] = build_workspace_build_state({
+      draft.by_workspace[selected.workspace] = build_workspace_build_state({
         configs: [],
       });
     })
-    .with({ type: "load-sca-config" }, ({ by_workspace_and_build_config }) => {
-      const next: Record<string, Record<string, EclairWorkspaceBuildState>> = {};
-      for (const [workspace, build_configs] of Object.entries(by_workspace_and_build_config)) {
-        next[workspace] = {};
-        for (const [build_config, cfg] of Object.entries(build_configs)) {
-          const prev = state.by_workspace_and_build_config[workspace]?.[build_config];
-          next[workspace][build_config] = build_workspace_build_state(cfg, prev);
-        }
+    .with({ type: "load-sca-config" }, ({ by_workspace, build_configs_by_workspace }) => {
+      const next: Record<string, EclairWorkspaceBuildState> = {};
+      for (const [workspace, cfg] of Object.entries(by_workspace)) {
+        const prev = state.by_workspace[workspace];
+        next[workspace] = build_workspace_build_state(cfg, prev);
       }
-      draft.by_workspace_and_build_config = next;
+      draft.by_workspace = next;
+      draft.build_configs_by_workspace = build_configs_by_workspace;
 
       const current = draft.current_context;
-      if (!current || !next[current.workspace]?.[current.build_config]) {
+      if (!current || !next[current.workspace]) {
         const first_workspace = Object.keys(next)[0];
-        const first_build_config = first_workspace ? Object.keys(next[first_workspace] ?? {})[0] : undefined;
-        draft.current_context = first_workspace && first_build_config
-          ? { workspace: first_workspace, build_config: first_build_config }
+        draft.current_context = first_workspace
+          ? { workspace: first_workspace }
           : undefined;
       }
     })
     .with({ type: "select-context" }, ({ workspace, build_config }) => {
-      if (!draft.by_workspace_and_build_config[workspace]?.[build_config]) {
-        console.error("Cannot select context: unknown workspace/build config", workspace, build_config);
+      if (!draft.by_workspace[workspace]) {
+        console.error("Cannot select context: unknown workspace", workspace);
         return;
       }
       draft.current_context = { workspace, build_config };

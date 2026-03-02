@@ -4,7 +4,7 @@ import { WebviewMessage } from "../../../utils/eclairEvent";
 
 export function ReportViewerSection(props: {
   workspace: string;
-  build_config: string;
+  build_config?: string;
   post_message: (message: WebviewMessage) => void;
 }) {
   return (
@@ -13,7 +13,12 @@ export function ReportViewerSection(props: {
       <div className="grid-group-div command-actions">
         <VscodeButton
           appearance="primary"
+          disabled={!props.build_config}
           onClick={() => {
+            if (!props.build_config) {
+              console.error("Cannot open report viewer: build configuration is missing");
+              return;
+            }
             props.post_message({ command: "start-report-server", workspace: props.workspace, build_config: props.build_config });
           }}
         >

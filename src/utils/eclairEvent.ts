@@ -17,7 +17,6 @@ export type ExtensionMessage = {
   command: "set-extra-config",
   path: string,
   workspace: string,
-  build_config: string,
 } | {
   command: "set-path-status",
   text: string,
@@ -31,18 +30,15 @@ export type ExtensionMessage = {
   command: "set-user-ruleset-path",
   path: string,
   workspace: string,
-  build_config: string,
 } | {
   command: "set-custom-ecl-path",
   path: string,
   workspace: string,
-  build_config: string,
 } | {
   command: "preset-content",
   source: EclairPresetTemplateSource,
   template: EclairTemplate | { loading: string } | { error: string },
   workspace: string,
-  build_config: string,
 } | {
   command: "template-path-picked",
   kind: EclairTemplateKind,
@@ -50,13 +46,13 @@ export type ExtensionMessage = {
 } | {
   // Restore the full saved SCA configuration into the webview
   command: "set-sca-config",
-  by_workspace_and_build_config: Record<string, Record<string, FullEclairScaConfig>>,
+  by_workspace: Record<string, FullEclairScaConfig>,
+  build_configs_by_workspace: Record<string, string[]>,
 } | {
   /** Sent when the backend begins scanning a repository for preset templates. */
   command: "repo-scan-done",
   name: string,
   workspace: string,
-  build_config: string,
   rev?: string,
   checkout_dir?: string,
 } | {
@@ -65,7 +61,6 @@ export type ExtensionMessage = {
   name: string,
   message: string,
   workspace: string,
-  build_config: string,
 };
 
 // Commands sent FROM webview frontend TO extension backend
@@ -83,20 +78,16 @@ export type WebviewMessage = {
 } | {
   command: "browse-extra-config",
   workspace: string,
-  build_config: string,
 } | {
   command: "browse-user-ruleset-path",
   workspace: string,
-  build_config: string,
 } | {
   command: "browse-custom-ecl-path",
   workspace: string,
-  build_config: string,
 } | {
   command: "save-sca-config",
   config: FullEclairScaConfig,
   workspace: string,
-  build_config: string,
 } | {
   command: "run-command",
   config: FullEclairScaConfig,
@@ -117,7 +108,6 @@ export type WebviewMessage = {
   source: EclairPresetTemplateSource,
   repos: EclairRepos,
   workspace: string,
-  build_config: string,
 } | {
   command: "pick-preset-path",
   kind: EclairTemplateKind,
@@ -133,7 +123,6 @@ export type WebviewMessage = {
   origin: string,
   ref: string,
   workspace: string,
-  build_config: string,
   rev?: string,
 } | {
   command: "update-repo-checkout",
@@ -141,7 +130,6 @@ export type WebviewMessage = {
   origin: string,
   ref: string,
   workspace: string,
-  build_config: string,
   rev?: string,
   delete_rev?: string,
 };

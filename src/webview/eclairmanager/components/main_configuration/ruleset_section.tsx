@@ -6,7 +6,6 @@ import { WebviewMessage } from "../../../../utils/eclairEvent";
 export function RulesetSection(props: {
   config_key: number;
   workspace: string;
-  build_config: string;
   ruleset: ZephyrRulesetState;
   dispatch_state: React.Dispatch<EclairStateAction>;
   post_message: (message: WebviewMessage) => void;
@@ -90,7 +89,7 @@ export function RulesetSection(props: {
               action: { type: "update-user-ruleset-path", path: value },
             },
           })}
-          on_pick={() => props.post_message({ command: "browse-user-ruleset-path", workspace: props.workspace, build_config: props.build_config })}
+          on_pick={() => props.post_message({ command: "browse-user-ruleset-path", workspace: props.workspace })}
         />
       </div>
     </div>

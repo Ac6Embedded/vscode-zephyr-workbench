@@ -70,25 +70,27 @@ function EclairManagerPanel() {
   }, [post_message]);
 
   const current_context = state.current_context;
-  const workspace = current_context?.workspace;
   const build_config = current_context?.build_config;
-  const build_configs = workspace ? state.by_workspace_and_build_config[workspace] : undefined;
-  const current_context_state = workspace && build_config ? build_configs?.[build_config] : undefined;
+  const workspace = current_context?.workspace;
+  const current_context_state = workspace ? state.by_workspace[workspace] : undefined;
 
   const workspace_items = useMemo(
-    () => Object.keys(state.by_workspace_and_build_config).map((key) => ({
+    () => Object.keys(state.by_workspace).map((key) => ({
       id: key,
       name: workspace_label(key),
       description: key,
       value: key,
     })),
-    [state.by_workspace_and_build_config],
+    [state.by_workspace],
   );
   const current_workspace_item = workspace_items.find((item) => item.value === workspace);
 
   const build_config_items = useMemo(
-    () => Object.keys(state.by_workspace_and_build_config[workspace || ""] ?? {}).map((name) => ({ id: name, name, description: "", value: name })),
-    [state.by_workspace_and_build_config, workspace],
+    () => {
+      const build_configs = state.build_configs_by_workspace[workspace || ""] || [];
+      return build_configs.map((name) => ({ id: name, name, description: "", value: name }));
+    },
+    [state.build_configs_by_workspace, workspace],
   );
   const current_build_config_item = build_config_items.find((item) => item.value === build_config);
 
@@ -118,7 +120,7 @@ function EclairManagerPanel() {
           selectedItem={current_workspace_item || null}
           onSelectItem={(item) => {
             const next_workspace = item.value;
-            const build_configs = state.by_workspace_and_build_config[next_workspace] ?? {};
+            const build_configs = state.build_configs_by_workspace[next_workspace] ?? {};
             const next_build_config = Object.keys(build_configs)[0];
             if (!next_build_config) {
               console.warn("No build configurations available for workspace", next_workspace);
@@ -146,10 +148,10 @@ function EclairManagerPanel() {
         dispatch_state={dispatch_state}
       />
 
-      {current_context_state && workspace && build_config && (<EclairManagerWithConfigs
+      {current_context_state && workspace && (<EclairManagerWithConfigs
         workspace={workspace}
         build_config={build_config}
-        by_workspace_and_build_config={state.by_workspace_and_build_config}
+        by_workspace={state.by_workspace}
         context_state={current_context_state}
         dispatch_state={dispatch_state}
         post_message={post_message}
@@ -162,15 +164,15 @@ function EclairManagerPanel() {
 function EclairManagerWithConfigs({
   workspace,
   build_config,
-  by_workspace_and_build_config,
+  by_workspace,
   context_state,
   dispatch_state,
   post_message,
   state,
 }: {
   workspace: string;
-  build_config: string;
-  by_workspace_and_build_config: Record<string, Record<string, EclairWorkspaceBuildState>>;
+  build_config?: string;
+  by_workspace: Record<string, EclairWorkspaceBuildState>;
   context_state: EclairWorkspaceBuildState;
   dispatch_state: React.Dispatch<EclairStateAction>;
   post_message: (message: WebviewMessage) => void;
@@ -278,7 +280,6 @@ function EclairManagerWithConfigs({
       <MainAnalysisConfigurationSection
         config_index={context_state.current_config_index}
         workspace={workspace}
-        build_config={build_config}
         available_presets={context_state.available_presets}
         repos={context_state.repos}
         repos_scan_state={context_state.repos_scan_state}
@@ -294,7 +295,6 @@ function EclairManagerWithConfigs({
 
       <ExtraConfigSection
         workspace={workspace}
-        build_config={build_config}
         extra_config={current.extra_config}
         dispatch_state={dispatch_state}
         post_message={post_message}
@@ -335,9 +335,9 @@ function handleMessage(
     }))
     .with({ command: "set-install-path" }, ({ path }) => dispatch({ type: "set-install-path", path: String(path ?? "") }))
     .with({ command: "set-install-path-placeholder" }, ({ text }) => dispatch({ type: "set-install-path-placeholder", text: String(text ?? "") }))
-    .with({ command: "set-extra-config" }, ({ path, workspace, build_config }) => dispatch({
+    .with({ command: "set-extra-config" }, ({ path, workspace }) => dispatch({
       type: "with-selected-workspace",
-      ...(workspace && build_config ? { workspace, build_config } : {}),
+      ...(workspace ? { workspace } : {}),
       action: {
         type: "with-selected-configuration",
         action: { type: "set-extra-config", path: String(path ?? "") },
@@ -351,27 +351,27 @@ function handleMessage(
         action: { type: "set-user-ruleset-name", name: String(name ?? "") },
       },
     }))
-    .with({ command: "set-user-ruleset-path" }, ({ path, workspace, build_config }) => dispatch({
+    .with({ command: "set-user-ruleset-path" }, ({ path, workspace }) => dispatch({
       type: "with-selected-workspace",
-      ...(workspace && build_config ? { workspace, build_config } : {}),
+      ...(workspace ? { workspace } : {}),
       action: {
         type: "with-selected-configuration",
         action: { type: "set-user-ruleset-path", path: String(path ?? "") },
       },
     }))
-    .with({ command: "set-custom-ecl-path" }, ({ path, workspace, build_config }) => dispatch({
+    .with({ command: "set-custom-ecl-path" }, ({ path, workspace }) => dispatch({
       type: "with-selected-workspace",
-      ...(workspace && build_config ? { workspace, build_config } : {}),
+      ...(workspace ? { workspace } : {}),
       action: {
         type: "with-selected-configuration",
         action: { type: "set-custom-ecl-path", path: String(path ?? "") },
       },
     }))
-    .with({ command: "preset-content" }, ({ source, template, workspace, build_config }) => dispatch({
+    .with({ command: "preset-content" }, ({ source, template, workspace }) => dispatch({
       type: "preset-content",
       source,
       template,
-      ...(workspace && build_config ? { workspace, build_config } : {}),
+      ...(workspace ? { workspace } : {}),
     }))
     .with({ command: "template-path-picked" }, ({ kind, path }) => dispatch({
       type: "with-selected-workspace",
@@ -380,19 +380,19 @@ function handleMessage(
         action: { type: "set-preset-path", kind, path },
       },
     }))
-    .with({ command: "set-sca-config" }, ({ by_workspace_and_build_config }) => dispatch({ type: "load-sca-config", by_workspace_and_build_config }))
-    .with({ command: "repo-scan-done" }, ({ name, workspace, build_config, rev, checkout_dir }) => dispatch({
+    .with({ command: "set-sca-config" }, ({ by_workspace, build_configs_by_workspace }) => dispatch({ type: "load-sca-config", by_workspace, build_configs_by_workspace }))
+    .with({ command: "repo-scan-done" }, ({ name, workspace, rev, checkout_dir }) => dispatch({
       type: "repo-scan-done",
       name,
       rev,
       checkout_dir,
-      ...(workspace && build_config ? { workspace, build_config } : {}),
+      ...(workspace ? { workspace } : {}),
     }))
-    .with({ command: "repo-scan-failed" }, ({ name, message, workspace, build_config }) => dispatch({
+    .with({ command: "repo-scan-failed" }, ({ name, message, workspace }) => dispatch({
       type: "repo-scan-failed",
       name,
       message: String(message ?? ""),
-      ...(workspace && build_config ? { workspace, build_config } : {}),
+      ...(workspace ? { workspace } : {}),
     }))
     .exhaustive();
 }

@@ -8,13 +8,11 @@ export function CustomEclSection({
   dispatch_state,
   post_message,
   workspace,
-  build_config,
 }: {
   state: CustomEclState;
   dispatch_state: React.Dispatch<EclairStateAction>;
   post_message: (message: WebviewMessage) => void;
   workspace: string;
-  build_config: string;
 }) {
   return (<>
     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -29,7 +27,7 @@ export function CustomEclSection({
             action: { type: "update-custom-ecl-path", path: value },
           },
         })}
-        on_pick={() => post_message({ command: "browse-custom-ecl-path", workspace, build_config })}
+        on_pick={() => post_message({ command: "browse-custom-ecl-path", workspace })}
       />
     </div>
   </>);

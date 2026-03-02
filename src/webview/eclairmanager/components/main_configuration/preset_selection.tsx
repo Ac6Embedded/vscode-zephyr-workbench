@@ -10,7 +10,6 @@ import { EasyMark, EasyMarkInline } from "../easymark_render.js";
 
 export function PresetSelection(props: {
   workspace: string;
-  build_config: string;
   state: PresetsSelectionState;
   available_presets: AvailablePresetsState;
   repos: EclairRepos;
@@ -40,7 +39,6 @@ export function PresetSelection(props: {
     </p>
     <RepoManagementSection
       workspace={props.workspace}
-      build_config={props.build_config}
       repos={props.repos}
       repos_scan_state={props.repos_scan_state}
       available_presets={props.available_presets}
@@ -63,7 +61,6 @@ export function PresetSelection(props: {
     <MultiPresetSelection
       kind="ruleset"
       workspace={props.workspace}
-      build_config={props.build_config}
       state={props.state.rulesets_state}
       available_presets={props.available_presets}
       dispatch_state={props.dispatch_state}
@@ -78,7 +75,6 @@ export function PresetSelection(props: {
     <MultiPresetSelection 
       kind="variant" 
       workspace={props.workspace}
-      build_config={props.build_config}
       state={props.state.variants_state} 
       available_presets={props.available_presets}
       dispatch_state={props.dispatch_state}
@@ -94,7 +90,6 @@ export function PresetSelection(props: {
     <MultiPresetSelection 
       kind="tailoring" 
       workspace={props.workspace}
-      build_config={props.build_config}
       state={props.state.tailorings_state} 
       available_presets={props.available_presets}
       dispatch_state={props.dispatch_state}
@@ -106,7 +101,6 @@ export function PresetSelection(props: {
 function MultiPresetSelection(props: {
   kind: EclairTemplateKind;
   workspace: string;
-  build_config: string;
   state: MultiPresetSelectionState;
   available_presets: AvailablePresetsState;
   dispatch_state: React.Dispatch<EclairStateAction>;
@@ -173,7 +167,6 @@ function MultiPresetSelection(props: {
       <PresetPicker
         kind={props.kind}
         workspace={props.workspace}
-        build_config={props.build_config}
         available_presets={props.available_presets}
         edit_path={props.state.edit_path}
         already_selected_sources={presets.map(p => p.source)}
@@ -188,7 +181,6 @@ function MultiPresetSelection(props: {
 function PresetPicker(props: {
   kind: EclairTemplateKind;
   workspace: string;
-  build_config: string;
   available_presets: AvailablePresetsState;
   edit_path: string;
   already_selected_sources?: EclairPresetTemplateSource[];
@@ -302,7 +294,6 @@ function PresetPicker(props: {
           source: { type: "system-path", path },
           repos: {},
           workspace: props.workspace,
-          build_config: props.build_config,
         });
         props.onPresetSelected?.();
       }}

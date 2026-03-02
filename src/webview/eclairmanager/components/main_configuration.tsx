@@ -11,7 +11,6 @@ import { EclairRepos, EclairScaConfigType } from "../../../utils/eclair/config";
 export function MainAnalysisConfigurationSection({
   config_index,
   workspace,
-  build_config,
   available_presets,
   repos,
   repos_scan_state,
@@ -21,7 +20,6 @@ export function MainAnalysisConfigurationSection({
 }: {
   config_index: number;
   workspace: string;
-  build_config: string;
   available_presets: AvailablePresetsState;
   repos: EclairRepos;
   repos_scan_state: Record<string, RepoScanState>;
@@ -60,7 +58,6 @@ export function MainAnalysisConfigurationSection({
         <RulesetSection
           config_key={config_index}
           workspace={workspace}
-          build_config={build_config}
           ruleset={current.main_config.ruleset}
           dispatch_state={dispatch_state}
           post_message={post_message}
@@ -70,7 +67,6 @@ export function MainAnalysisConfigurationSection({
       {current.main_config.type === "preset" && (
         <PresetSelection
           workspace={workspace}
-          build_config={build_config}
           state={current.main_config.state}
           available_presets={available_presets}
           repos={repos}
@@ -83,7 +79,6 @@ export function MainAnalysisConfigurationSection({
       {current.main_config.type === "custom-ecl" && (
         <CustomEclSection
           workspace={workspace}
-          build_config={build_config}
           state={current.main_config.state}
           dispatch_state={dispatch_state}
           post_message={post_message}

@@ -15,7 +15,7 @@ export function CommandSection({
   post_message: (message: WebviewMessage) => void;
   config: Result<FullEclairScaConfig, string>;
   workspace: string;
-  build_config: string;
+  build_config?: string;
   dispatch_state: React.Dispatch<EclairStateAction>;
 }) {
   const current_index = "err" in config ? 0 : (config.ok.current_config_index ?? 0);
@@ -29,6 +29,16 @@ export function CommandSection({
           <strong>Invalid configuration:</strong> {config.err}
         </VscodeAlert>
       ) : null}
+      {!has_current_config ? (
+        <VscodeAlert type="warning">
+          No configuration selected. Please select or create a configuration to run the analysis.
+        </VscodeAlert>
+      ) : null}
+      {!build_config ? (
+        <VscodeAlert type="warning">
+          No build configuration found. Please select a valid build configuration.
+        </VscodeAlert>
+      ) : null}
       <div className="grid-group-div command-actions">
         <VscodeButton appearance="secondary" onClick={() => dispatch_state({ type: "reset-to-defaults" })} disabled={"err" in config ? false : !has_current_config}>
           Restore Defaults
@@ -38,13 +48,17 @@ export function CommandSection({
             console.error("Cannot apply configuration due to error:", config.err);
             return;
           }
-          post_message({ command: "save-sca-config", config: config.ok, workspace, build_config });
+          post_message({ command: "save-sca-config", config: config.ok, workspace });
         }}>
           Save
         </VscodeButton>
-        <VscodeButton appearance="primary" disabled={"err" in config || !has_current_config} onClick={() => {
+        <VscodeButton appearance="primary" disabled={"err" in config || !has_current_config || !build_config} onClick={() => {
           if ("err" in config) {
             console.error("Cannot run analysis due to error:", config.err);
+            return;
+          }
+          if (!build_config) {
+            console.error("Cannot run analysis: build configuration is missing");
             return;
           }
           post_message({ command: "run-command", config: config.ok, workspace, build_config });
