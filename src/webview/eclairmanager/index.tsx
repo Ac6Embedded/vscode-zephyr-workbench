@@ -212,6 +212,7 @@ function EclairManagerWithConfigs({
       />
       <VscodeButton
         appearance="primary"
+        title="Create new configuration"
         onClick={() => {
           dispatch_state({
             type: "with-selected-workspace",
@@ -219,11 +220,12 @@ function EclairManagerWithConfigs({
           });
         }}
       >
-        New
+        <span className="codicon codicon-add" />
       </VscodeButton>
       {current && (
         <VscodeButton
           appearance="secondary"
+          title="Clone configuration"
           onClick={() => {
             dispatch_state({
               type: "with-selected-workspace",
@@ -231,12 +233,13 @@ function EclairManagerWithConfigs({
             });
           }}
         >
-          Clone
+          <span className="codicon codicon-copy" />
         </VscodeButton>
       )}
       {current && (
         <VscodeButton
           appearance="secondary"
+          title="Delete configuration"
           onClick={() => {
             dispatch_state({
               type: "with-selected-workspace",
