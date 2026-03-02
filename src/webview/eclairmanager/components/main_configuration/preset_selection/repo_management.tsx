@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { EclairRepos } from "../../../../../utils/eclair/config";
 import { AvailablePresetsState, EclairStateAction, RepoScanState } from "../../../state";
 import { WebviewMessage } from "../../../../../utils/eclairEvent";
-import { Monospace, StatusBadge, StatusBadgeState, VscodeBadge, VscodeButton, VscodePanel, VscodeTextField } from "../../common_components";
+import { Monospace, RichHelpTooltip, StatusBadge, StatusBadgeState, VscodeBadge, VscodeButton, VscodePanel, VscodeTextField } from "../../common_components";
 
 const EMPTY_REPO_FORM = { name: "", origin: "", ref: "", rev: "" };
 
@@ -198,7 +198,7 @@ function ReposTable({
                 <td style={{ padding: "4px 8px" }}>
                   <StatusBadge status={repo_scan_state_to_badge_status(scan_state, preset_count)} />
                 </td>
-                <td style={{ padding: "4px 8px", whiteSpace: "nowrap", gap: "4px", display: "flex" }}>
+                <td style={{ padding: "4px 8px", whiteSpace: "nowrap", gap: "4px", display: "flex", flexWrap: "wrap" }}>
                   <VscodeButton
                     appearance="secondary"
                     onClick={() => handle_reload(name)}
@@ -228,7 +228,7 @@ function ReposTable({
                     appearance="secondary"
                     onClick={() => toggle_presets(name)}
                   >
-                    Presets ({preset_count})
+                    {is_expanded ? "Hide" : "Show"} Details
                   </VscodeButton>
                 </td>
               </tr>
@@ -299,7 +299,8 @@ function EditForm({
   handle_edit_save: () => void;
   handle_edit_cancel: () => void;
 }) {
-  return (<div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr auto", gap: "6px", alignItems: "end" }}>
+  return (<fieldset style={{ display: "flex", gap: "6px", alignItems: "end", flexWrap: "wrap", width: "100%", boxSizing: "border-box" }}>
+    <legend>{is_adding ? "New Repository" : "Edit Repository"}</legend>
     <div>
       <VscodeTextField
         value={form.name}
@@ -307,15 +308,15 @@ function EditForm({
         placeholder="Repository name"
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => set_form((f) => ({ ...f, name: e.target.value }))}
         style={{ width: "100%", boxSizing: "border-box" }}
-      >name</VscodeTextField>
+      >Name<RichHelpTooltip>The name used to identify this repository in the configuration.</RichHelpTooltip></VscodeTextField>
     </div>
-    <div>
+    <div style={{ flexGrow: 1 }}>
       <VscodeTextField
         placeholder="https://github.com/org/repo.git"
         value={form.origin}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => set_form((f) => ({ ...f, origin: e.target.value }))}
         style={{ width: "100%", boxSizing: "border-box" }}
-      >Origin URL</VscodeTextField>
+      >Origin URL<RichHelpTooltip>The Git URL of the repository.</RichHelpTooltip></VscodeTextField>
     </div>
     <div>
       <VscodeTextField
@@ -323,7 +324,7 @@ function EditForm({
         value={form.ref}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => set_form((f) => ({ ...f, ref: e.target.value }))}
         style={{ width: "100%", boxSizing: "border-box" }}
-      >Ref</VscodeTextField>
+      >Ref<RichHelpTooltip>The Git ref to checkout (branch, tag, or commit SHA).</RichHelpTooltip></VscodeTextField>
     </div>
     <div>
       <VscodeTextField
@@ -331,7 +332,10 @@ function EditForm({
         value={form.rev}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => set_form((f) => ({ ...f, rev: e.target.value }))}
         style={{ width: "100%", boxSizing: "border-box" }}
-      >Rev (lock)</VscodeTextField>
+      >Rev (lock)<RichHelpTooltip>
+        An optional commit SHA to lock the repository to.<br/>
+        If specified, the repository will be checked out at this exact commit. The <i>Update</i> action will update this locked rev when used.
+      </RichHelpTooltip></VscodeTextField>
     </div>
     <div style={{ display: "flex", gap: "4px" }}>
       {is_adding ? (
@@ -353,7 +357,7 @@ function EditForm({
         </>
       )}
     </div>
-  </div>);
+  </fieldset>);
 }
 
 /** Maps a RepoScanState to the generic StatusBadgeState used by StatusBadge. */

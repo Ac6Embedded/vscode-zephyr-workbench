@@ -239,6 +239,7 @@ export function SearchableDropdown<Item extends SearchableItem>(props: {
   items: Item[];
   selectedItem: Item | null;
   onSelectItem: (item: Item) => void;
+  style?: React.CSSProperties;
 }) {
   const [searchText, setSearchText] = React.useState<string>('');
   const dropdownRef = React.useRef<HTMLDivElement>(null);
@@ -271,7 +272,7 @@ export function SearchableDropdown<Item extends SearchableItem>(props: {
   }, []);
 
   return (
-    <div style={{ marginBottom: '10px' }}>
+    <div style={{ marginBottom: '10px', ...props.style }}>
       <label htmlFor={props.id}>{props.label}</label>
       <div ref={dropdownRef} style={{ position: 'relative', marginTop: '5px' }}>
         <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>

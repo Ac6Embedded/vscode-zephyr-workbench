@@ -106,11 +106,13 @@ function EclairManagerPanel() {
         </RichHelpTooltip>
       </h1>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "10px" }}>
-        Workspace:
+      <fieldset style={{ width: "100%", boxSizing: "border-box" }}>
+        <legend>Context</legend>
+        Select the application to analyze:
         <SearchableDropdown
           id="workspace-selector"
           label=""
+          style={{ maxWidth: "300px" }}
           placeholder="Select workspace"
           items={workspace_items}
           selectedItem={current_workspace_item || null}
@@ -125,23 +127,17 @@ function EclairManagerPanel() {
             dispatch_state({ type: "select-context", workspace: next_workspace, build_config: next_build_config });
           }}
         />
-        Build Config:
+        Select the build configuration to use.
         {workspace && (<SearchableDropdown
           id="build-config-selector"
           label=""
+          style={{ maxWidth: "300px" }}
           placeholder="Select build config"
           items={build_config_items}
           selectedItem={current_build_config_item || null}
           onSelectItem={(item) => dispatch_state({ type: "select-context", workspace, build_config: item.value })}
         />)}
-        <VscodeButton
-          appearance="secondary"
-          title="Discard unsaved changes and reload from settings.json"
-          onClick={() => post_message({ command: "reload-sca-config" })}
-        >
-          Reload Configs
-        </VscodeButton>
-      </div>
+      </fieldset>
 
       <Summary
         status={state.status}
@@ -235,11 +231,19 @@ function EclairManagerWithConfigs({
         >
           <span className="codicon codicon-trash" />
         </VscodeButton>
-      )/* TODO maybe an export/import button */}
+      )}
+      <VscodeButton
+        appearance="secondary"
+        title="Discard unsaved changes and reload from settings.json"
+        onClick={() => post_message({ command: "reload-sca-config" })}
+      >
+        Reload Configs
+      </VscodeButton>
     </div>
 
     {current && (<>
-      <VscodePanel style={{ marginBottom: "12px" }}>
+      <fieldset style={{ width: "100%", boxSizing: "border-box" }}>
+        <legend>Configuration Details</legend>
         <EditableTextField
           name="Name"
           value={current.name}
@@ -269,7 +273,7 @@ function EclairManagerWithConfigs({
             },
           })}
         />
-      </VscodePanel>
+      </fieldset>
 
       <MainAnalysisConfigurationSection
         config_index={context_state.current_config_index}

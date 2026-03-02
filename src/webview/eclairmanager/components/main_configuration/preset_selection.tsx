@@ -33,6 +33,11 @@ export function PresetSelection(props: {
         </p>
       </RichHelpTooltip>
     </h3>
+    <p>
+      Add, remove and edit Git repositories that contain preset templates.<br />
+      Preset templates from these repositories will be available for selection in the ruleset, variant and tailoring sections below. <br />
+      You can add as many repositories as you want, and they will be automatically checked out and scanned for presets.
+    </p>
     <RepoManagementSection
       workspace={props.workspace}
       build_config={props.build_config}
@@ -125,7 +130,8 @@ function SinglePresetSelection(props: {
     };
 
     return (
-      <VscodePanel style={{ marginTop: "10px" }}>
+      <fieldset style={{ marginTop: "10px", width: "100%", boxSizing: "border-box" }}>
+        {template && ("title" in template) && (<legend>{template.title}</legend>)}
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
           <strong>Selected preset:</strong>
           <EclairPresetTemplateSourceDisplay source={source} />
@@ -145,7 +151,7 @@ function SinglePresetSelection(props: {
             dispatch_state={props.dispatch_state}
           />
         )}
-      </VscodePanel>
+      </fieldset>
     );
   }
 
@@ -203,7 +209,8 @@ function MultiPresetSelection(props: {
           };
 
           return (
-            <VscodePanel key={index}>
+            <fieldset key={index} style={{ width: "100%", boxSizing: "border-box" }}>
+              {template && ("title" in template) && (<legend>{template.title}</legend>)}
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
                 <strong>Preset {index + 1}:</strong>
                 <EclairPresetTemplateSourceDisplay source={source} />
@@ -223,7 +230,7 @@ function MultiPresetSelection(props: {
                   dispatch_state={props.dispatch_state}
                 />
               )}
-            </VscodePanel>
+            </fieldset>
           );
         })}
       </div>
@@ -408,7 +415,6 @@ function PresetSettings({
   dispatch_state: React.Dispatch<EclairStateAction>,
 }) {
   return (<div style={{ marginTop: "8px" }}>
-    <div><strong>{template.title}</strong></div>
     <div style={{ color: "var(--vscode-descriptionForeground)" }}><EasyMark text={template.description} /></div>
 
     {template.options.length > 0 && (
