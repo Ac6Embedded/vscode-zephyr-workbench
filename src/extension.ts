@@ -440,50 +440,10 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-    // Compute pick list from west flash -H, marking those available in runners.yaml as compatible
-    // Only use the label (white text). Avoid detail/description to prevent a second grey line.
-    let items: vscode.QuickPickItem[] = [];
-    try {
-      // Show busy progress while west builds and fetches flash runners
-      const info = await vscode.window.withProgress<{ all: string[]; available: string[]; def?: string; output: string }>(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'Collecting flash runners (this may take a while)…',
-          cancellable: false,
-        },
-        async () => {
-          return await getFlashRunners(project as ZephyrAppProject, targetConfig);
-        }
-      );
-      const all: string[] = info.all;
-      const compatible: string[] = info.available;
-      const defRunner: string | undefined = info.def; // default runner from runners.yaml
-      // Sort compatible first, then alphabetical
-      const sorted = all.slice().sort((a: string, b: string) => {
-        const ac = compatible.includes(a) ? 0 : 1;
-        const bc = compatible.includes(b) ? 0 : 1;
-        return ac - bc || a.localeCompare(b);
-      });
-      // If west reports a default runner, put it first
-      const ordered = defRunner && sorted.includes(defRunner)
-        ? [defRunner, ...sorted.filter(n => n !== defRunner)]
-        : sorted;
-      items = ordered.map((name: string) => ({
-        label: name + (compatible.includes(name) ? ' (compatible)' : ''),
-        picked: name === targetConfig?.defaultRunner,
-      }));
-    } catch (e: any) {
-      const msg = e?.message ? String(e.message) : 'Unknown error while collecting flash runners.';
-      vscode.window.showWarningMessage(`Zephyr Workbench: Using fallback flash runner list. ${msg}`);
-      const names = getStaticFlashRunnerNames();
-      items = names.map((name: string) => ({
-        label: name,
-        picked: name === targetConfig?.defaultRunner,
-      }));
-    }
-			const selection = await vscode.window.showQuickPick(items, { placeHolder: 'Select default runner' });
-			if (!selection) { return; }
-			const chosenRunner = (selection.label || '').replace(' (compatible)', '');
+			const chosenRunner = await addCustomRunners(project, targetConfig);
+			if (!chosenRunner){
+				return;
+			}
 
 			await saveConfigSetting(project.workspaceFolder, targetConfig.name, ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, chosenRunner);
 			vscode.commands.executeCommand('zephyr-workbench-app-explorer.refresh');
@@ -2372,6 +2332,71 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 			
 		}
 	});
+}
+
+async function addCustomRunners(
+	project: ZephyrProject,
+	targetConfig: ZephyrProjectBuildConfiguration
+): Promise<string | undefined> {
+	const useCustomRunner = await vscode.window.showInformationMessage(
+		'Do you want to add a Custom Runner?',
+		'Yes',
+		'No'
+	);
+	if (!useCustomRunner) { return undefined; }
+
+	if (useCustomRunner === 'Yes') {
+		const customRunner = await vscode.window.showInputBox({
+			title: 'Set Default Runner',
+			prompt: "Enter the runner name (same value used by west '--runner')",
+			placeHolder: 'Example: stm32cubeprogrammer',
+			validateInput: (value: string) => value.trim().length === 0 ? 'Runner name cannot be empty.' : undefined,
+			ignoreFocusOut: true,
+		});
+		if (!customRunner) { return undefined; }
+		return customRunner.trim();
+	}
+
+	let items: vscode.QuickPickItem[] = [];
+	try {
+		const info = await vscode.window.withProgress<{ all: string[]; available: string[]; def?: string; output: string }>(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: 'Collecting flash runners (this may take a while)…',
+				cancellable: false,
+			},
+			async () => {
+				return await getFlashRunners(project as ZephyrAppProject, targetConfig);
+			}
+		);
+		const all: string[] = info.all;
+		const compatible: string[] = info.available;
+		const defRunner: string | undefined = info.def;
+		const sorted = all.slice().sort((a: string, b: string) => {
+			const ac = compatible.includes(a) ? 0 : 1;
+			const bc = compatible.includes(b) ? 0 : 1;
+			return ac - bc || a.localeCompare(b);
+		});
+		const ordered = defRunner && sorted.includes(defRunner)
+			? [defRunner, ...sorted.filter(n => n !== defRunner)]
+			: sorted;
+		items = ordered.map((name: string) => ({
+			label: name + (compatible.includes(name) ? ' (compatible)' : ''),
+			picked: name === targetConfig?.defaultRunner,
+		}));
+	} catch (e: any) {
+		const msg = e?.message ? String(e.message) : 'Unknown error while collecting flash runners.';
+		vscode.window.showWarningMessage(`Workbench for Zephyr: Using fallback flash runner list. ${msg}`);
+		const names = getStaticFlashRunnerNames();
+		items = names.map((name: string) => ({
+			label: name,
+			picked: name === targetConfig?.defaultRunner,
+		}));
+	}
+
+	const selection = await vscode.window.showQuickPick(items, { placeHolder: 'Select default runner' });
+	if (!selection) { return undefined; }
+	return (selection.label || '').replace(' (compatible)', '');
 }
 
 // This method is called when your extension is deactivated
