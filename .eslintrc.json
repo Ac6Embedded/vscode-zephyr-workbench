@@ -17,7 +17,7 @@
             }
         ],
         "@typescript-eslint/semi": "warn",
-        "curly": "off",
+        "curly": "warn",
         "eqeqeq": "warn",
         "no-throw-literal": "warn",
         "semi": "off"
