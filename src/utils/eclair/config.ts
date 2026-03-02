@@ -23,7 +23,7 @@ export const PresetSelectionStateSchema = z.object({
 export type PresetSelectionState = z.infer<typeof PresetSelectionStateSchema>;
 
 export const EclairScaPresetConfigSchema = z.object({
-  ruleset: PresetSelectionStateSchema,
+  rulesets: z.array(PresetSelectionStateSchema),
   variants: z.array(PresetSelectionStateSchema),
   tailorings: z.array(PresetSelectionStateSchema),
 });

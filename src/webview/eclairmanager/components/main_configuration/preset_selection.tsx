@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { WebviewMessage } from "../../../../utils/eclairEvent";
-import { AvailablePresetsState, BUGSENG_REPO_LINK, EclairStateAction, get_preset_template_by_source, MultiPresetSelectionState, PresetsSelectionState, RepoScanState, SinglePresetSelectionState } from "../../state";
+import { AvailablePresetsState, BUGSENG_REPO_LINK, EclairStateAction, get_preset_template_by_source, MultiPresetSelectionState, PresetsSelectionState, RepoScanState } from "../../state";
 import { PickPath, SearchableDropdown, SearchableItem, VscodeAlert, VscodeBadge, VscodeButton, VscodeCheckbox, VscodePanel, RichHelpTooltip, Monospace, VscodeDropdown, VscodeOption } from "../common_components";
 import { EclairTemplate, EclairTemplateKind, EclairTemplateOption } from "../../../../utils/eclair/template";
 import { EclairPresetTemplateSource, EclairRepos, PresetSelectionState } from "../../../../utils/eclair/config";
@@ -60,11 +60,11 @@ export function PresetSelection(props: {
     </h3>
     Choose a base ruleset to run the analysis with.
 
-    <SinglePresetSelection
+    <MultiPresetSelection
       kind="ruleset"
       workspace={props.workspace}
       build_config={props.build_config}
-      state={props.state.ruleset_state}
+      state={props.state.rulesets_state}
       available_presets={props.available_presets}
       dispatch_state={props.dispatch_state}
       post_message={props.post_message}
@@ -100,82 +100,6 @@ export function PresetSelection(props: {
       dispatch_state={props.dispatch_state}
       post_message={props.post_message}
     />
-  </>);
-}
-
-function SinglePresetSelection(props: {
-  kind: EclairTemplateKind;
-  workspace: string;
-  build_config: string;
-  state: SinglePresetSelectionState;
-  available_presets: AvailablePresetsState;
-  dispatch_state: React.Dispatch<EclairStateAction>;
-  post_message: (message: WebviewMessage) => void;
-}) {
-  const [showPicker, setShowPicker] = useState<boolean>(false);
-  const preset = props.state.preset;
-
-  if (preset) {
-    const source = preset.source;
-    const template = get_preset_template_by_source(props.available_presets, source);
-
-    const on_remove = () => {
-      props.dispatch_state({
-        type: "with-selected-workspace",
-        action: {
-          type: "with-selected-configuration",
-          action: { type: "remove-selected-preset", kind: props.kind, index: -1 },
-        },
-      });
-    };
-
-    return (
-      <fieldset style={{ marginTop: "10px", width: "100%", boxSizing: "border-box" }}>
-        {template && ("title" in template) && (<legend>{template.title}</legend>)}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-          <strong>Selected preset:</strong>
-          <EclairPresetTemplateSourceDisplay source={source} />
-          <VscodeButton appearance="secondary" onClick={on_remove} title="Remove preset">Remove</VscodeButton>
-        </div>
-
-        {template === undefined ? (
-          <VscodeAlert type="error">Preset not found in available presets.</VscodeAlert>
-        ) : "loading" in template ? (
-          <VscodeAlert type="info">{template.loading}…</VscodeAlert>
-        ) : "error" in template ? (
-          <VscodeAlert type="error">Error loading preset: {template.error}</VscodeAlert>
-        ) : (
-          <PresetSettings
-            template={template}
-            preset={preset}
-            dispatch_state={props.dispatch_state}
-          />
-        )}
-      </fieldset>
-    );
-  }
-
-  return (<>
-    <div style={{ marginTop: '10px' }}>
-      <VscodeButton 
-        appearance="primary" 
-        onClick={() => setShowPicker(!showPicker)}
-      >
-        {showPicker ? "Hide Preset Selection" : "Select Preset"}
-      </VscodeButton>
-    </div>
-
-    {showPicker && (
-      <PresetPicker
-        kind={props.kind}
-        workspace={props.workspace}
-        build_config={props.build_config}
-        available_presets={props.available_presets}
-        edit_path={props.state.edit_path}
-        dispatch_state={props.dispatch_state}
-        post_message={props.post_message}
-      />
-    )}
   </>);
 }
 

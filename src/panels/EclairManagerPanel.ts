@@ -543,7 +543,7 @@ export class EclairManagerPanel {
               } = create_fake_user_ruleset();
 
               let eclair_options = unwrap_or_throw(await handle_sources(
-                [c.ruleset, ...c.variants, ...c.tailorings],
+                [...c.rulesets, ...c.variants, ...c.tailorings],
                 cfg.repos ?? {},
                 // TODO on_progress:
                 (progress) => {},
@@ -1671,8 +1671,8 @@ async function preload_presets_from_configs(
         if (config.main_config.type !== "preset") {
           continue;
         }
-        const { ruleset, variants, tailorings } = config.main_config;
-        const allPresets = [ruleset, ...variants, ...tailorings];
+        const { rulesets, variants, tailorings } = config.main_config;
+        const allPresets = [...rulesets, ...variants, ...tailorings];
         for (const p of allPresets) {
           const key = preset_source_key(p.source, repos);
           if (seen.has(key)) {

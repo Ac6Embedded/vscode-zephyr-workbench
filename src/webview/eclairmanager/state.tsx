@@ -112,14 +112,14 @@ export interface CustomEclState {
 }
 
 export interface PresetsSelectionState {
-  ruleset_state: SinglePresetSelectionState;
+  rulesets_state: MultiPresetSelectionState;
   variants_state: MultiPresetSelectionState;
   tailorings_state: MultiPresetSelectionState;
 }
 
 function default_presets_selection_state(): PresetsSelectionState {
   return {
-    ruleset_state: { edit_path: "" },
+    rulesets_state: { presets: [], edit_path: "" },
     variants_state: { presets: [], edit_path: "" },
     tailorings_state: { presets: [], edit_path: "" },
   };
@@ -141,11 +141,6 @@ export function get_preset_template_by_source(presets: AvailablePresetsState, so
     .with({ type: "system-path" }, ({ path }) => presets.by_path.get(path))
     .with({ type: "repo-path" }, ({ repo, path }) => presets.by_repo_and_path.get(repo)?.get(path))
     .exhaustive();
-}
-
-export interface SinglePresetSelectionState {
-  preset?: PresetSelectionState;
-  edit_path: string;
 }
 
 export interface MultiPresetSelectionState {
@@ -235,13 +230,13 @@ function build_configs(cfg: FullEclairScaConfig): EclairConfig[] {
         state: { ecl: c.ecl_path },
       }))
       .with({ type: "preset" }, (c) => {
-        const toPreset = (p: PresetSelectionState) => ({ source: p.source, edited_flags: { ...p.edited_flags } });
+        const to_preset = (p: PresetSelectionState) => ({ source: p.source, edited_flags: { ...p.edited_flags } });
         return {
           type: "preset" as const,
           state: {
-            ruleset_state: { preset: toPreset(c.ruleset), edit_path: "" },
-            variants_state: { presets: c.variants.map(toPreset), edit_path: "" },
-            tailorings_state: { presets: c.tailorings.map(toPreset), edit_path: "" },
+            rulesets_state: { presets: c.rulesets.map(to_preset), edit_path: "" },
+            variants_state: { presets: c.variants.map(to_preset), edit_path: "" },
+            tailorings_state: { presets: c.tailorings.map(to_preset), edit_path: "" },
           },
         };
       })
@@ -510,50 +505,42 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
             .with({ type: "set-preset-option" }, ({ source, option_id, value }) => {
               if (current.main_config.type !== "preset") return;
               const sourceId = preset_template_source_id(source);
-              const updatePreset = (preset: WritableDraft<PresetSelectionState>) => {
+              const update_preset = (preset: WritableDraft<PresetSelectionState>) => {
                 if (preset_template_source_id(preset.source) !== sourceId) return;
                 if (!preset.edited_flags) preset.edited_flags = {};
                 preset.edited_flags[option_id] = value;
               };
               const s = current.main_config.state;
-              if (s.ruleset_state.preset) updatePreset(s.ruleset_state.preset);
-              s.variants_state.presets.forEach(updatePreset);
-              s.tailorings_state.presets.forEach(updatePreset);
+              s.rulesets_state.presets.forEach(update_preset);
+              s.variants_state.presets.forEach(update_preset);
+              s.tailorings_state.presets.forEach(update_preset);
             })
             .with({ type: "clear-preset-option" }, ({ source, option_id }) => {
               if (current.main_config.type !== "preset") return;
               const sourceId = preset_template_source_id(source);
-              const updatePreset = (preset: WritableDraft<PresetSelectionState>) => {
+              const update_preset = (preset: WritableDraft<PresetSelectionState>) => {
                 if (preset_template_source_id(preset.source) !== sourceId) return;
                 if (preset.edited_flags) delete preset.edited_flags[option_id];
               };
               const s = current.main_config.state;
-              if (s.ruleset_state.preset) updatePreset(s.ruleset_state.preset);
-              s.variants_state.presets.forEach(updatePreset);
-              s.tailorings_state.presets.forEach(updatePreset);
+              s.rulesets_state.presets.forEach(update_preset);
+              s.variants_state.presets.forEach(update_preset);
+              s.tailorings_state.presets.forEach(update_preset);
             })
             .with({ type: "remove-selected-preset" }, ({ kind, index }) => {
               if (current.main_config.type !== "preset") return;
               const s = current.main_config.state;
               match(kind)
-                .with("ruleset", () => {
-                  s.ruleset_state = { edit_path: "" };
-                  s.variants_state.presets = [];
-                  s.tailorings_state.presets = [];
-                })
-                .with("variant", () => {
-                  s.variants_state.presets.splice(index, 1);
-                })
-                .with("tailoring", () => {
-                  s.tailorings_state.presets.splice(index, 1);
-                })
+                .with("ruleset", () => s.rulesets_state.presets.splice(index, 1))
+                .with("variant", () => s.variants_state.presets.splice(index, 1))
+                .with("tailoring", () => s.tailorings_state.presets.splice(index, 1))
                 .exhaustive();
             })
             .with({ type: "set-preset-path" }, ({ kind, path }) => {
               if (current.main_config.type !== "preset") return;
               const s = current.main_config.state;
               match(kind)
-                .with("ruleset", () => { s.ruleset_state.edit_path = path; })
+                .with("ruleset", () => { s.rulesets_state.edit_path = path; })
                 .with("variant", () => { s.variants_state.edit_path = path; })
                 .with("tailoring", () => { s.tailorings_state.edit_path = path; })
                 .exhaustive();
@@ -563,7 +550,7 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
               const s = current.main_config.state;
               const new_preset = { source, edited_flags: {} };
               match(kind)
-                .with("ruleset", () => { s.ruleset_state.preset = new_preset; })
+                .with("ruleset", () => { s.rulesets_state.presets.push(new_preset); })
                 .with("variant", () => { s.variants_state.presets.push(new_preset); })
                 .with("tailoring", () => { s.tailorings_state.presets.push(new_preset); })
                 .exhaustive();

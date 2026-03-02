@@ -441,12 +441,12 @@ function collect_eclair_analysis_config(config: MainAnalysisConfigurationState):
 }
 
 function collect_eclair_sca_preset_config(state: PresetsSelectionState): EclairScaPresetConfig {
-  if (state.ruleset_state.preset === undefined) {
+  if (state.rulesets_state.presets.length <= 0) {
     throw new Error("No preset ruleset selected");
   }
 
   return {
-    ruleset: state.ruleset_state.preset,
+    rulesets: state.rulesets_state.presets,
     variants: state.variants_state.presets,
     tailorings: state.tailorings_state.presets,
   };
