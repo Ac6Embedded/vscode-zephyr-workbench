@@ -499,7 +499,7 @@ export class EclairManagerPanel {
         const path = eclairInfo.path || "";
         // TODO post_message({ command: "path-updated", tool, path, success: true });
       })
-      .with({ command: "manage-license" }, () => open_link("http://localhost:1947"))
+      .with({ command: "manage-license" }, () => open_link("http://localhost:1947/_int_/products.html"))
       .with({ command: "request-trial" }, () => open_link("https://www.bugseng.com/eclair-request-trial/"))
       .with({ command: "about-eclair" }, () => open_link("https://www.bugseng.com/eclair-static-analysis-tool/"))
       .with({ command: "refresh-status" }, async () => this.refresh_status())
