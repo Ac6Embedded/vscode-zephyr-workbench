@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { ZephyrRulesetState, EclairStateAction } from "../../state";
-import { PickPath, VscodeButton, VscodeRadio, VscodeRadioGroup, VscodeTextField } from "../common_components";
+import { PickPath, RichHelpTooltip, VscodeButton, VscodeRadio, VscodeRadioGroup, VscodeTextField } from "../common_components";
 import { useRpc } from "../../rpc";
+import { ZEPHYR_ECLAIR_CONFIG_URL } from "../../docs";
 
 export function RulesetSection(props: {
   config_key: number;
@@ -34,7 +35,16 @@ export function RulesetSection(props: {
 
   return (
     <div className="section">
-      <h2>Rulesets</h2>
+      <h2>
+        Rulesets
+        <RichHelpTooltip>
+          Select the Zephyr ruleset to use for the analysis from the predefined set provided by the ECLAIR Zephyr integration.<br/>
+          See <a href={ZEPHYR_ECLAIR_CONFIG_URL}>ECLAIR support § Configurations</a>.
+        </RichHelpTooltip>
+      </h2>
+      <p className="panel-lead">
+        Select the Zephyr ruleset to use for the analysis.
+      </p>
       <VscodeRadioGroup
         orientation="vertical"
         value={props.ruleset.selected}
