@@ -16,6 +16,8 @@ import { EasyMark } from "./components/easymark_render.js";
 import { RpcClient, RpcProvider } from "./rpc";
 import type { EclairRpcMethods } from "../../utils/eclairRpcTypes.js";
 
+const DOC_URL = "https://z-workbench.com/docs/documentation/static-code-analysis/eclair-manager";
+
 function workspace_label(workspace: string): string {
   const parts = workspace.split(/[\\/]/).filter(Boolean);
   return parts.length > 0 ? parts[parts.length - 1] : workspace;
@@ -90,6 +92,7 @@ export function EclairManagerPanel() {
           </p>
         </RichHelpTooltip>
       </h1>
+      <a className="help-link" href={DOC_URL}>Read Docs</a>
 
       <fieldset style={{ width: "100%", boxSizing: "border-box" }}>
         <legend>Context</legend>
