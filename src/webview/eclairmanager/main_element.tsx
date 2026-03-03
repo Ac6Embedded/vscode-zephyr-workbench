@@ -15,8 +15,13 @@ import { EditableTextField, RichHelpTooltip, SearchableDropdown, Spinner, Vscode
 import { EasyMark } from "./components/easymark_render.js";
 import { RpcClient, RpcProvider } from "./rpc";
 import type { EclairRpcMethods } from "../../utils/eclairRpcTypes.js";
-
-const DOC_URL = "https://z-workbench.com/docs/documentation/static-code-analysis/eclair-manager";
+import {
+  BUGSENG_ECLAIR_OVERVIEW_URL,
+  ECLAIR_MANAGER_DOC_URL,
+  ZEPHYR_ECLAIR_CONFIG_URL,
+  ZEPHYR_ECLAIR_PREREQUISITES_URL,
+  ZEPHYR_ECLAIR_RUNNING_URL,
+} from "./docs.js";
 
 function workspace_label(workspace: string): string {
   const parts = workspace.split(/[\\/]/).filter(Boolean);
@@ -82,20 +87,38 @@ export function EclairManagerPanel() {
   return (<RpcProvider client={rpc}>
     <div>
       <h1>
-        ECLAIR Manager {state.loading && (<Spinner />)}
-        <RichHelpTooltip>
+        ECLAIR Manager <RichHelpTooltip>
+          {/* TODO Consider dropping this tooltip and moving this content to the documentation page */}
           <p>
-            Bugseng <a href="https://www.bugseng.com/eclair-static-analysis-tool/">ECLAIR</a> is a certified static analysis tool and platform for software verification.
+            Bugseng <a href={BUGSENG_ECLAIR_OVERVIEW_URL}>ECLAIR</a> is a certified static analysis tool and platform for software verification for use in safety- and security-critical development.
           </p>
           <p>
-            This panel allows to configure ECLAIR SCA analysis for Zephyr projects.
+            This panel offers a configuration interface for use with Zephyr projects, allowing you to select build configurations, choose analysis rulesets and presets, and generate reports for your code reviews.
           </p>
-        </RichHelpTooltip>
+          <p>
+            Read more:
+          </p>
+          <ul>
+            <li><a href={ECLAIR_MANAGER_DOC_URL}>ECLAIR Manager docs</a></li>
+            <li><a href={ZEPHYR_ECLAIR_CONFIG_URL}>Zephyr ECLAIR configuration</a></li>
+            <li><a href={ZEPHYR_ECLAIR_PREREQUISITES_URL}>Prerequisites</a></li>
+            <li><a href={ZEPHYR_ECLAIR_RUNNING_URL}>Running ECLAIR</a></li>
+          </ul>
+        </RichHelpTooltip> {state.loading && (<Spinner />)}
       </h1>
-      <a className="help-link" href={DOC_URL}>Read Docs</a>
+      <a className="help-link" href={ECLAIR_MANAGER_DOC_URL}>Read Docs</a>
+      <p className="panel-lead">
+        Static analysis for Zephyr projects with ECLAIR.<br/>
+        Select a workspace and build configuration, choose rulesets or presets, and generate the reports you need for reviews and compliance.
+      </p>
 
       <fieldset style={{ width: "100%", boxSizing: "border-box" }}>
-        <legend>Context</legend>
+        <legend>
+          Context
+          <RichHelpTooltip>
+            Choose the application and build configuration to analyze.
+          </RichHelpTooltip>
+        </legend>
         <div style={{ display: "flex", alignItems: "end", gap: "10px", flexWrap: "wrap" }}>
           <SearchableDropdown
             id="workspace-selector"
