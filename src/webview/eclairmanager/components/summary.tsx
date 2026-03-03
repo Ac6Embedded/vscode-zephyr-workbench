@@ -3,7 +3,7 @@ import { StatusState, InstallPathState, EclairStateAction } from "../state";
 import { VscodeButton, PickPath, Spinner, RichHelpTooltip } from "./common_components";
 import { WebviewMessage } from "../../../utils/eclairEvent";
 import { useRpc } from "../rpc";
-import { ZEPHYR_ECLAIR_PREREQUISITES_URL } from "../docs";
+import { BUGSENG_ECLAIR_OVERVIEW_URL, ECLAIR_MANAGE_LICENSE_URL, ECLAIR_REQUEST_TRIAL_URL, ZEPHYR_ECLAIR_PREREQUISITES_URL } from "../docs";
 
 export function Summary(props: {
   status: StatusState;
@@ -43,13 +43,13 @@ export function Summary(props: {
         <VscodeButton appearance="primary" onClick={() => post_message({ command: "probe-eclair" })}>
           Refresh Status
         </VscodeButton>
-        <VscodeButton appearance="primary" onClick={() => post_message({ command: "about-eclair" })}>
+        <VscodeButton appearance="primary" onClick={() => post_message({ command: "open-external", url: BUGSENG_ECLAIR_OVERVIEW_URL })}>
           About ECLAIR
         </VscodeButton>
-        <VscodeButton appearance="primary" onClick={() => post_message({ command: "manage-license" })}>
+        <VscodeButton appearance="primary" onClick={() => post_message({ command: "open-external", url: ECLAIR_MANAGE_LICENSE_URL })}>
           Manage ECLAIR License
         </VscodeButton>
-        <VscodeButton appearance="primary" onClick={() => post_message({ command: "request-trial" })}>
+        <VscodeButton appearance="primary" onClick={() => post_message({ command: "open-external", url: ECLAIR_REQUEST_TRIAL_URL })}>
           Request Trial License
         </VscodeButton>
       </div>

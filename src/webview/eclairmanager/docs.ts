@@ -7,3 +7,7 @@ export const ZEPHYR_ECLAIR_RUNNING_URL = `${ZEPHYR_ECLAIR_DOC_URL}#running-eclai
 export const ZEPHYR_ECLAIR_CONFIG_URL = `${ZEPHYR_ECLAIR_DOC_URL}#configurations`;
 export const ZEPHYR_ECLAIR_USER_RULESET_URL = `${ZEPHYR_ECLAIR_DOC_URL}#user-defined-ruleset`;
 export const ZEPHYR_ECLAIR_REPORTS_URL = `${ZEPHYR_ECLAIR_DOC_URL}#generate-additional-report-formats`;
+
+
+export const ECLAIR_MANAGE_LICENSE_URL = "http://localhost:1947/_int_/products.html";
+export const ECLAIR_REQUEST_TRIAL_URL = "https://www.bugseng.com/eclair-request-trial/";

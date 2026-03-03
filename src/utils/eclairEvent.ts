@@ -76,11 +76,8 @@ export type WebviewMessage = {
   workspace: string,
   build_config: string,
 } | {
-  command: "about-eclair",
-} | {
-  command: "manage-license",
-} | {
-  command: "request-trial",
+  command: "open-external",
+  url: string,
 } | {
   command: "load-preset",
   source: EclairPresetTemplateSource,
