@@ -28,9 +28,6 @@ function workspace_label(workspace: string): string {
   return parts.length > 0 ? parts[parts.length - 1] : workspace;
 }
 
-// VSCode API type
-declare const acquireVsCodeApi: any;
-
 export function EclairManagerPanel() {
   const [api] = useState(() => acquireVsCodeApi());
   const [state, dispatch_state] = useReducer(eclairReducer, default_eclair_state());
