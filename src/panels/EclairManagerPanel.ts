@@ -11,14 +11,14 @@ import { getExtraPaths, normalizePath, setExtraPath } from "../utils/envYamlUtil
 import type { IEclairExtension } from "../ext/eclair_api";
 import type { BuildConfigInfo, ExtensionMessage, RpcRequestMessage, WebviewMessage } from "../utils/eclairEvent";
 import type { EclairRpcMethods, OpenDialog, RpcHandlerMap } from "../utils/eclairRpcTypes";
-import { format_option_settings, parse_eclair_template_from_any } from "../utils/eclair/template_utils";
+import { format_option_settings } from "../utils/eclair/template_utils";
 import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, EclairScaConfig, EclairScaConfigSchema, FullEclairScaConfig, FullEclairScaConfigSchema, PresetSelectionState } from "../utils/eclair/config";
 import { PresetRepositories } from "./EclairManagerPanel/repo_manage";
-import { Result, todo, unwrap_or_throw } from "../utils/typing_utils";
+import { Result, unwrap_or_throw } from "../utils/typing_utils";
 import { match } from "ts-pattern";
-import { load_preset_from_ref } from "./EclairManagerPanel/templates";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
 import { z } from "zod";
+import { EclairTemplate } from "../utils/eclair/template";
 
 const BuildConfigurationSchema = z.object({
   name: z.string(),
@@ -72,6 +72,7 @@ export class EclairManagerPanel {
   private _rpcHandlers: RpcHandlerMap<EclairRpcMethods> = {
     "open-dialog": this._rpcOpenDialog.bind(this),
   };
+  private _loading_sca_config = false;
 
   /**
    * Dynamically detects the ECLAIR directory for PATH (env.yml, PATH, system).
@@ -470,7 +471,8 @@ export class EclairManagerPanel {
         post_message({ command: "toggle-spinner", show: false });
       }
     }
-    
+
+    await this.loadScaConfig();
   }
 
   /**
@@ -549,9 +551,7 @@ export class EclairManagerPanel {
 
               let eclair_options = unwrap_or_throw(await handle_sources(
                 [...c.rulesets, ...c.variants, ...c.tailorings],
-                cfg.repos ?? {},
-                // TODO on_progress:
-                (progress) => {},
+                (source) => this._presetRepos.load_preset_no_checkout(workspace, source, cfg.repos ?? {})
               ));
 
               return build_analysis_command(
@@ -624,25 +624,15 @@ export class EclairManagerPanel {
         await this.startReportServer(workspace, build_config);
       })
       .with({ command: "load-preset" }, async ({ source, repos, workspace }) => {
-        let r = await load_preset_from_ref(
-          source,
-          repos,
-          (message) => this.post_message({ command: "preset-content", source, template: { loading: message }, workspace }),
-        );
-
-        if ("err" in r) {
-          this.post_message({ command: "preset-content", source, template: { error: r.err }, workspace });
-        } else {
-          this.post_message({ command: "preset-content", source, template: r.ok[0], workspace });
-        }
+        this._presetRepos.load_preset_no_checkout(workspace, source, repos);
       })
       .with({ command: "scan-repo" }, ({ name, origin, ref, rev, workspace }) => {
         // Immediately check out the repo and scan all .ecl files, sending
         // back preset-content messages so the webview picker is updated.
-        this._presetRepos.scanRepoPresets(name, origin, ref, rev, workspace);
+        this._presetRepos.scan_repo_presets(name, origin, ref, rev, workspace);
       })
       .with({ command: "update-repo-checkout" }, async ({ name, origin, ref, rev, delete_rev, workspace }) => {
-        await this._presetRepos.updateRepoCheckout(name, origin, ref, rev, delete_rev, workspace);
+        await this._presetRepos.update_repo_checkout(name, origin, ref, rev, delete_rev, workspace);
       })
       .exhaustive();
   }
@@ -653,7 +643,26 @@ export class EclairManagerPanel {
    * initial panel creation and whenever the panel becomes visible again.
    */
   private async loadScaConfig() {
+    if (this._loading_sca_config) {
+      return;
+    }
+
     const post_message = (m: ExtensionMessage) => this._panel.webview.postMessage(m);
+    post_message({ command: "config-loading", loading: true });
+
+    this._loading_sca_config = true;
+
+    try {
+      await this.loadScaConfig_impl(post_message);
+    } catch (err) {
+      getOutputChannel().appendLine(`[EclairManagerPanel] Error in loadScaConfig: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    post_message({ command: "config-loading", loading: false });
+    this._loading_sca_config = false;
+  }
+
+  private async loadScaConfig_impl(post_message: (m: ExtensionMessage) => void) {
     const out = getOutputChannel();
     try {
       const configs_r = await load_all_sca_configs();
@@ -670,48 +679,13 @@ export class EclairManagerPanel {
         }
       }
       post_message({ command: "set-sca-config", by_workspace: configs, build_configs_by_workspace });
-      await preload_presets_from_configs(configs, post_message);
+      await preload_presets_from_configs(this._presetRepos, configs, post_message);
       out.appendLine("[EclairManagerPanel] Loaded SCA configs:");
       out.appendLine(JSON.stringify(configs, null, 2));
-
-      const scan_requests: Array<{ workspace: string; repos: Record<string, { origin: string; ref: string }> }> = [];
-      for (const [workspace, cfg] of Object.entries(configs)) {
-        const reposForScan: Record<string, { origin: string; ref: string; rev?: string }> = {};
-        for (const [name, entry] of Object.entries(cfg.repos || {})) {
-          reposForScan[name] = { origin: entry.origin, ref: entry.ref, rev: entry.rev };
-        }
-        scan_requests.push({ workspace, repos: reposForScan });
-      }
-      if (scan_requests.length > 0) {
-        out.appendLine("[EclairManagerPanel] Scanning configured repos for presets...");
-        void Promise.allSettled(
-          scan_requests.map((req) => this.scanRepoPresets(req.repos, req.workspace))
-        );
-      }
     } catch (err) {
       out.appendLine(`[EclairManagerPanel] Error loading SCA config: ${err}`);
       console.error("[EclairManagerPanel] loadScaConfig error:", err);
     }
-  }
-
-  /**
-   * For each repo in the saved SCA config's `repos` map, ensures it is
-   * checked out and then scans all `.ecl` files in the working tree.  Each
-   * file that parses as an ECLAIR preset template is posted to the webview
-   * as a `preset-content` message so the UI can list it as an available
-   * preset.
-   *
-   * Called automatically at the end of `loadScaConfig` so the frontend always
-   * has an up-to-date view of what the configured repos provide.
-   */
-  private async scanRepoPresets(repos: Record<string, { origin: string; ref: string; rev?: string }>, workspace: string) {
-    const post_message = (m: ExtensionMessage) => this._panel.webview.postMessage(m);
-    // Fire off all repos concurrently — each one is independent.
-    await Promise.allSettled(
-      Object.entries(repos).map(([name, entry]) =>
-        this._presetRepos.scanRepoPresets(name, entry.origin, entry.ref, entry.rev, workspace)
-      )
-    );
   }
 
   private async saveScaConfig(cfg: FullEclairScaConfig, workspace: string) {
@@ -1213,12 +1187,11 @@ function create_fake_user_ruleset() {
 
 async function handle_sources(
   sel: PresetSelectionState[],
-  repos: EclairRepos,
-  on_progress: (message: string) => void,
+  load_template: (s: EclairPresetTemplateSource) => Promise<Result<[EclairTemplate, string], string>>,
 ): Promise<Result<string[], string>> {
   let all_commands: string[] = [];
   for (const s of sel) {
-    let r = await handle_source(s, repos, on_progress);
+    let r = await handle_source(s, load_template);
     if ("err" in r) {
       return { err: `Failed to load preset: ${r.err}` };
     }
@@ -1229,10 +1202,9 @@ async function handle_sources(
 
 async function handle_source(
   sel: PresetSelectionState,
-  repos: EclairRepos,
-  on_progress: (message: string) => void,
+  load_template: (s: EclairPresetTemplateSource) => Promise<Result<[EclairTemplate, string], string>>,
 ): Promise<Result<string[], string>> {
-  let r = await load_preset_from_ref(sel.source, repos, on_progress);
+  let r = await load_template(sel.source);
   if ("err" in r) {
     return { err: `Failed to load preset: ${r.err}` };
   }
@@ -1517,35 +1489,31 @@ function preset_source_key(source: EclairPresetTemplateSource, repos: EclairRepo
 }
 
 async function preload_presets_from_configs(
-  by_workspace_and_build_config: Record<string, FullEclairScaConfig>,
+  _presetRepos: PresetRepositories,
+  by_workspace: Record<string, FullEclairScaConfig>,
   post_message: (m: ExtensionMessage) => void,
 ): Promise<void> {
-  for (const [workspace, cfg] of Object.entries(by_workspace_and_build_config)) {
-    const seen = new Set<string>();
+  // preload all presets from all repos
+  for (const [workspace, cfg] of Object.entries(by_workspace)) {
     const repos = cfg.repos ?? {};
+    for (const [repo_name, repo] of Object.entries(repos)) {
+      await _presetRepos.scan_repo_presets(repo_name, repo.origin, repo.ref, repo.rev, workspace);
+    }
+  }
+
+  // preload all system paths presets
+  for (const [workspace, cfg] of Object.entries(by_workspace)) {
     for (const config of cfg.configs) {
       if (config.main_config.type !== "preset") {
         continue;
       }
+
       const { rulesets, variants, tailorings } = config.main_config;
-      const allPresets = [...rulesets, ...variants, ...tailorings];
-      for (const p of allPresets) {
-        const key = preset_source_key(p.source, repos);
-        if (seen.has(key)) {
-          continue;
-        }
-        seen.add(key);
-        await load_preset_from_ref(
-          p.source,
-          repos,
-          (message) => post_message({ command: "preset-content", source: p.source, template: { loading: message }, workspace }),
-        ).then(r => {
-          if ("err" in r) {
-            post_message({ command: "preset-content", source: p.source, template: { error: r.err }, workspace });
-          } else {
-            post_message({ command: "preset-content", source: p.source, template: r.ok[0], workspace });
-          }
-        });
+      const all_presets = [...rulesets, ...variants, ...tailorings]
+        .filter(p => p.source.type === "system-path");
+
+      for (const p of all_presets) {
+        const _ = await _presetRepos.load_preset_no_checkout(workspace, p.source, {});
       }
     }
   }

@@ -8,7 +8,9 @@ import { exec } from "child_process";
 import yaml from "yaml";
 import type { ExtensionMessage } from "../../utils/eclairEvent";
 import { extract_yaml_from_ecl_content, parse_eclair_template_from_any } from "../../utils/eclair/template_utils";
-import type { EclairPresetTemplateSource } from "../../utils/eclair/config";
+import type { EclairPresetTemplateSource, EclairRepos } from "../../utils/eclair/config";
+import { EclairTemplate } from "../../utils/eclair/template";
+import { match } from "ts-pattern";
 
 export class PresetRepositories {
   private readonly post_message: (m: ExtensionMessage) => void;
@@ -16,71 +18,48 @@ export class PresetRepositories {
 
   constructor(post_message: (m: ExtensionMessage) => void, log: (line: string) => void) {
     this.post_message = post_message;
-    this.log = log;
+    this.log = (message) => log(`[PresetRepositories] ${message}`);
   }
 
-  async scanRepoPresets(
+  async scan_repo_presets(
     name: string,
     origin: string,
     ref: string,
     rev: string | undefined,
     workspace: string,
   ): Promise<void> {
-    let checkoutDir: string;
+    this.post_message({ command: "clear-repo-presets", repo: name, workspace });
+
+    let checkout_dir: string;
     try {
-      this.log(`[PresetRepositories] Scanning repo '${name}' for presets...`);
-      checkoutDir = await ensureRepoCheckout(name, origin, ref, rev);
-      this.log(`[PresetRepositories] Checked out repo '${name}' to '${checkoutDir}'.`);
+      checkout_dir = await ensure_repo_checkout(name, origin, ref, rev);
+      this.log(`Checked out repo '${name}' to '${checkout_dir}'.`);
     } catch (err: any) {
-      this.log(`[PresetRepositories] Failed to checkout repo '${name}': ${err}`);
-      this.post_message({
-        command: "repo-scan-failed",
-        name,
-        message: err?.message || String(err),
-        workspace,
-      });
+      this.log(`Failed to checkout repo '${name}': ${err}`);
+      this.post_message({ command: "repo-scan-failed", name, message: err?.message || String(err), workspace, });
       return;
     }
 
-    const eclFiles = await findEclFiles(checkoutDir);
+    this.log(`Scanning repo '${name}' for .ecl presets...`);
+    const ecl_files = await find_ecl_preset_files(checkout_dir);
+    this.log(`Found ${ecl_files.length} .ecl files in repo '${name}'. Loading presets...`);
 
-    await Promise.allSettled(
-      eclFiles.map(async (absPath) => {
-        const relPath = path.relative(checkoutDir, absPath).replace(/\\/g, "/");
-        const source: EclairPresetTemplateSource = { type: "repo-path", repo: name, path: relPath };
+    if (!ecl_files) {
+      this.post_message({ command: "repo-scan-done", name, workspace, rev, checkout_dir });
+      return;
+    }
 
-        let content: string;
-        try {
-          content = await fs.promises.readFile(absPath, { encoding: "utf8" });
-        } catch (err: any) {
-          this.post_message({ command: "preset-content", source, template: { error: `Could not read file: ${err?.message || err}` }, workspace });
-          return;
-        }
+    for (const abs_path of ecl_files) {
+      const rel_path = path.relative(checkout_dir, abs_path).replace(/\\/g, "/");
+      const source: EclairPresetTemplateSource = { type: "repo-path", repo: name, path: rel_path };
+      const _ = await this._load_preset_from_path(workspace, abs_path, source);
+    }
 
-        const yaml_content = extract_yaml_from_ecl_content(content);
-        if (yaml_content === undefined) {
-          return;
-        }
-
-        let data: any;
-        try {
-          data = yaml.parse(yaml_content);
-        } catch (err: any) {
-          this.post_message({ command: "preset-content", source, template: { error: `Failed to parse preset: ${err?.message || err}` }, workspace });
-          return;
-        }
-
-        try {
-          const template = parse_eclair_template_from_any(data);
-          this.post_message({ command: "preset-content", source, template, workspace });
-        } catch (err: any) {
-          this.post_message({ command: "preset-content", source, template: { error: `Invalid preset content: ${err?.message || err}` }, workspace });
-        }
-      })
-    );
+    // TODO DRY for repo-scan-done and avoid hidden return paths
+    this.post_message({ command: "repo-scan-done", name, workspace, rev, checkout_dir });
   }
 
-  async updateRepoCheckout(
+  async update_repo_checkout(
     name: string,
     origin: string,
     ref: string,
@@ -88,7 +67,7 @@ export class PresetRepositories {
     delete_rev: string | undefined,
     workspace: string,
   ): Promise<void> {
-    this.log(`[PresetRepositories] Deleting cached checkout for '${name}' to force update...`);
+    this.log(`Deleting cached checkout for '${name}' to force update...`);
     try {
       const delete_target = delete_rev ?? rev;
       if (delete_target) {
@@ -100,14 +79,74 @@ export class PresetRepositories {
       this.post_message({ command: "repo-scan-failed", name, message: err?.message || String(err), workspace });
       return;
     }
-    await this.scanRepoPresets(name, origin, ref, rev, workspace);
+    await this.scan_repo_presets(name, origin, ref, rev, workspace);
+  }
+
+  async load_preset_no_checkout(
+    workspace: string,
+    source: EclairPresetTemplateSource,
+    repos: EclairRepos,
+  ): Promise<Result<[EclairTemplate, string], string>> {
+    let abs_path: string;
+    try {
+      abs_path = match(source)
+        .with({ type: "system-path" }, ({ path }) => path)
+        .with({ type: "repo-path" }, ({ repo, path: rel_path }) => {
+          const entry = repos[repo];
+          if (!entry) {
+            throw new Error(`Repository '${repo}' not found in repos configuration.`);
+          }
+          return path.join(get_checkout_dir(entry.origin, entry.ref, entry.rev), rel_path);
+        })
+        .exhaustive();
+    } catch (err: any) {
+      const e = `Failed to resolve preset path: ${err?.message || err}`;
+      this._tell_preset_error(workspace, source, e);
+      return { err: e };
+    }
+
+    return this._load_preset_from_path(workspace, abs_path, source);
+  }
+
+  private async _load_preset_from_path(
+    workspace: string,
+    abs_path: string,
+    source: EclairPresetTemplateSource,
+  ): Promise<Result<[EclairTemplate, string], string>> {
+    try {
+      const template_r = await load_preset_from_path(abs_path, (progress) => {
+        this._tell_preset_loading(workspace, source, progress);
+      });
+      if ("err" in template_r) {
+        throw new Error(template_r.err);
+      }
+      const template = template_r.ok;
+      this._tell_preset_loaded(workspace, source, template);
+      return { ok: [template, abs_path] };
+    } catch (err: any) {
+      const e = `Invalid preset content: ${err?.message || err}`;
+      this._tell_preset_error(workspace, source, e);
+      return { err: e };
+    }
+  }
+
+  private async _tell_preset_loading(workspace: string, source: EclairPresetTemplateSource, message: string) {
+    this.post_message({ command: "preset-content", source, template: { loading: message }, workspace });
+  }
+
+  private async _tell_preset_error(workspace: string, source: EclairPresetTemplateSource, message: string) {
+    this.post_message({ command: "preset-content", source, template: { error: message }, workspace });
+  }
+
+  private async _tell_preset_loaded(workspace: string, source: EclairPresetTemplateSource, template: EclairTemplate) {
+    this.post_message({ command: "preset-content", source, template, workspace });
   }
 }
 
 /**
  * Recurses through `dir` and collects all files whose name ends with `.ecl`.
  */
-async function findEclFiles(dir: string): Promise<string[]> {
+async function find_ecl_preset_files(dir: string): Promise<string[]> {
   const results: string[] = [];
   let entries: fs.Dirent[];
   try {
@@ -118,9 +157,13 @@ async function findEclFiles(dir: string): Promise<string[]> {
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      results.push(...await findEclFiles(full));
+      results.push(...await find_ecl_preset_files(full));
     } else if (entry.isFile() && entry.name.endsWith(".ecl")) {
-      results.push(full);
+      const content = await fs.promises.readFile(full, { encoding: "utf8" });
+      const yaml_content = await extract_yaml_from_ecl_content(content);
+      if (yaml_content) {
+        results.push(full);
+      }
     }
   }
   return results;
@@ -324,7 +367,7 @@ async function checkout_repo_into_dir(checkoutDir: string, origin: string, ref: 
  * @param rev Optional locked commit SHA to check out.
  * @returns The absolute path to the checked-out working tree.
  */
-export async function ensureRepoCheckout(name: string, origin: string, ref: string, rev?: string): Promise<string> {
+async function ensure_repo_checkout(name: string, origin: string, ref: string, rev?: string): Promise<string> {
   const resolved_rev = rev ?? await resolve_ref_to_rev(origin, ref);
   if (resolved_rev) {
     const checkoutDir = get_checkout_dir(origin, ref, resolved_rev);
@@ -411,3 +454,45 @@ async function ls_remote(
     return { err: (err as Error).message };
   }
 }
+
+async function load_preset_from_path(
+  preset_path: string,
+  on_progress: (message: string) => void,
+): Promise<Result<EclairTemplate, string>> {
+  preset_path = preset_path.trim();
+  if (!preset_path) {
+    return { err: "Invalid preset path." };
+  }
+
+  on_progress("Reading file...");
+  let content: string;
+  try {
+    content = await fs.promises.readFile(preset_path, { encoding: "utf8" });
+  } catch (err: any) {
+    return { err: `Failed to read preset: ${err?.message || err}` };
+  }
+
+  on_progress("Parsing file...");
+  const yaml_content = extract_yaml_from_ecl_content(content);
+  if (yaml_content === undefined) {
+    return { err: "The selected file does not contain valid ECL template content." };
+  }
+
+  let data: any;
+  try {
+    data = yaml.parse(yaml_content);
+  } catch (err: any) {
+    return { err: `Failed to parse preset: ${err?.message || err}` };
+  }
+
+  on_progress("Validating file...");
+  let template: EclairTemplate;
+  try {
+    template = parse_eclair_template_from_any(data);
+  } catch (err: any) {
+    return { err: `Invalid preset content: ${err?.message || err}` };
+  }
+
+  return { ok: template };
+}
+

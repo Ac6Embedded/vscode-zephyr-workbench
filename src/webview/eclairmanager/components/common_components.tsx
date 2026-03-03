@@ -538,3 +538,15 @@ export function Monospace(props: { children: React.ReactNode; style?: React.CSSP
     </span>
   );
 }
+
+export function Spinner(props: {
+  show?: boolean;
+  title?: string;
+}) {
+  const show = props.show ?? true;
+
+  return (<span
+    className={`codicon codicon-loading codicon-modifier-spin ${show ? "" : "hidden"}`}
+    title={props.title}
+  ></span>);
+}

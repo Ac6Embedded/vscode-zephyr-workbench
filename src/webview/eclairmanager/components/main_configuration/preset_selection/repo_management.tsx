@@ -3,6 +3,7 @@ import { EclairRepos } from "../../../../../utils/eclair/config";
 import { AvailablePresetsState, EclairStateAction, RepoScanState } from "../../../state";
 import { WebviewMessage } from "../../../../../utils/eclairEvent";
 import { Monospace, RichHelpTooltip, StatusBadge, StatusBadgeState, VscodeBadge, VscodeButton, VscodePanel, VscodeTextField } from "../../common_components";
+import { match } from "ts-pattern";
 
 const EMPTY_REPO_FORM = { name: "", origin: "", ref: "", rev: "" };
 
@@ -359,20 +360,12 @@ function EditForm({
 }
 
 /** Maps a RepoScanState to the generic StatusBadgeState used by StatusBadge. */
-function repo_scan_state_to_badge_status(scanState: RepoScanState | undefined, totalFiles: number): StatusBadgeState {
+function repo_scan_state_to_badge_status(scanState: RepoScanState | undefined, total: number): StatusBadgeState {
   const s = scanState ?? { status: "idle" };
-  switch (s.status) {
-    case "idle": return { kind: "idle" };
-    case "loading": return { kind: "loading", label: "Scanning…" };
-    case "success": {
-      const n = s.templateCount;
-      const skipped = totalFiles - n;
-      return {
-        kind: "success",
-        label: <VscodeBadge>{n}</VscodeBadge>,
-        detail: skipped > 0 ? `(${skipped} skipped)` : undefined,
-      };
-    }
-    case "error": return { kind: "error", message: s.message };
-  }
+  return match(s)
+    .with({ status: "idle" }, () => ({ kind: "idle" }))
+    .with({ status: "loading" }, () => ({ kind: "loading", label:<VscodeBadge>{total}</VscodeBadge> }))
+    .with({ status: "success" }, () => ({ kind: "success", label: <VscodeBadge>{total}</VscodeBadge> }))
+    .with({ status: "error" }, (s) => ({ kind: "error", message: s.message }))
+    .exhaustive() as StatusBadgeState;
 }

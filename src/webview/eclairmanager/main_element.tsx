@@ -11,7 +11,7 @@ import { MainAnalysisConfigurationSection } from "./components/main_configuratio
 import { match } from "ts-pattern";
 import { FullEclairScaConfig, EclairScaMainConfig, EclairScaPresetConfig, EclairScaConfig } from "../../utils/eclair/config.js";
 import { Result } from "../../utils/typing_utils.js";
-import { EditableTextField, RichHelpTooltip, SearchableDropdown, VscodeButton, VscodePanel } from "./components/common_components.js";
+import { EditableTextField, RichHelpTooltip, SearchableDropdown, Spinner, VscodeButton } from "./components/common_components.js";
 import { EasyMark } from "./components/easymark_render.js";
 import { RpcClient, RpcProvider } from "./rpc";
 import type { EclairRpcMethods } from "../../utils/eclairRpcTypes.js";
@@ -80,7 +80,7 @@ export function EclairManagerPanel() {
   return (<RpcProvider client={rpc}>
     <div>
       <h1>
-        ECLAIR Manager
+        ECLAIR Manager {state.loading && (<Spinner />)}
         <RichHelpTooltip>
           <p>
             Bugseng <a href="https://www.bugseng.com/eclair-static-analysis-tool/">ECLAIR</a> is a certified static analysis tool and platform for software verification.
@@ -333,12 +333,20 @@ function handleMessage(
     .with({ command: "set-install-path" }, ({ path }) => dispatch({ type: "set-install-path", path: String(path ?? "") }))
     .with({ command: "set-install-path-placeholder" }, ({ text }) => dispatch({ type: "set-install-path-placeholder", text: String(text ?? "") }))
     .with({ command: "set-path-status" }, ({ text }) => dispatch({ type: "set-path-status", text: String(text ?? "") }))
+    .with({ command: "clear-repo-presets" }, ({ repo, workspace }) => dispatch({
+      type: "clear-repo-presets",
+      repo,
+      ...(workspace ? { workspace } : {}),
+    }))
     .with({ command: "preset-content" }, ({ source, template, workspace }) => dispatch({
       type: "preset-content",
       source,
       template,
       ...(workspace ? { workspace } : {}),
     }))
+    .with({ command: "config-loading" }, ({ loading }) => dispatch({ type: "update-state", updater: (draft) => {
+      draft.loading = loading;
+    }}))
     .with({ command: "set-sca-config" }, ({ by_workspace, build_configs_by_workspace }) => dispatch({ type: "load-sca-config", by_workspace, build_configs_by_workspace }))
     .with({ command: "repo-scan-done" }, ({ name, workspace, rev, checkout_dir }) => dispatch({
       type: "repo-scan-done",

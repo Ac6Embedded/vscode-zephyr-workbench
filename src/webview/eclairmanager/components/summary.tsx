@@ -1,6 +1,6 @@
 import React from "react";
 import { StatusState, InstallPathState, EclairStateAction } from "../state";
-import { VscodeButton, PickPath } from "./common_components";
+import { VscodeButton, PickPath, Spinner } from "./common_components";
 import { WebviewMessage } from "../../../utils/eclairEvent";
 import { useRpc } from "../rpc.js";
 
@@ -24,10 +24,7 @@ export function Summary(props: {
         &nbsp;|&nbsp;
         <strong>Status:</strong>{" "}
         <span className={`codicon ${statusIcon}`}></span> <span>{statusText}</span>
-        <span
-          className={`codicon codicon-loading codicon-modifier-spin ${props.status.showSpinner ? "" : "hidden"}`}
-          title="Detecting ECLAIR"
-        ></span>
+        <Spinner show={props.status.showSpinner} title="Detecting ECLAIR" />
       </div>
       <div className="summary-actions">
         <div className="actions-title"><strong>Actions</strong></div>

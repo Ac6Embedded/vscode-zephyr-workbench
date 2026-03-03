@@ -21,10 +21,17 @@ export type ExtensionMessage = {
   command: "set-install-path-placeholder",
   text: string,
 } | {
+  command: "clear-repo-presets",
+  workspace: string,
+  repo: string,
+} | {
   command: "preset-content",
   source: EclairPresetTemplateSource,
   template: EclairTemplate | { loading: string } | { error: string },
   workspace: string,
+} | {
+  command: "config-loading",
+  loading: boolean,
 } | {
   // Restore the full saved SCA configuration into the webview
   command: "set-sca-config",

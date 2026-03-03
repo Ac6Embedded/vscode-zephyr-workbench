@@ -10,7 +10,9 @@ export async function main() {
   enableMapSet();
 
   const body = document.getElementById(CONTENT_ID);
-  if (!body) return;
+  if (!body) {
+    return;
+  }
 
   const root = createRoot(body);
   root.render(React.createElement(EclairManagerPanel));

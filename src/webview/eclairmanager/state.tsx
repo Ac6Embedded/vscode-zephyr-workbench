@@ -32,6 +32,7 @@ export interface EclairState {
   };
   by_workspace: Record<string, EclairWorkspaceBuildState>;
   build_configs_by_workspace: Record<string, BuildConfigInfo[]>;
+  loading: boolean;
 }
 
 export interface EclairWorkspaceBuildState {
@@ -60,6 +61,7 @@ export function default_eclair_state(): EclairState {
     },
     by_workspace: {},
     build_configs_by_workspace: {},
+    loading: false,
   };
 }
 
@@ -162,7 +164,7 @@ export interface ReportsState {
 export type RepoScanState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "success"; templateCount: number; checkoutDir?: string }
+  | { status: "success"; checkoutDir?: string }
   | { status: "error"; message: string };
 
 
@@ -210,7 +212,8 @@ export type EclairStateAction =
   | { type: "repo-scan-started"; name: string; workspace?: string; build_config?: string }
   | { type: "repo-scan-done"; name: string; workspace?: string; build_config?: string; rev?: string; checkout_dir?: string }
   | { type: "repo-scan-failed"; name: string; message: string; workspace?: string; build_config?: string }
-  | { type: "update-state", updater: (state: WritableDraft<EclairState>) => EclairState | undefined };
+  | { type: "clear-repo-presets"; repo: string; workspace?: string; build_config?: string }
+  | { type: "update-state", updater: (state: WritableDraft<EclairState>) => EclairState | undefined | void };
 
 function build_configs(cfg: FullEclairScaConfig): EclairConfig[] {
   const build_config = (config: EclairScaConfig) => {
@@ -295,9 +298,7 @@ function build_workspace_build_state(cfg: FullEclairScaConfig, prev?: EclairWork
       repos_scan_state[name] = { status: "idle" };
     }
   }
-  const available_presets = prev && are_repos_equal(repos, prev.repos)
-    ? prev.available_presets
-    : { by_path: new Map(), by_repo_and_path: new Map() };
+  const available_presets = prev?.available_presets || { by_path: new Map(), by_repo_and_path: new Map() };
 
   return {
     install_path: build_install_path_state(cfg.install_path, prev?.install_path),
@@ -312,9 +313,8 @@ function build_workspace_build_state(cfg: FullEclairScaConfig, prev?: EclairWork
 function get_selected_context(
   draft: WritableDraft<EclairState>,
   workspace?: string,
-  build_config?: string,
 ): { workspace: string; state: WritableDraft<EclairWorkspaceBuildState> } | undefined {
-  const has_override = workspace !== undefined || build_config !== undefined;
+  const has_override = workspace !== undefined;
   const target_workspace = has_override ? workspace : draft.current_context?.workspace;
 
   if (!target_workspace) {
@@ -439,7 +439,7 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
       selected.state.current_config_index = index;
     })
     .with({ type: "with-selected-workspace" }, ({ action, workspace, build_config }) => {
-      const selected = get_selected_context(draft, workspace, build_config);
+      const selected = get_selected_context(draft, workspace);
       if (!selected) {
         return;
       }
@@ -500,6 +500,9 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
               current.description_md = description_md;
             })
             .with({ type: "update-configuration-type" }, ({ configurationType }) => {
+              if (current.main_config.type === configurationType) {
+                return;
+              }
               current.main_config = match(configurationType)
                 .with("preset", () => ({ type: "preset" as const, state: default_presets_selection_state() }))
                 .with("custom-ecl", () => ({ type: "custom-ecl" as const, state: {} }))
@@ -658,7 +661,7 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
       }
     })
     .with({ type: "preset-content" }, ({ source, template, workspace, build_config }) => {
-      const selected = get_selected_context(draft, workspace, build_config);
+      const selected = get_selected_context(draft, workspace);
       if (!selected) {
         return;
       }
@@ -705,23 +708,20 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
       selected.state.available_presets.by_repo_and_path.delete(name);
     })
     .with({ type: "repo-scan-started" }, ({ name, workspace, build_config }) => {
-      const selected = get_selected_context(draft, workspace, build_config);
+      const selected = get_selected_context(draft, workspace);
       if (!selected) {
         return;
       }
       selected.state.repos_scan_state[name] = { status: "loading" };
     })
     .with({ type: "repo-scan-done" }, ({ name, workspace, build_config, rev, checkout_dir }) => {
-      const selected = get_selected_context(draft, workspace, build_config);
+      const selected = get_selected_context(draft, workspace );
       if (!selected) {
         return;
       }
       // Count successfully loaded templates for this repo.
       const byPath = selected.state.available_presets.by_repo_and_path.get(name);
-      const templateCount = byPath
-        ? [...byPath.values()].filter(t => !("loading" in t) && !("error" in t)).length
-        : 0;
-      selected.state.repos_scan_state[name] = { status: "success", templateCount, checkoutDir: checkout_dir };
+      selected.state.repos_scan_state[name] = { status: "success", checkoutDir: checkout_dir };
       if (rev) {
         const entry = selected.state.repos[name];
         if (entry && !entry.rev) {
@@ -730,11 +730,18 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
       }
     })
     .with({ type: "repo-scan-failed" }, ({ name, message, workspace, build_config }) => {
-      const selected = get_selected_context(draft, workspace, build_config);
+      const selected = get_selected_context(draft, workspace);
       if (!selected) {
         return;
       }
       selected.state.repos_scan_state[name] = { status: "error", message };
+    })
+    .with({ type: "clear-repo-presets" }, ({ repo, workspace }) => {
+      const selected = get_selected_context(draft, workspace );
+      if (!selected) { 
+        return;
+      }
+      selected.state.available_presets.by_repo_and_path.delete(repo);
     })
     .with({ type: "update-state" }, ({ updater }) => updater(draft))
     .exhaustive());
