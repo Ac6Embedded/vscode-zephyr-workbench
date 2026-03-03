@@ -3,8 +3,8 @@ A simple RPC layer
 */
 
 import React from "react";
-import type { ExtensionMessage, RpcResponseMessage, WebviewMessage } from "../../utils/eclairEvent.js";
-import type { EclairRpcMethods, RpcMethodMap } from "../../utils/eclairRpcTypes.js";
+import type { ExtensionMessage, RpcResponseMessage, WebviewMessage } from "../../utils/eclairEvent";
+import type { EclairRpcMethods, RpcMethodMap } from "../../utils/eclairRpcTypes";
 
 /**
  * A simple RPC client for communicating with the extension backend. It sends

@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Item, Style, parseEasyMark } from "./easymark.js";
+import { Item, Style, parseEasyMark } from "./easymark";
 import { match } from "ts-pattern";
 
 function apply_style_tags(children: React.ReactNode, style: Style): React.ReactNode {

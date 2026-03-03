@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ZephyrRulesetState, EclairStateAction } from "../../state";
 import { PickPath, VscodeButton, VscodeRadio, VscodeRadioGroup, VscodeTextField } from "../common_components";
-import { useRpc } from "../../rpc.js";
+import { useRpc } from "../../rpc";
 
 export function RulesetSection(props: {
   config_key: number;

@@ -1,7 +1,7 @@
 import React from "react";
 import { CustomEclState, EclairStateAction } from "../../state";
 import { PickPath } from "../common_components";
-import { useRpc } from "../../rpc.js";
+import { useRpc } from "../../rpc";
 
 export function CustomEclSection({
   state,

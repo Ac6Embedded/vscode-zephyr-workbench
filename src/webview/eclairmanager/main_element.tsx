@@ -1,27 +1,27 @@
 import React, { useState, useEffect, useCallback, useReducer, useMemo } from "react";
 import { createRoot } from "react-dom/client";
-import type { ExtensionMessage, WebviewMessage } from "../../utils/eclairEvent.js";
-import { MainAnalysisConfigurationState, EclairStateAction, PresetsSelectionState, default_eclair_state, default_install_path_state, eclairReducer, EclairConfig, EclairWorkspaceBuildState, EclairState } from "./state.js";
-import { Summary } from "./components/summary.js";
-import { ReportsSection } from "./components/reports_section.js";
-import { ExtraConfigSection } from "./components/extra_config_section.js";
-import { CommandSection } from "./components/command_section.js";
-import { ReportViewerSection } from "./components/report_viewer.js";
-import { MainAnalysisConfigurationSection } from "./components/main_configuration.js";
+import type { ExtensionMessage, WebviewMessage } from "../../utils/eclairEvent";
+import { MainAnalysisConfigurationState, EclairStateAction, PresetsSelectionState, default_eclair_state, default_install_path_state, eclairReducer, EclairConfig, EclairWorkspaceBuildState, EclairState } from "./state";
+import { Summary } from "./components/summary";
+import { ReportsSection } from "./components/reports_section";
+import { ExtraConfigSection } from "./components/extra_config_section";
+import { CommandSection } from "./components/command_section";
+import { ReportViewerSection } from "./components/report_viewer";
+import { MainAnalysisConfigurationSection } from "./components/main_configuration";
 import { match } from "ts-pattern";
-import { FullEclairScaConfig, EclairScaMainConfig, EclairScaPresetConfig, EclairScaConfig } from "../../utils/eclair/config.js";
-import { Result } from "../../utils/typing_utils.js";
-import { EditableTextField, RichHelpTooltip, SearchableDropdown, Spinner, VscodeButton } from "./components/common_components.js";
-import { EasyMark } from "./components/easymark_render.js";
+import { FullEclairScaConfig, EclairScaMainConfig, EclairScaPresetConfig, EclairScaConfig } from "../../utils/eclair/config";
+import { Result } from "../../utils/typing_utils";
+import { EditableTextField, RichHelpTooltip, SearchableDropdown, Spinner, VscodeButton } from "./components/common_components";
+import { EasyMark } from "./components/easymark_render";
 import { RpcClient, RpcProvider } from "./rpc";
-import type { EclairRpcMethods } from "../../utils/eclairRpcTypes.js";
+import type { EclairRpcMethods } from "../../utils/eclairRpcTypes";
 import {
   BUGSENG_ECLAIR_OVERVIEW_URL,
   ECLAIR_MANAGER_DOC_URL,
   ZEPHYR_ECLAIR_CONFIG_URL,
   ZEPHYR_ECLAIR_PREREQUISITES_URL,
   ZEPHYR_ECLAIR_RUNNING_URL,
-} from "./docs.js";
+} from "./docs";
 
 function workspace_label(workspace: string): string {
   const parts = workspace.split(/[\\/]/).filter(Boolean);
