@@ -35,6 +35,12 @@ form {
   text-decoration: underline;
 }
 
+.panel-lead {
+  margin: 6px 0 16px;
+  color: var(--vscode-descriptionForeground);
+  max-width: 900px;
+}
+
 .grid-group-div {
   margin-bottom: 10px;
   position: relative;
