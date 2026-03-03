@@ -332,8 +332,12 @@ function EditForm({
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => set_form((f) => ({ ...f, rev: e.target.value }))}
         style={{ width: "100%", boxSizing: "border-box" }}
       >Rev (lock)<RichHelpTooltip>
-        An optional commit SHA to lock the repository to.<br/>
-        If specified, the repository will be checked out at this exact commit. The <i>Update</i> action will update this locked rev when used.
+        <p>
+          An optional commit SHA to lock the repository to.
+        </p>
+        <p>
+          If specified, the repository will be checked out at this exact commit. The <i>Update</i> action will update this locked rev when used.
+        </p>
       </RichHelpTooltip></VscodeTextField>
     </div>
     <div style={{ display: "flex", gap: "4px" }}>

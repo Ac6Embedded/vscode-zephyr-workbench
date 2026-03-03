@@ -1,5 +1,5 @@
 import React from "react";
-import { VscodeButton } from "./common_components";
+import { RichHelpTooltip, VscodeButton } from "./common_components";
 import { WebviewMessage } from "../../../utils/eclairEvent";
 
 export function ReportViewerSection(props: {
@@ -9,7 +9,13 @@ export function ReportViewerSection(props: {
 }) {
   return (
     <div className="section">
-      <h2>Report Viewer</h2>
+      <h2>
+        Report Viewer
+        <RichHelpTooltip>Opens the report viewer for the current build configuration, so you can review findings in a browser.</RichHelpTooltip>
+      </h2>
+      <div className="panel-lead">
+        Launch the built-in viewer to inspect the generated ECLAIR reports.
+      </div>
       <div className="grid-group-div command-actions">
         <VscodeButton
           appearance="primary"

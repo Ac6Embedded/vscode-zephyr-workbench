@@ -1,6 +1,7 @@
 import React from "react";
 import { ReportsState, EclairStateAction } from "../state";
-import { VscodeCheckbox } from "./common_components";
+import { RichHelpTooltip, VscodeCheckbox } from "./common_components";
+import { ZEPHYR_ECLAIR_REPORTS_URL } from "../docs";
 
 export function ReportsSection(props: {
   reports: ReportsState;
@@ -23,7 +24,20 @@ export function ReportsSection(props: {
 
   return (
     <div className="section">
-      <h2>Reports</h2>
+      <h2>
+        Reports
+        <RichHelpTooltip>
+          <p>
+            Select which ECLAIR reports to generate for the analysis run. Output formats include summary and full reports, as well as metrics and SARIF.
+          </p>
+          <p>
+            See also <a href={ZEPHYR_ECLAIR_REPORTS_URL}>Generate additional report formats</a> from the Zephyr documentation.
+          </p>
+        </RichHelpTooltip>
+      </h2>
+      <div className="panel-lead">
+        Pick the report outputs that should be generated after analysis completes.
+      </div>
       <div className="checkbox-grid">
         {reports.map((r) => (
           <label key={r}>

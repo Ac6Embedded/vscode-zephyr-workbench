@@ -1,8 +1,9 @@
 import React from "react";
 import { StatusState, InstallPathState, EclairStateAction } from "../state";
-import { VscodeButton, PickPath, Spinner } from "./common_components";
+import { VscodeButton, PickPath, Spinner, RichHelpTooltip } from "./common_components";
 import { WebviewMessage } from "../../../utils/eclairEvent";
-import { useRpc } from "../rpc.js";
+import { useRpc } from "../rpc";
+import { ZEPHYR_ECLAIR_PREREQUISITES_URL } from "../docs";
 
 export function Summary(props: {
   status: StatusState;
@@ -18,7 +19,18 @@ export function Summary(props: {
 
   return (
     <div className="summary">
-      <div className="summary-title"><strong>ECLAIR</strong></div>
+      <div className="summary-title">
+        <strong>ECLAIR</strong>
+        <RichHelpTooltip>
+          <p>
+            Configure the local ECLAIR installation and licensing used for analysis.
+            The install path should point to the ECLAIR SCA binaries.
+          </p>
+          <p>
+            See the <a href={ZEPHYR_ECLAIR_PREREQUISITES_URL}>Prerequisites</a> for more details.
+          </p>
+        </RichHelpTooltip>
+      </div>
       <div>
         <strong>Version:</strong> <span>{props.status.version}</span>
         &nbsp;|&nbsp;

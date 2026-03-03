@@ -6,6 +6,11 @@ import { RulesetSection } from "./main_configuration/ruleset_section";
 import { CustomEclSection } from "./main_configuration/custom_ecl";
 import { PresetSelection } from "./main_configuration/preset_selection";
 import { EclairRepos, EclairScaConfigType } from "../../../utils/eclair/config";
+import {
+  BUGSENG_ECLAIR_OVERVIEW_URL,
+  ECLAIR_MANAGER_DOC_URL,
+  ZEPHYR_ECLAIR_USER_RULESET_URL,
+} from "../docs";
 
 
 export function MainAnalysisConfigurationSection({
@@ -31,7 +36,15 @@ export function MainAnalysisConfigurationSection({
 
   return (
     <div className="section">
-      <h2>Main Analysis Configuration</h2>
+      <h2>
+        Main Analysis Configuration
+        <RichHelpTooltip>
+            Select how ECLAIR builds its analysis configuration: use presets, a custom ECL file, or the Zephyr-provided ruleset.
+        </RichHelpTooltip>
+      </h2>
+      <div className="panel-lead">
+        Choose the source of the ECLAIR configuration that will drive your rules, variants, and tailorings.
+      </div>
 
       <VscodeRadioGroup
         orientation="vertical"
@@ -100,12 +113,6 @@ const RULESET_DESCRIPTION: Record<EclairScaConfigType, JSX.Element> = {
       <p>
         Presets are stored in Git repositories that are managed in the <i>Preset Repositories</i> section below. They can also be loaded from individual ECL files using the <i>Custom ECL</i> option.
       </p>
-      <p>
-        See also:
-      </p>
-      <ul>
-        <li>{BUGSENG_REPO_LINK}: the reference repository for Eclair SCA presets for Zephyr projects, maintained by BUGSENG</li>
-      </ul>
     </RichHelpTooltip>
   </>,
   "custom-ecl": <>
@@ -128,13 +135,6 @@ const RULESET_DESCRIPTION: Record<EclairScaConfigType, JSX.Element> = {
       <p>
         This integration offers a predefined set of configuration that are used by the Zephyr project and are kept up to date by the Zephyr maintainers.
       </p>
-      <p>
-        See also:
-      </p>
-      <ul>
-        <li><a href={ZEPHYR_ECLAIR_URL}>Zephyr ECLAIR Support</a></li>
-        <li><a href={ZEPHYR_CODING_GUIDELINES_URL}>Zephyr Coding Guidelines</a></li>
-      </ul>
     </RichHelpTooltip>
   </>,
 };

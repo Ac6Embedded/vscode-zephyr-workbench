@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { WebviewMessage } from "../../../../utils/eclairEvent";
-import { AvailablePresetsState, BUGSENG_REPO_LINK, EclairStateAction, get_preset_template_by_source, MultiPresetSelectionState, PresetsSelectionState, RepoScanState } from "../../state";
+import { AvailablePresetsState, EclairStateAction, get_preset_template_by_source, MultiPresetSelectionState, PresetsSelectionState, RepoScanState } from "../../state";
 import { PickPath, SearchableDropdown, SearchableItem, VscodeAlert, VscodeBadge, VscodeButton, VscodeCheckbox, VscodePanel, RichHelpTooltip, Monospace, VscodeDropdown, VscodeOption } from "../common_components";
 import { EclairTemplate, EclairTemplateKind, EclairTemplateOption } from "../../../../utils/eclair/template";
 import { EclairPresetTemplateSource, EclairRepos, PresetSelectionState } from "../../../../utils/eclair/config";
@@ -26,17 +26,16 @@ export function PresetSelection(props: {
           Manage the Git repositories that provide preset templates. Each repository is identified by a short name, a Git origin URL, and a revision (branch, tag, or commit SHA).
         </p>
         <p>
-          Repositories are checked out on demand and scanned for preset templates.
+          Preset templates from these repositories will be available for selection in the ruleset, variant and tailoring sections below.
         </p>
         <p>
-          A reference repository with some curated presets is available at {BUGSENG_REPO_LINK}.
+          Repositories are checked out on demand and scanned for preset templates.<br/>
+          You can add as many repositories as you want, and they will be automatically checked out and scanned for presets.
         </p>
       </RichHelpTooltip>
     </h3>
     <p>
-      Add, remove and edit Git repositories that contain preset templates.<br />
-      Preset templates from these repositories will be available for selection in the ruleset, variant and tailoring sections below. <br />
-      You can add as many repositories as you want, and they will be automatically checked out and scanned for presets.
+      Add, remove and edit Git repositories that contain preset templates.
     </p>
     <RepoManagementSection
       workspace={props.workspace}
@@ -49,15 +48,11 @@ export function PresetSelection(props: {
 
     <h3>
       Ruleset selection
-      <RichHelpTooltip>
-        <div style={{ fontWeight: 600, marginBottom: "4px" }}>Ruleset info</div>
-        <div style={{ fontSize: "0.9em" }}>
-          Use a ruleset as the baseline for checks. Variants and tailorings can
-          refine this selection.
-        </div>
-      </RichHelpTooltip>
+      <RichHelpTooltip>Use a ruleset as the baseline for checks. Variants and tailorings refine this selection.</RichHelpTooltip>
     </h3>
-    Choose a base ruleset to run the analysis with.
+    <div className="panel-lead">
+      Choose a base ruleset to run the analysis with.
+    </div>
 
     <MultiPresetSelection
       kind="ruleset"
@@ -68,10 +63,14 @@ export function PresetSelection(props: {
       post_message={props.post_message}
     />
 
-    <h3>Variants selection</h3>
-    Choose an analysis variant to run. Variants are modifications to the base
-    ruleset that enable or disable certain checks, or change the behavior of
-    some rules. You can select multiple variants to run them together.
+    <h3>
+      Variants selection
+      <RichHelpTooltip>Variants adjust the base ruleset by enabling or disabling groups of checks, or changing rule behavior.</RichHelpTooltip>
+    </h3>
+    <div className="panel-lead">
+      Choose an analysis variant to run.<br/>
+      Variants are modifications to the base ruleset that enable or disable certain checks, or change the behavior of some rules.<br/>
+    </div>
 
     <MultiPresetSelection 
       kind="variant" 
@@ -82,11 +81,14 @@ export function PresetSelection(props: {
       post_message={props.post_message}
     />
 
-    <h3>Tailorings selection</h3>
-    Choose a tailoring to apply to the analysis. Tailorings are modifications
-    to the base ruleset that are applied on top of variants, and can be used
-    to further customize the analysis configuration. You can select multiple
-    tailorings to apply them together.
+    <h3>
+      Tailorings selection
+      <RichHelpTooltip>Tailorings apply additional, fine-grained adjustments on top of rulesets and variants.</RichHelpTooltip>
+    </h3>
+    <div className="panel-lead">
+      Choose a tailoring to apply to the analysis.<br/>
+      Tailorings are modifications to the base ruleset that are applied on top of variants, and can be used to further customize the analysis configuration.
+    </div>
 
     <MultiPresetSelection 
       kind="tailoring" 

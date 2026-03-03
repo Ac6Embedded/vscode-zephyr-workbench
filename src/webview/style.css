@@ -36,7 +36,7 @@ form {
 }
 
 .panel-lead {
-  margin: 6px 0 16px;
+  margin: 6px 0 8px;
   color: var(--vscode-descriptionForeground);
   max-width: 900px;
 }

@@ -1,5 +1,5 @@
 import React from "react";
-import { VscodeButton, VscodeAlert } from "./common_components";
+import { VscodeButton, VscodeAlert, RichHelpTooltip } from "./common_components";
 import { WebviewMessage } from "../../../utils/eclairEvent";
 import { FullEclairScaConfig } from "../../../utils/eclair/config";
 import { Result } from "../../../utils/typing_utils";
@@ -23,7 +23,13 @@ export function CommandSection({
 
   return (
     <div className="section">
-      <h2>Analysis</h2>
+      <h2>
+        Analysis
+        <RichHelpTooltip>Save the configuration or run ECLAIR for the selected workspace and build configuration.</RichHelpTooltip>
+      </h2>
+      <div className="panel-lead">
+        Save the current configuration or start a new analysis run.
+      </div>
       {"err" in config ? (
         <VscodeAlert type="warning">
           <strong>Invalid configuration:</strong> {config.err}
