@@ -1118,22 +1118,30 @@ function get_west_cmd() {
   return "west";
 }
 
-function create_fake_user_ruleset(eclair_options: string[]): { user_ruleset_name: string; user_ruleset_path: string } {
-  const fake_path = path.join(os.tmpdir(), "dummy_user_ruleset");
-  const fake_name = "dummy";
-  const fake_ecl = path.join(fake_path, `analysis_${fake_name}.ecl`);
+function create_fake_user_ruleset(
+  eclair_options: string[],
+  dir?: string,
+  name?: string,
+): { user_ruleset_name: string; user_ruleset_path: string } {
+  const ruleset_path = dir || path.join(os.tmpdir(), "dummy_user_ruleset");
+  const ruleset_name = name || "dummy";
+  const ecl = path.join(ruleset_path, `analysis_${ruleset_name}.ecl`);
 
-  if (fs.existsSync(fake_path)) {
-    fs.rmSync(fake_path, { recursive: true });
+  if (fs.existsSync(ruleset_path)) {
+    if (!fs.statSync(ruleset_path).isDirectory()) {
+      fs.rmSync(ruleset_path);
+      fs.mkdirSync(ruleset_path, { recursive: true });
+    }
+  } else {
+    fs.mkdirSync(ruleset_path, { recursive: true });
   }
 
-  fs.mkdirSync(fake_path, { recursive: true });
-  //fs.writeFileSync(fake_ecl, "", { encoding: "utf8" });
-  fs.writeFileSync(fake_ecl, eclair_options.map(opt => `${opt}`).join("\n"), { encoding: "utf8" });
+  fs.rmSync(ecl, { force: true, recursive: true });
+  fs.writeFileSync(ecl, eclair_options.map(opt => `${opt}`).join("\n"), { encoding: "utf8" });
 
   return {
-    user_ruleset_name: fake_name,
-    user_ruleset_path: fake_path,
+    user_ruleset_name: ruleset_name,
+    user_ruleset_path: ruleset_path,
   };
 }
 
