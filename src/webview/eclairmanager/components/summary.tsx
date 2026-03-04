@@ -1,5 +1,5 @@
 import React from "react";
-import { StatusState, InstallPathState, EclairStateAction } from "../state";
+import { StatusState, EclairStateAction } from "../state";
 import { VscodeButton, PickPath, Spinner, RichHelpTooltip } from "./common_components";
 import { WebviewMessage } from "../../../utils/eclairEvent";
 import { useRpc } from "../rpc";
@@ -7,7 +7,6 @@ import { BUGSENG_ECLAIR_OVERVIEW_URL, ECLAIR_MANAGE_LICENSE_URL, ECLAIR_REQUEST_
 
 export function Summary(props: {
   status: StatusState;
-  installPath: InstallPathState;
   post_message: (message: WebviewMessage) => void;
   dispatch_state: React.Dispatch<EclairStateAction>;
 }) {
@@ -36,7 +35,7 @@ export function Summary(props: {
         &nbsp;|&nbsp;
         <strong>Status:</strong>{" "}
         <span className={`codicon ${statusIcon}`}></span> <span>{statusText}</span>
-        <Spinner show={props.status.showSpinner} title="Detecting ECLAIR" />
+        <Spinner show={props.status.checking_path !== undefined} title="Detecting ECLAIR" />
       </div>
       <div className="summary-actions">
         <div className="actions-title"><strong>Actions</strong></div>
@@ -54,8 +53,8 @@ export function Summary(props: {
         </VscodeButton>
       </div>
       <PickPath
-        value={props.installPath.path}
-        placeholder={props.installPath.placeholder}
+        value={props.status.install_path}
+        placeholder={DEFAULT_INSTALL_PATH_PLACEHOLDER}
         on_selected={(newPath) => {
           props.dispatch_state({ type: "update-install-path", path: newPath });
           props.post_message({
@@ -69,19 +68,17 @@ export function Summary(props: {
             canSelectFolders: true,
             canSelectMany: false,
             title: "Select the ECLAIR installation",
-            defaultUri: props.installPath.path || undefined,
+            defaultUri: props.status.install_path || undefined,
           });
           if (result?.canceled || !result?.paths?.[0]) {
             return;
           }
           const picked = String(result.paths[0]);
           props.dispatch_state({ type: "update-install-path", path: picked });
-          props.post_message({
-            command: "update-path",
-            newPath: picked.trim(),
-          });
         }}
       />
     </div>
   );
 }
+
+const DEFAULT_INSTALL_PATH_PLACEHOLDER = "Enter the tool's path if not in the global PATH";

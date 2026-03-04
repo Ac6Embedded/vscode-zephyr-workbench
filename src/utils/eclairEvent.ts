@@ -4,9 +4,6 @@ import { EclairTemplate, EclairTemplateKind } from "./eclair/template";
 
 // Commands sent FROM extension backend TO webview frontend
 export type ExtensionMessage = {
-  command: "toggle-spinner",
-  show: boolean,
-} | {
   command: "eclair-status",
   installed: boolean,
   version: string,
@@ -15,11 +12,7 @@ export type ExtensionMessage = {
   path: string,
 } | {
   command: "set-path-status",
-  text: string,
-} | {
-  // TODO using the placeholder for status reporting is undesirable
-  command: "set-install-path-placeholder",
-  text: string,
+  message: string | undefined,
 } | {
   command: "clear-repo-presets",
   workspace: string,

@@ -19,6 +19,9 @@ import { match } from "ts-pattern";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
 import { z } from "zod";
 import { EclairTemplate } from "../utils/eclair/template";
+import { EclairManagerEnv } from "./EclairManagerPanel/env";
+
+const ECLAIR_MANAGER_SETTINGS_FILENAME = "zephyr-workbench.eclair.json";
 
 const BuildConfigurationSchema = z.object({
   name: z.string(),
@@ -64,8 +67,7 @@ export class EclairManagerPanel {
   private _settingsRoot: string | undefined;
   private _disposables: vscode.Disposable[] = [];
   private _didInitialProbe = false;
-  private _envWatcher: fs.FSWatcher | undefined;
-  private envData: any | undefined;
+  private _env: EclairManagerEnv;
   private envYamlDoc: any | undefined;
   private _reportServerTerminal: vscode.Terminal | undefined;
   private _presetRepos: PresetRepositories;
@@ -107,15 +109,38 @@ export class EclairManagerPanel {
     this._extensionUri = extensionUri;
     this._workspaceFolder = workspaceFolder;
     this._settingsRoot = settingsRoot;
+    this._env = new EclairManagerEnv();
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     this._presetRepos = new PresetRepositories(
       this.post_message.bind(this),
       (line) => getOutputChannel().appendLine(line),
     );
 
-    // Load env.yml and watch for external edits so the path field stays in sync
-    this.loadEnvYaml();
-    this.startEnvWatcher();
+    this._env.load();
+
+    const on_changed_ctx = { last_eclair_path: "" };
+    this._env.on_changed((r) => {
+      if (!this._panel.visible) {
+        return;
+      }
+
+      if ("err" in r) {
+        // env was not correctly loaded, ignore
+        return;
+      }
+
+      const post_message = (m: ExtensionMessage) => this._panel.webview.postMessage(m);
+      const { path } = this.getEclairPathFromEnv();
+      if (on_changed_ctx.last_eclair_path !== path) {
+        on_changed_ctx.last_eclair_path = path || "";
+        post_message({ command: "set-install-path", path: path || "" });
+        this.probe_eclair();
+      }
+    });
+    let start_result = this._env.start_env_watcher();
+    if ("err" in start_result) {
+      vscode.window.showErrorMessage(`[EclairManager] Failed to start env watcher: ${start_result.err}`);
+    }
   }
 
   public static render(extensionUri: vscode.Uri, workspaceFolder?: vscode.WorkspaceFolder, settingsRoot?: string) {
@@ -145,9 +170,7 @@ export class EclairManagerPanel {
 
   public dispose() {
     EclairManagerPanel.currentPanel = undefined;
-    if (this._envWatcher) {
-      try { this._envWatcher.close(); } catch { /* ignore */ }
-    }
+    this._env.dispose();
     // Dispose report server terminal if running
     if (this._reportServerTerminal) {
       try {
@@ -278,70 +301,32 @@ export class EclairManagerPanel {
   }
 
   /**
-   * Loads the env.yml file into memory (this.envData and this.envYamlDoc).
-   * Used to keep the UI and backend in sync with external changes.
-   */
-  private loadEnvYaml() {
-    try {
-      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-      if (fs.existsSync(envYamlPath)) {
-        const envYaml = fs.readFileSync(envYamlPath, "utf8");
-        this.envData = yaml.parse(envYaml);
-        this.envYamlDoc = yaml.parseDocument(envYaml);
-      }
-    } catch {
-      this.envData = undefined;
-      this.envYamlDoc = undefined;
-    }
-  }
-
-  /**
-   * Starts a file watcher on env.yml to reload it if changed externally.
-   * Keeps the UI fields in sync with manual edits or other tools.
-   */
-  private startEnvWatcher() {
-    if (this._envWatcher) {
-      return;
-    }
-    const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-    if (!fs.existsSync(envYamlPath)) {
-      return;
-    }
-
-    this._envWatcher = fs.watch(envYamlPath, async () => {
-      this.loadEnvYaml();
-      if (this._panel.visible) {
-        const post_message = (m: ExtensionMessage) => this._panel.webview.postMessage(m);
-        const eclairInfo = this.getEclairPathFromEnv();
-        const path = (typeof eclairInfo === 'object' && typeof eclairInfo.path === 'string') ? eclairInfo.path : '';
-        const pathToShow = (!path || path === "") ? "Not Found" : path;
-        post_message({ command: "set-install-path", path: pathToShow });
-        post_message({ command: "set-path-status", text: pathToShow });
-        post_message({ command: "set-install-path-placeholder", text: pathToShow });
-      }
-    });
-  }
-
-  /**
    * Returns the ECLAIR path from env.yml (EXTRA_TOOLS), if present.
    * Used to display the current ECLAIR path in the UI and for auto-detection logic.
    */
   private getEclairPathFromEnv(): { path: string | undefined, index: number } {
     try {
-      const arr = (this.envData as any)?.other?.EXTRA_TOOLS?.path;
-      if (Array.isArray(arr) && arr.length > 0) {
-        const idx = arr.length - 1;
-        return { path: normalizePath(arr[idx]), index: idx };
+      const arr = this._env.data?.other?.EXTRA_TOOLS?.path || [];
+      if (arr.length > 0) {
+        for (let i = 0; i < arr.length; i++) {
+          const p = arr[i];
+          if (is_eclair_path(p)) {
+            return { path: normalizePath(p), index: i };
+          }
+        }
       }
     } catch {
       // ignore
     }
-    // Fallback: read directly from env.yml helpers in case in-memory parse failed
-    const arr = getExtraPaths("EXTRA_TOOLS");
-    if (arr.length > 0) {
-      const idx = arr.length - 1;
-      return { path: normalizePath(arr[idx]), index: idx };
-    }
+
+    // TODO consider removing this fallback since it does a very similar parsing
+    // so it should be useless
+    //// Fallback: read directly from env.yml helpers in case in-memory parse failed
+    //const arr = getExtraPaths("EXTRA_TOOLS");
+    //if (arr.length > 0) {
+    //  const idx = arr.length - 1;
+    //  return { path: normalizePath(arr[idx]), index: idx };
+    //}
     return { path: undefined, index: -1 };
   }
 
@@ -351,30 +336,10 @@ export class EclairManagerPanel {
    */
   private saveEclairPathToEnv(installPath?: string) {
     const dir = this.toInstallDir(installPath);
-    if (!dir) {
-      return;
-    }
-    const normalized = normalizePath(dir);
-    // Allows you to save any value
-    if (!normalized) {
-      return;
-    }
-    // get current paths
-    const arr = getExtraPaths("EXTRA_TOOLS");
-    // find index where eclair is detected or matches current UI
-    let idx = this.getEclairPathFromEnv().index;
-    if (idx < 0) {
-      idx = 0;
-    }
-    // use setExtraPath helper to update env.yml
-    require("../utils/envYamlUtils").setExtraPath("EXTRA_TOOLS", idx, normalized);
-    // reload in-memory state
-    this.loadEnvYaml();
-    this.startEnvWatcher();
-    // persist in UI immediately with the saved value
-    const post_message = (m: ExtensionMessage) => this._panel.webview.postMessage(m);
-    post_message({ command: 'set-path-status', text: normalized });
-    post_message({ command: 'set-install-path-placeholder', text: normalized });
+    const normalized = dir ? normalizePath(dir) : undefined;
+
+    let { index: idx } = this.getEclairPathFromEnv();
+    this._env.save_extra_path(normalized, idx);
   }
 
   /**
@@ -452,10 +417,10 @@ export class EclairManagerPanel {
     this._panel.onDidChangeViewState(async () => {
       if (this._panel.visible) {
         try {
-          post_message({ command: "toggle-spinner", show: true });
-          await this.runEclair();
+          post_message({ command: "set-path-status", message: "Probing ECLAIR..." });
+          await this.probe_eclair();
         } finally {
-          post_message({ command: "toggle-spinner", show: false });
+          post_message({ command: "set-path-status", message: undefined });
         }
         // Restore saved SCA config whenever the panel becomes visible again
         await this.loadScaConfig();
@@ -465,10 +430,10 @@ export class EclairManagerPanel {
     if (!this._didInitialProbe) {
       this._didInitialProbe = true;
       try {
-        post_message({ command: "toggle-spinner", show: true });
-        await this.runEclair();
+        post_message({ command: "set-path-status", message: "Probing ECLAIR..." });
+        await this.probe_eclair();
       } finally {
-        post_message({ command: "toggle-spinner", show: false });
+        post_message({ command: "set-path-status", message: undefined });
       }
     }
 
@@ -495,9 +460,6 @@ export class EclairManagerPanel {
     match(m)
       .with({ command: "update-path" }, ({ newPath }) => {
         this.saveEclairPathToEnv(newPath);
-        const eclairInfo = this.getEclairPathFromEnv();
-        const path = eclairInfo.path || "";
-        // TODO post_message({ command: "path-updated", tool, path, success: true });
       })
       .with({ command: "open-external" }, ({ url }) => open_link(url))
       .with({ command: "refresh-status" }, async () => this.refresh_status())
@@ -613,7 +575,7 @@ export class EclairManagerPanel {
           return;
         }
       })
-      .with({ command: "probe-eclair" }, () => this.runEclair())
+      .with({ command: "probe-eclair" }, () => this.probe_eclair())
       .with({ command: "start-report-server" }, async ({ workspace, build_config }) => {
         if (!workspace || !build_config) {
           vscode.window.showErrorMessage("Cannot start report server: workspace/build configuration not provided.");
@@ -693,17 +655,14 @@ export class EclairManagerPanel {
       return;
     }
 
-    // If an installPath was provided in the UI, persist it to env.yml
-    if (cfg.install_path) {
-      this.saveEclairPathToEnv(cfg.install_path);
-    }
-
-    const config = vscode.workspace.getConfiguration(undefined, folderUri);
-
-    await config.update(
-      "zephyr-workbench.sca.eclair",
-      deep_tokenize_paths(cfg, folderUri),
-      vscode.ConfigurationTarget.WorkspaceFolder,
+    const settingsUri = getEclairManagerSettingsUri(folderUri);
+    const settingsDirUri = vscode.Uri.joinPath(folderUri, ".vscode");
+    const payload = deep_tokenize_paths(cfg, folderUri);
+    await vscode.workspace.fs.createDirectory(settingsDirUri);
+    const payload_utf8 = new TextEncoder().encode(JSON.stringify(payload, null, 2));
+    await vscode.workspace.fs.writeFile(
+      settingsUri,
+      payload_utf8,
     );
   }
 
@@ -711,12 +670,13 @@ export class EclairManagerPanel {
    * Probes the system for ECLAIR installation, gets version, and updates the UI accordingly.
    * If ECLAIR is found and not present in env.yml, adds it automatically.
    */
-  private async runEclair() {
-    this.loadEnvYaml();
+  private async probe_eclair() {
+    // Force reload of env.yml. We use a watcher but just in case the watcher
+    // misses it
+    this._env.load();
+
     const post_message = (m: ExtensionMessage) => this._panel.webview.postMessage(m);
-    post_message({ command: "toggle-spinner", show: true });
-    post_message({ command: "set-path-status", text: "Checking" });
-    post_message({ command: "set-install-path-placeholder", text: "Checking" });
+    post_message({ command: "set-path-status", message: "Probing ECLAIR..." });
 
     const readStdout = async (proc: any) => {
       let out = "";
@@ -754,6 +714,7 @@ export class EclairManagerPanel {
 
     const installed = !!version;
 
+    // TODO enhance
 
     let eclairInfo = this.getEclairPathFromEnv();
     // ECLAIR is detected but not present in env.yml, add it automatically (minimal approach)
@@ -764,18 +725,13 @@ export class EclairManagerPanel {
     ) {
       const detectedDir = normalizePath(path.dirname(exePath));
       this.saveEclairPathOnceIfMissing(detectedDir);
-      this.loadEnvYaml();
       eclairInfo = this.getEclairPathFromEnv();
     }
 
     const eclairPath = (typeof eclairInfo === 'object' && typeof eclairInfo.path === 'string') ? eclairInfo.path : '';
     post_message({ command: 'set-install-path', path: eclairPath });
-    post_message({ command: 'set-path-status', text: eclairPath });
-    post_message({ command: 'set-install-path-placeholder', text: eclairPath });
-
+    post_message({ command: 'set-path-status', message: undefined });
     post_message({ command: 'eclair-status', installed, version: installed ? version! : 'unknown' });
-    post_message({ command: "toggle-spinner", show: false });
-
   }
 
   private async _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): Promise<string> {
@@ -803,17 +759,10 @@ export class EclairManagerPanel {
 
   async refresh_status() {
     try {
-      this.post_message({ command: "toggle-spinner", show: true });
-      await this.runEclair();
-      const eclairInfo = this.getEclairPathFromEnv();
-      const path = eclairInfo?.path || "";
-      this.post_message({ command: "set-install-path", path });
-      this.post_message({ command: "set-path-status", text: path });
-      this.post_message({ command: "set-install-path-placeholder", text: path });
+      await this.probe_eclair();
     } finally {
-      this.post_message({ command: "toggle-spinner", show: false });
+      this.post_message({ command: "set-path-status", message: undefined });
     }
-    // Webview is now mounted and ready — restore the full saved SCA config
     await this.loadScaConfig();
   }
 
@@ -1365,7 +1314,7 @@ function resolveVsCodeVariables(p: string, folderUri: vscode.Uri): string {
 // Gets the west workspace path from settings.json configuration.
 function getWestWorkspacePath(folderUri: vscode.Uri): string | undefined {
   const config = vscode.workspace.getConfiguration(undefined, folderUri);
-  const westWorkspace = config.get<string>("zephyr-workbench.westWorkspace");
+  const westWorkspace = deep_resolve_paths(config.get<string>("zephyr-workbench.westWorkspace"), folderUri);
   
   if (westWorkspace && fs.existsSync(westWorkspace)) {
     // Verify it has .west folder
@@ -1486,6 +1435,27 @@ function preset_source_key(source: EclairPresetTemplateSource, repos: EclairRepo
   return JSON.stringify(source);
 }
 
+function getEclairManagerSettingsUri(folderUri: vscode.Uri): vscode.Uri {
+  return vscode.Uri.joinPath(folderUri, ".vscode", ECLAIR_MANAGER_SETTINGS_FILENAME);
+}
+
+async function readEclairManagerSettings(folderUri: vscode.Uri): Promise<any | undefined> {
+  const settingsUri = getEclairManagerSettingsUri(folderUri);
+  try {
+    const raw = await vscode.workspace.fs.readFile(settingsUri);
+    const text = Buffer.from(raw).toString("utf8");
+    if (!text.trim()) {
+      return {};
+    }
+    return JSON.parse(text);
+  } catch (err: any) {
+    if (err instanceof vscode.FileSystemError && err.code === "FileNotFound") {
+      return undefined;
+    }
+    throw err;
+  }
+}
+
 async function preload_presets_from_configs(
   _presetRepos: PresetRepositories,
   by_workspace: Record<string, FullEclairScaConfig>,
@@ -1540,11 +1510,14 @@ function load_project_build_configs(app: ZephyrAppProject): Result<BuildConfigur
   }
 }
 
-function load_app_eclair_sca_config(app: ZephyrAppProject): Result<FullEclairScaConfig, string> {
+async function load_app_eclair_sca_config(app: ZephyrAppProject): Promise<Result<FullEclairScaConfig, string>> {
   try {
     const folder_uri = app.workspaceFolder.uri;
-    const folder_config = vscode.workspace.getConfiguration(undefined, folder_uri);
-    const raw_cfg = folder_config.get<any>("zephyr-workbench.sca.eclair") ?? {};
+    let raw_cfg = await readEclairManagerSettings(folder_uri);
+    if (!raw_cfg) {
+      const folder_config = vscode.workspace.getConfiguration(undefined, folder_uri);
+      raw_cfg = folder_config.get<any>("zephyr-workbench.sca.eclair") ?? {};
+    }
     const resolved_cfg = deep_resolve_paths(raw_cfg, app.workspaceFolder.uri);
     const parsed = FullEclairScaConfigSchema.safeParse(resolved_cfg);
     if (!parsed.success) {
@@ -1559,3 +1532,8 @@ function load_app_eclair_sca_config(app: ZephyrAppProject): Result<FullEclairSca
   }
 }
 
+
+export function is_eclair_path(p: string) {
+  const eclair_exe = process.platform === "win32" ? path.join(p, "eclair.exe") : path.join(p, "eclair");
+  return fs.existsSync(eclair_exe) && fs.statSync(eclair_exe).isFile();
+}

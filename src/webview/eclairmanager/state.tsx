@@ -6,7 +6,6 @@ import { produce, WritableDraft } from "immer";
 import { Monospace } from "./components/common_components";
 import { BuildConfigInfo } from "../../utils/eclairEvent";
 
-export const DEFAULT_INSTALL_PATH_PLACEHOLDER = "Enter the tool's path if not in the global PATH";
 const BUGSENG_REPO_URL = "https://github.com/BUGSENG/zephyr-workbench-eclair-presets";
 export const BUGSENG_REPO_LINK = <a href={BUGSENG_REPO_URL}><Monospace>BUGSENG/zephyr-workbench-eclair-presets</Monospace></a>;
 
@@ -36,7 +35,6 @@ export interface EclairState {
 }
 
 export interface EclairWorkspaceBuildState {
-  install_path: InstallPathState;
   repos: EclairRepos;
   configs: EclairConfig[];
   current_config_index: number;
@@ -57,7 +55,8 @@ export function default_eclair_state(): EclairState {
     status: {
       version: "Checking",
       installed: false,
-      showSpinner: false,
+      checking_path: undefined,
+      install_path: "",
     },
     by_workspace: {},
     build_configs_by_workspace: {},
@@ -68,7 +67,8 @@ export function default_eclair_state(): EclairState {
 export interface StatusState {
   version: string;
   installed: boolean;
-  showSpinner: boolean;
+  checking_path: string | undefined;
+  install_path: string;
 }
 
 export type MainAnalysisConfigurationState = {
@@ -81,18 +81,6 @@ export type MainAnalysisConfigurationState = {
   type: "zephyr-ruleset",
   ruleset: ZephyrRulesetState,
 };
-
-export interface InstallPathState {
-  path: string;
-  placeholder: string;
-}
-
-export function default_install_path_state(): InstallPathState {
-  return {
-    path: "",
-    placeholder: DEFAULT_INSTALL_PATH_PLACEHOLDER,
-  };
-}
 
 export interface ExtraConfigState {
   path: string;
@@ -197,12 +185,9 @@ export type EclairStateAction =
   }
   // Update actions
   | { type: "update-install-path"; path: string }
+  | { type: "set-path-status"; message: string | undefined }
   // Message-based actions
-  | { type: "toggle-spinner"; show: boolean }
   | { type: "set-eclair-status"; installed: boolean; version: string }
-  | { type: "set-install-path"; path: string }
-  | { type: "set-install-path-placeholder"; text: string }
-  | { type: "set-path-status"; text: string }
   | { type: "preset-content"; source: EclairPresetTemplateSource; template: EclairTemplate | { loading: string } | { error: string }; workspace?: string; build_config?: string }
   // Repo management actions
   | { type: "add-repo"; name: string; origin: string; ref: string; rev?: string }
@@ -254,16 +239,6 @@ function build_configs(cfg: FullEclairScaConfig): EclairConfig[] {
   return cfg.configs.map(build_config);
 }
 
-function build_install_path_state(path: string | undefined, prev?: InstallPathState): InstallPathState {
-  if (path === undefined) {
-    return prev ?? default_install_path_state();
-  }
-  return {
-    path,
-    placeholder: path ? "" : DEFAULT_INSTALL_PATH_PLACEHOLDER,
-  };
-}
-
 function are_repos_equal(a: EclairRepos, b: EclairRepos | undefined): boolean {
   if (!b) {
     return false;
@@ -301,7 +276,6 @@ function build_workspace_build_state(cfg: FullEclairScaConfig, prev?: EclairWork
   const available_presets = prev?.available_presets || { by_path: new Map(), by_repo_and_path: new Map() };
 
   return {
-    install_path: build_install_path_state(cfg.install_path, prev?.install_path),
     repos,
     configs,
     current_config_index,
@@ -617,48 +591,14 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
         .exhaustive();
     })
     .with({ type: "update-install-path" }, ({ path }) => {
-      const selected = get_selected_context(draft);
-      if (!selected) {
-        return;
-      }
-      selected.state.install_path.path = path;
+      draft.status.install_path = path;
     })
-    .with({ type: "toggle-spinner" }, ({ show }) => {
-      draft.status.showSpinner = show;
+    .with({ type: "set-path-status" }, ({ message }) => {
+      draft.status.checking_path = message;
     })
     .with({ type: "set-eclair-status" }, ({ installed, version }) => {
       draft.status.installed = installed;
       draft.status.version = installed ? version.trim() || "Unknown" : "Unknown";
-    })
-    .with({ type: "set-install-path" }, ({ path }) => {
-      const selected = get_selected_context(draft);
-      if (!selected) {
-        return;
-      }
-      selected.state.install_path.path = path;
-      selected.state.install_path.placeholder = path ? "" : DEFAULT_INSTALL_PATH_PLACEHOLDER;
-    })
-    .with({ type: "set-install-path-placeholder" }, ({ text }) => {
-      const selected = get_selected_context(draft);
-      if (!selected) {
-        return;
-      }
-      selected.state.install_path.placeholder = text;
-    })
-    .with({ type: "set-path-status" }, ({ text }) => {
-      const selected = get_selected_context(draft);
-      if (!selected) {
-        return;
-      }
-      if (text.trim().toLowerCase() === "checking") {
-        selected.state.install_path = { path: "", placeholder: "Checking" };
-      } else if (text.trim() === "") {
-        selected.state.install_path.path = "";
-        selected.state.install_path.placeholder = DEFAULT_INSTALL_PATH_PLACEHOLDER;
-      } else {
-        selected.state.install_path.path = text;
-        selected.state.install_path.placeholder = "";
-      }
     })
     .with({ type: "preset-content" }, ({ source, template, workspace, build_config }) => {
       const selected = get_selected_context(draft, workspace);

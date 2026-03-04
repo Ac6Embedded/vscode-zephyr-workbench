@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useReducer, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import type { ExtensionMessage, WebviewMessage } from "../../utils/eclairEvent";
-import { MainAnalysisConfigurationState, EclairStateAction, PresetsSelectionState, default_eclair_state, default_install_path_state, eclairReducer, EclairConfig, EclairWorkspaceBuildState, EclairState } from "./state";
+import { MainAnalysisConfigurationState, EclairStateAction, PresetsSelectionState, default_eclair_state, eclairReducer, EclairConfig, EclairWorkspaceBuildState, EclairState } from "./state";
 import { Summary } from "./components/summary";
 import { ReportsSection } from "./components/reports_section";
 import { ExtraConfigSection } from "./components/extra_config_section";
@@ -109,6 +109,12 @@ export function EclairManagerPanel() {
         Select a workspace and build configuration, choose rulesets or presets, and generate the reports you need for reviews and compliance.
       </p>
 
+      <Summary
+        status={state.status}
+        post_message={post_message}
+        dispatch_state={dispatch_state}
+      />
+
       <fieldset style={{ width: "100%", boxSizing: "border-box" }}>
         <legend>
           Context
@@ -146,13 +152,6 @@ export function EclairManagerPanel() {
           />)}
         </div>
       </fieldset>
-
-      <Summary
-        status={state.status}
-        installPath={current_context_state?.install_path ?? default_install_path_state()}
-        post_message={post_message}
-        dispatch_state={dispatch_state}
-      />
 
       {current_context_state && workspace && (<EclairManagerWithConfigs
         workspace={workspace}
@@ -347,15 +346,13 @@ function handleMessage(
 
   match(msg)
     .with({ command: "rpc-response" }, (message) => rpc.handleMessage(message))
-    .with({ command: "toggle-spinner" }, ({ show }) => dispatch({ type: "toggle-spinner", show: !!show }))
     .with({ command: "eclair-status" }, ({ installed, version }) => dispatch({
       type: "set-eclair-status",
       installed: !!installed,
       version: installed ? String(version || "").trim() || "Unknown" : "Unknown",
     }))
-    .with({ command: "set-install-path" }, ({ path }) => dispatch({ type: "set-install-path", path: String(path ?? "") }))
-    .with({ command: "set-install-path-placeholder" }, ({ text }) => dispatch({ type: "set-install-path-placeholder", text: String(text ?? "") }))
-    .with({ command: "set-path-status" }, ({ text }) => dispatch({ type: "set-path-status", text: String(text ?? "") }))
+    .with({ command: "set-install-path" }, ({ path }) => dispatch({ type: "update-install-path", path: String(path ?? "") })) // TODO rename to "set-install-path" for consistency
+    .with({ command: "set-path-status" }, ({ message }) => dispatch({ type: "set-path-status", message }))
     .with({ command: "clear-repo-presets" }, ({ repo, workspace }) => dispatch({
       type: "clear-repo-presets",
       repo,
@@ -397,7 +394,6 @@ function collect_config_from_state(context_state: EclairWorkspaceBuildState): Fu
   }));
 
   return {
-    install_path: context_state.install_path.path,
     configs,
     current_config_index: context_state.current_config_index,
     repos: context_state.repos,
