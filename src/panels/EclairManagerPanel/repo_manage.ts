@@ -64,28 +64,31 @@ export class PresetRepositories {
     origin: string,
     ref: string,
     rev: string | undefined,
-    delete_rev: string | undefined,
+    delete_rev: string | undefined, // TODO unused? Maybe leftover
     workspace: string,
   ): Promise<void> {
-    this.log(`Deleting cached checkout for '${name}' to force update...`);
-    try {
-      const delete_target = delete_rev ?? rev;
-      if (delete_target) {
-        await deleteRepoCheckout(origin, ref, delete_target);
-      }
-      await deleteRepoCheckout(origin, ref);
-    } catch (err: any) {
-      this.log(`[PresetRepositories] Failed to delete checkout for '${name}': ${err}`);
-      this.post_message({ command: "repo-scan-failed", name, message: err?.message || String(err), workspace });
+    const resolved_rev = rev ?? await resolve_ref_to_rev(origin, ref);
+    if (!resolved_rev) {
+      const message = `Failed to resolve ref '${ref}' for repo '${name}'.`;
+      this.log(message);
+      this.post_message({ command: "repo-scan-failed", name, message, workspace });
       return;
     }
-    await this.scan_repo_presets(name, origin, ref, rev, workspace);
+
+    try {
+      await this.scan_repo_presets(name, origin, ref, resolved_rev, workspace);
+    } catch (err: any) {
+      const message = `Failed to update checkout for repo '${name}': ${err}`;
+      this.log(message);
+      this.post_message({ command: "repo-scan-failed", name, message, workspace });
+    }
   }
 
   async load_preset_no_checkout(
     workspace: string,
     source: EclairPresetTemplateSource,
     repos: EclairRepos,
+    repo_revs: Record<string, string>,
   ): Promise<Result<[EclairTemplate, string], string>> {
     let abs_path: string;
     try {
@@ -96,7 +99,11 @@ export class PresetRepositories {
           if (!entry) {
             throw new Error(`Repository '${repo}' not found in repos configuration.`);
           }
-          return path.join(get_checkout_dir(entry.origin, entry.ref, entry.rev), rel_path);
+          const rev = repo_revs[repo];
+          if (!rev) {
+            throw new Error(`Revision for repository '${repo}' is not known, cannot load preset ${rel_path}. Known revs: ${JSON.stringify(repo_revs)}`);
+          }
+          return path.join(get_checkout_dir(entry.origin, entry.ref, rev), rel_path);
         })
         .exhaustive();
     } catch (err: any) {
@@ -199,10 +206,9 @@ function sanitize_path_component(value: string): string {
  * the same cached checkout. Conversely, two repos with the same name but
  * different origins must occupy distinct directories (the hash ensures this).
  */
-function get_checkout_dir(origin: string, ref: string, rev?: string): string {
+function get_checkout_dir(origin: string, ref: string, rev: string): string {
   const hash = origin_hash(origin);
-  const checkout_key = (rev && rev.trim()) ? rev : ref;
-  const safe_ref = sanitize_path_component(checkout_key);
+  const safe_ref = sanitize_path_component(rev);
   return path.join(get_repo_checkouts_root(), hash, safe_ref);
 }
 
@@ -236,7 +242,7 @@ function looks_like_sha(value: string): boolean {
   return /^[0-9a-f]{7,40}$/i.test(value.trim());
 }
 
-async function resolve_ref_to_rev(origin: string, ref: string): Promise<string | undefined> {
+export async function resolve_ref_to_rev(origin: string, ref: string): Promise<string | undefined> {
   const trimmed = ref.trim();
   if (!trimmed) {
     return undefined;
@@ -409,7 +415,7 @@ async function ensure_repo_checkout(name: string, origin: string, ref: string, r
   }
 }
 
-export async function deleteRepoCheckout(origin: string, ref: string, rev?: string): Promise<void> {
+export async function deleteRepoCheckout(origin: string, ref: string, rev: string): Promise<void> {
   const checkoutDir = get_checkout_dir(origin, ref, rev);
   if (fs.existsSync(checkoutDir)) {
     await fs.promises.rm(checkoutDir, { recursive: true, force: true });

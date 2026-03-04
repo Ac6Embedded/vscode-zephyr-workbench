@@ -641,13 +641,10 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
         return;
       }
       // Count successfully loaded templates for this repo.
-      const byPath = selected.state.available_presets.by_repo_and_path.get(name);
       selected.state.repos_scan_state[name] = { status: "success", checkoutDir: checkout_dir };
       if (rev) {
         const entry = selected.state.repos[name];
-        if (entry && !entry.rev) {
-          entry.rev = rev;
-        }
+        entry.rev = rev;
       }
     })
     .with({ type: "repo-scan-failed" }, ({ name, message, workspace, build_config }) => {

@@ -13,7 +13,7 @@ import type { BuildConfigInfo, ExtensionMessage, RpcRequestMessage, WebviewMessa
 import type { EclairRpcMethods, OpenDialog, RpcHandlerMap } from "../utils/eclairRpcTypes";
 import { format_option_settings } from "../utils/eclair/template_utils";
 import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, FullEclairScaConfig, FullEclairScaConfigSchema, PresetSelectionState, default_eclair_repos } from "../utils/eclair/config";
-import { PresetRepositories } from "./EclairManagerPanel/repo_manage";
+import { PresetRepositories, resolve_ref_to_rev } from "./EclairManagerPanel/repo_manage";
 import { Result, unwrap_or_throw } from "../utils/typing_utils";
 import { match } from "ts-pattern";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
@@ -504,21 +504,23 @@ export class EclairManagerPanel {
 
           let cmd = await match(config.main_config)
             .with({ type: "preset" }, async (c) => {
-              const {
-                user_ruleset_name: fake_ruleset_name,
-                user_ruleset_path: fake_ruleset_path,
-              } = create_fake_user_ruleset();
+              const repo_revs = await resolve_repo_revs(cfg.repos ?? {});
 
               let eclair_options = unwrap_or_throw(await handle_sources(
                 [...c.rulesets, ...c.variants, ...c.tailorings],
-                (source) => this._presetRepos.load_preset_no_checkout(workspace, source, cfg.repos ?? {})
+                (source) => this._presetRepos.load_preset_no_checkout(workspace, source, cfg.repos ?? {}, repo_revs)
               ));
+
+              const {
+                user_ruleset_name: fake_ruleset_name,
+                user_ruleset_path: fake_ruleset_path,
+              } = create_fake_user_ruleset(eclair_options);
 
               return build_analysis_command(
                 "USER",
                 fake_ruleset_name,
                 fake_ruleset_path,
-                eclair_options,
+                [],
                 config.extra_config,
                 config.reports,
                 app_dir,
@@ -530,7 +532,7 @@ export class EclairManagerPanel {
               const {
                 user_ruleset_name: fake_ruleset_name,
                 user_ruleset_path: fake_ruleset_path,
-              } = create_fake_user_ruleset();
+              } = create_fake_user_ruleset([]);
 
               return build_analysis_command(
                 c.ecl_path,
@@ -584,7 +586,8 @@ export class EclairManagerPanel {
         await this.startReportServer(workspace, build_config);
       })
       .with({ command: "load-preset" }, async ({ source, repos, workspace }) => {
-        this._presetRepos.load_preset_no_checkout(workspace, source, repos);
+        const repo_revs = await resolve_repo_revs(repos);
+        this._presetRepos.load_preset_no_checkout(workspace, source, repos, repo_revs);
       })
       .with({ command: "scan-repo" }, ({ name, origin, ref, rev, workspace }) => {
         // Immediately check out the repo and scan all .ecl files, sending
@@ -973,7 +976,7 @@ function build_analysis_command(
     ruleset: string,
     user_ruleset_name: string | undefined,
     user_ruleset_path: string | undefined,
-    eclair_options: string[],
+    eclair_env_additional_options: string[],
     extra_config: string | undefined,
     reports: string[] | undefined,
     app_dir: string,
@@ -985,7 +988,7 @@ function build_analysis_command(
       "-DZEPHYR_SCA_VARIANT=eclair",
       ...cmake_compiler_launcher_options(),
       ...cmake_ruleset_selection_options(ruleset, user_ruleset_name, user_ruleset_path),
-      ...cmake_extra_config_options(eclair_options, extra_config?.trim()),
+      ...cmake_extra_config_options(eclair_env_additional_options, extra_config?.trim()),
       ...cmake_reports_options(reports),
     ];
 
@@ -1050,7 +1053,7 @@ function cmake_ruleset_selection_options(
 }
 
 function cmake_extra_config_options(
-  eclair_options: string[],
+  eclair_env_additional_options: string[],
   extra_config: string | undefined,
 ) {
   // .ecl file needs a wrapper that uses -eval_file
@@ -1058,7 +1061,7 @@ function cmake_extra_config_options(
 
   let content = "";
 
-  for (const opt of eclair_options) {
+  for (const opt of eclair_env_additional_options) {
     const escaped_opt = opt.replace(/"/g, '\\"');
     content += `list(APPEND ECLAIR_ENV_ADDITIONAL_OPTIONS "${escaped_opt}")\n`;
   }
@@ -1115,7 +1118,7 @@ function get_west_cmd() {
   return "west";
 }
 
-function create_fake_user_ruleset() {
+function create_fake_user_ruleset(eclair_options: string[]): { user_ruleset_name: string; user_ruleset_path: string } {
   const fake_path = path.join(os.tmpdir(), "dummy_user_ruleset");
   const fake_name = "dummy";
   const fake_ecl = path.join(fake_path, `analysis_${fake_name}.ecl`);
@@ -1125,7 +1128,8 @@ function create_fake_user_ruleset() {
   }
 
   fs.mkdirSync(fake_path, { recursive: true });
-  fs.writeFileSync(fake_ecl, "", { encoding: "utf8" });
+  //fs.writeFileSync(fake_ecl, "", { encoding: "utf8" });
+  fs.writeFileSync(fake_ecl, eclair_options.map(opt => `${opt}`).join("\n"), { encoding: "utf8" });
 
   return {
     user_ruleset_name: fake_name,
@@ -1485,8 +1489,10 @@ async function preload_presets_from_configs(
       const all_presets = [...rulesets, ...variants, ...tailorings]
         .filter(p => p.source.type === "system-path");
 
+      const repo_revs = await resolve_repo_revs(cfg.repos ?? {});
+
       for (const p of all_presets) {
-        const _ = await _presetRepos.load_preset_no_checkout(workspace, p.source, {});
+        const _ = await _presetRepos.load_preset_no_checkout(workspace, p.source, {}, repo_revs);
       }
     }
   }
@@ -1548,4 +1554,23 @@ async function load_app_eclair_sca_config(app: ZephyrAppProject): Promise<Result
 export function is_eclair_path(p: string) {
   const eclair_exe = process.platform === "win32" ? path.join(p, "eclair.exe") : path.join(p, "eclair");
   return fs.existsSync(eclair_exe) && fs.statSync(eclair_exe).isFile();
+}
+
+export async function resolve_repo_revs(repos: Record<string, { origin: string; ref: string; rev?: string }>): Promise<Record<string, string>> {
+  const out = getOutputChannel();
+  const repo_revs: Record<string, string> = {};
+  for (const [repo, entry] of Object.entries(repos)) {
+    const rev = entry.rev;
+    if (rev) {
+      repo_revs[repo] = rev;
+      continue;
+    }
+    const resolved = await resolve_ref_to_rev(entry.origin, entry.ref);
+    if (!resolved) {
+      out.appendLine(`Failed to resolve ref '${entry.ref}' for repo '${repo}' at origin '${entry.origin}'. Please check your configuration.`);
+      continue;
+    }
+    repo_revs[repo] = resolved;
+  }
+  return repo_revs;
 }
