@@ -28,7 +28,7 @@ export type EclairPresetTemplateSource = z.infer<typeof EclairPresetTemplateSour
 
 export const PresetSelectionStateSchema = z.object({
   source: EclairPresetTemplateSourceSchema,
-  edited_flags: z.record(z.string(), z.union([z.string(), z.boolean()])),
+  edited_flags: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
 });
 
 export type PresetSelectionState = z.infer<typeof PresetSelectionStateSchema>;

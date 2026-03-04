@@ -410,7 +410,7 @@ function collect_config_from_state(strict: boolean, context_state: EclairWorkspa
     name: config.name,
     description_md: config.description_md,
     main_config: collect_eclair_analysis_config(strict, config.main_config),
-    extra_config: config.extra_config.path,
+    extra_config: config.extra_config ? config.extra_config : undefined,
     reports: config.reports.selected,
   }));
 

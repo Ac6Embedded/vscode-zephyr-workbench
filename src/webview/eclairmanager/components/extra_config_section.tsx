@@ -1,11 +1,11 @@
 import React from "react";
-import { ExtraConfigState, EclairStateAction } from "../state";
+import { EclairStateAction } from "../state";
 import { PickPath, RichHelpTooltip } from "./common_components";
 import { useRpc } from "../rpc";
 import { ZEPHYR_ECLAIR_CONFIG_URL, ZEPHYR_ECLAIR_USER_RULESET_URL } from "../docs";
 
 export function ExtraConfigSection(props: {
-  extra_config: ExtraConfigState;
+  extra_config: string | undefined;
   dispatch_state: React.Dispatch<EclairStateAction>;
 }) {
   const rpc = useRpc();
@@ -27,14 +27,14 @@ export function ExtraConfigSection(props: {
         Use this when you need a project-specific tweak that is not covered by presets or the Zephyr ruleset.
       </div>
       <PickPath
-        value={props.extra_config.path}
+        value={props.extra_config || ""}
         placeholder="path/to/config"
         on_selected={(newPath) => {
           props.dispatch_state({
             type: "with-selected-workspace",
             action: {
               type: "with-selected-configuration",
-              action: { type: "update-extra-config-path", path: newPath },
+              action: { type: "update-extra-config-path", path: newPath ? newPath : undefined},
             },
           });
         }}
@@ -44,7 +44,7 @@ export function ExtraConfigSection(props: {
             canSelectFolders: false,
             canSelectMany: false,
             title: "Select the additional configuration",
-            defaultUri: props.extra_config.path || undefined,
+            defaultUri: props.extra_config || undefined,
           });
           if (result?.canceled || !result?.paths?.[0]) {
             return;
@@ -54,7 +54,7 @@ export function ExtraConfigSection(props: {
             type: "with-selected-workspace",
             action: {
               type: "with-selected-configuration",
-              action: { type: "update-extra-config-path", path: picked },
+              action: { type: "update-extra-config-path", path: picked ? picked : undefined },
             },
           });
         }}

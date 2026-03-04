@@ -31,7 +31,7 @@ export interface EclairConfig {
   name: string;
   description_md: string;
   main_config: MainAnalysisConfigurationState;
-  extra_config: ExtraConfigState;
+  extra_config: string | undefined;
   reports: ReportsState;
 }
 
@@ -67,21 +67,17 @@ export type MainAnalysisConfigurationState = {
   ruleset: ZephyrRulesetState,
 };
 
-export interface ExtraConfigState {
-  path: string;
-}
-
 export interface ZephyrRulesetState {
   selected: string;
-  userRulesetName: string;
-  userRulesetPath: string;
+  userRulesetName: string | undefined;
+  userRulesetPath: string | undefined;
 }
 
 export function default_ruleset_state(): ZephyrRulesetState {
   return {
     selected: "ECLAIR_RULESET_FIRST_ANALYSIS",
-    userRulesetName: "",
-    userRulesetPath: "",
+    userRulesetName: undefined,
+    userRulesetPath: undefined,
   };
 }
 
@@ -161,7 +157,7 @@ export type EclairStateAction =
        | { type: "update-user-ruleset-path"; path: string }
        | { type: "update-custom-ecl-path"; path: string }
        | { type: "toggle-report"; report: string; checked: boolean }
-       | { type: "update-extra-config-path"; path: string }
+       | { type: "update-extra-config-path"; path: string | undefined }
        | { type: "set-preset-option"; source: EclairPresetTemplateSource; option_id: string; value: boolean | string }
        | { type: "clear-preset-option"; source: EclairPresetTemplateSource; option_id: string }
        | { type: "remove-selected-preset"; kind: EclairTemplateKind; index: number }
@@ -192,8 +188,8 @@ function build_configs(cfg: FullEclairScaConfig): EclairConfig[] {
         type: "zephyr-ruleset" as const,
         ruleset: {
           selected: c.ruleset,
-          userRulesetName: c.userRulesetName ?? "",
-          userRulesetPath: c.userRulesetPath ?? "",
+          userRulesetName: c.userRulesetName,
+          userRulesetPath: c.userRulesetPath,
         },
       }))
       .with({ type: "custom-ecl" }, (c) => ({
@@ -201,7 +197,7 @@ function build_configs(cfg: FullEclairScaConfig): EclairConfig[] {
         state: { ecl: c.ecl_path },
       }))
       .with({ type: "preset" }, (c) => {
-        const to_preset = (p: PresetSelectionState) => ({ source: p.source, edited_flags: { ...p.edited_flags } });
+        const to_preset = (p: PresetSelectionState) => ({ source: p.source, edited_flags: p.edited_flags ? { ...p.edited_flags } : undefined });
         return {
           type: "preset" as const,
           state: {
@@ -217,7 +213,7 @@ function build_configs(cfg: FullEclairScaConfig): EclairConfig[] {
       name: config.name,
       description_md: config.description_md ?? "",
       main_config,
-      extra_config: { path: config.extra_config ?? "" },
+      extra_config: config.extra_config ? config.extra_config : undefined,
       reports: { selected: config.reports && config.reports.length > 0 ? [...config.reports] : ["ALL"] },
     };
   };
@@ -332,7 +328,7 @@ function clone_config(config: EclairConfig): EclairConfig {
     name: config.name,
     description_md: config.description_md,
     main_config: clone_main_config(config.main_config),
-    extra_config: { path: config.extra_config.path },
+    extra_config: config.extra_config,
     reports: { selected: [...config.reports.selected] },
   };
 }
@@ -409,7 +405,7 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
             name,
             description_md: "",
             main_config: { type: "zephyr-ruleset" as const, ruleset: default_ruleset_state() },
-            extra_config: { path: "" },
+            extra_config: undefined,
             reports: { selected: ["ALL"] },
           });
           selected.state.current_config_index = configs.length - 1;
@@ -509,7 +505,7 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
               }
             })
             .with({ type: "update-extra-config-path" }, ({ path }) => {
-              current.extra_config.path = path;
+              current.extra_config = path;
             })
             .with({ type: "set-preset-option" }, ({ source, option_id, value }) => {
               if (current.main_config.type !== "preset") {
@@ -564,7 +560,7 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
                 return;
               }
               const s = current.main_config.state;
-              const new_preset = { source, edited_flags: {} };
+              const new_preset = { source };
               match(kind)
                 .with("ruleset", () => { s.rulesets_state.presets.push(new_preset); })
                 .with("variant", () => { s.variants_state.presets.push(new_preset); })

@@ -1063,6 +1063,7 @@ function cmake_extra_config_options(
     content += `list(APPEND ECLAIR_ENV_ADDITIONAL_OPTIONS "${escaped_opt}")\n`;
   }
 
+  // TODO this is a bit hacky and may be outdated logic
   if (
     extra_config &&
     extra_config !== "Checking" &&
@@ -1156,7 +1157,7 @@ async function handle_source(
     return { err: `Failed to load preset: ${r.err}` };
   }
   const [preset, path] = r.ok;
-  let eclair_commands = format_option_settings(preset, sel.edited_flags).map(s => s.statement);
+  let eclair_commands = format_option_settings(preset, sel.edited_flags || {}).map(s => s.statement);
   eclair_commands.push("-eval_file=\"" + path.replace(/\\/g, "/") + "\"");
   return { ok: eclair_commands };
 }
@@ -1254,8 +1255,12 @@ function deep_tokenize_paths(obj: any, folderUri: vscode.Uri): any {
   const walk = (val: any): any => {
     if (typeof val === "string") {
       const n = val.replace(/\\/g, "/");
-      if (n === wsPath || n.startsWith(wsPath + "/")) {
-        return "${workspaceFolder}" + n.slice(wsPath.length);
+      //if (n === wsPath || n.startsWith(wsPath + "/")) {
+      //  return "${workspaceFolder}" + n.slice(wsPath.length);
+      //}
+      if (path.isAbsolute(n)) {
+        const relative = path.relative(wsPath, n);
+        return "${workspaceFolder}/" + relative.replace(/\\/g, "/");
       }
       return val;
     }
