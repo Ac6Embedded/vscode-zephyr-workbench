@@ -348,12 +348,12 @@ function EclairPresetTemplateSourceDisplay({
   source: EclairPresetTemplateSource;
 }) {
   if (source.type === "system-path") {
-    return <>Path: <Monospace>{source.path}</Monospace></>;
+    return <span>Path: <Monospace>{source.path}</Monospace></span>;
   } else {
     return (
-      <>
-        Repo <Monospace>{source.repo}</Monospace>: <Monospace>{source.path}</Monospace>
-      </>
+      <span>
+        Repo "{source.repo}": <Monospace>{source.path}</Monospace>
+      </span>
     );
   }
 }
