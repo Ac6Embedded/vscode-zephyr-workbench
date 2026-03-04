@@ -186,6 +186,7 @@ function EclairManagerWithConfigs({
   const configs = context_state.configs;
   const current: EclairConfig | undefined = configs[context_state.current_config_index];
   const [collected_config, set_collected_config] = useState<Result<FullEclairScaConfig, string>>({ err: "Not configured" });
+  const [collected_config_to_save, set_collected_config_to_save] = useState<Result<FullEclairScaConfig, string>>({ err: "Not configured" });
 
   const config_items = useMemo(() => configs.map((config, index) => ({ id: index, name: config.name, description: "", index })), [configs]);
   const current_config_item = config_items[context_state.current_config_index];
@@ -197,15 +198,21 @@ function EclairManagerWithConfigs({
   // keeping the reps and the args in sync here).
   useEffect(() => {
     try {
-      let config = collect_config_from_state(context_state);
+      const config = collect_config_from_state(true, context_state);
       set_collected_config({ ok: config });
     } catch (e) {
       set_collected_config({ err: e instanceof Error ? e.message : String(e) });
     }
+    try {
+      const config = collect_config_from_state(false, context_state);
+      set_collected_config_to_save({ ok: config });
+    } catch (e) {
+      set_collected_config_to_save({ err: e instanceof Error ? e.message : String(e) });
+    }
   }, [context_state]);
 
   return (<>
-    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "10px", marginBottom: "10px" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "10px", marginBottom: "10px", flexWrap: "wrap" }}>
       Configuration:
       <SearchableDropdown
         id="configuration-selector"
@@ -260,7 +267,21 @@ function EclairManagerWithConfigs({
         title="Discard unsaved changes and reload from settings.json"
         onClick={() => post_message({ command: "reload-sca-config" })}
       >
-        Reload Configs
+        <span className="codicon codicon-refresh" />
+      </VscodeButton>
+      <VscodeButton
+        appearance="primary"
+        title="Save configuration"
+        disabled={"err" in collected_config_to_save}
+        onClick={() => {
+          if ("err" in collected_config_to_save) {
+            console.error("Cannot apply configuration due to error:", collected_config_to_save.err);
+            return;
+          }
+          post_message({ command: "save-sca-config", config: collected_config_to_save.ok, workspace });
+        }}
+      >
+        <span className="codicon codicon-save" />
       </VscodeButton>
     </div>
 
@@ -384,11 +405,11 @@ function handleMessage(
     .exhaustive();
 }
 
-function collect_config_from_state(context_state: EclairWorkspaceBuildState): FullEclairScaConfig {
+function collect_config_from_state(strict: boolean, context_state: EclairWorkspaceBuildState): FullEclairScaConfig {
   const configs: EclairScaConfig[] = context_state.configs.map(config => ({
     name: config.name,
     description_md: config.description_md,
-    main_config: collect_eclair_analysis_config(config.main_config),
+    main_config: collect_eclair_analysis_config(strict, config.main_config),
     extra_config: config.extra_config.path,
     reports: config.reports.selected,
   }));
@@ -400,11 +421,11 @@ function collect_config_from_state(context_state: EclairWorkspaceBuildState): Fu
   };
 }
 
-function collect_eclair_analysis_config(config: MainAnalysisConfigurationState): EclairScaMainConfig {
+function collect_eclair_analysis_config(strict: boolean, config: MainAnalysisConfigurationState): EclairScaMainConfig {
   return match(config)
     .with({ type: "preset" }, (cfg) => {
       const state = cfg.state;
-      const config = collect_eclair_sca_preset_config(state);
+      const config = collect_eclair_sca_preset_config(strict, state);
       return { type: "preset", ...config } as EclairScaMainConfig;
     })
     .with({ type: "custom-ecl" }, (cfg) => {
@@ -426,8 +447,8 @@ function collect_eclair_analysis_config(config: MainAnalysisConfigurationState):
     .exhaustive();
 }
 
-function collect_eclair_sca_preset_config(state: PresetsSelectionState): EclairScaPresetConfig {
-  if (state.rulesets_state.presets.length <= 0) {
+function collect_eclair_sca_preset_config(strict: boolean, state: PresetsSelectionState): EclairScaPresetConfig {
+  if (strict && state.rulesets_state.presets.length <= 0) {
     throw new Error("No preset ruleset selected");
   }
 

@@ -49,15 +49,6 @@ export function CommandSection({
         <VscodeButton appearance="secondary" onClick={() => dispatch_state({ type: "reset-to-defaults" })} disabled={"err" in config ? false : !has_current_config}>
           Restore Defaults
         </VscodeButton>
-        <VscodeButton appearance="secondary" onClick={() => {
-          if ("err" in config) {
-            console.error("Cannot apply configuration due to error:", config.err);
-            return;
-          }
-          post_message({ command: "save-sca-config", config: config.ok, workspace });
-        }}>
-          Save
-        </VscodeButton>
         <VscodeButton appearance="primary" disabled={"err" in config || !has_current_config || !build_config} onClick={() => {
           if ("err" in config) {
             console.error("Cannot run analysis due to error:", config.err);
