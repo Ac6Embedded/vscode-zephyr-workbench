@@ -1526,10 +1526,6 @@ async function load_app_eclair_sca_config(app: ZephyrAppProject): Promise<Result
     const folder_uri = app.workspaceFolder.uri;
     let raw_cfg = await readEclairManagerSettings(folder_uri);
     if (!raw_cfg) {
-      const folder_config = vscode.workspace.getConfiguration(undefined, folder_uri);
-      raw_cfg = folder_config.get<any>("zephyr-workbench.sca.eclair") ?? null;
-    }
-    if (!raw_cfg) {
       return { ok: { configs: [], repos: default_eclair_repos() } };
     }
     const resolved_cfg = deep_resolve_paths(raw_cfg, app.workspaceFolder.uri);
