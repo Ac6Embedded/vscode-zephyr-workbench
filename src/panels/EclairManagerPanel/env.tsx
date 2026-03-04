@@ -145,7 +145,7 @@ export class EclairManagerEnv {
    */
   save_extra_path(extra_path: string | undefined, idx?: number): void {
     // NOTE a similar work is done in setExtraPath, but this should be slightly more robust
-    // TODO consider refactoring to avoid code duplication
+    // TODO consider refactoring to avoid code duplication or moving this class to src/utils/envYamlUtils.ts
 
     if (!this._data) {
       const out = getOutputChannel();
