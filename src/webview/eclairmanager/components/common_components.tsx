@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import ReactDOM from "react-dom";
 
 // Web component wrappers for VSCode UI Toolkit
 export function VscodeButton(
@@ -184,15 +185,43 @@ export function RichHelpTooltip(props: {
   style?: React.CSSProperties;
 }) {
   const [visible, setVisible] = useState(false);
-  const hideTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const computeCoords = () => {
+    if (!anchorRef.current) { return; }
+    const rect = anchorRef.current.getBoundingClientRect();
+    const TOOLTIP_W = 280;
+    const TOOLTIP_H_ESTIMATE = 200; // conservative upper bound for vertical flip
+    const margin = 8;
+
+    // Clamp horizontal center so the 280px-wide tooltip stays within the viewport
+    const rawLeft = rect.left + rect.width / 2;
+    const clampedLeft = Math.max(
+      TOOLTIP_W / 2 + margin,
+      Math.min(window.innerWidth - TOOLTIP_W / 2 - margin, rawLeft)
+    );
+
+    // Prefer showing below; flip above if there isn't enough room
+    const spaceBelow = window.innerHeight - rect.bottom - 6;
+    const top = spaceBelow >= TOOLTIP_H_ESTIMATE
+      ? rect.bottom + 6
+      : Math.max(margin, rect.top - TOOLTIP_H_ESTIMATE - 6);
+
+    setCoords({ top, left: clampedLeft });
+  };
 
   const show = () => {
     if (hideTimer.current) {
       clearTimeout(hideTimer.current);
     }
     if (!visible) {
-      showTimer.current = setTimeout(() => setVisible(true), 400);
+      showTimer.current = setTimeout(() => {
+        computeCoords();
+        setVisible(true);
+      }, 400);
     }
   };
 
@@ -203,8 +232,44 @@ export function RichHelpTooltip(props: {
     hideTimer.current = setTimeout(() => setVisible(false), 200);
   };
 
+  // Keep position in sync while the tooltip is open (scroll / resize)
+  useLayoutEffect(() => {
+    if (!visible) { return; }
+    const update = () => computeCoords();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [visible]);
+
+  const tooltipContent = coords
+    ? ReactDOM.createPortal(
+        <span
+          className={"rich-tooltip-content" + (visible ? " rich-tooltip-content--visible" : "")}
+          role="tooltip"
+          onMouseEnter={show}
+          onMouseLeave={hide}
+          style={{
+            position: "fixed",
+            top: coords.top,
+            left: coords.left,
+            transform: "translateX(-50%)",
+            fontWeight: "normal",
+            textAlign: "left",
+            textJustify: "inter-word",
+          }}
+        >
+          {props.children}
+        </span>,
+        document.body
+      )
+    : null;
+
   return (
     <span
+      ref={anchorRef}
       className="rich-tooltip"
       style={{ marginLeft: "8px", ...props.style }}
       onMouseEnter={show}
@@ -217,19 +282,7 @@ export function RichHelpTooltip(props: {
         aria-hidden="true"
         style={{ fontSize: "20px", display: "inline-block", verticalAlign: "middle", lineHeight: 1 }}
       />
-      <span
-        className={"rich-tooltip-content" + (visible ? " rich-tooltip-content--visible" : "")}
-        role="tooltip"
-        onMouseEnter={show}
-        onMouseLeave={hide}
-        style={{
-          fontWeight: "normal",
-          textAlign: "left",
-          textJustify: "inter-word",
-        }}
-      >
-        {props.children}
-      </span>
+      {tooltipContent}
     </span>
   );
 }
