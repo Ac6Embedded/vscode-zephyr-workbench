@@ -282,7 +282,6 @@ function PresetPicker(props: {
             action: { type: "set-or-add-preset", kind: props.kind, source: preset.source },
           },
         });
-        // TODO props.post_message({ command: "load-preset-from-source", source: preset.source });
         props.onPresetSelected?.();
       }}
     />
@@ -591,7 +590,7 @@ function TemplateOptionTree({
     .exhaustive();
 }
 
-function sources_are_equal(s1: EclairPresetTemplateSource, s2: EclairPresetTemplateSource): boolean {
+export function sources_are_equal(s1: EclairPresetTemplateSource, s2: EclairPresetTemplateSource): boolean {
   if (s1.type !== s2.type) {
     return false;
   }

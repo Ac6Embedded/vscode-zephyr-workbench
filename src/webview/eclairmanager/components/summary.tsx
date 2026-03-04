@@ -56,7 +56,7 @@ export function Summary(props: {
         value={props.status.install_path}
         placeholder={DEFAULT_INSTALL_PATH_PLACEHOLDER}
         on_selected={(newPath) => {
-          props.dispatch_state({ type: "update-install-path", path: newPath });
+          props.dispatch_state({ type: "set-install-path", path: newPath });
           props.post_message({
             command: "update-path",
             newPath: newPath.trim(),
@@ -74,7 +74,7 @@ export function Summary(props: {
             return;
           }
           const picked = String(result.paths[0]);
-          props.dispatch_state({ type: "update-install-path", path: picked });
+          props.dispatch_state({ type: "set-install-path", path: picked });
         }}
       />
     </div>

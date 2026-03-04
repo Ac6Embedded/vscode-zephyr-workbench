@@ -85,7 +85,6 @@ export function EclairManagerPanel() {
     <div>
       <h1>
         ECLAIR Manager <RichHelpTooltip>
-          {/* TODO Consider dropping this tooltip and moving this content to the documentation page */}
           <p>
             Bugseng <a href={BUGSENG_ECLAIR_OVERVIEW_URL}>ECLAIR</a> is a certified static analysis tool and platform for software verification for use in safety- and security-critical development.
           </p>
@@ -192,10 +191,6 @@ function EclairManagerWithConfigs({
   const current_config_item = config_items[context_state.current_config_index];
 
   // Collect config for sending to backend
-  // Note: this does not depend on the full state but only on the relevant parts
-  // TODO refactor the state to group the relevant parts together and avoid passing
-  // so many individual dependencies to this function (because this requires
-  // keeping the reps and the args in sync here).
   useEffect(() => {
     try {
       const config = collect_config_from_state(true, context_state);
@@ -372,7 +367,7 @@ function handleMessage(
       installed: !!installed,
       version: installed ? String(version || "").trim() || "Unknown" : "Unknown",
     }))
-    .with({ command: "set-install-path" }, ({ path }) => dispatch({ type: "update-install-path", path: String(path ?? "") })) // TODO rename to "set-install-path" for consistency
+    .with({ command: "set-install-path" }, ({ path }) => dispatch({ type: "set-install-path", path: String(path ?? "") }))
     .with({ command: "set-path-status" }, ({ message }) => dispatch({ type: "set-path-status", message }))
     .with({ command: "clear-repo-presets" }, ({ repo, workspace }) => dispatch({
       type: "clear-repo-presets",

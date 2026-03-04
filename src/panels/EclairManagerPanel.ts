@@ -319,14 +319,7 @@ export class EclairManagerPanel {
       // ignore
     }
 
-    // TODO consider removing this fallback since it does a very similar parsing
-    // so it should be useless
-    //// Fallback: read directly from env.yml helpers in case in-memory parse failed
-    //const arr = getExtraPaths("EXTRA_TOOLS");
-    //if (arr.length > 0) {
-    //  const idx = arr.length - 1;
-    //  return { path: normalizePath(arr[idx]), index: idx };
-    //}
+    // TODO consider blending the above logic with getExtraPaths for DRY
     return { path: undefined, index: -1 };
   }
 
@@ -1549,7 +1542,8 @@ async function load_app_eclair_sca_config(app: ZephyrAppProject): Promise<Result
     const parsed = FullEclairScaConfigSchema.safeParse(resolved_cfg);
     if (!parsed.success) {
       // TODO not to console but to the output channel, and ideally also surface in the UI so users know their config is not being loaded
-      console.warn(`Saved ECLAIR SCA config for app '${app.folderName}' failed validation and will be reset:`, parsed.error);
+      const out = getOutputChannel();
+      out.appendLine(`Saved ECLAIR SCA config for app '${app.folderName}' failed validation and will be reset: ${parsed.error}`);
       return { ok: { configs: [], repos: default_eclair_repos() } };
     }
     const data = parsed.data;

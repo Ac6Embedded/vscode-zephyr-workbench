@@ -5,6 +5,7 @@ import { match } from "ts-pattern";
 import { produce, WritableDraft } from "immer";
 import { Monospace } from "./components/common_components";
 import { BuildConfigInfo } from "../../utils/eclairEvent";
+import { sources_are_equal } from "./components/main_configuration/preset_selection";
 
 export const BUGSENG_REPO_LINK = <a href={BUGSENG_PRESETS_REPO_URL}><Monospace>BUGSENG/zephyr-workbench-eclair-presets</Monospace></a>;
 
@@ -121,10 +122,6 @@ export interface MultiPresetSelectionState {
   presets: PresetSelectionState[];
 }
 
-export function preset_template_source_id(source: EclairPresetTemplateSource): string {
-  // TODO consider using a canonical stringification instead or hashing
-  return JSON.stringify(source);
-}
 export interface ReportsState {
   selected: string[];
 }
@@ -165,7 +162,7 @@ export type EclairStateAction =
     }
   }
   // Update actions
-  | { type: "update-install-path"; path: string }
+  | { type: "set-install-path"; path: string }
   | { type: "set-path-status"; message: string | undefined }
   // Message-based actions
   | { type: "set-eclair-status"; installed: boolean; version: string }
@@ -511,9 +508,8 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
               if (current.main_config.type !== "preset") {
                 return;
               }
-              const sourceId = preset_template_source_id(source);
               const update_preset = (preset: WritableDraft<PresetSelectionState>) => {
-                if (preset_template_source_id(preset.source) !== sourceId) {
+                if (!sources_are_equal(preset.source, source)) {
                   return;
                 }
                 if (!preset.edited_flags) {
@@ -530,9 +526,8 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
               if (current.main_config.type !== "preset") {
                 return;
               }
-              const sourceId = preset_template_source_id(source);
               const update_preset = (preset: WritableDraft<PresetSelectionState>) => {
-                if (preset_template_source_id(preset.source) !== sourceId) {
+                if (!sources_are_equal(preset.source, source)) {
                   return;
                 }
                 if (preset.edited_flags) {
@@ -574,7 +569,7 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
         })
         .exhaustive();
     })
-    .with({ type: "update-install-path" }, ({ path }) => {
+    .with({ type: "set-install-path" }, ({ path }) => {
       draft.status.install_path = path;
     })
     .with({ type: "set-path-status" }, ({ message }) => {
