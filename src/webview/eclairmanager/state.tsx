@@ -647,7 +647,9 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
       selected.state.repos_scan_state[name] = { status: "success", checkoutDir: checkout_dir };
       if (rev) {
         const entry = selected.state.repos[name];
-        entry.rev = rev;
+        if (entry) {
+          entry.rev = rev;
+        }
       }
     })
     .with({ type: "repo-scan-failed" }, ({ name, message, workspace, build_config }) => {
