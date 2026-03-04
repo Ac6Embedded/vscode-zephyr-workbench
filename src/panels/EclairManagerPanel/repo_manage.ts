@@ -31,8 +31,9 @@ export class PresetRepositories {
     this.post_message({ command: "clear-repo-presets", repo: name, workspace });
 
     let checkout_dir: string;
+    let checkout_rev: string;
     try {
-      checkout_dir = await ensure_repo_checkout(name, origin, ref, rev);
+      [checkout_dir, checkout_rev] = await ensure_repo_checkout(name, origin, ref, rev);
       this.log(`Checked out repo '${name}' to '${checkout_dir}'.`);
     } catch (err: any) {
       this.log(`Failed to checkout repo '${name}': ${err}`);
@@ -45,7 +46,7 @@ export class PresetRepositories {
     this.log(`Found ${ecl_files.length} .ecl files in repo '${name}'. Loading presets...`);
 
     if (!ecl_files) {
-      this.post_message({ command: "repo-scan-done", name, workspace, rev, checkout_dir });
+      this.post_message({ command: "repo-scan-done", name, workspace, rev: checkout_rev, checkout_dir });
       return;
     }
 
@@ -56,7 +57,7 @@ export class PresetRepositories {
     }
 
     // TODO DRY for repo-scan-done and avoid hidden return paths
-    this.post_message({ command: "repo-scan-done", name, workspace, rev, checkout_dir });
+    this.post_message({ command: "repo-scan-done", name, workspace, rev: checkout_rev, checkout_dir });
   }
 
   async update_repo_checkout(
@@ -373,46 +374,14 @@ async function checkout_repo_into_dir(checkoutDir: string, origin: string, ref: 
  * @param rev Optional locked commit SHA to check out.
  * @returns The absolute path to the checked-out working tree.
  */
-async function ensure_repo_checkout(name: string, origin: string, ref: string, rev?: string): Promise<string> {
+async function ensure_repo_checkout(name: string, origin: string, ref: string, rev?: string): Promise<[string, string]> {
   const resolved_rev = rev ?? await resolve_ref_to_rev(origin, ref);
-  if (resolved_rev) {
-    const checkoutDir = get_checkout_dir(origin, ref, resolved_rev);
-    await checkout_repo_into_dir(checkoutDir, origin, ref, resolved_rev);
-    return checkoutDir;
+  if (!resolved_rev) {
+    throw new Error(`Failed to resolve ref '${ref}' for repo '${name}'.`);
   }
-
-  // We don't know the revision ahead of time. Check out into a unique temp
-  // directory, then move it to a revision-scoped location once we can read HEAD.
-  const tempDir = get_temp_checkout_dir(origin, ref);
-  await checkout_repo_into_dir(tempDir, origin, ref);
-
-  const head_rev = await read_head_rev(tempDir);
-  if (!head_rev) {
-    return tempDir;
-  }
-
-  const finalDir = get_checkout_dir(origin, ref, head_rev);
-  if (finalDir === tempDir) {
-    return tempDir;
-  }
-
-  // If another process already created the rev-scoped checkout, prefer it.
-  if (await is_checkout_usable(finalDir, origin, head_rev)) {
-    await fs.promises.rm(tempDir, { recursive: true, force: true });
-    return finalDir;
-  }
-
-  await fs.promises.mkdir(path.dirname(finalDir), { recursive: true });
-  try {
-    await fs.promises.rename(tempDir, finalDir);
-    return finalDir;
-  } catch {
-    if (await is_checkout_usable(finalDir, origin, head_rev)) {
-      await fs.promises.rm(tempDir, { recursive: true, force: true });
-      return finalDir;
-    }
-    return tempDir;
-  }
+  const checkoutDir = get_checkout_dir(origin, ref, resolved_rev);
+  await checkout_repo_into_dir(checkoutDir, origin, ref, resolved_rev);
+  return [checkoutDir, resolved_rev];
 }
 
 export async function deleteRepoCheckout(origin: string, ref: string, rev: string): Promise<void> {
