@@ -12,7 +12,7 @@ import type { IEclairExtension } from "../ext/eclair_api";
 import type { BuildConfigInfo, ExtensionMessage, RpcRequestMessage, WebviewMessage } from "../utils/eclairEvent";
 import type { EclairRpcMethods, OpenDialog, RpcHandlerMap } from "../utils/eclairRpcTypes";
 import { format_option_settings } from "../utils/eclair/template_utils";
-import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, EclairScaConfig, EclairScaConfigSchema, FullEclairScaConfig, FullEclairScaConfigSchema, PresetSelectionState } from "../utils/eclair/config";
+import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, FullEclairScaConfig, FullEclairScaConfigSchema, PresetSelectionState, default_eclair_repos } from "../utils/eclair/config";
 import { PresetRepositories } from "./EclairManagerPanel/repo_manage";
 import { Result, unwrap_or_throw } from "../utils/typing_utils";
 import { match } from "ts-pattern";
@@ -1516,16 +1516,23 @@ async function load_app_eclair_sca_config(app: ZephyrAppProject): Promise<Result
     let raw_cfg = await readEclairManagerSettings(folder_uri);
     if (!raw_cfg) {
       const folder_config = vscode.workspace.getConfiguration(undefined, folder_uri);
-      raw_cfg = folder_config.get<any>("zephyr-workbench.sca.eclair") ?? {};
+      raw_cfg = folder_config.get<any>("zephyr-workbench.sca.eclair") ?? null;
+    }
+    if (!raw_cfg) {
+      return { ok: { configs: [], repos: default_eclair_repos() } };
     }
     const resolved_cfg = deep_resolve_paths(raw_cfg, app.workspaceFolder.uri);
     const parsed = FullEclairScaConfigSchema.safeParse(resolved_cfg);
     if (!parsed.success) {
       // TODO not to console but to the output channel, and ideally also surface in the UI so users know their config is not being loaded
       console.warn(`Saved ECLAIR SCA config for app '${app.folderName}' failed validation and will be reset:`, parsed.error);
-      return { ok: { configs: [] } };
+      return { ok: { configs: [], repos: default_eclair_repos() } };
     }
-    return { ok: parsed.data };
+    const data = parsed.data;
+    if (data.repos === undefined) {
+      data.repos = default_eclair_repos();
+    }
+    return { ok: data };
   } catch (err: any) {
     const msg = err?.message || String(err);
     return { err: `Failed to load ECLAIR SCA config for app '${app.folderName}': ${msg}` };

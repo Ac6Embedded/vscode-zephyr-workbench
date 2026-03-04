@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+export const BUGSENG_PRESETS_REPO_URL = "https://github.com/BUGSENG/zephyr-workbench-eclair-presets";
+
+export function default_eclair_repos(): EclairRepos {
+  return {
+    "BUGSENG presets": {
+      origin: BUGSENG_PRESETS_REPO_URL,
+      ref: "main",
+    },
+  };
+}
+
 export const EclairPresetTemplateSourceSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("system-path"),

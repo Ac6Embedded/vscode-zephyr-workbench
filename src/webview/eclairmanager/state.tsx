@@ -1,27 +1,12 @@
 import React from "react";
-import { EclairPresetTemplateSource, EclairRepos, EclairScaConfig, FullEclairScaConfig, PresetSelectionState } from "../../utils/eclair/config";
+import { BUGSENG_PRESETS_REPO_URL, EclairPresetTemplateSource, EclairRepos, EclairScaConfig, FullEclairScaConfig, PresetSelectionState } from "../../utils/eclair/config";
 import { EclairTemplate, EclairTemplateKind } from "../../utils/eclair/template";
 import { match } from "ts-pattern";
 import { produce, WritableDraft } from "immer";
 import { Monospace } from "./components/common_components";
 import { BuildConfigInfo } from "../../utils/eclairEvent";
 
-const BUGSENG_REPO_URL = "https://github.com/BUGSENG/zephyr-workbench-eclair-presets";
-export const BUGSENG_REPO_LINK = <a href={BUGSENG_REPO_URL}><Monospace>BUGSENG/zephyr-workbench-eclair-presets</Monospace></a>;
-
-function default_repos(): EclairRepos {
-  return {
-    "BUGSENG presets": {
-      origin: BUGSENG_REPO_URL,
-      ref: "main",
-    },
-    "invalid": {
-      // TODO remove this example
-      origin: "https://example.com/repo.git",
-      ref: "deadbeef",
-    },
-  };
-}
+export const BUGSENG_REPO_LINK = <a href={BUGSENG_PRESETS_REPO_URL}><Monospace>BUGSENG/zephyr-workbench-eclair-presets</Monospace></a>;
 
 export interface EclairState {
   status: StatusState;
@@ -259,7 +244,7 @@ function are_repos_equal(a: EclairRepos, b: EclairRepos | undefined): boolean {
 }
 
 function build_workspace_build_state(cfg: FullEclairScaConfig, prev?: EclairWorkspaceBuildState): EclairWorkspaceBuildState {
-  const repos = cfg.repos ?? default_repos();
+  const repos = cfg.repos ?? {};
   const configs = build_configs(cfg);
   const raw_index = cfg.current_config_index ?? prev?.current_config_index ?? 0;
   const current_config_index = configs.length > 0 ? Math.min(Math.max(raw_index, 0), configs.length - 1) : 0;
