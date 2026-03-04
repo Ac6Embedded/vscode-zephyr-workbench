@@ -96,7 +96,6 @@ export type WebviewMessage = {
   ref: string,
   workspace: string,
   rev?: string,
-  delete_rev?: string,
 } | RpcRequestMessage;
 
 export type RpcError = {

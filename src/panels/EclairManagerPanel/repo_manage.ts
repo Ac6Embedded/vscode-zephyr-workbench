@@ -65,7 +65,6 @@ export class PresetRepositories {
     origin: string,
     ref: string,
     rev: string | undefined,
-    delete_rev: string | undefined, // TODO unused? Maybe leftover
     workspace: string,
   ): Promise<void> {
     const resolved_rev = rev ?? await resolve_ref_to_rev(origin, ref);

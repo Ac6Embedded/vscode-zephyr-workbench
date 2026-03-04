@@ -599,8 +599,8 @@ export class EclairManagerPanel {
         // back preset-content messages so the webview picker is updated.
         this._presetRepos.scan_repo_presets(name, origin, ref, rev, workspace);
       })
-      .with({ command: "update-repo-checkout" }, async ({ name, origin, ref, rev, delete_rev, workspace }) => {
-        await this._presetRepos.update_repo_checkout(name, origin, ref, rev, delete_rev, workspace);
+      .with({ command: "update-repo-checkout" }, async ({ name, origin, ref, rev, workspace }) => {
+        await this._presetRepos.update_repo_checkout(name, origin, ref, rev, workspace);
       })
       .exhaustive();
   }

@@ -109,7 +109,6 @@ export function RepoManagementSection(props: {
               origin: entry.origin,
               ref: entry.ref,
               rev: undefined,
-              delete_rev: locked_rev,
               workspace: props.workspace,
             });
           }}
