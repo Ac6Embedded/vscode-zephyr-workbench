@@ -144,13 +144,18 @@ function MultiPresetSelection(props: {
                 <VscodeAlert type="info">{template.loading}…</VscodeAlert>
               ) : "error" in template ? (
                 <VscodeAlert type="error">Error loading preset: {template.error}</VscodeAlert>
-              ) : (
+              ) : (<>
                 <PresetSettings
                   template={template}
                   preset={preset}
                   dispatch_state={props.dispatch_state}
                 />
-              )}
+                {template.kind !== props.kind && (
+                  <VscodeAlert type="warning">
+                    This preset is of kind "<strong><Monospace>{template.kind}</Monospace></strong>", but is being used as a "<strong><Monospace>{props.kind}</Monospace></strong>". This might lead to unexpected results.
+                  </VscodeAlert>
+                )}
+              </>)}
             </fieldset>
           );
         })}
