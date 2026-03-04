@@ -12,7 +12,7 @@ import type { IEclairExtension } from "../ext/eclair_api";
 import type { BuildConfigInfo, ExtensionMessage, RpcRequestMessage, WebviewMessage } from "../utils/eclairEvent";
 import type { EclairRpcMethods, OpenDialog, RpcHandlerMap } from "../utils/eclairRpcTypes";
 import { format_option_settings } from "../utils/eclair/template_utils";
-import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, FullEclairScaConfig, FullEclairScaConfigSchema, PresetSelectionState, default_eclair_repos } from "../utils/eclair/config";
+import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, EclairScaConfig, FullEclairScaConfig, FullEclairScaConfigSchema, PresetSelectionState, default_eclair_repos } from "../utils/eclair/config";
 import { PresetRepositories, resolve_ref_to_rev } from "./EclairManagerPanel/repo_manage";
 import { Result, unwrap_or_throw } from "../utils/typing_utils";
 import { match } from "ts-pattern";
@@ -493,8 +493,6 @@ export class EclairManagerPanel {
             west_top_dir,
           } = this._prepare_for_analysis(folderUri, build_config);
 
-          const merged_env = await this._get_analysis_env(folderUri, build_dir);
-
           const current_index = cfg.current_config_index ?? 0;
           if (!cfg.configs[current_index]) {
             throw new Error("Could not find configuration at index " + current_index);
@@ -502,24 +500,33 @@ export class EclairManagerPanel {
 
           const config = cfg.configs[current_index];
 
+          const merged_env = await this._get_analysis_env(folderUri, build_dir, config);
+
+          const common_ecl_options = [
+            `-project_name=getenv("ZEPHYR_WORKBENCH_ECLAIR_PROJECT_NAME")`,
+            `-project_root=getenv("ZEPHYR_WORKBENCH_PROJECT_ROOT_DIR")`,
+          ];
+
           let cmd = await match(config.main_config)
             .with({ type: "preset" }, async (c) => {
               const repo_revs = await resolve_repo_revs(cfg.repos ?? {});
 
-              let eclair_options = unwrap_or_throw(await handle_sources(
+              let presets_eclair_options = unwrap_or_throw(await handle_sources(
                 [...c.rulesets, ...c.variants, ...c.tailorings],
                 (source) => this._presetRepos.load_preset_no_checkout(workspace, source, cfg.repos ?? {}, repo_revs)
               ));
 
-              const {
-                user_ruleset_name: fake_ruleset_name,
-                user_ruleset_path: fake_ruleset_path,
-              } = create_fake_user_ruleset(eclair_options);
+              const eclair_options = [
+                ...common_ecl_options,
+                ...presets_eclair_options,
+              ];
+
+              const { user_ruleset_name, user_ruleset_path } = create_user_ruleset(eclair_options);
 
               return build_analysis_command(
                 "USER",
-                fake_ruleset_name,
-                fake_ruleset_path,
+                user_ruleset_name,
+                user_ruleset_path,
                 [],
                 config.extra_config,
                 config.reports,
@@ -529,15 +536,13 @@ export class EclairManagerPanel {
               );
             })
             .with({ type: "custom-ecl" }, (c) => {
-              const {
-                user_ruleset_name: fake_ruleset_name,
-                user_ruleset_path: fake_ruleset_path,
-              } = create_fake_user_ruleset([]);
+              const eclair_options = common_ecl_options;
+              const { user_ruleset_name, user_ruleset_path } = create_user_ruleset(eclair_options);
 
               return build_analysis_command(
                 c.ecl_path,
-                fake_ruleset_name,
-                fake_ruleset_path,
+                user_ruleset_name,
+                user_ruleset_path,
                 [`-eval_file=${c.ecl_path.replace(/\\/g, "/")}`],
                 config.extra_config,
                 config.reports,
@@ -903,6 +908,7 @@ export class EclairManagerPanel {
   async _get_analysis_env(
     folderUri: vscode.Uri,
     build_dir: string,
+    config: EclairScaConfig,
   ): Promise<Record<string, string>> {
     // Determine extra paths for environment
     const extra_paths: string[] = [];
@@ -967,6 +973,9 @@ export class EclairManagerPanel {
         merged_env.PATH
       ].join(path.delimiter);
     }
+
+    merged_env.ZEPHYR_WORKBENCH_ECLAIR_PROJECT_NAME = `${path.basename(folderUri.fsPath)} (${config.name})`;
+    merged_env.ZEPHYR_WORKBENCH_PROJECT_ROOT_DIR = folderUri.fsPath;
 
     return merged_env;
   }
@@ -1118,7 +1127,7 @@ function get_west_cmd() {
   return "west";
 }
 
-function create_fake_user_ruleset(
+function create_user_ruleset(
   eclair_options: string[],
   dir?: string,
   name?: string,
