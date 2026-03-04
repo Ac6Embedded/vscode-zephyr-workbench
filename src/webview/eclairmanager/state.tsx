@@ -538,6 +538,9 @@ export function eclairReducer(state: EclairState, action: EclairStateAction): Ec
                 if (preset.edited_flags) {
                   delete preset.edited_flags[option_id];
                 }
+                if (preset.edited_flags && Object.keys(preset.edited_flags).length === 0) {
+                  delete preset.edited_flags;
+                }
               };
               const s = current.main_config.state;
               s.rulesets_state.presets.forEach(update_preset);
