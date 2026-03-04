@@ -24,6 +24,5 @@
     "cmake.configureOnOpen": false,
     "cSpell.words": [
         "menuconfig"
-    ],
-    "typescript.tsdk": "node_modules/typescript/lib"
+    ]
 }
