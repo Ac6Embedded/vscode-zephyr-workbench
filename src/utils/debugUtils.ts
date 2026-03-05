@@ -488,6 +488,18 @@ export function writeLaunchJson(launchJson: any, project: ZephyrProject) {
   fs.writeFileSync(path.join(project.sourceDir, '.vscode', 'launch.json'), JSON.stringify(launchJson, null, 2));
 }
 
+export function pyOCDLaunchJson(
+  config: any,
+  gdbAddress?: string,
+  gdbPort?: string
+): void {
+  const serverAddress = (gdbAddress && gdbAddress.length > 0) ? gdbAddress : 'localhost';
+  const serverPort = (gdbPort && gdbPort.length > 0) ? gdbPort : '3333';
+
+  config.miDebuggerServerAddress = `${serverAddress}:${serverPort}`;
+  config.serverStarted = 'GDB server listening on port';
+}
+
 export async function findLaunchConfiguration(launchJson: any, project: ZephyrProject, buildConfigName?: string): Promise<any> {
   let debugConfigName: string;
   if(buildConfigName) {
