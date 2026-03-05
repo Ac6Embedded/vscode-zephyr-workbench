@@ -641,8 +641,7 @@ export class EclairManagerPanel {
       }
       post_message({ command: "set-sca-config", by_workspace: configs, build_configs_by_workspace });
       await preload_presets_from_configs(this._presetRepos, configs, post_message);
-      out.appendLine("[EclairManagerPanel] Loaded SCA configs:");
-      out.appendLine(JSON.stringify(configs, null, 2));
+      out.appendLine(`[EclairManagerPanel] Loaded ${Object.keys(configs).length} SCA configs`);
     } catch (err) {
       out.appendLine(`[EclairManagerPanel] Error loading SCA config: ${err}`);
       console.error("[EclairManagerPanel] loadScaConfig error:", err);
@@ -676,6 +675,9 @@ export class EclairManagerPanel {
     // misses it
     this._env.load();
 
+    const ch = getOutputChannel();
+    ch.appendLine("[ECLAIR Probe] Probing for ECLAIR installation...");
+
     const post_message = (m: ExtensionMessage) => this._panel.webview.postMessage(m);
     post_message({ command: "set-path-status", message: "Probing ECLAIR..." });
 
@@ -694,11 +696,14 @@ export class EclairManagerPanel {
       const cmd = process.platform === "win32"
         ? 'powershell -NoProfile -Command "$c=Get-Command eclair -ErrorAction SilentlyContinue; if ($c) { $c.Source }"'
         : 'which eclair';
+      ch.appendLine(`[ECLAIR Probe] Running command: ${cmd}`);
       const proc = await execCommandWithEnv(cmd);
       const outStd = await readStdout(proc);
+      ch.appendLine(`[ECLAIR Probe] Command output: ${outStd}`);
       const lines = outStd.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       exePath = lines[0];
-    } catch {
+    } catch (err) {
+      ch.appendLine(`[ECLAIR Probe] Error running command: ${err}`);
       exePath = undefined;
     }
 
@@ -706,17 +711,20 @@ export class EclairManagerPanel {
     try {
       const proc = await execCommandWithEnv(exePath ? `"${exePath}" -version` : "eclair -version");
       const out = await readStdout(proc);
+      ch.appendLine(`[ECLAIR Probe] Version command output: ${out}`);
       const m1 = out.match(/ECLAIR\s+version\s+([0-9]+(?:\.[0-9]+)*)/i);
       const m2 = out.match(/\b([0-9]+(?:\.[0-9]+)*)\b/);
       version = (m1?.[1] || m2?.[1] || "").trim() || undefined;
-    } catch {
+    } catch (err) {
+      ch.appendLine(`[ECLAIR Probe] Error getting version: ${err}`);
       version = undefined;
     }
 
     const installed = !!version;
 
-    // TODO enhance
+    ch.appendLine(`[ECLAIR Probe] Installed: ${installed}`);
 
+    // TODO enhance
     let eclairInfo = this.getEclairPathFromEnv();
     // ECLAIR is detected but not present in env.yml, add it automatically (minimal approach)
     if (
@@ -724,6 +732,7 @@ export class EclairManagerPanel {
       exePath &&
       (!eclairInfo.path || eclairInfo.path.trim() === "")
     ) {
+      ch.appendLine(`[ECLAIR Probe] ECLAIR detected at '${exePath}' but not set in env.yml, adding it now...`);
       const detectedDir = normalizePath(path.dirname(exePath));
       this.saveEclairPathOnceIfMissing(detectedDir);
       eclairInfo = this.getEclairPathFromEnv();
@@ -733,6 +742,7 @@ export class EclairManagerPanel {
     post_message({ command: 'set-install-path', path: eclairPath });
     post_message({ command: 'set-path-status', message: undefined });
     post_message({ command: 'eclair-status', installed, version: installed ? version! : 'unknown' });
+    ch.appendLine(`[ECLAIR Probe] Final ECLAIR path: ${eclairPath}`);
   }
 
   private async _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): Promise<string> {
