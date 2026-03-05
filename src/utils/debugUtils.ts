@@ -488,7 +488,7 @@ export function writeLaunchJson(launchJson: any, project: ZephyrProject) {
   fs.writeFileSync(path.join(project.sourceDir, '.vscode', 'launch.json'), JSON.stringify(launchJson, null, 2));
 }
 
-export function pyOCDLaunchJson(
+export function pyocdLaunchJson(
   config: any,
   gdbAddress?: string,
   gdbPort?: string
