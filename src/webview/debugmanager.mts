@@ -47,6 +47,27 @@ function main() {
   webviewApi.postMessage({ command: 'webviewReady' });
 }
 
+function stlinkPathDisabled() {
+  const runnerInput = document.getElementById('runnerInput') as HTMLInputElement | null;
+  const runnerName = (runnerInput?.getAttribute('data-value') ?? '').toLowerCase();
+  const disabledFields = runnerName === 'stlink_gdbserver';
+
+  const runnerPathText = document.getElementById('runnerPath') as (TextField & { disabled?: boolean; readOnly?: boolean }) | null;
+  const browseRunnerButton = document.getElementById('browseRunnerButton') as (Button & { disabled?: boolean }) | null;
+
+  if (runnerPathText) {
+    runnerPathText.disabled = disabledFields;
+    runnerPathText.readOnly = disabledFields;
+    runnerPathText.toggleAttribute('disabled', disabledFields);
+    runnerPathText.toggleAttribute('readonly', disabledFields);
+  }
+
+  if (browseRunnerButton) {
+    browseRunnerButton.disabled = disabledFields;
+    browseRunnerButton.toggleAttribute('disabled', disabledFields);
+  }
+}
+
 function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputElement) {
   const items = dropdown.getElementsByClassName('dropdown-item');
 
@@ -397,6 +418,7 @@ function initRunnersDropdown() {
       runner: runnerInput.getAttribute('data-value'),
       runnerPath: runnerPath.value ?? '',
     });
+    stlinkPathDisabled();
   });
 
   runnerInput.addEventListener('keyup', () => {
@@ -512,6 +534,7 @@ function updateConfig(data: any) {
   svdPathText.dispatchEvent(new Event('input'));
   gdbPathText.dispatchEvent(new Event('input'));
   runnerPathText.dispatchEvent(new Event('input'));
+  stlinkPathDisabled();
 
   const programLoaded = (programPathText.value ?? '').trim().length > 0;
   const gdbLoaded = (gdbPathText.value ?? '').trim().length > 0;
@@ -533,6 +556,7 @@ function updateRunnerConfig(runnerPath: string, runnerArgs: string) {
   runnerPathText.dispatchEvent(new Event('input'));
   runnerArgsText.value = runnerArgs ?? '';
   runnerArgsText.dispatchEvent(new Event('input'));
+  stlinkPathDisabled();
 
   if ((runnerPath ?? '').trim().length > 0) {hideSpinner('runnerPathSpinner');}
 }
@@ -550,6 +574,7 @@ function updateRunnerDetect(runnerDetect: boolean, runnerName: string ) {
   } else {
     console.warn('Unexpected value for runnerDetect:', runnerDetect);
   }
+  stlinkPathDisabled();
 }
 
 // Pending selections to be made once dropdowns are populated
