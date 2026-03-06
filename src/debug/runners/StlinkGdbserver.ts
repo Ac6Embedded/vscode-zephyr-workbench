@@ -85,6 +85,36 @@ export class StlinkGdbserver extends WestRunner {
   }
 
   /**
+   * Detect the latest installed STM32CubeCLT version.
+   */
+  public getVersionCubeCLT(showList = false): string | null {
+    const roots =
+      process.platform === 'win32' ? ['C:\\ST\\'] :
+      process.platform === 'darwin' ? ['/opt/ST/'] :
+      ['/opt/st/'];
+
+    const versions: string[] = [];
+    for (const root of roots) {
+      if (!fs.existsSync(root)){
+        continue;
+      }
+
+      const found = fs.readdirSync(root, { withFileTypes: true })
+        .filter(d => d.isDirectory() && d.name.toLowerCase().startsWith('stm32cubeclt_'))
+        .map(d => d.name.replace(/^stm32cubeclt_/i, ''));
+
+      versions.push(...found);
+    }
+    
+    versions.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    if (showList) {
+      console.log('STM32CubeCLTs found:', versions);
+    }
+
+    return versions[0] ?? null;
+  }
+
+  /**
    * Detect if STM32CubeCLT is installed by scanning known installation roots.
    * Only checks folder existence: STM32CubeCLT_*.
    */
@@ -92,3 +122,7 @@ export class StlinkGdbserver extends WestRunner {
     return this.hasCubeCLTFolder();
   }
 }
+
+//Check on the debug console the STM32CubeCLT version detection
+//const s = new StlinkGdbserver();
+//console.log('Latest Version:', s.getVersionCubeCLT(true));
