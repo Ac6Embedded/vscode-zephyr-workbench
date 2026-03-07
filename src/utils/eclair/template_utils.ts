@@ -336,7 +336,7 @@ export function format_option_settings(
         flag_id: entry.id,
         ecl_id,
         source: selected_options[entry.id] === undefined ? "default" : "user",
-        statement: `-setq=${ecl_id},${flags.get(entry.id) ? "1" : "nil"}`,
+        statement: `setq(${ecl_id},${flags.get(entry.id) ? "1" : "nil"})`,
       }];
     }
 
