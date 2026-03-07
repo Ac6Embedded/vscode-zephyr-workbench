@@ -1,0 +1,374 @@
+import React, { useState } from "react";
+import { EclairRepos } from "../../../../../utils/eclair/config";
+import { AvailablePresetsState, EclairStateAction, RepoScanState } from "../../../state";
+import { WebviewMessage } from "../../../../../utils/eclairEvent";
+import { Monospace, RichHelpTooltip, StatusBadge, StatusBadgeState, VscodeBadge, VscodeButton, VscodePanel, VscodeTextField } from "../../common_components";
+import { match } from "ts-pattern";
+
+const EMPTY_REPO_FORM = { name: "", origin: "", ref: "", rev: "" };
+
+/**
+ * UI section for managing preset repositories.
+ */
+export function RepoManagementSection(props: {
+  workspace: string;
+  repos: EclairRepos;
+  repos_scan_state: Record<string, RepoScanState>;
+  available_presets: AvailablePresetsState;
+  dispatch_state: React.Dispatch<EclairStateAction>;
+  post_message: (message: WebviewMessage) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [form, set_form] = useState(EMPTY_REPO_FORM);
+  const [editingName, set_editing_name] = useState<string | null>(null);
+
+  const repoCount = Object.keys(props.repos).length;
+
+  function handle_add() {
+    const name = form.name.trim();
+    const origin = form.origin.trim();
+    const ref = form.ref.trim();
+    const rev = form.rev.trim();
+    if (!name || !origin || !ref) { return; }
+    props.dispatch_state({ type: "add-repo", name, origin, ref, ...(rev ? { rev } : {}) });
+    props.dispatch_state({ type: "repo-scan-started", name });
+    props.post_message({ command: "scan-repo", name, origin, ref, rev: rev || undefined, workspace: props.workspace });
+    set_form(EMPTY_REPO_FORM);
+  }
+
+  function handle_remove(name: string) {
+    props.dispatch_state({ type: "remove-repo", name });
+  }
+
+  function handle_edit_save() {
+    if (!editingName) { return; }
+    const origin = form.origin.trim();
+    const ref = form.ref.trim();
+    const rev = form.rev.trim();
+    if (!origin || !ref) { return; }
+    props.dispatch_state({ type: "update-repo", name: editingName, origin, ref, ...(rev ? { rev } : {}) });
+    props.dispatch_state({ type: "repo-scan-started", name: editingName });
+    props.post_message({ command: "scan-repo", name: editingName, origin, ref, rev: rev || undefined, workspace: props.workspace });
+    set_editing_name(null);
+    set_form(EMPTY_REPO_FORM);
+  }
+
+  function handle_reload_all() {
+    for (const [name, entry] of Object.entries(props.repos)) {
+      props.dispatch_state({ type: "repo-scan-started", name });
+      props.post_message({ command: "scan-repo", name, origin: entry.origin, ref: entry.ref, rev: entry.rev, workspace: props.workspace });
+    }
+  }
+
+  const is_adding = editingName === null;
+  const repo_entries = Object.entries(props.repos);
+
+  return (
+    <div style={{ marginBottom: "12px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <VscodeButton
+          appearance="primary"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "Hide" : "Manage"} Preset Repositories ({repoCount})
+        </VscodeButton>
+        {repo_entries.length > 0 && (
+          <VscodeButton
+            appearance="secondary"
+            onClick={handle_reload_all}
+            title="Re-scan all repositories for preset templates"
+            disabled={repo_entries.some(([name]) => props.repos_scan_state[name]?.status === "loading")}
+          >
+            Reload All
+          </VscodeButton>
+        )}
+      </div>
+
+      {expanded && (<VscodePanel>
+        {repo_entries.length > 0 && <ReposTable
+          repoEntries={repo_entries}
+          repos_scan_state={props.repos_scan_state}
+          available_presets={props.available_presets}
+          handle_reload={(name: string) => {
+            const entry = props.repos[name];
+            if (!entry) { return; }
+            props.dispatch_state({ type: "repo-scan-started", name });
+            props.post_message({ command: "scan-repo", name, origin: entry.origin, ref: entry.ref, rev: entry.rev, workspace: props.workspace });
+          }}
+          handle_update={(name: string) => {
+            const entry = props.repos[name];
+            if (!entry) { return; }
+            const locked_rev = entry.rev;
+            if (locked_rev) {
+              props.dispatch_state({ type: "update-repo", name, origin: entry.origin, ref: entry.ref });
+            }
+            props.dispatch_state({ type: "repo-scan-started", name });
+            props.post_message({
+              command: "update-repo-checkout",
+              name,
+              origin: entry.origin,
+              ref: entry.ref,
+              rev: undefined,
+              workspace: props.workspace,
+            });
+          }}
+          handle_edit_start={(name: string) => {
+            const entry = props.repos[name];
+            set_editing_name(name);
+            set_form({ name, origin: entry.origin, ref: entry.ref, rev: entry.rev ?? "" });
+          }}
+          handle_remove={handle_remove}
+        />}
+
+        {repo_entries.length === 0 && (
+          <p style={{ fontStyle: "italic", color: "var(--vscode-descriptionForeground)" }}>
+            No repositories configured.
+          </p>
+        )}
+
+        <EditForm
+          form={form}
+          is_adding={is_adding}
+          set_form={set_form}
+          handle_add={handle_add}
+          handle_edit_save={handle_edit_save}
+          handle_edit_cancel={() => {
+            set_editing_name(null);
+            set_form(EMPTY_REPO_FORM);
+          }}
+        />
+      </VscodePanel>)}
+    </div>
+  );
+}
+
+function ReposTable({
+  repoEntries,
+  repos_scan_state,
+  available_presets,
+  handle_reload,
+  handle_update,
+  handle_edit_start,
+  handle_remove,
+}: {
+  repoEntries: [string, { origin: string; ref: string; rev?: string }][];
+  repos_scan_state: Record<string, RepoScanState>;
+  available_presets: AvailablePresetsState;
+  handle_reload: (name: string) => void;
+  handle_update: (name: string) => void;
+  handle_edit_start: (name: string) => void;
+  handle_remove: (name: string) => void;
+}) {
+  const [expandedRepos, setExpandedRepos] = useState<Record<string, boolean>>({});
+  const toggle_presets = (name: string) => {
+    setExpandedRepos((prev) => ({ ...prev, [name]: !prev[name] }));
+  };
+
+
+  return (
+    <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "12px", fontSize: "0.9em" }}>
+      <thead>
+        <tr>
+          <th style={{ textAlign: "left", padding: "4px 8px" }}>Name</th>
+          <th style={{ textAlign: "left", padding: "4px 8px" }}>Origin</th>
+          <th style={{ textAlign: "left", padding: "4px 8px" }}>Ref</th>
+          <th style={{ textAlign: "left", padding: "4px 8px" }}>Status</th>
+          <th style={{ textAlign: "left", padding: "4px 8px" }}>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {repoEntries.map(([name, entry]) => {
+          const presets = available_presets.by_repo_and_path.get(name);
+          const preset_entries = presets ? Array.from(presets.entries()) : [];
+          const preset_count = presets?.size ?? 0;
+          const is_expanded = !!expandedRepos[name];
+          const scan_state = repos_scan_state[name];
+          const checkout_dir = scan_state?.status === "success" ? scan_state.checkoutDir : undefined;
+          const normalized_checkout = checkout_dir ? checkout_dir.replace(/\\/g, "/") : undefined;
+          const locked_rev = entry.rev;
+
+          return (
+            <React.Fragment key={name}>
+              <tr style={{ borderTop: "1px solid var(--vscode-panel-border, #444)" }}>
+                <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{name}</td>
+                <td style={{ padding: "4px 8px", fontFamily: "monospace", wordBreak: "break-all" }}>{entry.origin}</td>
+                <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{entry.ref}</td>
+                <td style={{ padding: "4px 8px" }}>
+                  <StatusBadge status={repo_scan_state_to_badge_status(scan_state, preset_count)} />
+                </td>
+                <td style={{ padding: "4px 8px", whiteSpace: "nowrap", gap: "4px", display: "flex", flexWrap: "wrap" }}>
+                  <VscodeButton
+                    appearance="secondary"
+                    onClick={() => handle_reload(name)}
+                    title="Re-scan this repository for preset templates (uses cached checkout)"
+                    disabled={scan_state?.status === "loading"}
+                  >
+                    Reload
+                  </VscodeButton>
+                  <VscodeButton
+                    appearance="secondary"
+                    onClick={() => handle_update(name)}
+                    title="Delete the cached checkout and re-clone from remote to get the latest changes"
+                    disabled={scan_state?.status === "loading"}
+                  >
+                    Update
+                  </VscodeButton>
+                  <VscodeButton
+                    appearance="secondary"
+                    onClick={() => handle_edit_start(name)}
+                  >
+                    Edit
+                  </VscodeButton>
+                  <VscodeButton appearance="secondary" onClick={() => handle_remove(name)}>
+                    Remove
+                  </VscodeButton>
+                  <VscodeButton
+                    appearance="secondary"
+                    onClick={() => toggle_presets(name)}
+                  >
+                    {is_expanded ? "Hide" : "Show"} Details
+                  </VscodeButton>
+                </td>
+              </tr>
+              {is_expanded && (
+                <tr>
+                  <td colSpan={5} style={{ padding: "8px", background: "var(--vscode-editor-background)" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "6px" }}>
+                      <div style={{ fontSize: "0.9em", color: "var(--vscode-descriptionForeground)" }}>
+                        Locked rev: {locked_rev ? <Monospace>{locked_rev}</Monospace> : "(not locked)"}
+                      </div>
+                      {normalized_checkout && (
+                        <div style={{ fontSize: "0.9em", color: "var(--vscode-descriptionForeground)" }}>
+                          Checkout: <Monospace>{normalized_checkout}</Monospace>
+                        </div>
+                      )}
+                      <div style={{ fontSize: "0.9em", color: "var(--vscode-descriptionForeground)" }}>
+                        {scan_state?.status === "loading" && "Scanning repository..."}
+                        {scan_state?.status !== "loading" && preset_entries.length === 0 && "No presets loaded."}
+                      </div>
+                    </div>
+                    {preset_entries.length > 0 && (
+                      <div style={{ maxHeight: "12em", overflowY: "auto" }}>
+                        <ul style={{ margin: 0, paddingLeft: "18px" }}>
+                          {preset_entries.map(([path, preset]) => {
+                            const absolute = normalized_checkout ? `${normalized_checkout}/${path}` : undefined;
+                            return (
+                              <li key={path} style={{ marginBottom: "6px" }}>
+                                <div>
+                                  <Monospace>{path}</Monospace>{" "}
+                                  {"loading" in preset && <span>Loading...</span>}
+                                  {"error" in preset && <span style={{ color: "var(--vscode-errorForeground)" }}>Error: {preset.error}</span>}
+                                  {"title" in preset && <span>{preset.title} ({preset.kind})</span>}
+                                </div>
+                                {absolute && (
+                                  <div style={{ color: "var(--vscode-descriptionForeground)", fontSize: "0.85em" }}>
+                                    <Monospace>{absolute}</Monospace>
+                                  </div>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function EditForm({
+  form,
+  is_adding,
+  set_form,
+  handle_add,
+  handle_edit_save,
+  handle_edit_cancel,
+}: {
+  form: { name: string; origin: string; ref: string; rev: string };
+  is_adding: boolean;
+  set_form: React.Dispatch<React.SetStateAction<{ name: string; origin: string; ref: string; rev: string }>>;
+  handle_add: () => void;
+  handle_edit_save: () => void;
+  handle_edit_cancel: () => void;
+}) {
+  return (<fieldset style={{ display: "flex", gap: "6px", alignItems: "end", flexWrap: "wrap", width: "100%", boxSizing: "border-box" }}>
+    <legend>{is_adding ? "New Repository" : "Edit Repository"}</legend>
+    <div>
+      <VscodeTextField
+        value={form.name}
+        disabled={!is_adding}
+        placeholder="Repository name"
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => set_form((f) => ({ ...f, name: e.target.value }))}
+        style={{ width: "100%", boxSizing: "border-box" }}
+      >Name<RichHelpTooltip>The name used to identify this repository in the configuration.</RichHelpTooltip></VscodeTextField>
+    </div>
+    <div style={{ flexGrow: 1 }}>
+      <VscodeTextField
+        placeholder="https://github.com/org/repo.git"
+        value={form.origin}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => set_form((f) => ({ ...f, origin: e.target.value }))}
+        style={{ width: "100%", boxSizing: "border-box" }}
+      >Origin URL<RichHelpTooltip>The Git URL of the repository.</RichHelpTooltip></VscodeTextField>
+    </div>
+    <div>
+      <VscodeTextField
+        placeholder="Branch, tag, or commit SHA"
+        value={form.ref}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => set_form((f) => ({ ...f, ref: e.target.value }))}
+        style={{ width: "100%", boxSizing: "border-box" }}
+      >Ref<RichHelpTooltip>The Git ref to checkout (branch, tag, or commit SHA).</RichHelpTooltip></VscodeTextField>
+    </div>
+    <div>
+      <VscodeTextField
+        placeholder="Optional locked commit SHA"
+        value={form.rev}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => set_form((f) => ({ ...f, rev: e.target.value }))}
+        style={{ width: "100%", boxSizing: "border-box" }}
+      >Rev (lock)<RichHelpTooltip>
+        <p>
+          An optional commit SHA to lock the repository to.
+        </p>
+        <p>
+          If specified, the repository will be checked out at this exact commit. The <i>Update</i> action will update this locked rev when used.
+        </p>
+      </RichHelpTooltip></VscodeTextField>
+    </div>
+    <div style={{ display: "flex", gap: "4px" }}>
+      {is_adding ? (
+        <VscodeButton
+          appearance="primary"
+          onClick={handle_add}
+          disabled={!form.name.trim() || !form.origin.trim() || !form.ref.trim()}
+        >
+          Add
+        </VscodeButton>
+      ) : (
+        <>
+          <VscodeButton appearance="primary" onClick={handle_edit_save} disabled={!form.origin.trim() || !form.ref.trim()}>
+            Save
+          </VscodeButton>
+          <VscodeButton appearance="secondary" onClick={handle_edit_cancel}>
+            Cancel
+          </VscodeButton>
+        </>
+      )}
+    </div>
+  </fieldset>);
+}
+
+/** Maps a RepoScanState to the generic StatusBadgeState used by StatusBadge. */
+function repo_scan_state_to_badge_status(scanState: RepoScanState | undefined, total: number): StatusBadgeState {
+  const s = scanState ?? { status: "idle" };
+  return match(s)
+    .with({ status: "idle" }, () => ({ kind: "idle" }))
+    .with({ status: "loading" }, () => ({ kind: "loading", label:<VscodeBadge>{total}</VscodeBadge> }))
+    .with({ status: "success" }, () => ({ kind: "success", label: <VscodeBadge>{total}</VscodeBadge> }))
+    .with({ status: "error" }, (s) => ({ kind: "error", message: s.message }))
+    .exhaustive() as StatusBadgeState;
+}
