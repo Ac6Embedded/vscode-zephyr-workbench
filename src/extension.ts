@@ -1015,12 +1015,46 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.ram-plot', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder) => {
-			await executeConfigTask('West RAM Plot', node);
+			let folder: any = node;
+			if (node instanceof ZephyrApplicationTreeItem) {
+				if (node.project) {
+					folder = node.project.workspaceFolder;
+				}
+			}
+			
+			let taskExec = await executeConfigTask('West RAM Plot', node);
+			const taskStartListener = vscode.tasks.onDidStartTask(async (event) => {
+				if (taskExec && event.execution === taskExec[0]) {
+					const stopItem = 'Terminate';
+					const choice = await vscode.window.showWarningMessage('RAM Plot server is running...', stopItem);
+					if (choice === stopItem) {
+						taskExec[0].terminate();
+						taskStartListener.dispose();
+					};
+				}
+			});
 		})
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.rom-plot', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder) => {
-			await executeConfigTask('West ROM Plot', node);
+			let folder: any = node;
+			if (node instanceof ZephyrApplicationTreeItem) {
+				if (node.project) {
+					folder = node.project.workspaceFolder;
+				}
+			}
+
+			let taskExec = await executeConfigTask('West ROM Plot', node);
+			const taskStartListener = vscode.tasks.onDidStartTask(async (event) => {
+				if (taskExec && event.execution === taskExec[0]) {
+					const stopItem = 'Terminate';
+					const choice = await vscode.window.showWarningMessage('ROM Plot server is running...', stopItem);
+					if (choice === stopItem) {
+						taskExec[0].terminate();
+						taskStartListener.dispose();
+					};
+				}
+			});
 		})
 	);
 	context.subscriptions.push(
