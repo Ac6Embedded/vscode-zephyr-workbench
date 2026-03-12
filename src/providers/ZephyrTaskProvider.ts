@@ -363,7 +363,12 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     // If a default runner is set on the build configuration, inject it to avoid prompting
     // We look for the input token rather than the task label to support temporary tasks like "West Flash [cfg]".
     if (config && config.defaultRunner && config.defaultRunner.length > 0 && args.includes("${input:west.runner}")) {
-      args = args.replace("${input:west.runner}", `--runner ${config.defaultRunner}`);
+      let runnerFragment = `--runner ${config.defaultRunner}`;
+      // Append custom runner arguments if set (e.g. -p /dev/ttyX, --erase)
+      if (config.customArgs && config.customArgs.length > 0) {
+        runnerFragment += ` -- ${config.customArgs}`;
+      }
+      args = args.replace("${input:west.runner}", runnerFragment);
     }
 
     const sysbuildEnabled =

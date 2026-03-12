@@ -15,7 +15,7 @@ import { checkAndCreateTasksJson, createExtensionsJson, createTasksJson, setDefa
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
-import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
+import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
 import { getRunner, getRunRunners, getFlashRunners, getStaticFlashRunnerNames, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './utils/debugUtils';
 import { execShellTaskWithEnvAndWait, executeTask, getTerminalDefaultProfile, normalizeSlashesIfPath } from './utils/execUtils';
 import { importProjectQuickStep } from './quicksteps/importProjectQuickStep';
@@ -32,7 +32,7 @@ import { changeToolchainQuickStep } from "./quicksteps/changeToolchainQuickStep"
 import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
 import { WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
-import { ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigDefaultRunnerTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem } from './providers/ZephyrApplicationProvider';
+import { ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigDefaultRunnerTreeItem, ZephyrConfigCustomArgsTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem } from './providers/ZephyrApplicationProvider';
 import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsCommandProvider';
 import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
@@ -446,6 +446,26 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			await saveConfigSetting(project.workspaceFolder, targetConfig.name, ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, chosenRunner);
+
+			// Prompt user for custom runner arguments (e.g. -p /dev/ttyX, --erase)
+			const addArgs = await vscode.window.showInformationMessage(
+				'Do you want to add Custom arguments for the runner?',
+				'Yes',
+				'No'
+			);
+			if (addArgs === 'Yes') {
+				const customArgs = await vscode.window.showInputBox({
+					title: 'Set Custom Arguments',
+					prompt: 'Enter custom arguments passed to the runner (e.g. -p /dev/ttyX or --erase)',
+					placeHolder: 'Example: -p /dev/ttyACM0 --erase',
+					value: targetConfig.customArgs ?? '',
+					ignoreFocusOut: true,
+				});
+				if (customArgs !== undefined) {
+					await saveConfigSetting(project.workspaceFolder, targetConfig.name, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, customArgs.trim());
+				}
+			}
+
 			vscode.commands.executeCommand('zephyr-workbench-app-explorer.refresh');
     })
   );
@@ -485,6 +505,87 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       await saveConfigSetting(project.workspaceFolder, targetConfig.name, ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, "");
+      // Also clear custom args when removing the runner
+      await saveConfigSetting(project.workspaceFolder, targetConfig.name, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, "");
+      vscode.commands.executeCommand('zephyr-workbench-app-explorer.refresh');
+    })
+  );
+
+  // Set or change custom arguments
+  context.subscriptions.push(
+    vscode.commands.registerCommand('zephyr-workbench-app-explorer.set-custom-args', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | ZephyrConfigDefaultRunnerTreeItem | ZephyrConfigCustomArgsTreeItem) => {
+      let project: ZephyrProject | undefined;
+      let targetConfig: ZephyrProjectBuildConfiguration | undefined;
+
+      if (node instanceof ZephyrApplicationTreeItem) {
+        project = node.project;
+        if (project.configs.length === 1) {
+          targetConfig = project.configs[0];
+        } else if (project.configs.length > 1) {
+          const picked = await pickBuildConfigQuickStep(project);
+          if (picked) {
+            targetConfig = project.getBuildConfiguration(picked);
+          }
+        }
+      } else if (node instanceof ZephyrConfigTreeItem) {
+        project = node.project;
+        targetConfig = node.buildConfig;
+      } else if (node instanceof ZephyrConfigDefaultRunnerTreeItem) {
+        project = node.project;
+        targetConfig = node.config;
+      } else if (node instanceof ZephyrConfigCustomArgsTreeItem) {
+        project = node.project;
+        targetConfig = node.config;
+      }
+
+      if (!project || !targetConfig) {
+        vscode.window.showErrorMessage('Unable to determine target configuration to set custom arguments.');
+        return;
+      }
+
+      if (!targetConfig.defaultRunner || targetConfig.defaultRunner.length === 0) {
+        vscode.window.showWarningMessage('Set a default runner first before adding custom arguments.');
+        return;
+      }
+
+      const customArgs = await vscode.window.showInputBox({
+        title: 'Set Custom Arguments',
+        prompt: 'Enter custom arguments passed to the runner (e.g. -p /dev/ttyX or --erase)',
+        placeHolder: 'Example: -p /dev/ttyACM0 --erase',
+        value: targetConfig.customArgs ?? '',
+        ignoreFocusOut: true,
+      });
+      if (customArgs !== undefined) {
+        await saveConfigSetting(project.workspaceFolder, targetConfig.name, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, customArgs.trim());
+        vscode.commands.executeCommand('zephyr-workbench-app-explorer.refresh');
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('zephyr-workbench-app-explorer.change-custom-args', async (node: any) => {
+      vscode.commands.executeCommand('zephyr-workbench-app-explorer.set-custom-args', node);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('zephyr-workbench-app-explorer.remove-custom-args', async (node: ZephyrConfigCustomArgsTreeItem | ZephyrConfigDefaultRunnerTreeItem) => {
+      let project: ZephyrProject | undefined;
+      let targetConfig: ZephyrProjectBuildConfiguration | undefined;
+
+      if (node instanceof ZephyrConfigCustomArgsTreeItem) {
+        project = node.project;
+        targetConfig = node.config;
+      } else if (node instanceof ZephyrConfigDefaultRunnerTreeItem) {
+        project = node.project;
+        targetConfig = node.config;
+      }
+
+      if (!project || !targetConfig) {
+        return;
+      }
+
+      await saveConfigSetting(project.workspaceFolder, targetConfig.name, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, "");
       vscode.commands.executeCommand('zephyr-workbench-app-explorer.refresh');
     })
   );

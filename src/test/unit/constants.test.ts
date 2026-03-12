@@ -22,6 +22,7 @@ import {
   ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY,
   ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY,
   ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY,
+  ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY,
   ZINSTALLER_MINIMUM_VERSION,
 } from '../../constants';
 
@@ -51,6 +52,7 @@ describe('constants', () => {
     assert.equal(ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, 'west-args');
     assert.equal(ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, 'sysbuild');
     assert.equal(ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, 'default-runner');
+    assert.equal(ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, 'custom-args');
 
     assert.equal(typeof ZINSTALLER_MINIMUM_VERSION, 'string');
     assert.ok(ZINSTALLER_MINIMUM_VERSION.length > 0);
