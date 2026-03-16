@@ -99,7 +99,8 @@ export function generateSdkUrls(type: string, version: string, toolchains: strin
 			for(const tArch of toolchains) {
 				const toolchain = mapToolchainIdToPackage(tArch);
 				if (!toolchain) { continue; }
-				const toolUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/toolchain_${host.os}-${host.arch}_${toolchain}.${host.ext}`;
+				const toolPrefix = version.startsWith('1.') || version.startsWith('v1.') ? 'toolchain_gnu' : 'toolchain';
+				const toolUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/${toolPrefix}_${host.os}-${host.arch}_${toolchain}.${host.ext}`;
 				urls.push(toolUrl);
 			}
 		} 
@@ -122,11 +123,11 @@ export async function getMinimalToolchainsForVersion(version: string): Promise<s
 		throw new Error(`Failed to fetch release page (${response.status})`);
 	}
 	const html = await response.text();
-	const tableMatch = html.split('<h3>Toolchains</h3>')[1]?.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
+	const tableMatch = html.match(/<h[1-6][^>]*>\s*(?:GNU\s+)?Toolchains\s*<\/h[1-6]>\s*<table[^>]*>([\s\S]*?)<\/table>/i);
 	if (!tableMatch) {
 		throw new Error('Could not find toolchain table on release page.');
 	}
-	const rows = Array.from(tableMatch[1].matchAll(/<tr>([\s\S]*?)<\/tr>/gi));
+	const rows = Array.from(tableMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi));
 	// Skip header row
 	const hostColIdx = host.os === 'linux' ? 1 : host.os === 'macos' ? 2 : 3;
 	const toolchains: string[] = [];
@@ -149,7 +150,10 @@ export async function getMinimalToolchainsForVersion(version: string): Promise<s
 
 function hasMatchingAsset(cellHtml: string, host: SdkHostTarget): boolean {
 	const links = Array.from(cellHtml.matchAll(/href="([^"]+)"/gi)).map(m => m[1]);
-	return links.some(link => link.includes(`_${host.os}-${host.arch}_`));
+	return links.some(link =>
+		link.includes(`toolchain_${host.os}-${host.arch}_`) ||
+		link.includes(`toolchain_gnu_${host.os}-${host.arch}_`)
+	);
 }
 
 function stripHtml(content: string): string {

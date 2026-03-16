@@ -10,6 +10,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Disabled `Runner Path` only for `ST-LINK GDB Server`
 - Fixed `STM32CubeCLT` version detection
 
+### Toolchain
+- Fixed parsing for Zephyr SDK 1.0.0
+
 ## [2.5.0]
 
 ### Applications
