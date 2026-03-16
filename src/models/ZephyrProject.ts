@@ -10,6 +10,7 @@ import { getBuildEnv, loadEnv } from '../utils/zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 import { IARToolchain } from './ZephyrSDK';
 export class ZephyrProject {
+  private static zephyrProjectWorkspaceCache = new Map<string, boolean>();
 
   readonly workspaceContext: any;
   readonly sourceDir: string;
@@ -113,11 +114,18 @@ export class ZephyrProject {
   }
 
   static async isZephyrProjectWorkspaceFolder(folder: vscode.WorkspaceFolder) {
-    const westBuildTask = await findTask('West Build', folder);
-    if (westBuildTask && westBuildTask.definition.type === ZephyrTaskProvider.ZephyrType) {
-      return true;
+    const projectPath = folder.uri.fsPath;
+    const cachedValue = ZephyrProject.zephyrProjectWorkspaceCache.get(projectPath);
+    
+    if (cachedValue !== undefined){ 
+      return cachedValue; 
     }
-    return false;
+
+    const westBuildTask = await findTask('West Build', folder);
+    const isZephyrProject = ZephyrProject.isZephyrProjectPath(projectPath) || !!(westBuildTask && westBuildTask.definition.type === ZephyrTaskProvider.ZephyrType);
+
+    ZephyrProject.zephyrProjectWorkspaceCache.set(projectPath, isZephyrProject);
+    return isZephyrProject;
   }
 
   static isZephyrProjectPath(projectPath: string): boolean {
