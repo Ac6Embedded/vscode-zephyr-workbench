@@ -1011,8 +1011,8 @@ export async function getFirstDirectoryName7z(filePath: string): Promise<string>
     });
 
     stream.on('data', (entry) => {
-      const parts = entry.file.split(path.sep);
-      if (parts.length === 1) {
+      const parts = entry.file.split(/[\\/]/).filter(Boolean);
+      if (parts.length > 0) {
         folderNames.add(parts[0]);
       }
     });

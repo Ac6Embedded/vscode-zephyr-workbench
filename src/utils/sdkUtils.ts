@@ -90,7 +90,8 @@ export function generateSdkUrls(type: string, version: string, toolchains: strin
 
 	if(host) {
 		if(type === 'full') {
-			const fullUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${host.os}-${host.arch}.${host.ext}`;
+			const fullSuffix = version.startsWith('1.') || version.startsWith('v1.') ? '_gnu' : '';
+			const fullUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${host.os}-${host.arch}${fullSuffix}.${host.ext}`;
 			urls.push(fullUrl);
 		} else if(type === 'minimal') {
 			const minUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${host.os}-${host.arch}_minimal.${host.ext}`;

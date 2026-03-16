@@ -30,7 +30,11 @@ export class ZephyrSDK {
   }
 
   private get toolchainsFile() {
-    return vscode.Uri.joinPath(this.rootUri, 'sdk_toolchains');
+    const legacyFile = vscode.Uri.joinPath(this.rootUri, 'sdk_toolchains');
+    if (fileExists(legacyFile.fsPath)) {
+      return legacyFile;
+    }
+    return vscode.Uri.joinPath(this.rootUri, 'sdk_gnu_toolchains');
   }
 
   get name(): string {
