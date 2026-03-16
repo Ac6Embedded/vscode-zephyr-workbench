@@ -1014,6 +1014,50 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.ram-plot', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder) => {
+			let folder: any = node;
+			if (node instanceof ZephyrApplicationTreeItem) {
+				if (node.project) {
+					folder = node.project.workspaceFolder;
+				}
+			}
+			
+			let taskExec = await executeConfigTask('West RAM Plot', node);
+			const taskStartListener = vscode.tasks.onDidStartTask(async (event) => {
+				if (taskExec && event.execution === taskExec[0]) {
+					const stopItem = 'Terminate';
+					const choice = await vscode.window.showWarningMessage('RAM Plot server is running...', stopItem);
+					if (choice === stopItem) {
+						taskExec[0].terminate();
+						taskStartListener.dispose();
+					};
+				}
+			});
+		})
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.rom-plot', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder) => {
+			let folder: any = node;
+			if (node instanceof ZephyrApplicationTreeItem) {
+				if (node.project) {
+					folder = node.project.workspaceFolder;
+				}
+			}
+
+			let taskExec = await executeConfigTask('West ROM Plot', node);
+			const taskStartListener = vscode.tasks.onDidStartTask(async (event) => {
+				if (taskExec && event.execution === taskExec[0]) {
+					const stopItem = 'Terminate';
+					const choice = await vscode.window.showWarningMessage('ROM Plot server is running...', stopItem);
+					if (choice === stopItem) {
+						taskExec[0].terminate();
+						taskStartListener.dispose();
+					};
+				}
+			});
+		})
+	);
+	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.puncover', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder) => {
 			let folder: any = node;
 			if (node instanceof ZephyrApplicationTreeItem) {
@@ -2348,7 +2392,7 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 
 	return new Promise<vscode.TaskExecution[] | undefined>(async resolve => {
 		// These specific commands below are executed directly, they are not saved in tasks.json
-		const tasks = ['DT Doctor', 'West ROM Report', 'West RAM Report', 'Gui Config', 'Menu Config', 'Harden Config'];
+		const tasks = ['DT Doctor', 'West ROM Report', 'West RAM Report', 'West RAM Plot', 'West ROM Plot', 'Gui Config', 'Menu Config', 'Harden Config'];
 		// Execute task
 		if (listTasks.length > 0) {
 			try {

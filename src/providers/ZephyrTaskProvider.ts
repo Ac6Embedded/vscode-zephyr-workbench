@@ -172,6 +172,34 @@ const romReportTask: ZephyrTaskDefinition = {
   ]
 };
 
+const ramPlotTask: ZephyrTaskDefinition = {
+  label: "West RAM Plot",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "west",
+  config: "primary",
+  args: [
+    "build",
+    "-t ram_plot",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
+  ]
+};
+
+const romPlotTask: ZephyrTaskDefinition = {
+  label: "West ROM Plot",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "west",
+  config: "primary",
+  args: [
+    "build",
+    "-t rom_plot",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
+  ]
+};
+
 const puncoverTask: ZephyrTaskDefinition = {
   label: "West Puncover",
   type: "zephyr-workbench",
@@ -211,6 +239,8 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [flashTask.label, flashTask],
   [ramReportTask.label, ramReportTask],
   [romReportTask.label, romReportTask],
+  [ramPlotTask.label, ramPlotTask],
+  [romPlotTask.label, romPlotTask],
   [puncoverTask.label, puncoverTask],
   [dtDoctorTask.label, dtDoctorTask]
 ]);
@@ -503,7 +533,7 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
 
 export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder, taskName: string): Promise<boolean> {
   // Tasks that run directly without saving to tasks.json
-  const directTasks = ['DT Doctor', 'West ROM Report', 'West RAM Report', 'Menuconfig', 'Gui config', 'Harden Config'];
+  const directTasks = ['DT Doctor', 'West ROM Report', 'West RAM Report', 'West RAM Plot', 'West ROM Plot', 'Menuconfig', 'Gui config', 'Harden Config'];
   
   if (directTasks.includes(taskName)) {
     const taskDef = tasksMap.get(taskName);

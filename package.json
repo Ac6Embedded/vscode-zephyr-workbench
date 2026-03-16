@@ -551,13 +551,25 @@
       },
       {
         "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
-        "title": "RAM Report",
+        "title": "Report",
         "icon": "$(graph)",
         "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
-        "title": "ROM Report",
+        "title": "Report",
+        "icon": "$(graph)",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.memory-analysis.ram-plot",
+        "title": "Plot",
+        "icon": "$(graph)",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.memory-analysis.rom-plot",
+        "title": "Plot",
         "icon": "$(graph)",
         "category": "Zephyr Workbench/Application"
       },
@@ -784,8 +796,24 @@
         "label": "Memory Analysis"
       },
       {
+        "id": "zephyr-workbench-app-explorer.memory-analysis.ram",
+        "label": "RAM"
+      },
+      {
+        "id": "zephyr-workbench-app-explorer.memory-analysis.rom",
+        "label": "ROM"
+      },
+      {
         "id": "zephyr-workbench-app-explorer.config.memory-analysis",
         "label": "Memory Analysis"
+      },
+      {
+        "id": "zephyr-workbench-app-explorer.config.memory-analysis.ram",
+        "label": "RAM"
+      },
+      {
+        "id": "zephyr-workbench-app-explorer.config.memory-analysis.rom",
+        "label": "ROM"
       },
       {
         "id": "zephyr-workbench-app-explorer.static-code-analysis",
@@ -1302,12 +1330,12 @@
       ],
       "zephyr-workbench-app-explorer.memory-analysis": [
         {
-          "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
+          "submenu": "zephyr-workbench-app-explorer.memory-analysis.ram",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
+          "submenu": "zephyr-workbench-app-explorer.memory-analysis.rom",
           "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
@@ -1317,20 +1345,68 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ],
-      "zephyr-workbench-app-explorer.config.memory-analysis": [
+      "zephyr-workbench-app-explorer.memory-analysis.ram": [
         {
           "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
+          "group": "0@view/item/context@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.ram-plot",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        }
+      ],
+      "zephyr-workbench-app-explorer.memory-analysis.rom": [
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
+          "group": "0@view/item/context@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.rom-plot",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        }
+      ],
+      "zephyr-workbench-app-explorer.config.memory-analysis": [
+        {
+          "submenu": "zephyr-workbench-app-explorer.config.memory-analysis.ram",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
-          "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
+          "submenu": "zephyr-workbench-app-explorer.config.memory-analysis.rom",
           "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
           "command": "zephyr-workbench-app-explorer.memory-analysis.puncover",
           "group": "0@view/item/context@3",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        }
+      ],
+      "zephyr-workbench-app-explorer.config.memory-analysis.ram": [
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
+          "group": "0@view/item/context@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.ram-plot",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        }
+      ],
+      "zephyr-workbench-app-explorer.config.memory-analysis.rom": [
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
+          "group": "0@view/item/context@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.rom-plot",
+          "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         }
       ],
@@ -1541,6 +1617,14 @@
         },
         {
           "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.ram-plot",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.rom-plot",
           "when": "false"
         },
         {
