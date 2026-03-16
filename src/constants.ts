@@ -25,5 +25,7 @@ export const ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY = 'west-args';
 export const ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY = 'sysbuild';
 // Build configuration default runner key used to avoid prompting and run directly
 export const ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY = 'default-runner';
+// Custom arguments passed to the runner (e.g. -p /dev/ttyX, --erase)
+export const ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY = 'custom-args';
 
 export const ZINSTALLER_MINIMUM_VERSION = '2.0';
