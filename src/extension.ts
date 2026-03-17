@@ -1590,6 +1590,13 @@ export function activate(context: vscode.ExtensionContext) {
 
 							// If toolchain urls exist, download them
 							if (urls.length > 1) {
+								const toolchainDestPath =
+									(sdkVersion.startsWith('1.') || sdkVersion.startsWith('v1.'))
+										? path.join(zephyrSDKPath, 'gnu')
+										: zephyrSDKPath;
+								if (!fs.existsSync(toolchainDestPath)) {
+									fs.mkdirSync(toolchainDestPath, { recursive: true });
+								}
 								for (let i = 1; i < urls.length; i++) {
 									progress.report({
 										message: `Download ${urls[i]}`,
@@ -1598,7 +1605,7 @@ export function activate(context: vscode.ExtensionContext) {
 									progress.report({
 										message: `Extracting ${downloadedFileUri}`,
 									});
-									await extractSDK(downloadedFileUri.fsPath, zephyrSDKPath, progress, token);
+									await extractSDK(downloadedFileUri.fsPath, toolchainDestPath, progress, token);
 								}
 							}
 

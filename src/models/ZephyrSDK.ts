@@ -37,6 +37,14 @@ export class ZephyrSDK {
     return vscode.Uri.joinPath(this.rootUri, 'sdk_gnu_toolchains');
   }
 
+  private get toolchainsRootPath(): string {
+    const gnuPath = path.join(this.rootUri.fsPath, 'gnu');
+    if (fileExists(this.toolchainsFile.fsPath) && path.basename(this.toolchainsFile.fsPath) === 'sdk_gnu_toolchains' && fileExists(gnuPath)) {
+      return gnuPath;
+    }
+    return this.rootUri.fsPath;
+  }
+
   get name(): string {
     return path.basename(this.rootUri.fsPath);
   }
@@ -93,7 +101,7 @@ export class ZephyrSDK {
     } else {
       compilerPrefix = ZephyrSDK.getToolchainPrefix(arch);
     }
-    return path.join(this.rootUri.fsPath, compilerPrefix, 'bin', `${compilerPrefix}-gcc`);
+    return path.join(this.toolchainsRootPath, compilerPrefix, 'bin', `${compilerPrefix}-gcc`);
   }
 
   public getDebuggerPath(arch: string, socToolchain: string | undefined = undefined): string {
@@ -108,7 +116,10 @@ export class ZephyrSDK {
     if(process.platform === 'win32') {
       ext = '.exe';
     }
-    return path.join('${config:zephyr-workbench.sdk}', compilerPrefix, 'bin', `${compilerPrefix}-gdb${ext}`);
+    const sdkBasePath = this.toolchainsRootPath === this.rootUri.fsPath
+      ? '${config:zephyr-workbench.sdk}'
+      : path.join('${config:zephyr-workbench.sdk}', 'gnu');
+    return path.join(sdkBasePath, compilerPrefix, 'bin', `${compilerPrefix}-gdb${ext}`);
   }
 
   static isSDKFolder(folder: vscode.WorkspaceFolder) {
