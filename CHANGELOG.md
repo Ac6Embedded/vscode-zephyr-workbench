@@ -4,14 +4,16 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.5.2]
+
+### Toolchain
+- Fixed parsing for Zephyr SDK 1.0.0
+
 ## [2.5.1]
 
 ### Debug Manager
 - Disabled `Runner Path` only for `ST-LINK GDB Server`
 - Fixed `STM32CubeCLT` version detection
-
-### Toolchain
-- Fixed parsing for Zephyr SDK 1.0.0
 
 ## [2.5.0]
 
