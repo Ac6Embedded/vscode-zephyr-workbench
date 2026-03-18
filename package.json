@@ -287,18 +287,18 @@
       },
       {
         "command": "zephyr-workbench-app-explorer.set-custom-args",
-        "title": "Set Custom Arguments",
+        "title": "Set Custom Arguments For Runner",
         "icon": "$(symbol-parameter)",
         "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.change-custom-args",
-        "title": "Change Custom Arguments",
+        "title": "Change Custom Arguments For Runner",
         "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.remove-custom-args",
-        "title": "Remove Custom Arguments",
+        "title": "Remove Custom Arguments For Runner",
         "icon": "$(remove)",
         "category": "Zephyr Workbench/Application"
       },

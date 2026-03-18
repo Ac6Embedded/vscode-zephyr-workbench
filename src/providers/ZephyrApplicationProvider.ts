@@ -294,9 +294,9 @@ export class ZephyrConfigCustomArgsTreeItem extends vscode.TreeItem {
     public readonly project: ZephyrAppProject,
     public readonly config: ZephyrProjectBuildConfiguration,
   ) {
-    super('custom arguments', vscode.TreeItemCollapsibleState.None);
+    super('custom arguments for runner', vscode.TreeItemCollapsibleState.None);
     this.description = config.customArgs ?? '';
-    this.tooltip = `Custom arguments: ${config.customArgs}`;
+    this.tooltip = `Custom arguments for runner: ${config.customArgs}`;
     this.iconPath = new vscode.ThemeIcon('symbol-parameter');
   }
   contextValue = 'zephyr-application-custom-args';

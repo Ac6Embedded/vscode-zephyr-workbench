@@ -447,23 +447,15 @@ export function activate(context: vscode.ExtensionContext) {
 
 			await saveConfigSetting(project.workspaceFolder, targetConfig.name, ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, chosenRunner);
 
-			// Prompt user for custom runner arguments (e.g. -p /dev/ttyX, --erase)
-			const addArgs = await vscode.window.showInformationMessage(
-				'Do you want to add Custom arguments for the runner?',
-				'Yes',
-				'No'
-			);
-			if (addArgs === 'Yes') {
-				const customArgs = await vscode.window.showInputBox({
-					title: 'Set Custom Arguments',
-					prompt: 'Enter custom arguments passed to the runner (e.g. -p /dev/ttyX or --erase)',
-					placeHolder: 'Example: -p /dev/ttyACM0 --erase',
-					value: targetConfig.customArgs ?? '',
-					ignoreFocusOut: true,
-				});
-				if (customArgs !== undefined) {
-					await saveConfigSetting(project.workspaceFolder, targetConfig.name, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, customArgs.trim());
-				}
+			const customArgs = await vscode.window.showInputBox({
+				title: 'Custom Arguments For Runner',
+				prompt: 'Optional: enter extra arguments passed to the runner (e.g. -p /dev/ttyX or --erase). Leave empty to skip.',
+				placeHolder: 'Example: -p /dev/ttyACM0 --erase',
+				value: targetConfig.customArgs ?? '',
+				ignoreFocusOut: true,
+			});
+			if (customArgs !== undefined) {
+				await saveConfigSetting(project.workspaceFolder, targetConfig.name, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, customArgs.trim());
 			}
 
 			vscode.commands.executeCommand('zephyr-workbench-app-explorer.refresh');
@@ -544,13 +536,13 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       if (!targetConfig.defaultRunner || targetConfig.defaultRunner.length === 0) {
-        vscode.window.showWarningMessage('Set a default runner first before adding custom arguments.');
+        vscode.window.showWarningMessage('Set a default runner first before adding custom arguments for the runner.');
         return;
       }
 
       const customArgs = await vscode.window.showInputBox({
-        title: 'Set Custom Arguments',
-        prompt: 'Enter custom arguments passed to the runner (e.g. -p /dev/ttyX or --erase)',
+        title: 'Custom Arguments For Runner',
+        prompt: 'Optional: enter extra arguments passed to the runner (e.g. -p /dev/ttyX or --erase). Leave empty to skip.',
         placeHolder: 'Example: -p /dev/ttyACM0 --erase',
         value: targetConfig.customArgs ?? '',
         ignoreFocusOut: true,
@@ -2483,25 +2475,6 @@ async function addCustomRunners(
 	project: ZephyrProject,
 	targetConfig: ZephyrProjectBuildConfiguration
 ): Promise<string | undefined> {
-	const useCustomRunner = await vscode.window.showInformationMessage(
-		'Do you want to add a Custom Runner?',
-		'Yes',
-		'No'
-	);
-	if (!useCustomRunner) { return undefined; }
-
-	if (useCustomRunner === 'Yes') {
-		const customRunner = await vscode.window.showInputBox({
-			title: 'Set Default Runner',
-			prompt: "Enter the runner name (same value used by west '--runner')",
-			placeHolder: 'Example: stm32cubeprogrammer',
-			validateInput: (value: string) => value.trim().length === 0 ? 'Runner name cannot be empty.' : undefined,
-			ignoreFocusOut: true,
-		});
-		if (!customRunner) { return undefined; }
-		return customRunner.trim();
-	}
-
 	let items: vscode.QuickPickItem[] = [];
 	try {
 		const info = await vscode.window.withProgress<{ all: string[]; available: string[]; def?: string; output: string }>(
