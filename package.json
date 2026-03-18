@@ -573,25 +573,25 @@
       },
       {
         "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
-        "title": "Report",
+        "title": "RAM Report",
         "icon": "$(graph)",
         "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
-        "title": "Report",
+        "title": "ROM Report",
         "icon": "$(graph)",
         "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.memory-analysis.ram-plot",
-        "title": "Plot",
+        "title": "RAM Plot",
         "icon": "$(graph)",
         "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.memory-analysis.rom-plot",
-        "title": "Plot",
+        "title": "ROM Plot",
         "icon": "$(graph)",
         "category": "Zephyr Workbench/Application"
       },
@@ -818,24 +818,8 @@
         "label": "Memory Analysis"
       },
       {
-        "id": "zephyr-workbench-app-explorer.memory-analysis.ram",
-        "label": "RAM"
-      },
-      {
-        "id": "zephyr-workbench-app-explorer.memory-analysis.rom",
-        "label": "ROM"
-      },
-      {
         "id": "zephyr-workbench-app-explorer.config.memory-analysis",
         "label": "Memory Analysis"
-      },
-      {
-        "id": "zephyr-workbench-app-explorer.config.memory-analysis.ram",
-        "label": "RAM"
-      },
-      {
-        "id": "zephyr-workbench-app-explorer.config.memory-analysis.rom",
-        "label": "ROM"
       },
       {
         "id": "zephyr-workbench-app-explorer.static-code-analysis",
@@ -1372,83 +1356,55 @@
       ],
       "zephyr-workbench-app-explorer.memory-analysis": [
         {
-          "submenu": "zephyr-workbench-app-explorer.memory-analysis.ram",
-          "group": "0@view/item/context@1",
-          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
-        },
-        {
-          "submenu": "zephyr-workbench-app-explorer.memory-analysis.rom",
-          "group": "0@view/item/context@2",
-          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
-        },
-        {
-          "command": "zephyr-workbench-app-explorer.memory-analysis.puncover",
-          "group": "0@view/item/context@3",
-          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
-        }
-      ],
-      "zephyr-workbench-app-explorer.memory-analysis.ram": [
-        {
           "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.memory-analysis.ram-plot",
+          "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
           "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
-        }
-      ],
-      "zephyr-workbench-app-explorer.memory-analysis.rom": [
+        },
         {
-          "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
-          "group": "0@view/item/context@1",
+          "command": "zephyr-workbench-app-explorer.memory-analysis.ram-plot",
+          "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
           "command": "zephyr-workbench-app-explorer.memory-analysis.rom-plot",
-          "group": "0@view/item/context@2",
+          "group": "0@view/item/context@4",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.puncover",
+          "group": "0@view/item/context@5",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ],
       "zephyr-workbench-app-explorer.config.memory-analysis": [
         {
-          "submenu": "zephyr-workbench-app-explorer.config.memory-analysis.ram",
-          "group": "0@view/item/context@1",
-          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
-        },
-        {
-          "submenu": "zephyr-workbench-app-explorer.config.memory-analysis.rom",
-          "group": "0@view/item/context@2",
-          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
-        },
-        {
-          "command": "zephyr-workbench-app-explorer.memory-analysis.puncover",
-          "group": "0@view/item/context@3",
-          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
-        }
-      ],
-      "zephyr-workbench-app-explorer.config.memory-analysis.ram": [
-        {
           "command": "zephyr-workbench-app-explorer.memory-analysis.ram-report",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
-          "command": "zephyr-workbench-app-explorer.memory-analysis.ram-plot",
+          "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
           "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
-        }
-      ],
-      "zephyr-workbench-app-explorer.config.memory-analysis.rom": [
+        },
         {
-          "command": "zephyr-workbench-app-explorer.memory-analysis.rom-report",
-          "group": "0@view/item/context@1",
+          "command": "zephyr-workbench-app-explorer.memory-analysis.ram-plot",
+          "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
           "command": "zephyr-workbench-app-explorer.memory-analysis.rom-plot",
-          "group": "0@view/item/context@2",
+          "group": "0@view/item/context@4",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.memory-analysis.puncover",
+          "group": "0@view/item/context@5",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         }
       ],
