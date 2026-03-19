@@ -560,7 +560,28 @@ export function pyocdLaunchJson(
     miDebuggerPath,
     debugServerPath,
     debugServerArgs,
-    setupCommands,
+    setupCommands: [
+      {
+        text: '-enable-pretty-printing',
+        description: 'Enable pretty printing',
+        ignoreFailures: true,
+      },
+      {
+        text: 'monitor reset halt',
+        description: 'Reset and halt',
+        ignoreFailures: true,
+      },
+      {
+        text: 'set breakpoint pending on',
+        description: 'Set pending',
+        ignoreFailures: false,
+      },
+      {
+        text: 'tbreak main',
+        description: 'Set a breakpoint at main',
+        ignoreFailures: true,
+      },
+    ],
     logging,
   };
 }
