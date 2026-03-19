@@ -655,7 +655,11 @@ export class DebugManagerPanel {
             config.setupCommands.push(arg);
           }
           if (runner.name === 'pyocd') {
-            pyocdLaunchJson(config, runner.serverAddress, runner.serverPort);
+            const configIndex = launchJson.configurations.indexOf(config);
+            config = pyocdLaunchJson(config, runner.serverAddress, runner.serverPort);
+            if (configIndex >= 0) {
+              launchJson.configurations[configIndex] = config;
+            }
           }
         }
         createWestWrapper(appProject, buildConfigName);

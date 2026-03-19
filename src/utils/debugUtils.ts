@@ -540,12 +540,29 @@ export function pyocdLaunchJson(
   config: any,
   gdbAddress?: string,
   gdbPort?: string
-): void {
+): any {
   const serverAddress = (gdbAddress && gdbAddress.length > 0) ? gdbAddress : 'localhost';
   const serverPort = (gdbPort && gdbPort.length > 0) ? gdbPort : '3333';
+  const {
+    miDebuggerServerAddress: _ignored,
+    miDebuggerPath,
+    debugServerPath,
+    debugServerArgs,
+    setupCommands,
+    logging,
+    ...beforeServerAddress
+  } = config;
 
-  config.miDebuggerServerAddress = `${serverAddress}:${serverPort}`;
-  config.serverStarted = 'GDB server listening on port';
+  return {
+    ...beforeServerAddress,
+    serverStarted: 'GDB server listening on port',
+    miDebuggerServerAddress: `${serverAddress}:${serverPort}`,
+    miDebuggerPath,
+    debugServerPath,
+    debugServerArgs,
+    setupCommands,
+    logging,
+  };
 }
 
 export async function findLaunchConfiguration(launchJson: any, project: ZephyrProject, buildConfigName?: string): Promise<any> {
