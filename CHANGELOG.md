@@ -4,6 +4,26 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.6.0]
+
+### Optimization
+- Improved project parsing performance
+
+### Build
+- Added basic Dockerfile support for development environment
+
+### Debug Manager
+- Added automatic SVD detection for STM32 boards
+
+### Memory Analysis
+- Added RAM and ROM plot visualization
+
+### Applications
+- Added support for custom arguments (runners)
+
+### Static Code Analysis
+- Refactored ECLAIR Manager panel (MVP redesign with presets support)
+
 ## [2.5.2]
 
 ### Toolchain
