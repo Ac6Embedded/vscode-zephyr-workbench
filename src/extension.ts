@@ -449,8 +449,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 			const customArgs = await vscode.window.showInputBox({
 				title: 'Custom Arguments For Runner',
-				prompt: 'Optional: enter extra arguments passed to the runner (e.g. -p /dev/ttyX or --erase). Leave empty to skip.',
-				placeHolder: 'Example: -p /dev/ttyACM0 --erase',
+				prompt: 'Optional: enter extra arguments passed to the runner.',
+				placeHolder: 'Example: --erase',
 				value: targetConfig.customArgs ?? '',
 				ignoreFocusOut: true,
 			});
@@ -542,8 +542,8 @@ export function activate(context: vscode.ExtensionContext) {
 
       const customArgs = await vscode.window.showInputBox({
         title: 'Custom Arguments For Runner',
-        prompt: 'Optional: enter extra arguments passed to the runner (e.g. -p /dev/ttyX or --erase). Leave empty to skip.',
-        placeHolder: 'Example: -p /dev/ttyACM0 --erase',
+        prompt: 'Optional: enter extra arguments passed to the runner.',
+        placeHolder: 'Example: --erase',
         value: targetConfig.customArgs ?? '',
         ignoreFocusOut: true,
       });
@@ -2070,6 +2070,7 @@ export function activate(context: vscode.ExtensionContext) {
 					CreateZephyrAppPanel.currentPanel?.dispose();
 
 					vscode.window.showInformationMessage(`New Application '${workspaceFolder.name}' created !`);
+					zephyrAppProvider.refresh();
 				}
 			}
 			);
@@ -2099,6 +2100,7 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				}
 				vscode.window.showInformationMessage(`Importing Application '${workspaceFolder.name}' done`);
+					zephyrAppProvider.refresh();
 			}
 		})
 	);
