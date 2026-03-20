@@ -172,6 +172,34 @@ const romReportTask: ZephyrTaskDefinition = {
   ]
 };
 
+const ramPlotTask: ZephyrTaskDefinition = {
+  label: "West RAM Plot",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "west",
+  config: "primary",
+  args: [
+    "build",
+    "-t ram_plot",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
+  ]
+};
+
+const romPlotTask: ZephyrTaskDefinition = {
+  label: "West ROM Plot",
+  type: "zephyr-workbench",
+  problemMatcher: [],
+  command: "west",
+  config: "primary",
+  args: [
+    "build",
+    "-t rom_plot",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
+  ]
+};
+
 const puncoverTask: ZephyrTaskDefinition = {
   label: "West Puncover",
   type: "zephyr-workbench",
@@ -211,6 +239,8 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [flashTask.label, flashTask],
   [ramReportTask.label, ramReportTask],
   [romReportTask.label, romReportTask],
+  [ramPlotTask.label, ramPlotTask],
+  [romPlotTask.label, romPlotTask],
   [puncoverTask.label, puncoverTask],
   [dtDoctorTask.label, dtDoctorTask]
 ]);
@@ -364,6 +394,10 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     // We look for the input token rather than the task label to support temporary tasks like "West Flash [cfg]".
     if (config && config.defaultRunner && config.defaultRunner.length > 0 && args.includes("${input:west.runner}")) {
       args = args.replace("${input:west.runner}", `--runner ${config.defaultRunner}`);
+      // Append optional runner arguments at the end so west options like --board stay outside of "--".
+      if (config.customArgs && config.customArgs.length > 0) {
+        args = `${args} -- ${config.customArgs}`;
+      }
     }
 
     const sysbuildEnabled =
@@ -503,7 +537,7 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
 
 export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder, taskName: string): Promise<boolean> {
   // Tasks that run directly without saving to tasks.json
-  const directTasks = ['DT Doctor', 'West ROM Report', 'West RAM Report', 'Menuconfig', 'Gui config', 'Harden Config'];
+  const directTasks = ['DT Doctor', 'West ROM Report', 'West RAM Report', 'West RAM Plot', 'West ROM Plot', 'Menuconfig', 'Gui config', 'Harden Config'];
   
   if (directTasks.includes(taskName)) {
     const taskDef = tasksMap.get(taskName);

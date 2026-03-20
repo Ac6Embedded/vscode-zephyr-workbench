@@ -25,6 +25,8 @@ export class ZephyrProjectBuildConfiguration {
   westArgs: string = '';
   // Preferred west runner for this configuration (used for Run/Flash)
   defaultRunner?: string;
+  // Custom arguments passed to the runner (e.g. -p /dev/ttyX, --erase)
+  customArgs?: string;
 
   sysbuild: string = "false";
 
@@ -42,6 +44,12 @@ export class ZephyrProjectBuildConfiguration {
       this.defaultRunner = buildConfig['default-runner'];
     } else {
       this.defaultRunner = undefined;
+    }
+    // Read persisted custom arguments if set
+    if (typeof buildConfig['custom-args'] === 'string' && buildConfig['custom-args'].length > 0) {
+      this.customArgs = buildConfig['custom-args'];
+    } else {
+      this.customArgs = undefined;
     }
     this.westArgs = buildConfig['west-args'];
     for (let key in this.envVars) {

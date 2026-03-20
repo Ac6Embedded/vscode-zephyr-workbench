@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugUtils";
+import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugUtils";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
 import { getZephyrProject } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
@@ -654,6 +654,14 @@ export class DebugManagerPanel {
           for(const arg of getSetupCommands(programPath, runner.serverAddress, runner.serverPort, gdbMode)) {
             config.setupCommands.push(arg);
           }
+          // TO DO: improve support to pyOCD and test running a debug session
+         /*  if (runner.name === 'pyocd') {
+            const configIndex = launchJson.configurations.indexOf(config);
+            config = pyocdLaunchJson(config, runner.serverAddress, runner.serverPort);
+            if (configIndex >= 0) {
+              launchJson.configurations[configIndex] = config;
+            }
+          } */
         }
         createWestWrapper(appProject, buildConfigName);
         

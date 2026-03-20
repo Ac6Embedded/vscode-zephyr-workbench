@@ -22,6 +22,48 @@ import { execWestCommandWithEnv, execWestCommandWithEnvAsync } from '../commands
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 
+/**
+ * Auto-detect the SVD file path for STM32 boards using STM32CubeCLT.
+ * Returns the SVD path if found, empty string otherwise.
+ */
+export function autoDetectSvdPath(board: ZephyrBoard): string {
+  // Only for ST boards
+  if (!board.vendor || board.vendor.toLowerCase() !== 'st') {
+    return '';
+  }
+
+  // Get SoC name from board.yml
+  const socName = board.getSocName();
+  if (!socName) {
+    return '';
+  }
+
+  // Process SoC name: remove trailing "xx" and convert to uppercase
+  const processed = socName.replace(/xx$/i, '').toUpperCase();
+
+  // Locate STM32CubeCLT installation
+  const stlink = new StlinkGdbserver();
+  const cubeCLTVersion = stlink.getVersionCubeCLT();
+  if (!cubeCLTVersion) {
+    return '';
+  }
+
+  // Construct CubeCLT base path
+  const root = process.platform === 'win32' ? 'C:\\ST' :
+               process.platform === 'darwin' ? '/opt/ST' : '/opt/st';
+  const cubeCLTPath = path.join(root, `STM32CubeCLT_${cubeCLTVersion}`);
+
+  // Construct SVD file path
+  const svdFilePath = path.join(cubeCLTPath, 'STMicroelectronics_CMSIS_SVD', `${processed}.svd`);
+
+  // Check if file exists
+  if (fs.existsSync(svdFilePath)) {
+    return svdFilePath;
+  }
+
+  return '';
+}
+
 export function getDebugRunners(): WestRunner[] {
   return [ 
     new Openocd(), 
@@ -409,6 +451,12 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
     }
     wrapper = path.join('${workspaceFolder}', buildConfig.relativeInternalDebugDir, wrapperFile);
   }
+
+  // Auto-detect SVD for STM32 boards (best effort)
+  let svdPath = '';
+  if (targetBoard) {
+    svdPath = autoDetectSvdPath(targetBoard);
+  }
   
   const launchJson = {
     name: `${configName}`,
@@ -418,7 +466,7 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
     program: `${program}`,
     args: [],
     stopAtEntry: true,
-    svdPath: "",
+    svdPath: svdPath,
     environment: [],
     externalConsole: false,
     serverLaunchTimeout: 30000,
@@ -486,6 +534,56 @@ export async function readLaunchJson(project: ZephyrProject): Promise<any> {
 
 export function writeLaunchJson(launchJson: any, project: ZephyrProject) {
   fs.writeFileSync(path.join(project.sourceDir, '.vscode', 'launch.json'), JSON.stringify(launchJson, null, 2));
+}
+
+export function pyocdLaunchJson(
+  config: any,
+  gdbAddress?: string,
+  gdbPort?: string
+): any {
+  const serverAddress = (gdbAddress && gdbAddress.length > 0) ? gdbAddress : 'localhost';
+  const serverPort = (gdbPort && gdbPort.length > 0) ? gdbPort : '3333';
+  const {
+    miDebuggerServerAddress: _ignored,
+    miDebuggerPath,
+    debugServerPath,
+    debugServerArgs,
+    setupCommands,
+    logging,
+    ...beforeServerAddress
+  } = config;
+
+  return {
+    ...beforeServerAddress,
+    serverStarted: 'GDB server listening on port',
+    miDebuggerServerAddress: `${serverAddress}:${serverPort}`,
+    miDebuggerPath,
+    debugServerPath,
+    debugServerArgs,
+    setupCommands: [
+      {
+        text: '-enable-pretty-printing',
+        description: 'Enable pretty printing',
+        ignoreFailures: true,
+      },
+      {
+        text: 'monitor reset halt',
+        description: 'Reset and halt',
+        ignoreFailures: true,
+      },
+      {
+        text: 'set breakpoint pending on',
+        description: 'Set pending',
+        ignoreFailures: false,
+      },
+      {
+        text: 'tbreak main',
+        description: 'Set a breakpoint at main',
+        ignoreFailures: true,
+      },
+    ],
+    logging,
+  };
 }
 
 export async function findLaunchConfiguration(launchJson: any, project: ZephyrProject, buildConfigName?: string): Promise<any> {

@@ -88,6 +88,28 @@ export class ZephyrBoard {
     return path.join(this.docDirPath, 'index.rst');
   }
 
+  /**
+   * Read the first SoC name from the board.yml file.
+   * Returns undefined if the file does not exist or has no socs entry.
+   */
+  public getSocName(): string | undefined {
+    try {
+      const boardYmlPath = this.boardYMLPath;
+      if (!fs.existsSync(boardYmlPath)) {
+        return undefined;
+      }
+      const content = fs.readFileSync(boardYmlPath, 'utf8');
+      const data = yaml.parse(content);
+      const socs: any[] | undefined = data?.board?.socs;
+      if (Array.isArray(socs) && socs.length > 0 && socs[0].name) {
+        return socs[0].name;
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return undefined;
+  }
+
   public getCompatibleRunners(): string[] {
     let runners: string[] = [];
     const boardCMakePath = path.join(this.rootPath, 'board.cmake');

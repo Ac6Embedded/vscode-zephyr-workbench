@@ -50,6 +50,11 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
         if (config.defaultRunner && config.defaultRunner.length > 0) {
           const runnerItem = new ZephyrConfigDefaultRunnerTreeItem(element.project, config);
           items.push(boardItem, runnerItem);
+          // Show custom args below the runner when set
+          if (config.customArgs && config.customArgs.length > 0) {
+            const customArgsItem = new ZephyrConfigCustomArgsTreeItem(element.project, config);
+            items.push(customArgsItem);
+          }
         } else {
           items.push(boardItem);
         }
@@ -79,6 +84,11 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       if (element.buildConfig.defaultRunner && element.buildConfig.defaultRunner.length > 0) {
         const runnerItem = new ZephyrConfigDefaultRunnerTreeItem(element.project, element.buildConfig);
         items.push(boardItem, runnerItem);
+        // Show custom args below the runner when set
+        if (element.buildConfig.customArgs && element.buildConfig.customArgs.length > 0) {
+          const customArgsItem = new ZephyrConfigCustomArgsTreeItem(element.project, element.buildConfig);
+          items.push(customArgsItem);
+        }
       } else {
         items.push(boardItem);
       }
@@ -277,6 +287,19 @@ export class ZephyrConfigDefaultRunnerTreeItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon('run');
   }
   contextValue = 'zephyr-application-default-runner';
+}
+
+export class ZephyrConfigCustomArgsTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly project: ZephyrAppProject,
+    public readonly config: ZephyrProjectBuildConfiguration,
+  ) {
+    super('custom arguments for runner', vscode.TreeItemCollapsibleState.None);
+    this.description = config.customArgs ?? '';
+    this.tooltip = `Custom arguments for runner: ${config.customArgs}`;
+    this.iconPath = new vscode.ThemeIcon('symbol-parameter');
+  }
+  contextValue = 'zephyr-application-custom-args';
 }
 
 export class ZephyrApplicationEnvTreeItem extends vscode.TreeItem {

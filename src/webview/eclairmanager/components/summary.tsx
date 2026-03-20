@@ -1,0 +1,84 @@
+import React from "react";
+import { StatusState, EclairStateAction } from "../state";
+import { VscodeButton, PickPath, Spinner, RichHelpTooltip } from "./common_components";
+import { WebviewMessage } from "../../../utils/eclairEvent";
+import { useRpc } from "../rpc";
+import { BUGSENG_ECLAIR_OVERVIEW_URL, ECLAIR_MANAGE_LICENSE_URL, ECLAIR_REQUEST_TRIAL_URL, ZEPHYR_ECLAIR_PREREQUISITES_URL } from "../docs";
+
+export function Summary(props: {
+  status: StatusState;
+  post_message: (message: WebviewMessage) => void;
+  dispatch_state: React.Dispatch<EclairStateAction>;
+}) {
+  const statusIcon = props.status.installed ? "codicon-check success-icon" : "codicon-warning warning-icon";
+  const statusText = props.status.installed ? "Installed" : "Not installed";
+
+  const post_message = props.post_message;
+  const rpc = useRpc();
+
+  return (
+    <div className="summary">
+      <div className="summary-title">
+        <strong>ECLAIR</strong>
+        <RichHelpTooltip>
+          <p>
+            Configure the local ECLAIR installation and licensing used for analysis.
+            The install path should point to the ECLAIR SCA binaries.
+          </p>
+          <p>
+            See the <a href={ZEPHYR_ECLAIR_PREREQUISITES_URL}>Prerequisites</a> for more details.
+          </p>
+        </RichHelpTooltip>
+      </div>
+      <div>
+        <strong>Version:</strong> <span>{props.status.version}</span>
+        &nbsp;|&nbsp;
+        <strong>Status:</strong>{" "}
+        <span className={`codicon ${statusIcon}`}></span> <span>{statusText}</span>
+        <Spinner show={props.status.checking_path !== undefined} title="Detecting ECLAIR" />
+      </div>
+      <div className="summary-actions">
+        <div className="actions-title"><strong>Actions</strong></div>
+        <VscodeButton appearance="primary" onClick={() => post_message({ command: "probe-eclair" })}>
+          Refresh Status
+        </VscodeButton>
+        <VscodeButton appearance="primary" onClick={() => post_message({ command: "open-external", url: BUGSENG_ECLAIR_OVERVIEW_URL })}>
+          About ECLAIR
+        </VscodeButton>
+        <VscodeButton appearance="primary" onClick={() => post_message({ command: "open-external", url: ECLAIR_MANAGE_LICENSE_URL })}>
+          Manage ECLAIR License
+        </VscodeButton>
+        <VscodeButton appearance="primary" onClick={() => post_message({ command: "open-external", url: ECLAIR_REQUEST_TRIAL_URL })}>
+          Request Trial License
+        </VscodeButton>
+      </div>
+      <PickPath
+        value={props.status.install_path}
+        placeholder={DEFAULT_INSTALL_PATH_PLACEHOLDER}
+        on_selected={(newPath) => {
+          props.dispatch_state({ type: "set-install-path", path: newPath });
+          props.post_message({
+            command: "update-path",
+            newPath: newPath.trim(),
+          });
+        }}
+        on_pick={async () => {
+          const result = await rpc.call("open-dialog", {
+            canSelectFiles: false,
+            canSelectFolders: true,
+            canSelectMany: false,
+            title: "Select the ECLAIR installation",
+            defaultUri: props.status.install_path || undefined,
+          });
+          if (result?.canceled || !result?.paths?.[0]) {
+            return;
+          }
+          const picked = String(result.paths[0]);
+          props.dispatch_state({ type: "set-install-path", path: picked });
+        }}
+      />
+    </div>
+  );
+}
+
+const DEFAULT_INSTALL_PATH_PLACEHOLDER = "Enter the tool's path if not in the global PATH";
