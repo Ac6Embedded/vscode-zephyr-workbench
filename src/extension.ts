@@ -2070,7 +2070,6 @@ export function activate(context: vscode.ExtensionContext) {
 					CreateZephyrAppPanel.currentPanel?.dispose();
 
 					vscode.window.showInformationMessage(`New Application '${workspaceFolder.name}' created !`);
-					zephyrAppProvider.refresh();
 				}
 			}
 			);
