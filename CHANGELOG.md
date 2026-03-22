@@ -4,6 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.6.1]
+
+### Applications
+- Fixed project parsing 
+
 ## [2.6.0]
 
 ### Optimization
