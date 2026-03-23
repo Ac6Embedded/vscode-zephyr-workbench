@@ -215,7 +215,16 @@ async function handleApplicationOverlay(filePath: string) {
 
   const overlays = Array.from(overlaysSet);
 
-  const compileCommandsPath = path.join(buildDir, 'compile_commands.json');
+  // Try to find compile_commands.json: first in config build dir, then parent build dir (sysbuild case)
+  let compileCommandsPath = path.join(buildDir, 'compile_commands.json');
+  if (!fs.existsSync(compileCommandsPath)) {
+    // Fallback for sysbuild: try build/compile_commands.json
+    const parentBuildDir = path.dirname(buildDir);
+    const parentCompilePath = path.join(parentBuildDir, 'compile_commands.json');
+    if (fs.existsSync(parentCompilePath)) {
+      compileCommandsPath = parentCompilePath;
+    }
+  }
 
   // Build a unique context name based on the file path
   const ctxName = `zw:${filePath}`;
