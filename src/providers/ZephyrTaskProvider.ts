@@ -548,7 +548,7 @@ export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder,
       const sysbuildEnabled = activeConfig && String(activeConfig.sysbuild).toLowerCase() === "true";
 
       if (sysbuildEnabled) {
-        vscode.window.showWarningMessage(`Task "${taskName}" is not supported with sysbuild enabled. RAM/ROM analysis requires manual inspection of the generated .elf files.`);
+        vscode.window.showWarningMessage(`Task "${taskName}" is not supported with sysbuild enabled.`);
         return false;
       }
     }
