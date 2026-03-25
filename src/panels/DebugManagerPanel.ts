@@ -386,8 +386,10 @@ export class DebugManagerPanel {
           case 'debug': {
             (async () => {
               try {
-                await applyHandler(message);
-                await debugHandler(message);
+                const applied = await applyHandler(message);
+                if (applied) {
+                  await debugHandler(message);
+                }
               } catch (error) {
                 console.error('Cannot start debug', error);
               }
@@ -620,7 +622,7 @@ export class DebugManagerPanel {
       return args ? `${args} ${flag} ${quotedPath}` : `${flag} ${quotedPath}`;
     }
     
-    async function applyHandler(message: any): Promise<void> {
+    async function applyHandler(message: any): Promise<boolean> {
       const projectPath = message.project;
       const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
       const appProject = await getZephyrProject(projectPath);
@@ -635,6 +637,11 @@ export class DebugManagerPanel {
       const runner = getRunner(runnerName);
       const runnerPath = message.runnerPath;
       const runnerArgs = message.runnerArgs;
+
+      if (!runner) {
+        vscode.window.showErrorMessage('Debug manager: No debug runner selected!');
+        return false;
+      }
     
       if(appProject && buildConfig) {
         let [launchJson, config] = await getLaunchConfiguration(appProject, buildConfigName);
@@ -681,7 +688,10 @@ export class DebugManagerPanel {
         }
 
         writeLaunchJson(launchJson, appProject);
+        return true;
       }
+
+      return false;
     }
     
     async function debugHandler(message: any): Promise<void> {

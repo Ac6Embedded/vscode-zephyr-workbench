@@ -1,9 +1,10 @@
 import fs from 'fs';
+import path from 'path';
 import { RunnerType, WestRunner } from "./WestRunner";
 
 /**
  * Runner for ST-LINK GDB Server.
- * Simplified version — assumes `stlink_gdbserver` is available in the system PATH.
+ * Prefer the latest STM32CubeCLT installation and fall back to PATH.
  */
 export class StlinkGdbserver extends WestRunner {
   name = 'stlink_gdbserver';
@@ -30,9 +31,10 @@ export class StlinkGdbserver extends WestRunner {
   }
 
   /**
-   * Load user arguments if provided — no extra search logic.
+   * Load user arguments and auto-resolve the server path when possible.
    */
   override loadArgs(args: string | undefined) {
+    this.refreshDetectedServerPath();
     super.loadArgs(args);
     if (!args) {
       return;
@@ -59,54 +61,87 @@ export class StlinkGdbserver extends WestRunner {
     return args;
   }
 
-  private hasCubeCLTFolder(): boolean {
-    const roots =
-      process.platform === 'win32' ? ['C:\\ST\\'] :
-      process.platform === 'darwin' ? ['/opt/ST/'] :
-      ['/opt/st/'];
+  override async loadInternalArgs() {
+    this.refreshDetectedServerPath();
+  }
 
-    for (const root of roots) {
+  protected getCubeCltRoots(): string[] {
+    if (process.platform === 'win32') {
+      return ['C:\\ST\\'];
+    }
+
+    if (process.platform === 'darwin') {
+      return ['/opt/ST/'];
+    }
+
+    return ['/opt/st/'];
+  }
+
+  protected getCubeCltDirectories(): string[] {
+    const directories: string[] = [];
+
+    for (const root of this.getCubeCltRoots()) {
       try {
         if (!fs.existsSync(root)) {
           continue;
         }
 
         const found = fs.readdirSync(root, { withFileTypes: true })
-          .some(d => d.isDirectory() && d.name.toLowerCase().startsWith('stm32cubeclt_'));
-        if (found) {
-          return true;
-        }
+          .filter(d => d.isDirectory() && d.name.toLowerCase().startsWith('stm32cubeclt_'))
+          .map(d => path.join(root, d.name));
+
+        directories.push(...found);
       } catch {
         // ignore and try next root
       }
     }
 
-    return false;
+    directories.sort((a, b) => {
+      const versionA = path.basename(a).replace(/^stm32cubeclt_/i, '');
+      const versionB = path.basename(b).replace(/^stm32cubeclt_/i, '');
+      return versionB.localeCompare(versionA, undefined, { numeric: true });
+    });
+
+    return directories;
+  }
+
+  public getLatestCubeCLTDirectory(): string | undefined {
+    return this.getCubeCltDirectories()[0];
+  }
+
+  public findCubeCltFile(...relativePathSegments: string[]): string | undefined {
+    for (const cubeCltDir of this.getCubeCltDirectories()) {
+      const candidate = path.join(cubeCltDir, ...relativePathSegments);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return undefined;
+  }
+
+  private resolveCubeCltServerPath(): string | undefined {
+    return this.findCubeCltFile('STLink-gdb-server', 'bin', this.executable);
+  }
+
+  private refreshDetectedServerPath() {
+    if (this.serverPath && fs.existsSync(this.serverPath)) {
+      return;
+    }
+
+    const detectedPath = this.resolveCubeCltServerPath();
+    if (detectedPath) {
+      this.serverPath = detectedPath;
+    }
   }
 
   /**
    * Detect the latest installed STM32CubeCLT version.
    */
   public getVersionCubeCLT(showList = false): string | null {
-    const roots =
-      process.platform === 'win32' ? ['C:\\ST\\'] :
-      process.platform === 'darwin' ? ['/opt/ST/'] :
-      ['/opt/st/'];
+    const versions = this.getCubeCltDirectories()
+      .map(dir => path.basename(dir).replace(/^stm32cubeclt_/i, ''));
 
-    const versions: string[] = [];
-    for (const root of roots) {
-      if (!fs.existsSync(root)){
-        continue;
-      }
-
-      const found = fs.readdirSync(root, { withFileTypes: true })
-        .filter(d => d.isDirectory() && d.name.toLowerCase().startsWith('stm32cubeclt_'))
-        .map(d => d.name.replace(/^stm32cubeclt_/i, ''));
-
-      versions.push(...found);
-    }
-    
-    versions.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
     if (showList) {
       console.log('STM32CubeCLTs found:', versions);
     }
@@ -115,11 +150,11 @@ export class StlinkGdbserver extends WestRunner {
   }
 
   /**
-   * Detect if STM32CubeCLT is installed by scanning known installation roots.
-   * Only checks folder existence: STM32CubeCLT_*.
+   * Detect ST-LINK GDB Server from STM32CubeCLT first, then fall back to PATH.
    */
   override async detect(): Promise<boolean> {
-    return this.hasCubeCLTFolder();
+    this.refreshDetectedServerPath();
+    return super.detect();
   }
 }
 
