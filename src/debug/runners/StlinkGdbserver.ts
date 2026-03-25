@@ -65,7 +65,7 @@ export class StlinkGdbserver extends WestRunner {
     this.refreshDetectedServerPath();
   }
 
-  private getCubeCltRoots(): string[] {
+  protected getCubeCltRoots(): string[] {
     if (process.platform === 'win32') {
       return ['C:\\ST\\'];
     }
@@ -77,7 +77,7 @@ export class StlinkGdbserver extends WestRunner {
     return ['/opt/st/'];
   }
 
-  private getCubeCltDirectories(): string[] {
+  protected getCubeCltDirectories(): string[] {
     const directories: string[] = [];
 
     for (const root of this.getCubeCltRoots()) {
@@ -105,14 +105,23 @@ export class StlinkGdbserver extends WestRunner {
     return directories;
   }
 
-  private resolveCubeCltServerPath(): string | undefined {
-    const latestCubeCltDir = this.getCubeCltDirectories()[0];
-    if (!latestCubeCltDir) {
-      return undefined;
+  public getLatestCubeCLTDirectory(): string | undefined {
+    return this.getCubeCltDirectories()[0];
+  }
+
+  public findCubeCltFile(...relativePathSegments: string[]): string | undefined {
+    for (const cubeCltDir of this.getCubeCltDirectories()) {
+      const candidate = path.join(cubeCltDir, ...relativePathSegments);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
     }
 
-    const detectedPath = path.join(latestCubeCltDir, 'STLink-gdb-server', 'bin', this.executable);
-    return fs.existsSync(detectedPath) ? detectedPath : undefined;
+    return undefined;
+  }
+
+  private resolveCubeCltServerPath(): string | undefined {
+    return this.findCubeCltFile('STLink-gdb-server', 'bin', this.executable);
   }
 
   private refreshDetectedServerPath() {
