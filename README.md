@@ -23,45 +23,6 @@ Workbench for Zephyr is a VS Code extension that adds support of Zephyr developm
 
 Find the complete documentation on: [https://z-workbench.com/](https://z-workbench.com/)
 
-## Docker
-
-The repository includes a Docker image intended for CI/CD pipelines and reproducible command-line builds.
-It uses the official `zephyrprojectrtos/zephyr-build` image as the base layer, then runs the same Workbench host tools installer shipped in this repository.
-
-This image is not meant to run the VS Code UI inside the container.
-The expected usage is:
-* run the Workbench extension on the host machine or in a dev container
-* use the Docker image as a ready-to-build Zephyr environment for `west`, `cmake` and `ninja`
-
-Build the image:
-
-```bash
-docker build -t ac6/zephyr-workbench-base .
-```
-
-Pin a specific Zephyr base image when needed:
-
-```bash
-docker build \
-  --build-arg ZEPHYR_BUILD_IMAGE=zephyrprojectrtos/zephyr-build:<tag> \
-  -t ac6/zephyr-workbench-base .
-```
-
-Run an interactive shell with the host tools preinstalled:
-
-```bash
-docker run --rm -it ac6/zephyr-workbench-base
-```
-
-Mount an application workspace for builds:
-
-```bash
-docker run --rm -it \
-  -v "$(pwd):/workspaces/app" \
-  -w /workspaces/app \
-  ac6/zephyr-workbench-base
-```
-
 ## Requirements
 To build your project on Workbench for Zephyr, No external tools is required. Host tools are installed by the extension itself.
 To flash and to debug the application on your target, external tools are required. Depending on needs, your might have to install some of the following software tools on your workstation:
