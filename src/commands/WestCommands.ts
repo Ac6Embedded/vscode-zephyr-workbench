@@ -345,14 +345,7 @@ export async function westFlashCommand(zephyrProject: ZephyrProject, westWorkspa
 
   let buildDir = normalizePath(path.join(zephyrProject.folderPath, 'build', buildConfig.boardIdentifier));
 
-  // For sysbuild, add --domain primary (MCUBoot multi-domain flashing)
-  const sysbuildEnabled =
-    typeof buildConfig.sysbuild === "string"
-      ? buildConfig.sysbuild.toLowerCase() === "true"
-      : Boolean(buildConfig.sysbuild);
-  const domainFlag = sysbuildEnabled ? " --domain primary" : "";
-
-  let command = `west flash --build-dir ${buildDir}${domainFlag}`;
+  let command = `west flash --build-dir ${buildDir}`;
   let activeSdk: ZephyrSDK = getZephyrSDK(zephyrProject.sdkPath);
 
   if (!activeSdk) {
