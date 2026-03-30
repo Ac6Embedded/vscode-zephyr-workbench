@@ -128,6 +128,14 @@ export class ZephyrProject {
     return isZephyrProject;
   }
 
+  static invalidateZephyrProjectWorkspaceFolder(projectPath: string) {
+    ZephyrProject.zephyrProjectWorkspaceCache.delete(projectPath);
+  }
+
+  static clearZephyrProjectWorkspaceCache() {
+    ZephyrProject.zephyrProjectWorkspaceCache.clear();
+  }
+
   static isZephyrProjectPath(projectPath: string): boolean {
     const zwFilePath = path.join(projectPath, '.vscode', 'tasks.json');
     if (fileExists(zwFilePath)) {

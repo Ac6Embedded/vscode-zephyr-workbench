@@ -553,16 +553,15 @@ export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder,
     }
 
     const taskDef = tasksMap.get(taskName);
-    if (taskDef) {
-      const task = new vscode.Task(taskDef, workspaceFolder, taskName, ZephyrTaskProvider.ZephyrType);
-      await vscode.tasks.executeTask(ZephyrTaskProvider.resolve(task));
+    if (!taskDef) {
+      return false;
     }
-    return true;
+
+    const task = new vscode.Task(taskDef, workspaceFolder, taskName, ZephyrTaskProvider.ZephyrType);
+    await vscode.tasks.executeTask(ZephyrTaskProvider.resolve(task));
+    return false;
   }
 
-  const { config, tasksJsonPath, serialized } = await ensureTasksFile(workspaceFolder);
-
-  const taskExists = config.tasks.some(task => task.label === taskName && task.type === ZephyrTaskProvider.ZephyrType);
   if (taskExists) {
     return true;
   }

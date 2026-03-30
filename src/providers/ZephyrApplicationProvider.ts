@@ -188,6 +188,7 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
   }
 
   refresh(): void {
+    ZephyrAppProject.clearZephyrProjectWorkspaceCache();
 		this._onDidChangeTreeData.fire();
 	}
 

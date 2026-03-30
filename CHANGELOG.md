@@ -4,6 +4,20 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.6.2]
+
+### Debug Manager
+- Fixed `ST-LINK GDB Server` detection on Linux
+- Avoided creating `launch.json` when no debug runner is selected
+
+### Commands
+- Avoided duplicated command entries by running commands directly without relying on `tasks.json`
+
+## [2.6.1]
+
+### Applications
+- Fixed project parsing 
+
 ## [2.6.0]
 
 ### Optimization
