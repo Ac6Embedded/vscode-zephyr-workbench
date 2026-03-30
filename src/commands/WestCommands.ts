@@ -214,6 +214,9 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
   const toolchainKind = (cfg.get<string>('toolchain') ?? 'sdk').toLowerCase();
   let iarEnv: Record<string, string> = {};
 
+  // Add the venv Python to PATH so MCUBoot can find dependencies
+  const venvPath = cfg.get<string>('venv.path') ?? '';
+
   if (toolchainKind === 'iar') {
     const selectedIarPath = cfg.get<string>('iar', '');
     const iarEntry = findIarEntry(selectedIarPath);
@@ -233,15 +236,27 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
   }
 
   const command =
-  `west build -p always` +
+  `west build` +
   ` --board ${buildConfig.boardIdentifier}` +
   ` --build-dir "${buildDir}"${sysbuildFlag}${snippetsFlag}` +
   ` "${zephyrProject.folderPath}"` +
   (westArgs ? ` ${westArgs}` : '');
 
+    const baseEnv = { ...normEnvVars, ...activeSdk.buildEnv, ...westWorkspace.buildEnv, ...iarEnv };
+
+    // If sysbuild, prepend venv Python to PATH so MCUBoot can find pykwalify and other deps
+    const env = venvPath && sysbuildEnabled
+      ? {
+          ...baseEnv,
+          PATH: process.platform === 'win32'
+            ? `${path.join(venvPath, 'Scripts')};${baseEnv.PATH ?? ''}`
+            : `${path.join(venvPath, 'bin')}:${baseEnv.PATH ?? ''}`
+        }
+      : baseEnv;
+
     const options: vscode.ShellExecutionOptions = {
       cwd        : westWorkspace.kernelUri.fsPath,
-      env        : { ...normEnvVars, ...activeSdk.buildEnv, ...westWorkspace.buildEnv, ...iarEnv },
+      env        : env,
       executable : getShellExe(),
       shellArgs  : getShellArgs(classifyShell(getShellExe()))
     };
@@ -326,6 +341,7 @@ export async function westFlashCommand(zephyrProject: ZephyrProject, westWorkspa
   }
 
   let buildDir = normalizePath(path.join(zephyrProject.folderPath, 'build', buildConfig.boardIdentifier));
+
   let command = `west flash --build-dir ${buildDir}`;
   let activeSdk: ZephyrSDK = getZephyrSDK(zephyrProject.sdkPath);
 

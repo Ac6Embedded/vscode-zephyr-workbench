@@ -545,6 +545,7 @@ export function pyocdLaunchJson(
   const serverPort = (gdbPort && gdbPort.length > 0) ? gdbPort : '3333';
   const {
     miDebuggerServerAddress: _ignored,
+    serverStarted,
     miDebuggerPath,
     debugServerPath,
     debugServerArgs,
@@ -555,7 +556,7 @@ export function pyocdLaunchJson(
 
   return {
     ...beforeServerAddress,
-    serverStarted: 'GDB server listening on port',
+    serverStarted: serverStarted,
     miDebuggerServerAddress: `${serverAddress}:${serverPort}`,
     miDebuggerPath,
     debugServerPath,

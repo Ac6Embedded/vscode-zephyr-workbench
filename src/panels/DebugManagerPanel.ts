@@ -661,14 +661,14 @@ export class DebugManagerPanel {
           for(const arg of getSetupCommands(programPath, runner.serverAddress, runner.serverPort, gdbMode)) {
             config.setupCommands.push(arg);
           }
-          // TO DO: improve support to pyOCD and test running a debug session
-         /*  if (runner.name === 'pyocd') {
+          // pyOCD requires specialized GDB configuration with specific setup commands
+          if (runner.name === 'pyocd' && runner.serverAddress && runner.serverPort) {
             const configIndex = launchJson.configurations.indexOf(config);
             config = pyocdLaunchJson(config, runner.serverAddress, runner.serverPort);
             if (configIndex >= 0) {
               launchJson.configurations[configIndex] = config;
             }
-          } */
+          }
         }
         createWestWrapper(appProject, buildConfigName);
         
