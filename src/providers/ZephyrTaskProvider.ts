@@ -534,12 +534,15 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): 
   }
 }
 
+// TODO: Enhace directTasks and reportTasks to be dynamic
 export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder, taskName: string): Promise<boolean> {
   // Tasks that run directly without saving to tasks.json
   const directTasks = ['DT Doctor', 'West ROM Report', 'West RAM Report', 'West RAM Plot', 'West ROM Plot', 'Menuconfig', 'Gui config', 'Harden Config'];
+  const { config, tasksJsonPath, serialized } = await ensureTasksFile(workspaceFolder);
+  const taskExists = config.tasks.some(task => task.label === taskName && task.type === ZephyrTaskProvider.ZephyrType);
 
   if (directTasks.includes(taskName)) {
-    // Check if task is a RAM/ROM report and sysbuild is enabled (not supported)
+    // Check if task is a RAM/ROM report/plot and sysbuild is enabled (not supported)
     const reportTasks = ['West ROM Report', 'West RAM Report', 'West RAM Plot', 'West ROM Plot'];
     if (reportTasks.includes(taskName)) {
       const project = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
