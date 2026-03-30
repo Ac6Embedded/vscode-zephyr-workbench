@@ -41,7 +41,6 @@ const westBuildTask: ZephyrTaskDefinition = {
   config: "primary",
   args: [
     "build",
-    "-p ${config:zephyr-workbench.build.pristine}",
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]

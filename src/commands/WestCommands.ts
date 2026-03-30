@@ -235,11 +235,8 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
     }
   }
 
-  // For sysbuild, don't apply -p flag: sysbuild manages its own pristine logic
-  const pristineFlag = sysbuildEnabled ? "" : "-p always";
-
   const command =
-  `west build ${pristineFlag}` +
+  `west build` +
   ` --board ${buildConfig.boardIdentifier}` +
   ` --build-dir "${buildDir}"${sysbuildFlag}${snippetsFlag}` +
   ` "${zephyrProject.folderPath}"` +
