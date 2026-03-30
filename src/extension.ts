@@ -298,27 +298,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.pristine', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder | vscode.Uri, configName?: string) => {
-			const profile = getTerminalDefaultProfile();
-
-			if (profile) {
-				if (node instanceof ZephyrApplicationTreeItem) {
-					westBuildCommand(node.project, getWestWorkspace(node.project.westWorkspacePath));
-				}
-				else if ((node as vscode.WorkspaceFolder).uri) {
-					const project = await getZephyrProject((node as vscode.WorkspaceFolder).uri.fsPath);
-					const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-					westBuildCommand(project, westWorkspace);
-				}
-				else if ((node as vscode.Uri).fsPath) {
-					const project = await getZephyrProject((node as vscode.Uri).fsPath);
-					const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-					westBuildCommand(project, westWorkspace);
-				}
-			}
-			else {
-				await executeConfigTask('West Rebuild', node, configName);
-			}
-
+			await executeConfigTask('West Rebuild', node, configName);
 		})
 	);
 	context.subscriptions.push(
