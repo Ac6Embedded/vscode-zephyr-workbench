@@ -4,6 +4,16 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.6.3]
+
+### Build
+- Fixed sysbuild enabled build 
+- Fixed multibuild `compile_commands.json` selection for IntelliSense
+- Fixed MCUBoot Python interpreter resolution with sysbuild
+
+### Debug Manager
+- Improved pyOCD debug runner arguments 
+
 ## [2.6.2]
 
 ### Debug Manager
