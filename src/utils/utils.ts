@@ -635,6 +635,8 @@ export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?
 
     if (resource) {
       if (resource instanceof ZephyrProject) {
+        // Always include the project's own boards/ folder as a board root
+        boardRoots.push(resource.folderPath);
         if (buildConfig) {
           let buildDir = buildConfig.getBuildDir(resource);
           // Search the BOARD_ROOT definition from the zephyr_settings.txt 

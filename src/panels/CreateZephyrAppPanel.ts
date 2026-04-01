@@ -282,6 +282,9 @@ export class CreateZephyrAppPanel {
           case 'westWorkspaceChanged':
             updateForm(webview, message.workspace);
             break;
+          case 'projectPathChanged':
+            updateForm(webview, message.workspace, message.projectPath);
+            break;
           case 'boardChanged':
             updateBoardImage(webview, message.boardYamlPath);
             break;
@@ -385,7 +388,7 @@ export class CreateZephyrAppPanel {
   }
 }
 
-async function updateForm(webview: vscode.Webview, workspaceUri: string) {
+async function updateForm(webview: vscode.Webview, workspaceUri: string, projectPath?: string) {
   if (workspaceUri && workspaceUri.length > 0) {
     // Start timing discovery (Windows only) and warn if it exceeds 30 seconds
     let completed = false;
@@ -408,7 +411,7 @@ async function updateForm(webview: vscode.Webview, workspaceUri: string) {
     }
 
     let westWorkspace = getWestWorkspace(vscode.Uri.parse(workspaceUri, true).fsPath);
-    const boards = await getSupportedBoards(westWorkspace);
+    const boards = await getSupportedBoards(westWorkspace, projectPath);
     boards.sort((a, b) => {
       if (a.name < b.name) {
         return -1;

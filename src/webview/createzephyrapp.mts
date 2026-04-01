@@ -227,6 +227,22 @@ function main() {
   browseParentButton.addEventListener("click", browseParentHandler);
   createButton.addEventListener("click", createHandler);
 
+  const projectParentPathInput = document.getElementById("projectParentPath") as TextField;
+  if (projectParentPathInput) {
+    (projectParentPathInput as unknown as HTMLElement).addEventListener('focusout', function () {
+      if (appTypeGroup.value !== 'create' && projectParentPathInput.value) {
+        const workspaceInput = document.getElementById('workspaceInput') as HTMLInputElement;
+        if (workspaceInput) {
+          webviewApi.postMessage({
+            command: 'projectPathChanged',
+            workspace: workspaceInput.getAttribute('data-value'),
+            projectPath: projectParentPathInput.value
+          });
+        }
+      }
+    });
+  }
+
   const refreshCreateOnlyRows = () => {
     const show = appTypeGroup.value === 'create';
     createOnlyElems.forEach(el => (el.style.display = show ? '' : 'none'));
@@ -377,6 +393,17 @@ function setVSCodeMessageListener() {
     switch (command) {
       case 'folderSelected':
         setLocalPath(event.data.id, event.data.folderUri);
+        if (event.data.id === 'projectParentPath') {
+          const appTypeGroupEl = document.getElementById('appTypeGroup') as HTMLInputElement;
+          const workspaceInputEl = document.getElementById('workspaceInput') as HTMLInputElement;
+          if (appTypeGroupEl && appTypeGroupEl.value !== 'create' && workspaceInputEl) {
+            webviewApi.postMessage({
+              command: 'projectPathChanged',
+              workspace: workspaceInputEl.getAttribute('data-value'),
+              projectPath: event.data.folderUri
+            });
+          }
+        }
         break;
       case 'updateBoardDropdown':
         updateBoardDropdown(event.data.boardHTML);

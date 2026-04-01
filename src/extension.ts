@@ -1240,6 +1240,9 @@ export function activate(context: vscode.ExtensionContext) {
 					let value = await changeEnvVarQuickStep(westWorkspace, node.envKey);
 					if (value) {
 						addEnvValue(westWorkspace.envVars, node.envKey, value);
+						if (node.envKey === 'BOARD_ROOT' && !fs.existsSync(path.join(value, 'boards'))) {
+							vscode.window.showWarningMessage(`The path "${value}" does not contain a "boards" subdirectory. BOARD_ROOT is expected to point to a folder that contains a boards/ subfolder.`);
+						}
 						let workspaceFolder = getWorkspaceFolder(westWorkspace.rootUri.fsPath);
 						if (workspaceFolder) {
 							await saveEnv(workspaceFolder, node.envKey, westWorkspace.envVars[node.envKey]);
@@ -1253,6 +1256,9 @@ export function activate(context: vscode.ExtensionContext) {
 					let value = await changeEnvVarQuickStep(project, node.envKey);
 					if (value) {
 						addEnvValue(project.envVars, node.envKey, value);
+						if (node.envKey === 'BOARD_ROOT' && !fs.existsSync(path.join(value, 'boards'))) {
+							vscode.window.showWarningMessage(`The path "${value}" does not contain a "boards" subdirectory. BOARD_ROOT is expected to point to a folder that contains a boards/ subfolder.`);
+						}
 						let workspaceFolder = getWorkspaceFolder(project.folderPath);
 						if (workspaceFolder) {
 							await saveEnv(workspaceFolder, node.envKey, project.envVars[node.envKey]);
@@ -1267,6 +1273,9 @@ export function activate(context: vscode.ExtensionContext) {
 					let value = await changeEnvVarQuickStep(config, node.envKey, node.project);
 					if (value) {
 						addEnvValue(config.envVars, node.envKey, value);
+						if (node.envKey === 'BOARD_ROOT' && !fs.existsSync(path.join(value, 'boards'))) {
+							vscode.window.showWarningMessage(`The path "${value}" does not contain a "boards" subdirectory. BOARD_ROOT is expected to point to a folder that contains a boards/ subfolder.`);
+						}
 						let workspaceFolder = getWorkspaceFolder(project.folderPath);
 						if (workspaceFolder) {
 							await saveConfigEnv(workspaceFolder, config.name, node.envKey, config.envVars[node.envKey]);
@@ -1286,6 +1295,9 @@ export function activate(context: vscode.ExtensionContext) {
 					let value = await changeEnvVarQuickStep(westWorkspace, node.envKey, node.envValue);
 					if (value) {
 						replaceEnvValue(westWorkspace.envVars, node.envKey, node.envValue, value);
+						if (node.envKey === 'BOARD_ROOT' && !fs.existsSync(path.join(value, 'boards'))) {
+							vscode.window.showWarningMessage(`The path "${value}" does not contain a "boards" subdirectory. BOARD_ROOT is expected to point to a folder that contains a boards/ subfolder.`);
+						}
 						let workspaceFolder = getWorkspaceFolder(westWorkspace.rootUri.fsPath);
 						if (workspaceFolder) {
 							await saveEnv(workspaceFolder, node.envKey, westWorkspace.envVars[node.envKey]);
@@ -1299,6 +1311,9 @@ export function activate(context: vscode.ExtensionContext) {
 					let value = await changeEnvVarQuickStep(project, node.envKey, node.envValue);
 					if (value) {
 						replaceEnvValue(project.envVars, node.envKey, node.envValue, value);
+						if (node.envKey === 'BOARD_ROOT' && !fs.existsSync(path.join(value, 'boards'))) {
+							vscode.window.showWarningMessage(`The path "${value}" does not contain a "boards" subdirectory. BOARD_ROOT is expected to point to a folder that contains a boards/ subfolder.`);
+						}
 						let workspaceFolder = getWorkspaceFolder(project.folderPath);
 						if (workspaceFolder) {
 							await saveEnv(workspaceFolder, node.envKey, project.envVars[node.envKey]);
@@ -1313,6 +1328,9 @@ export function activate(context: vscode.ExtensionContext) {
 					let value = await changeEnvVarQuickStep(project, node.envKey, node.envValue);
 					if (value) {
 						replaceEnvValue(config.envVars, node.envKey, node.envValue, value);
+						if (node.envKey === 'BOARD_ROOT' && !fs.existsSync(path.join(value, 'boards'))) {
+							vscode.window.showWarningMessage(`The path "${value}" does not contain a "boards" subdirectory. BOARD_ROOT is expected to point to a folder that contains a boards/ subfolder.`);
+						}
 						let workspaceFolder = getWorkspaceFolder(project.folderPath);
 						if (workspaceFolder) {
 							await saveConfigEnv(workspaceFolder, config.name, node.envKey, config.envVars[node.envKey]);
