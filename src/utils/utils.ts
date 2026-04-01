@@ -16,6 +16,8 @@ import { getBoardsDirectories, westTmpBuildCmakeOnlyCommand } from '../commands/
 import { checkOrCreateTask, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 
+let zephyrTasksFetchPromise: Promise<vscode.Task[]> | undefined;
+
 export function msleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -407,11 +409,10 @@ export function findIarEntry(iarPath: string): IARToolchain | undefined {
 
 
 export async function getZephyrProject(projectPath: string): Promise<ZephyrProject> {
-  for (let workspaceFolder of vscode.workspace.workspaceFolders as vscode.WorkspaceFolder[]) {
-    if (await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
-      if (workspaceFolder.uri.fsPath === projectPath) {
-        return new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-      }
+  const projectFolders = await ZephyrAppProject.getZephyrProjectWorkspaceFolders(vscode.workspace.workspaceFolders as vscode.WorkspaceFolder[]);
+  for (const workspaceFolder of projectFolders) {
+    if (workspaceFolder.uri.fsPath === projectPath) {
+      return new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
     }
   }
   vscode.window.showInformationMessage("This is not a Zephyr application " +`${projectPath}`);
@@ -500,8 +501,23 @@ async function fetchTasksFromWorkspaceFolder(workspaceFolder: vscode.WorkspaceFo
   }
 }
 
+async function getZephyrWorkbenchTasks(): Promise<vscode.Task[]> {
+  if (!zephyrTasksFetchPromise) {
+    const fetchPromise = Promise.resolve(vscode.tasks.fetchTasks({ type: 'zephyr-workbench' }));
+    zephyrTasksFetchPromise = fetchPromise;
+
+    fetchPromise.finally(() => {
+      if (zephyrTasksFetchPromise === fetchPromise) {
+        zephyrTasksFetchPromise = undefined;
+      }
+    });
+  }
+
+  return zephyrTasksFetchPromise;
+}
+
 export async function findTask(taskLabel: string, workspaceFolder: vscode.WorkspaceFolder): Promise<vscode.Task | undefined> {
-  const tasks = await vscode.tasks.fetchTasks({ type: 'zephyr-workbench' });
+  const tasks = await getZephyrWorkbenchTasks();
   return tasks.find(task => {
     const folder = task.scope as vscode.WorkspaceFolder;
     return folder && folder.uri.toString() === workspaceFolder.uri.toString() && task.name === taskLabel;
@@ -511,7 +527,7 @@ export async function findTask(taskLabel: string, workspaceFolder: vscode.Worksp
 export async function findOrCreateTask(taskLabel: string, workspaceFolder: vscode.WorkspaceFolder): Promise<vscode.Task | undefined> {
   const taskExists = await checkOrCreateTask(workspaceFolder, taskLabel);
   if (taskExists) {
-    const tasks = await vscode.tasks.fetchTasks({ type: 'zephyr-workbench' });
+    const tasks = await getZephyrWorkbenchTasks();
     return tasks.find(task => {
       const folder = task.scope as vscode.WorkspaceFolder;
       return folder && folder.uri.toString() === workspaceFolder.uri.toString() && task.name === taskLabel;
@@ -531,7 +547,7 @@ export async function findOrCreateTask(taskLabel: string, workspaceFolder: vscod
 export async function findConfigTask(taskLabel: string, project: ZephyrProject, configName: string): Promise<vscode.Task | undefined> {
   const taskExists = await checkOrCreateTask(project.workspaceFolder, taskLabel);
   if (taskExists) {
-    const tasks = await vscode.tasks.fetchTasks({ type: 'zephyr-workbench' });
+    const tasks = await getZephyrWorkbenchTasks();
     const task = tasks.find(task => {
       const folder = task.scope as vscode.WorkspaceFolder;
       return folder && folder.uri.toString() === project.workspaceFolder.uri.toString() && task.name === taskLabel;

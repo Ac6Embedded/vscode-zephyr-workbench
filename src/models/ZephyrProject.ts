@@ -121,11 +121,30 @@ export class ZephyrProject {
       return cachedValue; 
     }
 
+    const hasZephyrTaskFile = ZephyrProject.isZephyrProjectPath(projectPath);
+    if (hasZephyrTaskFile) {
+      ZephyrProject.zephyrProjectWorkspaceCache.set(projectPath, true);
+      return true;
+    }
+
     const westBuildTask = await findTask('West Build', folder);
-    const isZephyrProject = ZephyrProject.isZephyrProjectPath(projectPath) || !!(westBuildTask && westBuildTask.definition.type === ZephyrTaskProvider.ZephyrType);
+    const isZephyrProject = !!(westBuildTask && westBuildTask.definition.type === ZephyrTaskProvider.ZephyrType);
 
     ZephyrProject.zephyrProjectWorkspaceCache.set(projectPath, isZephyrProject);
     return isZephyrProject;
+  }
+
+  static async getZephyrProjectWorkspaceFolders(
+    folders: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? []
+  ): Promise<vscode.WorkspaceFolder[]> {
+    const results = await Promise.allSettled(
+      folders.map(async (folder) => {
+        const isProject = await ZephyrProject.isZephyrProjectWorkspaceFolder(folder);
+        return isProject ? folder : undefined;
+      })
+    );
+
+    return results.flatMap((result) => result.status === 'fulfilled' && result.value ? [result.value] : []);
   }
 
   static invalidateZephyrProjectWorkspaceFolder(projectPath: string) {

@@ -23,12 +23,11 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
 		const items: vscode.TreeItem[] = [];
     if(element === undefined) {
       if(vscode.workspace.workspaceFolders) {
-        for(let workspaceFolder of vscode.workspace.workspaceFolders) {
-          if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
-            const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-            const item =  new ZephyrApplicationTreeItem(appProject, vscode.TreeItemCollapsibleState.Collapsed);
-            items.push(item);
-          }
+        const projectFolders = await ZephyrAppProject.getZephyrProjectWorkspaceFolders(vscode.workspace.workspaceFolders);
+        for (const workspaceFolder of projectFolders) {
+          const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
+          const item =  new ZephyrApplicationTreeItem(appProject, vscode.TreeItemCollapsibleState.Collapsed);
+          items.push(item);
         }
         return Promise.resolve(items);
       }
