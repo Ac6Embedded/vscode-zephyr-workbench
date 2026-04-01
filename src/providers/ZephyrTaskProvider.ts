@@ -404,7 +404,13 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
     const sysbuildFlag = sysbuildEnabled ? " --sysbuild" : "";
 
-    const fullCommand = `${cmd} ${args}${sysbuildFlag}`;
+    const isBuildTask = _task.name === westBuildTask.label || _task.name === rebuildTask.label;
+    const snippets = isBuildTask && config ? config.envVars?.['SNIPPETS'] : undefined;
+    const snippetsFlag = Array.isArray(snippets) && snippets.length > 0
+      ? snippets.map((s: string) => ` -S ${s}`).join('')
+      : '';
+
+    const fullCommand = `${cmd} ${args}${sysbuildFlag}${snippetsFlag}`;
 
     const envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
     let venvPath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
