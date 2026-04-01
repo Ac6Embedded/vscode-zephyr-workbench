@@ -4,6 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.6.4]
+
+### Snippets
+- Fixed snippets not being passed to the build command on Linux
+
 ## [2.6.3]
 
 ### Build
