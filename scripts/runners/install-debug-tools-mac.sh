@@ -78,6 +78,19 @@ get_filename_from_url() {
     filename=$(basename "$url")
     filename=${filename%%\?*}
     filename=${filename%%\#*}
+
+    # If no recognized extension, scan URL segments for one that has one
+    # (handles URLs like .../MyTool_1.0.pkg/download?noredirect=true)
+    local known_exts="deb|rpm|exe|msi|bat|pkg|dmg|zip|tar\.gz|tgz|tar\.bz2|tar\.xz|txz|7z|rar"
+    if [[ ! "$filename" =~ \.($known_exts)$ ]]; then
+        local part stripped
+        IFS='/' read -ra parts <<< "$url"
+        for part in "${parts[@]}"; do
+            stripped=${part%%\?*}; stripped=${stripped%%\#*}
+            if [[ "$stripped" =~ \.($known_exts)$ ]]; then filename="$stripped"; fi
+        done
+    fi
+
     echo "$filename"
 }
 
