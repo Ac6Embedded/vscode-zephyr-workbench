@@ -79,11 +79,10 @@ export class RunManagerPanel {
     let applicationsHTML: string = '';
 
     if(vscode.workspace.workspaceFolders) {
-      for(let workspaceFolder of vscode.workspace.workspaceFolders) {
-        if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
-          const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-          applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.sourceDir}" data-label="${appProject.folderName}">${appProject.folderName} <span class="description">${appProject.sourceDir}</span></div>`);
-        }
+      const projectFolders = await ZephyrAppProject.getZephyrProjectWorkspaceFolders(vscode.workspace.workspaceFolders);
+      for (const workspaceFolder of projectFolders) {
+        const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
+        applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.sourceDir}" data-label="${appProject.folderName}">${appProject.folderName} <span class="description">${appProject.sourceDir}</span></div>`);
       }
     }
 
@@ -356,5 +355,4 @@ export class RunManagerPanel {
     }
   }  
 }
-
 

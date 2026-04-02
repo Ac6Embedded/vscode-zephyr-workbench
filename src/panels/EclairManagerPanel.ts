@@ -1192,12 +1192,9 @@ async function load_applications(): Promise<ZephyrAppProject[]> {
   }
 
   let applications: ZephyrAppProject[] = [];
-  for (const workspace_folder of vscode.workspace.workspaceFolders) {
+  const project_folders = await ZephyrAppProject.getZephyrProjectWorkspaceFolders(vscode.workspace.workspaceFolders);
+  for (const workspace_folder of project_folders) {
     try {
-      if (!await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspace_folder)) {
-        continue;
-      }
-
       const app_project = new ZephyrAppProject(workspace_folder, workspace_folder.uri.fsPath);
       applications.push(app_project);
     } catch {

@@ -121,6 +121,36 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const zephyrAppProvider = new ZephyrApplicationDataProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-app-explorer', zephyrAppProvider);
+	let appRefreshSuspendCount = 0;
+	let appRefreshPending = false;
+
+	const flushAppRefresh = () => {
+		appRefreshPending = false;
+		zephyrAppProvider.refresh();
+	};
+
+	const requestAppRefresh = () => {
+		// Project create/import updates workspace folders, tasks, and several settings in sequence.
+		// While that batch is running, collapse repeated refresh requests into one final refresh.
+		if (appRefreshSuspendCount > 0) {
+			appRefreshPending = true;
+			return;
+		}
+		flushAppRefresh();
+	};
+
+	const withAppRefreshBatch = async <T>(fn: () => Promise<T>): Promise<T> => {
+		appRefreshSuspendCount++;
+		try {
+			return await fn();
+		} finally {
+			appRefreshSuspendCount--;
+			// Only the outermost batch flushes, so nested callers still produce a single tree refresh.
+			if (appRefreshSuspendCount === 0 && appRefreshPending) {
+				flushAppRefresh();
+			}
+		}
+	};
 
 	const zephyrToolsCommandProvider = new ZephyrHostToolsCommandProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-tools-explorer', zephyrToolsCommandProvider);
@@ -2012,50 +2042,51 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			vscode.window.withProgress({
-				location: vscode.ProgressLocation.Notification,
-				title: "Creating new application...",
-				cancellable: false,
-			}, async (progress, token) => {
-				let projLoc: string;
-				if (projectLoc.length === 0) {
-					projLoc = zephyrSample.rootDir.fsPath;
-				} else {
-					let projectPath = path.join(projectLoc, projectName);
-					if (fileExists(projectPath)) {
-						vscode.window.showErrorMessage(`The folder [${projectPath}] already exists. Please change the project name or its location.`);
-						return;
-					}
-					projLoc = copySampleSync(zephyrSample.rootDir.fsPath, projectPath);
-				}
-				await addWorkspaceFolder(projLoc);
-
-				let workspaceFolder = getWorkspaceFolder(projLoc);
-				if (workspaceFolder) {
-					if (debugPreset) {
-						await debugPresetContent(workspaceFolder.uri.fsPath);
-					}
-
-					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchain);
-					await createTasksJson(workspaceFolder);
-					await createExtensionsJson(workspaceFolder);
-					await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
-
-					// Create a local Python venv if requested
-					if (venvMode === 'local') {
-						const venvPath = await createLocalVenv(context, workspaceFolder);
-						if (venvPath) {
-							await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-								.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+			await withAppRefreshBatch(async () => {
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: "Creating new application...",
+					cancellable: false,
+				}, async (progress, token) => {
+					let projLoc: string;
+					if (projectLoc.length === 0) {
+						projLoc = zephyrSample.rootDir.fsPath;
+					} else {
+						let projectPath = path.join(projectLoc, projectName);
+						if (fileExists(projectPath)) {
+							vscode.window.showErrorMessage(`The folder [${projectPath}] already exists. Please change the project name or its location.`);
+							return;
 						}
+						projLoc = copySampleSync(zephyrSample.rootDir.fsPath, projectPath);
 					}
-					CreateZephyrAppPanel.currentPanel?.dispose();
+					await addWorkspaceFolder(projLoc);
 
-					vscode.window.showInformationMessage(`New Application '${workspaceFolder.name}' created !`);
-					zephyrAppProvider.refresh();
-				}
-			}
-			);
+					let workspaceFolder = getWorkspaceFolder(projLoc);
+					if (workspaceFolder) {
+						if (debugPreset) {
+							await debugPresetContent(workspaceFolder.uri.fsPath);
+						}
+
+						await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchain);
+						await createTasksJson(workspaceFolder);
+						await createExtensionsJson(workspaceFolder);
+						await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
+
+						// Create a local Python venv if requested
+						if (venvMode === 'local') {
+							const venvPath = await createLocalVenv(context, workspaceFolder);
+							if (venvPath) {
+								await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+									.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+							}
+						}
+						CreateZephyrAppPanel.currentPanel?.dispose();
+
+						vscode.window.showInformationMessage(`New Application '${workspaceFolder.name}' created !`);
+						requestAppRefresh();
+					}
+				});
+			});
 		})
 	);
 
@@ -2066,24 +2097,26 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			await addWorkspaceFolder(projectLoc);
+			await withAppRefreshBatch(async () => {
+				await addWorkspaceFolder(projectLoc);
 
-			let workspaceFolder = getWorkspaceFolder(projectLoc);
-			if (workspaceFolder && westWorkspace && zephyrBoard && zephyrSDK) {
-				await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK);
-				await createTasksJson(workspaceFolder);
-				await createExtensionsJson(workspaceFolder);
-				// Optionally create a local venv for the imported project
-				if (venvMode === 'local') {
-					const venvPath = await createLocalVenv(context, workspaceFolder);
-					if (venvPath) {
-						await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-							.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+				let workspaceFolder = getWorkspaceFolder(projectLoc);
+				if (workspaceFolder && westWorkspace && zephyrBoard && zephyrSDK) {
+					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK);
+					await createTasksJson(workspaceFolder);
+					await createExtensionsJson(workspaceFolder);
+					// Optionally create a local venv for the imported project
+					if (venvMode === 'local') {
+						const venvPath = await createLocalVenv(context, workspaceFolder);
+						if (venvPath) {
+							await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+								.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+						}
 					}
+					vscode.window.showInformationMessage(`Importing Application '${workspaceFolder.name}' done`);
+					requestAppRefresh();
 				}
-				vscode.window.showInformationMessage(`Importing Application '${workspaceFolder.name}' done`);
-					zephyrAppProvider.refresh();
-			}
+			});
 		})
 	);
 
@@ -2194,7 +2227,7 @@ export function activate(context: vscode.ExtensionContext) {
 	/* Listeners on workspace changes */
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeWorkspaceFolders((event: vscode.WorkspaceFoldersChangeEvent) => {
-			zephyrAppProvider.refresh();
+			requestAppRefresh();
 			//zephyrModuleProvider.refresh();
 			westWorkspaceProvider.refresh();
 		})
@@ -2208,7 +2241,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration(async (event) => {
 			if (event.affectsConfiguration('tasks')) {
-				zephyrAppProvider.refresh();
+				requestAppRefresh();
 			}
 
 			if (event.affectsConfiguration(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY)) {
@@ -2224,7 +2257,7 @@ export function activate(context: vscode.ExtensionContext) {
 				event.affectsConfiguration(`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY}`) ||
 				event.affectsConfiguration(`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_SDK_SETTING_KEY}`) ||
 				event.affectsConfiguration(`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.build.configurations`)) {
-				zephyrAppProvider.refresh();
+				requestAppRefresh();
 			}
 		})
 	);

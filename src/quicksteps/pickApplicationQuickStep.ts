@@ -6,10 +6,9 @@ export async function pickApplicationQuickStep(context: ExtensionContext): Promi
   const applicationItems: QuickPickItem[] = [];
   
   if(vscode.workspace.workspaceFolders) {
-    for(let workspaceFolder of vscode.workspace.workspaceFolders) {
-      if(await ZephyrAppProject.isZephyrProjectWorkspaceFolder(workspaceFolder)) {
-        applicationItems.push({ label: workspaceFolder.name, description: workspaceFolder.uri.fsPath});
-      }
+    const projectFolders = await ZephyrAppProject.getZephyrProjectWorkspaceFolders(vscode.workspace.workspaceFolders);
+    for (const workspaceFolder of projectFolders) {
+      applicationItems.push({ label: workspaceFolder.name, description: workspaceFolder.uri.fsPath});
     }
   }
   
