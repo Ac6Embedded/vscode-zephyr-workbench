@@ -44,7 +44,7 @@ debug_tools:
   version: 0.12.0
   website: https://github.com/zephyrproject-rtos/openocd
   type: debug_server
-  group: Openocds
+  group: Openocds/Zephyr
   install_dir: openocds/openocd-zephyr
   root: false
   os:
@@ -63,7 +63,7 @@ debug_tools:
   version: 0.12.0
   website: https://github.com/espressif/openocd-esp32/releases
   type: debug_server
-  group: Openocds
+  group: Openocds/ESP32
   install_dir: openocds/openocd-esp32
   root: false
   os:
@@ -82,7 +82,7 @@ debug_tools:
   version: 0.12.0
   website: https://github.com/xpack-dev-tools/openocd-xpack/releases
   type: debug_server
-  group: Openocds
+  group: Openocds/xPack
   install_dir: openocds/openocd-xpack
   root: false
   os:
@@ -102,7 +102,7 @@ debug_tools:
   website: https://softwaretools.infineon.com/tools/com.ifx.tb.tool.modustoolboxprogtools
   vendor: Infineon
   type: debug_server
-  group: Openocds
+  group: Openocds  # No need to group under Openocds/Infineon the generic .exe installer handles installation
   install_dir: openocds/openocd-modustoolbox
   root: true
   no_edit: true
