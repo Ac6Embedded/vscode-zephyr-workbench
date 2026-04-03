@@ -303,7 +303,8 @@ export class DebugToolsPanel {
       </tr>`;
       
       // Details row for path/edit (like other tools)
-      const pathValue = this.getRunnerPath(alias) ?? '';
+      const currentDefault = this.envData?.runners?.[alias]?.default as string | undefined;
+      const pathValue = currentDefault === 'openocd-modustoolbox' ? '' : (this.getRunnerPath(alias) ?? '');
       const addToPathChecked = (this.envData?.runners?.[alias]?.do_not_use !== true) ? 'checked' : '';
       toolsHTML += `<tr id="details-${alias}" class="details-row hidden">
         <td></td>
@@ -1026,13 +1027,45 @@ export class DebugToolsPanel {
 
   // OpenOCD variants are considered installed when their folder exists:
   // <internal>/.zinstaller/tools/openocds/<tool-id>
+  // For auto-detect-only tools (no install_dir), checks the auto-detect paths.
   private isOpenocdVariantInstalled(toolId: string): boolean {
     try {
       const tool = this.data.debug_tools.find((t: any) => t.tool === toolId);
-      if (!tool?.install_dir) { return false; }
-      const variantDir = path.join(getInternalDirRealPath(), 'tools', tool.install_dir);
-      return fs.existsSync(variantDir) && fs.statSync(variantDir).isDirectory();
-    } catch {
+      if (!tool) {
+        return false;
+      }  
+
+      if (tool.install_dir) {
+        const variantDir = path.join(getInternalDirRealPath(), 'tools', tool.install_dir);
+        if (fs.existsSync(variantDir) && fs.statSync(variantDir).isDirectory()) {
+          return true;
+        }
+      }
+
+      // No install_dir or different one, fall back to auto-detect paths
+      let platform = 'linux';
+
+      if (process.platform === 'win32') {
+        platform = 'windows';
+      }
+
+      if (process.platform === 'darwin') {
+        platform = 'darwin';
+      }
+
+      if (process.platform === 'linux') {
+        platform = 'linux';
+      }
+
+      const autoDetectPaths: string[] = tool['auto-detect']?.[platform] ?? [];
+      const { sync: globSync } = require('glob');
+
+      return autoDetectPaths.some((pattern: string) => {
+        const matches = globSync(pattern.replace(/\\/g, '/'), { dot: true });
+        return matches.length > 0;
+      });
+    } 
+    catch {
       return false;
     }
   }

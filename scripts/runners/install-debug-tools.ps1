@@ -112,7 +112,30 @@ function Download-FileWithHashCheck {
                 }
                 Invoke-WebRequest -Uri $SourceUrl -Method POST -Body $postParams -OutFile $FilePath -ErrorAction Stop
             } else {
-                Invoke-WebRequest -Uri $SourceUrl -OutFile $FilePath -ErrorAction Stop
+                $req = [System.Net.HttpWebRequest]::Create($SourceUrl)
+                $req.AllowAutoRedirect = $true
+                $req.MaximumAutomaticRedirections = 10
+                $req.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                $resp = $req.GetResponse()
+
+                # Some servers (e.g. Infineon) return the actual download URL as plain text
+                # instead of redirecting — detect this and follow the URL
+                $actualUrl = $SourceUrl
+                if ($resp.ContentType -like "text/plain*" -and $resp.ContentLength -lt 512) {
+                    $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
+                    $actualUrl = $reader.ReadToEnd().Trim()
+                    $resp.Close()
+                    $req = [System.Net.HttpWebRequest]::Create($actualUrl)
+                    $req.AllowAutoRedirect = $true
+                    $req.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                    $resp = $req.GetResponse()
+                }
+
+                $stream = $resp.GetResponseStream()
+                $fs = [System.IO.File]::Create($FilePath)
+                $stream.CopyTo($fs)
+                $fs.Close()
+                $resp.Close()
             }
         }
     }
@@ -270,12 +293,12 @@ function Install {
     # 3️ Case: directly executable file (.exe, .msi, .bat)
     if ($File -match '\.(exe|msi|bat)$') {
         Write-Host "Running executable installer: $File"
-        & $File
-        if ($LastExitCode -eq 0) {
+        $process = Start-Process -FilePath $File -PassThru -Wait
+        if ($process.ExitCode -eq 0) {
             Write-Host "$Tool installed successfully."
         } else {
-            Print-Error $LastExitCode "Executable installer for $Tool failed."
-            exit $LastExitCode
+            Print-Error $process.ExitCode "Executable installer for $Tool failed."
+            exit $process.ExitCode
         }
         return
     }
@@ -290,7 +313,21 @@ function Get-FilenameFromUrl {
     param (
         [string]$Url
     )
-    return [System.IO.Path]::GetFileName($Url)
+    $knownExts = @('deb','rpm','exe','msi','bat','pkg','dmg','zip','7z','rar','tar.gz','tgz','tar.bz2','tar.xz','txz')
+    $noQuery = $Url -replace '\?.*$','' -replace '#.*$',''
+    $filename = [System.IO.Path]::GetFileName($noQuery)
+
+    $hasKnownExt = $knownExts | Where-Object { $filename -match "\.$_$" }
+    if ($hasKnownExt) { return $filename }
+
+    # Scan URL segments for one with a recognized extension
+    # (handles URLs like .../MyTool_1.0.exe/download?noredirect=true)
+    foreach ($seg in ($noQuery -split '/')) {
+        foreach ($ext in $knownExts) {
+            if ($seg -match "\.$ext$") { return $seg }
+        }
+    }
+    return $filename
 }
 
 

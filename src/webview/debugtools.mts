@@ -5,6 +5,10 @@ provideVSCodeDesignSystem().register(
 allComponents
 );
 
+declare function acquireVsCodeApi(): {
+  postMessage(message: unknown): void;
+};
+
 const webviewApi = acquireVsCodeApi();
 
 window.addEventListener("load", main);
@@ -323,8 +327,8 @@ function setVSCodeMessageListener() {
     const command = event.data.command;
     switch(command) {
       case 'exec-done': {
-        const progress = document.getElementById(`progress-${event.data.tool}`) as HTMLElement;
-        progress.style.display = 'none';
+        const progress = document.getElementById(`progress-${event.data.tool}`);
+        if (progress) { progress.style.display = 'none'; }
         // Keep legacy per-tool detect for immediate feedback
         webviewApi.postMessage({ command: 'detect', tool: event.data.tool });
         break;

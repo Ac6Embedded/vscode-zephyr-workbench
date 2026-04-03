@@ -7,6 +7,7 @@ import os from 'os';
 import path from "path";
 import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
+import yaml from 'yaml';
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
 import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs, getShellExe, classifyShell, normalizePathForShell, execCommandWithEnv } from "./execUtils";
 import { syncAutoDetectEnv } from "./autoDetectSyncUtils";
@@ -324,6 +325,81 @@ async function focusInstallerOutputChannel(): Promise<void> {
   }
 }
 
+function splitDebugToolsByPrivilege(context: vscode.ExtensionContext, listTools: any[]): { rootTools: any[]; nonRootTools: any[] } {
+  try {
+    const debugToolsYamlPath = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'runners', 'debug-tools.yml').fsPath;
+    const data = yaml.parse(fs.readFileSync(debugToolsYamlPath, 'utf8')) || {};
+    const debugTools = Array.isArray(data.debug_tools) ? data.debug_tools : [];
+    const rootToolIds = new Set<string>(
+      debugTools
+        .filter((tool: any) => tool?.root === true && typeof tool?.tool === 'string')
+        .map((tool: any) => tool.tool)
+    );
+
+    return {
+      rootTools: listTools.filter(tool => rootToolIds.has(tool?.tool)),
+      nonRootTools: listTools.filter(tool => !rootToolIds.has(tool?.tool)),
+    };
+  } catch {
+    return {
+      rootTools: [],
+      nonRootTools: listTools,
+    };
+  }
+}
+
+async function runElevatedDebugToolsCommand(command: string): Promise<void> {
+  const options = {
+    name: 'Zephyr Workbench Installer',
+  };
+
+  const toText = (content?: string | Buffer): string | undefined => {
+    if (typeof content === 'undefined') {
+      return undefined;
+    }
+    return typeof content === 'string' ? content : content.toString('utf8');
+  };
+
+  const appendBlock = (header: string, content?: string | Buffer) => {
+    const text = toText(content);
+    if (!text) {
+      return;
+    }
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return;
+    }
+    output.appendLine(`--- ${header} ---`);
+    for (const line of trimmed.split(/\r?\n/)) {
+      output.appendLine(line);
+    }
+  };
+
+  await focusInstallerOutputChannel();
+  output.appendLine('Installing root-required runners... This might take a while. Root logs will appear once the step completes.');
+
+  await new Promise<void>((resolve, reject) => {
+    sudo.exec(command, options, (error, stdout, stderr) => {
+      appendBlock('root stdout', stdout);
+      appendBlock('root stderr', stderr);
+
+      if (error) {
+        output.appendLine(`Error executing installer: ${error.message}`);
+        vscode.window.showErrorMessage(`Error executing installer: ${error.message}`, 'Open log').then(selection => {
+          if (selection === 'Open log') {
+            output.show();
+          }
+        });
+        reject(error);
+        return;
+      }
+
+      output.appendLine('Root runners step finished.');
+      resolve();
+    });
+  });
+}
+
 export async function installHostTools(context: vscode.ExtensionContext, listTools: string = "") {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   if(installDirUri) {
@@ -634,11 +710,25 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
       toolsSeparator = ',';
     }
 
-    const toolsCmdArg = listTools.map(tool => tool.tool).join(toolsSeparator);
-    const installCmdArgs = `${installArgs} ${toolsCmdArg}`;
+    const buildInstallCommand = (tools: any[]) => {
+      const toolsCmdArg = tools.map(tool => tool.tool).join(toolsSeparator);
+      return `${installCmd} ${installArgs} ${toolsCmdArg}`.trim();
+    };
+
+    const { rootTools, nonRootTools } = splitDebugToolsByPrivilege(context, listTools);
+
+    if ((process.platform === 'linux' || process.platform === 'darwin') && rootTools.length > 0) {
+      await runElevatedDebugToolsCommand(buildInstallCommand(rootTools));
+
+      if (nonRootTools.length > 0) {
+        await execShellCommandWithEnv('Installing Host debug tools', buildInstallCommand(nonRootTools), shellOpts);
+      }
+      return;
+    }
+
     // Run in a shell session that sources the configured env script
     // so pip-based runners install into the managed venv and PATH is consistent.
-    await execShellCommandWithEnv('Installing Host debug tools', installCmd + " " + installCmdArgs, shellOpts);
+    await execShellCommandWithEnv('Installing Host debug tools', buildInstallCommand(listTools), shellOpts);
 
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");

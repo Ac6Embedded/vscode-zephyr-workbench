@@ -44,7 +44,7 @@ debug_tools:
   version: 0.12.0
   website: https://github.com/zephyrproject-rtos/openocd
   type: debug_server
-  group: Openocds
+  group: Openocds/Zephyr
   install_dir: openocds/openocd-zephyr
   root: false
   os:
@@ -63,7 +63,7 @@ debug_tools:
   version: 0.12.0
   website: https://github.com/espressif/openocd-esp32/releases
   type: debug_server
-  group: Openocds
+  group: Openocds/ESP32
   install_dir: openocds/openocd-esp32
   root: false
   os:
@@ -82,7 +82,7 @@ debug_tools:
   version: 0.12.0
   website: https://github.com/xpack-dev-tools/openocd-xpack/releases
   type: debug_server
-  group: Openocds
+  group: Openocds/xPack
   install_dir: openocds/openocd-xpack
   root: false
   os:
@@ -95,6 +95,34 @@ debug_tools:
     darwin:
       source: https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-7/xpack-openocd-0.12.0-7-darwin-x64.tar.gz
       sha256: 668ad25350103a4357e11629ec833eae5982e973889ce25bad0c2963e37fa8bf
+- tool: openocd-modustoolbox
+  alias: openocd
+  name: OpenOCD Infineon
+  version: 0.12.0
+  website: https://softwaretools.infineon.com/tools/com.ifx.tb.tool.modustoolboxprogtools
+  vendor: Infineon
+  type: debug_server
+  group: Openocds  # No need to group under Openocds/Infineon the generic .exe installer handles installation
+  install_dir: openocds/openocd-modustoolbox
+  root: true
+  no_edit: true
+  auto-detect:
+    windows:
+      - "C:/Infineon/Tools/ModusToolboxProgtools-*/openocd"
+    linux:
+      - "/opt/Tools/ModusToolboxProgtools-*/openocd"
+    darwin:
+      - "/Applications/ModusToolboxProgtools-*/openocd"
+  os:
+    windows:
+      source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.7.0.1727/artifacts/ModusToolboxProgtools_1.7.0.1727.exe/download
+      sha256: 865692b914d7b3a1a40ff5bc55eaf405317901869c2ca161f855e087ada43dc2
+    linux:
+      source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.7.0.1727/artifacts/ModusToolboxProgtools_1.7.0.1727.deb/download
+      sha256: 6f85e132f0dea53de4bce88a6a19f526f5460ed8e82d96aafd8f47e7aee72499
+    darwin:
+      source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.7.0.1727/artifacts/ModusToolboxProgtools_1.7.0.1727.pkg/download
+      sha256: d6f4d7f0f1d3c15553997925b0d2edfef9439c044f64b02ce492d6269971d7a8
 - tool: openocd-custom
   alias: openocd
   name: OpenOCD Custom 
@@ -286,6 +314,9 @@ packs:
 - pack: esp32
   name: ESP32
   tools: [cp210x]
+- pack: infineon
+  name: Infineon
+  tools: [openocd-modustoolbox]
 
 aliases:
 - alias: openocd

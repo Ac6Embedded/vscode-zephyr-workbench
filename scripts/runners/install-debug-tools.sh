@@ -88,13 +88,21 @@ TOOLS_DIR="$INSTALL_DIR/tools"
 # Function to get the filename from URL
 get_filename_from_url() {
     local url="$1"
-
-    # Use basename to extract the filename
     local filename=$(basename "$url")
-
-    # Remove any query string or fragments from the filename
     filename=${filename%%\?*}
     filename=${filename%%\#*}
+
+    # If no recognized extension, scan URL segments for one that has one
+    # (handles URLs like .../MyTool_1.0.deb/download?noredirect=true)
+    local known_exts="deb|rpm|exe|msi|bat|pkg|dmg|zip|tar\.gz|tgz|tar\.bz2|tar\.xz|txz|7z|rar"
+    if [[ ! "$filename" =~ \.($known_exts)$ ]]; then
+        local part stripped
+        IFS='/' read -ra parts <<< "$url"
+        for part in "${parts[@]}"; do
+            stripped=${part%%\?*}; stripped=${stripped%%\#*}
+            if [[ "$stripped" =~ \.($known_exts)$ ]]; then filename="$stripped"; fi
+        done
+    fi
 
     echo "$filename"
 }
@@ -118,6 +126,13 @@ download_and_check_hash() {
              --no-check-certificate \
              --content-disposition \
              -q "$source" -O "$file_path"
+    elif [[ "$source" == *"softwaretools-hosting.infineon.com"* ]]; then
+        actual_url=$(wget -q -O - "$source" 2>/dev/null)
+        if [[ "$actual_url" =~ ^https?:// ]]; then
+            wget -q "$actual_url" -O "$file_path"
+        else
+            wget -q "$source" -O "$file_path"
+        fi
     else
         wget -q "$source" -O "$file_path"
     fi
@@ -283,12 +298,12 @@ install() {
     local tool="$1"
     local file="$2"
     local dest_folder="$3"
-    if has_install_script "$tool"; then
+    if is_package "$file"; then
+        install_package "$file"
+    elif has_install_script "$tool"; then
         run_install_script "$tool" "$file" "$dest_folder"
     elif is_archive "$file"; then
         extract_archive "$file" "$dest_folder"
-    elif is_package "$file"; then
-        install_package "$file"
     else
         pr_error 2 "'$file' has an unsupported format."
         return 2

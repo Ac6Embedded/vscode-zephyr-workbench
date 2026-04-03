@@ -78,6 +78,19 @@ get_filename_from_url() {
     filename=$(basename "$url")
     filename=${filename%%\?*}
     filename=${filename%%\#*}
+
+    # If no recognized extension, scan URL segments for one that has one
+    # (handles URLs like .../MyTool_1.0.pkg/download?noredirect=true)
+    local known_exts="deb|rpm|exe|msi|bat|pkg|dmg|zip|tar\.gz|tgz|tar\.bz2|tar\.xz|txz|7z|rar"
+    if [[ ! "$filename" =~ \.($known_exts)$ ]]; then
+        local part stripped
+        IFS='/' read -ra parts <<< "$url"
+        for part in "${parts[@]}"; do
+            stripped=${part%%\?*}; stripped=${stripped%%\#*}
+            if [[ "$stripped" =~ \.($known_exts)$ ]]; then filename="$stripped"; fi
+        done
+    fi
+
     echo "$filename"
 }
 
@@ -88,7 +101,16 @@ download_and_check_hash() {
     local file_path="$DL_DIR/$filename"
 
     pr_info "Downloading: $filename ..."
-    wget -q "$source" -O "$file_path"
+    if [[ "$source" == *"softwaretools-hosting.infineon.com"* ]]; then
+        actual_url=$(wget -q -O - "$source" 2>/dev/null)
+        if [[ "$actual_url" =~ ^https?:// ]]; then
+            wget -q "$actual_url" -O "$file_path"
+        else
+            wget -q "$source" -O "$file_path"
+        fi
+    else
+        wget -q "$source" -O "$file_path"
+    fi
 
     if [[ ! -f "$file_path" ]]; then
         pr_error "Download failed for $filename" 1
