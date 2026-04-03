@@ -293,12 +293,12 @@ function Install {
     # 3️ Case: directly executable file (.exe, .msi, .bat)
     if ($File -match '\.(exe|msi|bat)$') {
         Write-Host "Running executable installer: $File"
-        & $File
-        if ($LastExitCode -eq 0) {
+        $process = Start-Process -FilePath $File -PassThru -Wait
+        if ($process.ExitCode -eq 0) {
             Write-Host "$Tool installed successfully."
         } else {
-            Print-Error $LastExitCode "Executable installer for $Tool failed."
-            exit $LastExitCode
+            Print-Error $process.ExitCode "Executable installer for $Tool failed."
+            exit $process.ExitCode
         }
         return
     }
