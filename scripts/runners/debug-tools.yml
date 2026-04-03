@@ -116,13 +116,13 @@ debug_tools:
   os:
     windows:
       source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.7.0.1727/artifacts/ModusToolboxProgtools_1.7.0.1727.exe/download
-      sha256: SKIP
+      sha256: 865692b914d7b3a1a40ff5bc55eaf405317901869c2ca161f855e087ada43dc2
     linux:
       source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.7.0.1727/artifacts/ModusToolboxProgtools_1.7.0.1727.deb/download
-      sha256: SKIP
+      sha256: 6f85e132f0dea53de4bce88a6a19f526f5460ed8e82d96aafd8f47e7aee72499
     darwin:
       source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.7.0.1727/artifacts/ModusToolboxProgtools_1.7.0.1727.pkg/download
-      sha256: SKIP
+      sha256: d6f4d7f0f1d3c15553997925b0d2edfef9439c044f64b02ce492d6269971d7a8
 - tool: openocd-custom
   alias: openocd
   name: OpenOCD Custom 
