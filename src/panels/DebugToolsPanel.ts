@@ -1036,10 +1036,12 @@ export class DebugToolsPanel {
 
       if (tool.install_dir) {
         const variantDir = path.join(getInternalDirRealPath(), 'tools', tool.install_dir);
-        return fs.existsSync(variantDir) && fs.statSync(variantDir).isDirectory();
+        if (fs.existsSync(variantDir) && fs.statSync(variantDir).isDirectory()) {
+          return true;
+        }
       }
 
-      // No install_dir: fall back to auto-detect paths
+      // No install_dir or different one, fall back to auto-detect paths
       let platform = 'linux';
 
       if (process.platform === 'win32') {
