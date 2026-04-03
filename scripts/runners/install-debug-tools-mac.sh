@@ -101,7 +101,16 @@ download_and_check_hash() {
     local file_path="$DL_DIR/$filename"
 
     pr_info "Downloading: $filename ..."
-    wget -q "$source" -O "$file_path"
+    if [[ "$source" == *"softwaretools-hosting.infineon.com"* ]]; then
+        actual_url=$(wget -q -O - "$source" 2>/dev/null)
+        if [[ "$actual_url" =~ ^https?:// ]]; then
+            wget -q "$actual_url" -O "$file_path"
+        else
+            wget -q "$source" -O "$file_path"
+        fi
+    else
+        wget -q "$source" -O "$file_path"
+    fi
 
     if [[ ! -f "$file_path" ]]; then
         pr_error "Download failed for $filename" 1

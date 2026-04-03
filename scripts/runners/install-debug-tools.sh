@@ -126,6 +126,13 @@ download_and_check_hash() {
              --no-check-certificate \
              --content-disposition \
              -q "$source" -O "$file_path"
+    elif [[ "$source" == *"softwaretools-hosting.infineon.com"* ]]; then
+        actual_url=$(wget -q -O - "$source" 2>/dev/null)
+        if [[ "$actual_url" =~ ^https?:// ]]; then
+            wget -q "$actual_url" -O "$file_path"
+        else
+            wget -q "$source" -O "$file_path"
+        fi
     else
         wget -q "$source" -O "$file_path"
     fi
@@ -291,12 +298,12 @@ install() {
     local tool="$1"
     local file="$2"
     local dest_folder="$3"
-    if has_install_script "$tool"; then
+    if is_package "$file"; then
+        install_package "$file"
+    elif has_install_script "$tool"; then
         run_install_script "$tool" "$file" "$dest_folder"
     elif is_archive "$file"; then
         extract_archive "$file" "$dest_folder"
-    elif is_package "$file"; then
-        install_package "$file"
     else
         pr_error 2 "'$file' has an unsupported format."
         return 2
