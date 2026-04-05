@@ -1,5 +1,5 @@
 #--- use versionning, this is needed to manage env.yml, mainly for auto-detect ---
-version: 1
+version: 2
 other_content:
 - tool: yq
   os:
@@ -102,7 +102,7 @@ debug_tools:
   website: https://softwaretools.infineon.com/tools/com.ifx.tb.tool.modustoolboxprogtools
   vendor: Infineon
   type: debug_server
-  group: Openocds  # No need to group under Openocds/Infineon the generic .exe installer handles installation
+  group: Openocds/Infineon
   install_dir: openocds/openocd-modustoolbox
   root: true
   no_edit: true

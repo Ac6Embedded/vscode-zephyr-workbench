@@ -303,8 +303,7 @@ export class DebugToolsPanel {
       </tr>`;
       
       // Details row for path/edit (like other tools)
-      const currentDefault = this.envData?.runners?.[alias]?.default as string | undefined;
-      const pathValue = currentDefault === 'openocd-modustoolbox' ? '' : (this.getRunnerPath(alias) ?? '');
+      const pathValue = this.getRunnerPath(alias) ?? '';
       const addToPathChecked = (this.envData?.runners?.[alias]?.do_not_use !== true) ? 'checked' : '';
       toolsHTML += `<tr id="details-${alias}" class="details-row hidden">
         <td></td>
