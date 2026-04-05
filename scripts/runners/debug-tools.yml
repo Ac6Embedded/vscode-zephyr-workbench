@@ -1,5 +1,14 @@
+# Debug tools manifest:
+# `version` tracks the file format increase the version to update the value in env.yml, `other_content` lists helper downloads,
+# `debug_tools` defines each tool, `packs` groups tools for install sets, and
+# `aliases` maps shared tool ids such as `openocd`.
+# Common tool fields: `type` = `debug_server` | `flasher` | `driver`,
+# `os.<platform>` = download info / `true` / `false`, `root` = admin install,
+# `no_edit` = path editing disabled in the UI so "EDIT" button will be hidden,
+# `auto-detect` = env.yml auto-detect glob paths, `explicit-detect` = panel-only install roots.
+
 #--- use versionning, this is needed to manage env.yml, mainly for auto-detect ---
-version: 1
+version: 2
 other_content:
 - tool: yq
   os:
@@ -46,6 +55,13 @@ debug_tools:
   type: debug_server
   group: Openocds/Zephyr
   install_dir: openocds/openocd-zephyr
+  explicit-detect:
+    windows:
+      - "${zi_base_dir}/tools/openocds/openocd-zephyr"
+    linux:
+      - "${zi_base_dir}/tools/openocds/openocd-zephyr"
+    darwin:
+      - "${zi_base_dir}/tools/openocds/openocd-zephyr"
   root: false
   os:
     windows:
@@ -65,6 +81,13 @@ debug_tools:
   type: debug_server
   group: Openocds/ESP32
   install_dir: openocds/openocd-esp32
+  explicit-detect:
+    windows:
+      - "${zi_base_dir}/tools/openocds/openocd-esp32"
+    linux:
+      - "${zi_base_dir}/tools/openocds/openocd-esp32"
+    darwin:
+      - "${zi_base_dir}/tools/openocds/openocd-esp32"
   root: false
   os:
     windows:
@@ -84,6 +107,13 @@ debug_tools:
   type: debug_server
   group: Openocds/xPack
   install_dir: openocds/openocd-xpack
+  explicit-detect:
+    windows:
+      - "${zi_base_dir}/tools/openocds/openocd-xpack"
+    linux:
+      - "${zi_base_dir}/tools/openocds/openocd-xpack"
+    darwin:
+      - "${zi_base_dir}/tools/openocds/openocd-xpack"
   root: false
   os:
     windows:
@@ -102,11 +132,12 @@ debug_tools:
   website: https://softwaretools.infineon.com/tools/com.ifx.tb.tool.modustoolboxprogtools
   vendor: Infineon
   type: debug_server
-  group: Openocds  # No need to group under Openocds/Infineon the generic .exe installer handles installation
-  install_dir: openocds/openocd-modustoolbox
+  group: Openocds/Infineon
   root: true
   no_edit: true
-  auto-detect:
+  # Used by the runners panel to locate the install root and derive the bin path for env.yml.
+  # ModusToolbox is special because its install root is outside the internal install tree.
+  explicit-detect:
     windows:
       - "C:/Infineon/Tools/ModusToolboxProgtools-*/openocd"
     linux:

@@ -1,41 +1,25 @@
-#!/bin/bash
 set -euo pipefail
 
-FILE="${1:-}"       # Path to the downloaded archive
-DEST_DIR="${2:-}"   # Main tools directory (.zinstaller/tools)
-TMP_DIR="${3:-}"    # Temporary directory
+FILE="${1:-}"       
+DEST_DIR="${2:-}"   
+TMP_DIR="${3:-}"    
 
-SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-TOOL_NAME="${SCRIPT_NAME%-mac.sh}"
-TOOL_NAME="${TOOL_NAME%.sh}"
-TOOL_DIR="${DEST_DIR}/openocds/${TOOL_NAME}"
-
-mkdir -p "${DEST_DIR}/openocds"
-
-WORK_DIR="$(mktemp -d)"
 if [[ -n "$FILE" ]]; then
-  tar -xf "$FILE" -C "$WORK_DIR"
+  
+  sudo installer -pkg "$FILE" -target /
 
-  TOP_DIRS=()
-  while IFS= read -r dir; do
-    TOP_DIRS+=("$dir")
-  done < <(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d)
-  SRC_DIR=""
-
-  if [[ ${#TOP_DIRS[@]} -eq 1 ]]; then
-    SRC_DIR="${TOP_DIRS[0]}"
-  elif [[ -d "$WORK_DIR/openocd" ]]; then
-    SRC_DIR="$WORK_DIR/openocd"
+  INF_DIR=$(find /Applications -maxdepth 1 -type d -name "ModusToolboxProgtools-*" 2>/dev/null | sort -r | head -1)
+  if [[ -z "$INF_DIR" ]]; then
+    echo "ERROR: Could not find ModusToolboxProgtools installation directory under /Applications."
+    exit 1
   fi
 
-  rm -rf "$TOOL_DIR"
-  if [[ -n "$SRC_DIR" ]]; then
-    mv "$SRC_DIR" "$TOOL_DIR"
-  else
-    mkdir -p "$TOOL_DIR"
-    cp -a "$WORK_DIR/." "$TOOL_DIR/"
+  SRC_DIR="$INF_DIR/openocd"
+  if [[ ! -d "$SRC_DIR" ]]; then
+    echo "ERROR: openocd not found in $INF_DIR"
+    exit 1
   fi
+  echo "Detected vendor OpenOCD at $SRC_DIR"
 fi
 
-rm -rf "$WORK_DIR"
 exit 0

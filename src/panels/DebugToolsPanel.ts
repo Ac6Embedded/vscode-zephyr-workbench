@@ -6,6 +6,11 @@ import { execSync } from "child_process";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getRunner } from "../utils/debugUtils";
+import {
+  findDetectedToolRoot,
+  getDetectPlatform,
+  getToolCommandDir,
+} from "../utils/debugToolPathUtils";
 import { getInternalDirRealPath } from "../utils/utils";
 import { formatYml } from "../utilities/formatYml";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
@@ -303,8 +308,7 @@ export class DebugToolsPanel {
       </tr>`;
       
       // Details row for path/edit (like other tools)
-      const currentDefault = this.envData?.runners?.[alias]?.default as string | undefined;
-      const pathValue = currentDefault === 'openocd-modustoolbox' ? '' : (this.getRunnerPath(alias) ?? '');
+      const pathValue = this.getRunnerPath(alias) ?? '';
       const addToPathChecked = (this.envData?.runners?.[alias]?.do_not_use !== true) ? 'checked' : '';
       toolsHTML += `<tr id="details-${alias}" class="details-row hidden">
         <td></td>
@@ -769,8 +773,8 @@ export class DebugToolsPanel {
               // Keep alias path/version aligned with the selected default variant
               const selectedTool = this.data.debug_tools.find((t: any) => t.tool === tool);
               let selectedPath = this.getRunnerPath(tool);
-              if (!selectedPath && selectedTool?.install_dir) {
-                selectedPath = path.join(getInternalDirRealPath(), 'tools', selectedTool.install_dir, 'bin').replace(/\\/g, '/');
+              if (!selectedPath && selectedTool) {
+                selectedPath = this.getOpenocdCommandDir(selectedTool);
               }
               if (tool === 'openocd-custom'){
                 doc.setIn(['runners', alias, 'path'], '');
@@ -976,13 +980,16 @@ export class DebugToolsPanel {
     return this.envData?.runners?.[alias]?.default || defaultDebugToolsYml || firstAliasTool;
   }
 
-  // Ensure env.yml has runners.openocd aligned with the installed default variant.
+  // Keep the alias entry aligned with the selected OpenOCD variant. The path is
+  // derived from explicit-detect so literal and wildcard-based definitions behave
+  // the same way whether they come from .zinstaller or an external install.
   private async ensureOpenocdAliasEntry(alias: string, defaultToolId: string): Promise<void> {
     try {
       const selectedTool = this.data.debug_tools.find((t: any) => t.tool === defaultToolId);
-      if (!selectedTool?.install_dir) { return; }
+      if (!selectedTool) { return; }
 
-      const aliasPath = path.join(getInternalDirRealPath(), 'tools', selectedTool.install_dir, 'bin').replace(/\\/g, '/');
+      const aliasPath = this.getOpenocdCommandDir(selectedTool);
+      if (!aliasPath) { return; }
       const aliasVersion = selectedTool.version || '';
       const current = this.envData?.runners?.[alias];
       const defaultFromDebugTools = this.data.aliases?.find((a: Aliases) => a.alias === alias)?.default;
@@ -1025,49 +1032,28 @@ export class DebugToolsPanel {
     }
   }
 
-  // OpenOCD variants are considered installed when their folder exists:
-  // <internal>/.zinstaller/tools/openocds/<tool-id>
-  // For auto-detect-only tools (no install_dir), checks the auto-detect paths.
+  // OpenOCD variants are considered installed when one of their explicit-detect
+  // patterns resolves to an existing path.
   private isOpenocdVariantInstalled(toolId: string): boolean {
     try {
       const tool = this.data.debug_tools.find((t: any) => t.tool === toolId);
       if (!tool) {
         return false;
-      }  
-
-      if (tool.install_dir) {
-        const variantDir = path.join(getInternalDirRealPath(), 'tools', tool.install_dir);
-        if (fs.existsSync(variantDir) && fs.statSync(variantDir).isDirectory()) {
-          return true;
-        }
       }
-
-      // No install_dir or different one, fall back to auto-detect paths
-      let platform = 'linux';
-
-      if (process.platform === 'win32') {
-        platform = 'windows';
-      }
-
-      if (process.platform === 'darwin') {
-        platform = 'darwin';
-      }
-
-      if (process.platform === 'linux') {
-        platform = 'linux';
-      }
-
-      const autoDetectPaths: string[] = tool['auto-detect']?.[platform] ?? [];
-      const { sync: globSync } = require('glob');
-
-      return autoDetectPaths.some((pattern: string) => {
-        const matches = globSync(pattern.replace(/\\/g, '/'), { dot: true });
-        return matches.length > 0;
-      });
+      return !!this.getOpenocdInstallRoot(tool);
     } 
     catch {
       return false;
     }
+  }
+
+  private getOpenocdInstallRoot(tool: any): string | undefined {
+    return findDetectedToolRoot(tool, getInternalDirRealPath(), getDetectPlatform());
+  }
+
+  private getOpenocdCommandDir(tool: any): string | undefined {
+    const executableName = process.platform === 'win32' ? 'openocd.exe' : 'openocd';
+    return getToolCommandDir(tool, getInternalDirRealPath(), executableName, getDetectPlatform());
   }
 
   private getRunnerPath(toolId: string): string | undefined {

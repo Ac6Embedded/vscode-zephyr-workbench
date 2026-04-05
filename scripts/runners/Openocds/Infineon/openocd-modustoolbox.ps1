@@ -4,60 +4,26 @@ param (
     [string]$TmpDir
 )
 
-function Extract-ArchiveFile {
-    param (
-        [string]$ArchivePath,
-        [string]$DestinationDirectory
-    )
+if ($File -and $File -ne "") {
+    $proc = Start-Process -FilePath $File -ArgumentList "/VERYSILENT /NORESTART /SP- /SUPPRESSMSGBOXES" -PassThru -Wait -Verb RunAs
+    if ($proc.ExitCode -ne 0) {
+        Write-Output "ERROR: Installer exited with code $($proc.ExitCode)"
+        exit $proc.ExitCode
+    }
 
-    $SevenZ = "C:\Program Files\7-Zip\7z.exe"
-    if (-not (Test-Path $SevenZ)) { $SevenZ = "C:\Program Files (x86)\7-Zip\7z.exe" }
-    if (-not (Test-Path $SevenZ)) {
-        Write-Output "ERROR: 7-Zip not found at standard locations."
+    $InfDir = Get-ChildItem "C:\Infineon\Tools" -Directory -Filter "ModusToolboxProgtools-*" -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+    if (-not $InfDir) {
+        Write-Output "ERROR: Could not find ModusToolboxProgtools installation directory under C:\Infineon\Tools."
         exit 1
     }
 
-    New-Item -Path $DestinationDirectory -ItemType Directory -Force > $null
-    & $SevenZ x "$ArchivePath" -o"$DestinationDirectory" -y -bso0 -bsp0
-    if ($LastExitCode -ne 0) {
-        Write-Output "ERROR: Extraction failed for $ArchivePath (code $LastExitCode)"
-        exit $LastExitCode
-    }
-}
-
-$ScriptName = [System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)
-$ToolName = $ScriptName
-$ToolDir = Join-Path -Path $ToolsDir -ChildPath ("openocds\" + $ToolName)
-$TempExtractDir = Join-Path -Path $TmpDir -ChildPath $ToolName
-
-New-Item -Path (Join-Path $ToolsDir 'openocds') -ItemType Directory -Force > $null 2>&1
-New-Item -Path $TempExtractDir -ItemType Directory -Force > $null 2>&1
-
-if ($File -and $File -ne "") {
-    Extract-ArchiveFile "$File" "$TempExtractDir"
-
-    $TopDirs = @(Get-ChildItem -Path $TempExtractDir -Directory -ErrorAction SilentlyContinue)
-    $SourceDir = $null
-
-    if ($TopDirs.Count -eq 1) {
-        $SourceDir = $TopDirs[0].FullName
-    } else {
-        $OpenocdDir = Join-Path $TempExtractDir 'openocd'
-        if (Test-Path $OpenocdDir) { $SourceDir = $OpenocdDir }
+    $SourceDir = Join-Path $InfDir.FullName "openocd"
+    if (-not (Test-Path $SourceDir)) {
+        Write-Output "ERROR: openocd not found in $($InfDir.FullName)"
+        exit 1
     }
 
-    if (Test-Path $ToolDir) { Remove-Item -Path $ToolDir -Recurse -Force -ErrorAction SilentlyContinue }
-
-    if ($SourceDir) {
-        Move-Item -Path $SourceDir -Destination $ToolDir -Force
-    } else {
-        New-Item -Path $ToolDir -ItemType Directory -Force > $null 2>&1
-        Copy-Item -Path (Join-Path $TempExtractDir '*') -Destination $ToolDir -Recurse -Force
-    }
-}
-
-if (Test-Path $TempExtractDir) {
-    Remove-Item -Path $TempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Output "Detected vendor OpenOCD at $SourceDir"
 }
 
 $global:LastExitCode = 0
