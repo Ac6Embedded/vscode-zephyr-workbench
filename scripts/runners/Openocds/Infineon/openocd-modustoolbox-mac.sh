@@ -4,12 +4,6 @@ FILE="${1:-}"
 DEST_DIR="${2:-}"   
 TMP_DIR="${3:-}"    
 
-SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-TOOL_NAME="${SCRIPT_NAME%-mac.sh}"
-TOOL_DIR="${DEST_DIR}/openocds/${TOOL_NAME}"
-
-mkdir -p "${DEST_DIR}/openocds"
-
 if [[ -n "$FILE" ]]; then
   
   sudo installer -pkg "$FILE" -target /
@@ -25,9 +19,7 @@ if [[ -n "$FILE" ]]; then
     echo "ERROR: openocd not found in $INF_DIR"
     exit 1
   fi
-
-  rm -rf "$TOOL_DIR"
-  cp -a "$SRC_DIR" "$TOOL_DIR"
+  echo "Detected vendor OpenOCD at $SRC_DIR"
 fi
 
 exit 0

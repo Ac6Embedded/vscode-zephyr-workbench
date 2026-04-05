@@ -4,12 +4,6 @@ param (
     [string]$TmpDir
 )
 
-$ScriptName = [System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath)
-$ToolName = $ScriptName
-$ToolDir = Join-Path -Path $ToolsDir -ChildPath ("openocds\" + $ToolName)
-
-New-Item -Path (Join-Path $ToolsDir 'openocds') -ItemType Directory -Force > $null 2>&1
-
 if ($File -and $File -ne "") {
     $proc = Start-Process -FilePath $File -ArgumentList "/VERYSILENT /NORESTART /SP- /SUPPRESSMSGBOXES" -PassThru -Wait -Verb RunAs
     if ($proc.ExitCode -ne 0) {
@@ -29,9 +23,7 @@ if ($File -and $File -ne "") {
         exit 1
     }
 
-    if (Test-Path $ToolDir) { Remove-Item -Path $ToolDir -Recurse -Force -ErrorAction SilentlyContinue }
-    Copy-Item -Path $SourceDir -Destination $ToolDir -Recurse -Force
-    Write-Output "Copied openocd to $ToolDir"
+    Write-Output "Detected vendor OpenOCD at $SourceDir"
 }
 
 $global:LastExitCode = 0

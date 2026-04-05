@@ -4,14 +4,17 @@ FILE="${1:-}"
 DEST_DIR="${2:-}"  
 TMP_DIR="${3:-}"   
 
-SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-TOOL_NAME="${TOOL_NAME%.sh}"
-TOOL_DIR="${DEST_DIR}/openocds/${TOOL_NAME}"
-
-mkdir -p "${DEST_DIR}/openocds"
-
 if [[ -n "$FILE" ]]; then
-  sudo dpkg -i "$FILE"
+  if command -v apt-get >/dev/null 2>&1; then
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$FILE"
+  elif command -v apt >/dev/null 2>&1; then
+    sudo env DEBIAN_FRONTEND=noninteractive apt install -y "$FILE"
+  elif command -v dpkg >/dev/null 2>&1; then
+    sudo dpkg -i "$FILE"
+  else
+    echo "ERROR: Unsupported Linux distribution. Neither apt/apt-get nor dpkg is available."
+    exit 1
+  fi
 
   INF_DIR=$(find /opt/Tools -maxdepth 1 -type d -name "ModusToolboxProgtools-*" 2>/dev/null | sort -r | head -1)
   if [[ -z "$INF_DIR" ]]; then
@@ -24,9 +27,7 @@ if [[ -n "$FILE" ]]; then
     echo "ERROR: openocd not found in $INF_DIR"
     exit 1
   fi
-
-  rm -rf "$TOOL_DIR"
-  cp -a "$SRC_DIR" "$TOOL_DIR"
+  echo "Detected vendor OpenOCD at $SRC_DIR"
 fi
 
 exit 0
