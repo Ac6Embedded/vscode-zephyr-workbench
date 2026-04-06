@@ -1,9 +1,8 @@
 import { RunnerType, WestRunner } from "./WestRunner";
-import { execCommandWithEnv } from "../../utils/execUtils";
 
 /**
  * Runner for OpenOCD (Open On-Chip Debugger).
- * Simplified version — assumes `openocd` is available in the system PATH.
+ * Simplified version - assumes `openocd` is available in the system PATH.
  * Used for flashing and debugging ARM-based targets.
  */
 export class Openocd extends WestRunner {
@@ -14,19 +13,11 @@ export class Openocd extends WestRunner {
 
   /**
    * Returns the executable name based on the current platform.
-   * On Windows → openocd.exe
-   * On Linux/macOS → openocd
+   * On Windows: openocd.exe
+   * On Linux/macOS: openocd
    */
   get executable(): string {
     return process.platform === 'win32' ? 'openocd.exe' : 'openocd';
-  }
-
-  /**
-   * Regex to capture the version number from CLI output.
-   * Example: "Open On-Chip Debugger 0.12.0" → captures "0.12.0"
-   */
-  get versionRegex(): RegExp {
-    return /Open On-Chip Debugger ([\d.]+)/;
   }
 
   /**
@@ -49,20 +40,6 @@ export class Openocd extends WestRunner {
     cmdArgs += ' --config openocd.cfg';
     cmdArgs += ' --config ${workspaceFolder}/build/.debug/gdb.cfg';
     return cmdArgs;
-  }
-
-  /**
-   * Detects if OpenOCD is installed and available in PATH.
-   * Runs "openocd --version" and checks if it executes successfully.
-   */
-  async detect(): Promise<boolean> {
-    const cmd = `${this.executable} --version`; // Redirect stderr since OpenOCD prints version to stderr
-    return new Promise<boolean>((resolve) => {
-      execCommandWithEnv(cmd, undefined, (error: any) => {
-        // If no error, OpenOCD is available
-        resolve(!error);
-      });
-    });
   }
 
   /**

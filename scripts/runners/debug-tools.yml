@@ -5,7 +5,10 @@
 # Common tool fields: `type` = `debug_server` | `flasher` | `driver`,
 # `os.<platform>` = download info / `true` / `false`, `root` = admin install,
 # `no_edit` = path editing disabled in the UI so "EDIT" button will be hidden,
-# `auto-detect` = env.yml auto-detect glob paths, `explicit-detect` = panel-only install roots.
+# `auto-detect` = env.yml auto-detect glob paths, `explicit-detect` = exact panel detection paths,
+# `version` = reference/install version used for update comparisons only,
+# `version-command` / `version-file` / `version-regex` = installed-version probe metadata.
+# `version-command` and `version-file` can be a string or OS-specific map.
 
 #--- use versionning, this is needed to manage env.yml, mainly for auto-detect ---
 version: 2
@@ -50,18 +53,18 @@ debug_tools:
 - tool: openocd-zephyr
   alias: openocd
   name: OpenOCD Zephyr
-  version: 0.12.0
+  version: 0.12.0-01025-g662bf274f
   website: https://github.com/zephyrproject-rtos/openocd
   type: debug_server
   group: Openocds/Zephyr
   install_dir: openocds/openocd-zephyr
   explicit-detect:
     windows:
-      - "${zi_base_dir}/tools/openocds/openocd-zephyr"
+      - "${zi_base_dir}/tools/openocds/openocd-zephyr/bin"
     linux:
-      - "${zi_base_dir}/tools/openocds/openocd-zephyr"
+      - "${zi_base_dir}/tools/openocds/openocd-zephyr/bin"
     darwin:
-      - "${zi_base_dir}/tools/openocds/openocd-zephyr"
+      - "${zi_base_dir}/tools/openocds/openocd-zephyr/bin"
   root: false
   os:
     windows:
@@ -76,18 +79,18 @@ debug_tools:
 - tool: openocd-esp32
   alias: openocd
   name: OpenOCD ESP32
-  version: 0.12.0
+  version: v0.13.0-esp32-20251215
   website: https://github.com/espressif/openocd-esp32/releases
   type: debug_server
   group: Openocds/ESP32
   install_dir: openocds/openocd-esp32
   explicit-detect:
     windows:
-      - "${zi_base_dir}/tools/openocds/openocd-esp32"
+      - "${zi_base_dir}/tools/openocds/openocd-esp32/bin"
     linux:
-      - "${zi_base_dir}/tools/openocds/openocd-esp32"
+      - "${zi_base_dir}/tools/openocds/openocd-esp32/bin"
     darwin:
-      - "${zi_base_dir}/tools/openocds/openocd-esp32"
+      - "${zi_base_dir}/tools/openocds/openocd-esp32/bin"
   root: false
   os:
     windows:
@@ -109,11 +112,11 @@ debug_tools:
   install_dir: openocds/openocd-xpack
   explicit-detect:
     windows:
-      - "${zi_base_dir}/tools/openocds/openocd-xpack"
+      - "${zi_base_dir}/tools/openocds/openocd-xpack/bin"
     linux:
-      - "${zi_base_dir}/tools/openocds/openocd-xpack"
+      - "${zi_base_dir}/tools/openocds/openocd-xpack/bin"
     darwin:
-      - "${zi_base_dir}/tools/openocds/openocd-xpack"
+      - "${zi_base_dir}/tools/openocds/openocd-xpack/bin"
   root: false
   os:
     windows:
@@ -128,22 +131,22 @@ debug_tools:
 - tool: openocd-modustoolbox
   alias: openocd
   name: OpenOCD Infineon
-  version: 0.12.0
+  version: 0.12.0+dev-5.12.0.4170
   website: https://softwaretools.infineon.com/tools/com.ifx.tb.tool.modustoolboxprogtools
   vendor: Infineon
   type: debug_server
   group: Openocds/Infineon
   root: true
   no_edit: true
-  # Used by the runners panel to locate the install root and derive the bin path for env.yml.
-  # ModusToolbox is special because its install root is outside the internal install tree.
+  # Explicitly points to the command dir used by the panel and env.yml.
+  # ModusToolbox is special because its install path is outside the internal install tree.
   explicit-detect:
     windows:
-      - "C:/Infineon/Tools/ModusToolboxProgtools-*/openocd"
+      - "C:/Infineon/Tools/ModusToolboxProgtools-*/openocd/bin"
     linux:
-      - "/opt/Tools/ModusToolboxProgtools-*/openocd"
+      - "/opt/Tools/ModusToolboxProgtools-*/openocd/bin"
     darwin:
-      - "/Applications/ModusToolboxProgtools-*/openocd"
+      - "/Applications/ModusToolboxProgtools-*/openocd/bin"
   os:
     windows:
       source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.7.0.1727/artifacts/ModusToolboxProgtools_1.7.0.1727.exe/download
@@ -157,19 +160,30 @@ debug_tools:
 - tool: openocd-custom
   alias: openocd
   name: OpenOCD Custom 
-  version: 0.12.0
+  version: IGNORE
   website: https://openocd.org/
   type: debug_server
   group: Openocds
-  install_dir: openocds/openocd-custom
   root: false
+  explicit-detect:
+    windows:
+      - ""
+    linux:
+      - ""
+    darwin:
+      - ""
   os:
     windows: false
     linux: false
     darwin: false
 - tool: jlink
   name: J-Link Software
-  version: 8.78
+  version: 9.32
+  version-command:
+    windows: JLinkGDBServerCL.exe --version
+    linux: JLinkGDBServerCL --version
+    darwin: JLinkGDBServerCL --version
+  version-regex: '/J-Link GDB Server V([\d.]+[a-z]?)/i'
   website: https://www.segger.com/downloads/jlink/
   vendor: Segger
   type: debug_server
@@ -188,6 +202,11 @@ debug_tools:
 - tool: stm32cubeprogrammer
   name: STM32CubeProgrammer
   version: 2.17.0 
+  version-command:
+    windows: STM32_Programmer_CLI.exe --version
+    linux: STM32_Programmer_CLI --version
+    darwin: STM32_Programmer_CLI --version
+  version-regex: '/STM32CubeProgrammer version: ([\d.]+)/'
   website: https://www.st.com/en/development-tools/stm32cubeprog.html
   vendor: ST
   type: flasher
@@ -213,6 +232,11 @@ debug_tools:
 - tool: linkserver
   name: NXP LinkServer for Microcontrollers
   version: 24.9.75
+  version-command:
+    windows: LinkServer.exe --version
+    linux: LinkServer --version
+    darwin: LinkServer --version
+  version-regex: '/\bLinkServer\s+v?([\d.]+)/i'
   website: https://www.nxp.com/design/design-center/software/development-software/mcuxpresso-software-and-tools-/linkserver-for-microcontrollers:LINKERSERVER
   vendor: NXP
   type: debug_server
@@ -229,6 +253,11 @@ debug_tools:
 - tool: nrfjprog
   name: nRF Command Line Tools
   version: 10.24.2
+  version-command:
+    windows: nrfjprog.exe --version
+    linux: nrfjprog --version
+    darwin: nrfjprog --version
+  version-regex: '/nrfjprog version:\s*([\d.]+)/i'
   website: https://www.nordicsemi.com/Products/Development-tools/nRF-Command-Line-Tools/Download
   vendor: Nordic Semiconductor
   type: flasher
@@ -247,6 +276,11 @@ debug_tools:
 - tool: nrfutil
   name: nRF Util
   version: 8.1.1
+  version-command:
+    windows: nrfutil.exe --version
+    linux: nrfutil --version
+    darwin: nrfutil --version
+  version-regex: '/nrfutil(?: version)? ([\d.]+)/i'
   website: https://www.nordicsemi.com/Products/Development-tools/nRF-Util
   vendor: Nordic Semiconductor
   type: flasher
@@ -264,7 +298,12 @@ debug_tools:
       sha256: 726c8e6e4cb5e0811f342620f88472351b1203f2af8e27b744e653f34a08deb4
 - tool: simplicity_commander
   name: Silabs Simplicity Commander
-  version: 1v20p5b1945
+  version: 1v23p1b1971
+  version-command:
+    windows: commander-cli.exe --version
+    linux: commander-cli --version
+    darwin: commander-cli --version
+  version-regex: '/Simplicity Commander\s+([A-Za-z0-9._-]+)/i'
   website: https://www.silabs.com/software-and-tools/simplicity-studio/simplicity-commander
   vendor: Silicon Labs
   type: flasher
@@ -291,6 +330,11 @@ debug_tools:
 - tool: pyocd
   name: pyOCD
   version: 0.36.0
+  version-command:
+    windows: pyocd --version
+    linux: pyocd --version
+    darwin: pyocd --version
+  version-regex: '/\b(\d+(?:\.\d+)+)\b/'
   website: https://pyocd.io/
   type: debug_server
   group: Common
@@ -301,7 +345,14 @@ debug_tools:
     darwin: true
 - tool: cp210x
   name: USB to UART Bridge VCP CP210x Universal Drivers 
-  version: 11.4.0 
+  version: 11.5.0.417
+  explicit-detect:
+    windows:
+      - "C:/Windows/System32/DriverStore/FileRepository/silabser.inf_*/silabser.inf"
+  version-file:
+    windows: "C:/Windows/System32/DriverStore/FileRepository/silabser.inf_*/silabser.inf"
+  version-regex:
+    windows: '/DriverVer\s*=\s*[^,]+,([\d.]+)/i'
   website: https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers
   vendor: Silicon Labs
   type: driver
@@ -332,19 +383,19 @@ debug_tools:
 packs:
 - pack: stm32
   name: STM32
-  tools: [openocd, stm32cubeprogrammer, jlink, udev-rules]
+  tools: [openocd-zephyr, stm32cubeprogrammer, jlink, udev-rules]
 - pack: nxp
   name: NXP
   tools: [linkserver, jlink]
 - pack: nordic
   name: Nordic
-  tools: [jlink, nrfutil, nrfjprog]
+  tools: [nrfutil, nrfjprog, jlink]
 - pack: silabs
   name: Silabs
   tools: [simplicity_commander, cp210x, jlink]
 - pack: esp32
   name: ESP32
-  tools: [cp210x]
+  tools: [openocd-esp32, cp210x]
 - pack: infineon
   name: Infineon
   tools: [openocd-modustoolbox]
@@ -352,4 +403,9 @@ packs:
 aliases:
 - alias: openocd
   name: OpenOCD
+  version-command:
+    windows: openocd.exe --version
+    linux: openocd --version
+    darwin: openocd --version
+  version-regex: '/Open On-Chip Debugger ([^\s]+)/'
   default: openocd-zephyr 
