@@ -5,6 +5,7 @@ export type DetectPlatform = 'windows' | 'linux' | 'darwin';
 
 export interface DetectableToolLike {
   install_dir?: string;
+  ['auto-detect']?: Partial<Record<DetectPlatform, string[]>>;
   ['explicit-detect']?: Partial<Record<DetectPlatform, string[]>>;
 }
 
@@ -37,7 +38,11 @@ export function preserveDetectPattern(pattern: string, ziBaseDir: string): strin
 }
 
 export function preserveDetectPatterns(patterns: string[], ziBaseDir: string): string[] {
-  return Array.from(new Set(patterns.map(pattern => preserveDetectPattern(pattern, ziBaseDir))));
+  return Array.from(new Set(
+    patterns
+      .map(pattern => preserveDetectPattern(pattern, ziBaseDir).trim())
+      .filter(pattern => pattern.length > 0)
+  ));
 }
 
 export function evaluateDetectPatterns(patterns: string[], ziBaseDir: string): string[] {
@@ -70,6 +75,11 @@ export function getToolDetectPatterns(
   const explicitDetectPaths = tool['explicit-detect']?.[platform];
   if (Array.isArray(explicitDetectPaths) && explicitDetectPaths.length > 0) {
     return preserveDetectPatterns(explicitDetectPaths, ziBaseDir);
+  }
+
+  const autoDetectPaths = tool['auto-detect']?.[platform];
+  if (Array.isArray(autoDetectPaths) && autoDetectPaths.length > 0) {
+    return preserveDetectPatterns(autoDetectPaths, ziBaseDir);
   }
 
   if (tool.install_dir) {
@@ -150,12 +160,35 @@ function deriveCommandDir(rootPath: string, executableName: string): string {
   return normalizePathSlashes(path.posix.join(normalizedRoot, 'bin'));
 }
 
+function deriveExplicitCommandDir(targetPath: string, executableName: string): string {
+  const normalizedTarget = normalizePathSlashes(targetPath);
+
+  if (looksLikeExecutablePath(normalizedTarget, executableName)) {
+    return normalizePathSlashes(path.posix.dirname(normalizedTarget));
+  }
+
+  return normalizedTarget;
+}
+
 export function getToolCommandDir(
   tool: DetectableToolLike,
   ziBaseDir: string,
   executableName: string,
   platform: DetectPlatform = getDetectPlatform(),
 ): string | undefined {
+  const explicitDetectPaths = preserveDetectPatterns(tool['explicit-detect']?.[platform] ?? [], ziBaseDir);
+  if (explicitDetectPaths.length > 0) {
+    const preservedRoot = explicitDetectPaths[0];
+    const evaluatedRoot = evaluateDetectPatterns(
+      explicitDetectPaths.filter(pattern => !hasTemplateVariable(pattern)),
+      ziBaseDir,
+    )[0];
+    const rootForEnv = (hasGlobPattern(preservedRoot) || hasTemplateVariable(preservedRoot))
+      ? preservedRoot
+      : (evaluatedRoot ?? preservedRoot);
+    return deriveExplicitCommandDir(rootForEnv, executableName);
+  }
+
   const patterns = getToolDetectPatterns(tool, platform, ziBaseDir);
   if (patterns.length === 0) {
     return undefined;

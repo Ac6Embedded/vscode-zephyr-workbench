@@ -105,8 +105,37 @@ form {
 }
 
 .debug-tools-table th:nth-child(2), .debug-tools-table td:nth-child(2) {
-  width: 40%;
+  width: 36%;
   text-align: left;
+}
+
+.debug-tools-table th:nth-child(3), .debug-tools-table td:nth-child(3) {
+  width: 18%;
+}
+
+.debug-tools-table th:nth-child(4), .debug-tools-table td:nth-child(4) {
+  width: 16%;
+}
+
+.debug-tools-table th:nth-child(5), .debug-tools-table td:nth-child(5) {
+  width: 10%;
+}
+
+.packs-table th:nth-child(2), .packs-table td:nth-child(2) {
+  width: 72%;
+}
+
+.packs-table th:nth-child(3), .packs-table td:nth-child(3),
+.packs-table th:nth-child(4), .packs-table td:nth-child(4) {
+  width: 2%;
+}
+
+.packs-table th:nth-child(5), .packs-table td:nth-child(5) {
+  width: 56px;
+}
+
+.packs-table th:nth-child(6), .packs-table td:nth-child(6) {
+  width: 44px;
 }
 
 .debug-tools-table .details-row td {

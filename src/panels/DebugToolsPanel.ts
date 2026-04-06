@@ -2,19 +2,23 @@ import * as vscode from "vscode";
 import fs from "fs";
 import yaml from 'yaml';
 import path from "path";
-import { execSync } from "child_process";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getRunner } from "../utils/debugUtils";
 import {
-  findDetectedToolRoot,
   getDetectPlatform,
   getToolCommandDir,
 } from "../utils/debugToolPathUtils";
+import {
+  DebugToolEntry,
+  DebugToolAliasEntry,
+  isIgnoredReferenceVersion,
+  probeDebugToolVersion,
+} from "../utils/debugToolVersionUtils";
 import { getInternalDirRealPath } from "../utils/utils";
 import { formatYml } from "../utilities/formatYml";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
-import { Aliases, Tools } from "../interface/interfaceDebugTools";
+import { Aliases } from "../interface/interfaceDebugTools";
 
 export class DebugToolsPanel {
 
@@ -70,114 +74,116 @@ export class DebugToolsPanel {
     }, null, this._disposables);
   }
 
-  private async loadVersions() {
-    const versionPromises = this.data.debug_tools.map(async (tool: any) => {
-      if (tool.alias) {
-        const alias = tool.alias;
-        const installed = this.isOpenocdVariantInstalled(tool.tool);
-        const status = installed ? 'Installed' : 'Not installed';
-        this._panel.webview.postMessage({
-          command: "detect-done",
-          tool: tool.tool,
-          version: "",
-          status,
-        });
+  private getToolExecutableName(tool: any): string | undefined {
+    return this.getExecutableName(tool.alias || tool.tool);
+  }
 
-        if (this.getDefaultToolForAlias(alias) === tool.tool) {
-          if (installed) {
-            await this.ensureOpenocdAliasEntry(alias, tool.tool);
-          }
-          this._panel.webview.postMessage({
-            command: "detect-done",
-            tool: alias,
-            version: installed ? (tool.version || "") : "",
-            status,
-          });
-        }
-        return;
-      }
+  private getExecutableName(toolId: string): string | undefined {
+    return getRunner(toolId)?.executable;
+  }
 
-      // For alias groups (e.g. OpenOCD variants), detect only the configured default tool.
-      if (tool.alias) {
-        const defaultTool = this.getDefaultToolForAlias(tool.alias);
-        if (defaultTool && tool.tool !== defaultTool) {
-          this._panel.webview.postMessage({
-            command: "detect-done",
-            tool: tool.tool,
-            version: tool.version || "",
-            status: "Not installed",
-          });
-          return;
-        }
-      }
+  private getSelectedToolForAlias(alias: string): DebugToolEntry | undefined {
+    const selectedToolId = this.getDefaultToolForAlias(alias);
+    return this.data.debug_tools.find((tool: DebugToolEntry) => tool.tool === selectedToolId);
+  }
 
-      // Use alias if present, otherwise use tool
-      const runnerAlias = tool.alias || tool.tool;
+  private getAliasProbeTool(alias: string): DebugToolEntry | undefined {
+    const aliasEntry = this.data.aliases?.find((entry: DebugToolAliasEntry) => entry.alias === alias);
+    if (!aliasEntry) {
+      return undefined;
+    }
 
-      const runner = getRunner(runnerAlias);
-      
-      if (!runner) {
-        // Unknown runner -> consider not installed
-        this._panel.webview.postMessage({
-          command: "detect-done",
-          tool: tool.tool,
-          version: tool.version || "",
-          status: "Not installed",
-        });
-        return;
-      }
+    const selectedTool = this.getSelectedToolForAlias(alias);
 
-      runner.loadArgs(undefined);
-      try {
-        const installedVersion = await runner.detectVersion();
-        const actualVersion = tool.version;
-        const hasDifferentVersion = this.hasNewVersionByEnv(tool.tool, actualVersion);
-        const status = installedVersion
-          ? (hasDifferentVersion ? "New Version Available" : "Installed")
-          : "Not installed";
-        let reportedVersion = installedVersion || actualVersion || "";
+    return {
+      tool: alias,
+      version: selectedTool?.version,
+      ['version-command']: aliasEntry['version-command'],
+      ['version-file']: aliasEntry['version-file'],
+      ['version-regex']: aliasEntry['version-regex'],
+    };
+  }
 
-        if (status === "Not installed") {
-          reportedVersion = "";
-        }
-
-        if (installedVersion) {
-          tool.found = hasDifferentVersion ? "New Version Available" : "Installed";
-        }
-
-        // Update UI immediately after each finishes
-        this._panel.webview.postMessage({
-          command: "detect-done",
-          tool: tool.tool,
-          version: reportedVersion,
-          status,
-        });
-        if (tool.alias && this.getDefaultToolForAlias(tool.alias) === tool.tool) {
-          this._panel.webview.postMessage({
-            command: "detect-done",
-            tool: tool.alias,
-            version: reportedVersion,
-            status,
-          });
-        }
-      } catch (err) {
-        console.warn(`Version check failed for ${tool.tool}:`, err);
-        this._panel.webview.postMessage({
-          command: "detect-done",
-          tool: tool.tool,
-          version: tool.version || "",
-          status: "Not installed",
-        });
-        if (tool.alias && this.getDefaultToolForAlias(tool.alias) === tool.tool) {
-          this._panel.webview.postMessage({
-            command: "detect-done",
-            tool: tool.alias,
-            version: tool.version || "",
-            status: "Not installed",
-          });
-        }
-      }
+  private async probeTool(tool: DebugToolEntry): Promise<{ installed: boolean; status: string; version: string }> {
+    const result = await probeDebugToolVersion({
+      manifest: this.data,
+      tool,
+      executableName: this.getToolExecutableName(tool),
+      envData: this.envData,
+      ziBaseDir: getInternalDirRealPath(),
+      platform: getDetectPlatform(),
     });
+
+    const status = isIgnoredReferenceVersion(tool.version)
+      ? ''
+      : (result.installed
+        ? (result.updateAvailable ? 'New Version Available' : 'Installed')
+        : 'Not installed');
+
+    return {
+      installed: result.installed,
+      status,
+      version: result.version || '',
+    };
+  }
+
+  private postDetection(toolId: string, result: { status: string; version: string }) {
+    this._panel.webview.postMessage({
+      command: "detect-done",
+      tool: toolId,
+      version: result.status === 'Not installed' ? '' : result.version,
+      status: result.status,
+    });
+  }
+
+  private async refreshAliasVersion(alias: string) {
+    const aliasTool = this.getAliasProbeTool(alias);
+    if (!aliasTool) {
+      this.postDetection(alias, { status: 'Not installed', version: '' });
+      return;
+    }
+
+    const result = await probeDebugToolVersion({
+      manifest: this.data,
+      tool: aliasTool,
+      executableName: this.getExecutableName(alias),
+      envData: this.envData,
+      ziBaseDir: getInternalDirRealPath(),
+      platform: getDetectPlatform(),
+    });
+
+    this.postDetection(alias, {
+      status: result.installed
+        ? (result.updateAvailable ? 'New Version Available' : 'Installed')
+        : 'Not installed',
+      version: result.version || '',
+    });
+  }
+
+  private async refreshToolVersion(tool: DebugToolEntry) {
+    let result: { status: string; version: string };
+
+    try {
+      result = await this.probeTool(tool);
+    } catch (err) {
+      console.warn(`Version check failed for ${tool.tool}:`, err);
+      result = { status: 'Not installed', version: '' };
+    }
+
+    this.postDetection(tool.tool, result);
+
+    if (tool.alias) {
+      try {
+        await this.refreshAliasVersion(tool.alias);
+      } catch (err) {
+        console.warn(`Version check failed for ${tool.alias}:`, err);
+        this.postDetection(tool.alias, { status: 'Not installed', version: '' });
+      }
+    }
+  }
+
+  private async loadVersions() {
+    const versionPromises = this.data.debug_tools.map((tool: DebugToolEntry) => this.refreshToolVersion(tool));
 
     // Run all in parallel
     await Promise.all(versionPromises);
@@ -294,15 +300,12 @@ export class DebugToolsPanel {
       const defaultDebugToolsYml = this.data.aliases?.find((a:Aliases) => a.alias === alias)?.default;
       const defaultEnvYml = this.envData?.runners?.[alias]?.default || defaultDebugToolsYml || tools[0].tool;
 
-      // try to find parent info from Aliases (OpenOCD), then we check the default tools to use your version and status (found) to display at the parent row
-      const parentTool = this.data.debug_tools.find((t: any) => t.tool === defaultEnvYml);
-      
-      // Parent row, show version and status from default tool choosen
+      // Parent row is populated asynchronously once the selected default tool is probed.
       toolsHTML += `<tr id="row-${alias}">
         <td><button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right" data-tool="${alias}" aria-label="Expand/Collapse"></button></td>
         <td id="name-${alias}">${parentToolName}</td>
-        <td id="version-${alias}">${parentTool?.version || ''}</td>
-        <td id="detect-${alias}">${parentTool?.found || ''}</td>
+        <td id="version-${alias}"></td>
+        <td id="detect-${alias}"></td>
         <td></td>
         <td><div class="progress-wheel" id="progress-${alias}"><vscode-progress-ring></vscode-progress-ring></div></td>
       </tr>`;
@@ -542,7 +545,7 @@ export class DebugToolsPanel {
           <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/debug-tools">Read Docs</a>
           <form>
             <h2>Packs</h2>
-            <table class="debug-tools-table">
+            <table class="debug-tools-table packs-table">
               <tr>
                 <th></th>
                 <th>Pack</th>
@@ -633,85 +636,7 @@ export class DebugToolsPanel {
               });
               break;
             }
-
-            if (tool.alias) {
-              const alias = tool.alias;
-              const status = this.isOpenocdVariantInstalled(tool.tool) ? 'Installed' : 'Not installed';
-              webview.postMessage({
-                command: 'detect-done',
-                tool: message.tool,
-                version: '',
-                status,
-              });
-              if (this.getDefaultToolForAlias(alias) === tool.tool) {
-                webview.postMessage({
-                  command: 'detect-done',
-                  tool: alias,
-                  version: status === 'Installed' ? (tool.version || '') : '',
-                  status,
-                });
-              }
-              break;
-            }
-
-            if (tool.alias) {
-              const defaultTool = this.getDefaultToolForAlias(tool.alias);
-              if (defaultTool && tool.tool !== defaultTool) {
-                webview.postMessage({
-                  command: 'detect-done',
-                  tool: message.tool,
-                  version: tool.version || '',
-                  status: 'Not installed',
-                });
-                break;
-              }
-            }
-
-            const runnerAlias = tool?.alias || message.tool;
-
-            let runner = getRunner(runnerAlias);
-            if(runner) {
-              runner.loadArgs(undefined);
-              let version = await runner.detectVersion();
-              const expectedVersion = tool?.version || '';
-              const hasDifferentVersion = this.hasNewVersionByEnv(message.tool, expectedVersion);
-              const status = version
-                ? (hasDifferentVersion ? 'New Version Available' : 'Installed')
-                : 'Not installed';
-              let reportedVersion = version || expectedVersion || '';
-              if (status === 'Not installed') {
-                reportedVersion = '';
-              }
-              webview.postMessage({ 
-                command: 'detect-done', 
-                tool: message.tool,
-                version: reportedVersion,
-                status,
-              });
-              if (tool.alias && this.getDefaultToolForAlias(tool.alias) === tool.tool) {
-                webview.postMessage({
-                  command: 'detect-done',
-                  tool: tool.alias,
-                  version: reportedVersion,
-                  status,
-                });
-              }
-            } else {
-              webview.postMessage({
-                command: 'detect-done',
-                tool: message.tool,
-                version: tool.version || '',
-                status: 'Not installed',
-              });
-              if (tool.alias && this.getDefaultToolForAlias(tool.alias) === tool.tool) {
-                webview.postMessage({
-                  command: 'detect-done',
-                  tool: tool.alias,
-                  version: tool.version || '',
-                  status: 'Not installed',
-                });
-              }
-            }
+            await this.refreshToolVersion(tool);
             break;
           }
           case 'debug':
@@ -760,7 +685,7 @@ export class DebugToolsPanel {
                 doc = yaml.parseDocument('{}');
               }
               
-              // For OpenOCD alias, keep only runners.openocd and remove variant keys
+              // Keep only the alias entry and remove variant-specific overrides.
               if (alias) {
                 const aliasVariants = this.data.debug_tools
                   .filter((t: any) => t.alias === alias)
@@ -772,14 +697,22 @@ export class DebugToolsPanel {
 
               // Keep alias path/version aligned with the selected default variant
               const selectedTool = this.data.debug_tools.find((t: any) => t.tool === tool);
-              let selectedPath = this.getRunnerPath(tool);
-              if (!selectedPath && selectedTool) {
-                selectedPath = this.getOpenocdCommandDir(selectedTool);
-              }
-              if (tool === 'openocd-custom'){
-                doc.setIn(['runners', alias, 'path'], '');
-              } else if (selectedPath) {
+              const selectedPath = selectedTool
+                ? this.getDetectedToolCommandDir(selectedTool)
+                : undefined;
+              const hasExplicitDetect = Array.isArray(selectedTool?.['explicit-detect']?.[getDetectPlatform()]);
+
+              if (selectedPath) {
                 doc.setIn(['runners', alias, 'path'], selectedPath);
+              } else if (hasExplicitDetect) {
+                doc.deleteIn(['runners', alias, 'path']);
+              } else {
+                const configuredPath = this.getRunnerPath(tool) || this.getRunnerPath(alias);
+                if (configuredPath) {
+                  doc.setIn(['runners', alias, 'path'], configuredPath);
+                } else {
+                  doc.deleteIn(['runners', alias, 'path']);
+                }
               }
               if (selectedTool?.version) {
                 doc.setIn(['runners', alias, 'version'], selectedTool.version);
@@ -829,13 +762,6 @@ export class DebugToolsPanel {
             const success = savedPath && savedDoNotUse;
             webview.postMessage({ command: 'path-updated', tool, path: trimmedPath, success });
             if (success) {
-              // Re-detect installation/version right after saving the path
-              const runner = getRunner(tool);
-              if (runner) {
-                runner.loadArgs(undefined);
-                const version = await runner.detectVersion();
-                webview.postMessage({ command: 'detect-done', tool, version: version ? version : '' });
-              }
               // Trigger a full refresh of all runners after edit completes
               webview.postMessage({ command: 'exec-install-finished' });
             } else {
@@ -857,13 +783,6 @@ export class DebugToolsPanel {
               const ok = okPath && okDoNotUse;
               webview.postMessage({ command: 'path-updated', tool, path: chosen, success: ok, FromBrowse: true });
               if (ok) {
-                // Re-detect installation/version with the newly saved path
-                const runner = getRunner(tool);
-                if (runner) {
-                  runner.loadArgs(undefined);
-                  const version = await runner.detectVersion();
-                  webview.postMessage({ command: 'detect-done', tool, version: version ? version : '' });
-                }
                 // Trigger a full refresh of all runners after edit completes
                 webview.postMessage({ command: 'exec-install-finished' });
               }
@@ -962,97 +881,17 @@ export class DebugToolsPanel {
     return false;
   }
 
-  private hasNewVersionByEnv(toolId: string, expectedVersion: unknown): boolean {
-    try {
-      const normalize = (v: unknown) => String(v ?? '').trim().toLowerCase().replace(/^v/, '');
-      const envVersion = (this.envData as any)?.runners?.[toolId]?.version;
-      const expectedNorm = normalize(expectedVersion);
-      const envNorm = normalize(envVersion);
-      return expectedNorm.length > 0 && envNorm.length > 0 && expectedNorm !== envNorm;
-    } catch {
-      return false;
-    }
-  }
-
   private getDefaultToolForAlias(alias: string): string | undefined {
     const defaultDebugToolsYml = this.data.aliases?.find((a: Aliases) => a.alias === alias)?.default;
     const firstAliasTool = this.data.debug_tools.find((t: any) => t.alias === alias)?.tool;
     return this.envData?.runners?.[alias]?.default || defaultDebugToolsYml || firstAliasTool;
   }
 
-  // Keep the alias entry aligned with the selected OpenOCD variant. The path is
-  // derived from explicit-detect so literal and wildcard-based definitions behave
-  // the same way whether they come from .zinstaller or an external install.
-  private async ensureOpenocdAliasEntry(alias: string, defaultToolId: string): Promise<void> {
-    try {
-      const selectedTool = this.data.debug_tools.find((t: any) => t.tool === defaultToolId);
-      if (!selectedTool) { return; }
-
-      const aliasPath = this.getOpenocdCommandDir(selectedTool);
-      if (!aliasPath) { return; }
-      const aliasVersion = selectedTool.version || '';
-      const current = this.envData?.runners?.[alias];
-      const defaultFromDebugTools = this.data.aliases?.find((a: Aliases) => a.alias === alias)?.default;
-      const expectedDefault = defaultToolId !== defaultFromDebugTools ? defaultToolId : undefined;
-      const same =
-        current?.default === expectedDefault &&
-        current?.path === aliasPath &&
-        current?.version === aliasVersion;
-      if (same) { return; }
-
-      const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-      let doc: any;
-      if (fs.existsSync(envYamlPath)) {
-        doc = yaml.parseDocument(fs.readFileSync(envYamlPath, 'utf8'));
-      } else if (this.envYamlDoc) {
-        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-      } else {
-        doc = yaml.parseDocument('{}');
-      }
-
-      doc.setIn(['runners', alias, 'path'], aliasPath);
-      doc.setIn(['runners', alias, 'version'], aliasVersion);
-      if (typeof doc.getIn(['runners', alias, 'do_not_use']) === 'undefined') {
-        doc.setIn(['runners', alias, 'do_not_use'], false);
-      }
-      if (defaultToolId !== defaultFromDebugTools) {
-        doc.setIn(['runners', alias, 'default'], defaultToolId);
-      } else {
-        doc.deleteIn(['runners', alias, 'default']);
-      }
-
-      formatYml(doc.contents);
-      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
-      fs.writeFileSync(envYamlPath, yamlText, 'utf8');
-
-      this.envYamlDoc = doc;
-      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
-    } catch {
-      // best effort only
+  private getDetectedToolCommandDir(tool: any): string | undefined {
+    const executableName = this.getToolExecutableName(tool);
+    if (!executableName) {
+      return undefined;
     }
-  }
-
-  // OpenOCD variants are considered installed when one of their explicit-detect
-  // patterns resolves to an existing path.
-  private isOpenocdVariantInstalled(toolId: string): boolean {
-    try {
-      const tool = this.data.debug_tools.find((t: any) => t.tool === toolId);
-      if (!tool) {
-        return false;
-      }
-      return !!this.getOpenocdInstallRoot(tool);
-    } 
-    catch {
-      return false;
-    }
-  }
-
-  private getOpenocdInstallRoot(tool: any): string | undefined {
-    return findDetectedToolRoot(tool, getInternalDirRealPath(), getDetectPlatform());
-  }
-
-  private getOpenocdCommandDir(tool: any): string | undefined {
-    const executableName = process.platform === 'win32' ? 'openocd.exe' : 'openocd';
     return getToolCommandDir(tool, getInternalDirRealPath(), executableName, getDetectPlatform());
   }
 

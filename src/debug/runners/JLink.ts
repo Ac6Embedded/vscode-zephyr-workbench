@@ -9,12 +9,8 @@ export class JLink extends WestRunner {
   get executable(): string | undefined {
     const exec = super.executable;
     if(!exec) {
-      return process.platform === 'win32' ? 'JLinkGDBServerCL' : 'JLinkGDBServerCLExe';
+      return process.platform === 'win32' ? 'JLinkGDBServerCL.exe' : 'JLinkGDBServerCLExe';
     }
-  }
-
-  get versionRegex(): any | undefined {
-    return /J-Link GDB Server V([\d.]+[a-z]?)/i;
   }
 
   loadArgs(args: string | undefined) {

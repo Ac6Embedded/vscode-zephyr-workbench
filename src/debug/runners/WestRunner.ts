@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import path from "path";
 import { ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
 import { execCommandWithEnv } from '../../utils/execUtils';
+import { detectRunnerVersion } from '../../utils/debugToolVersionUtils';
 import { formatWindowsPath } from '../../utils/utils';
 
 export const ZEPHYR_WORKBENCH_DEBUG_PATH_SETTING_KEY = 'pathExec';
@@ -116,40 +117,9 @@ export class WestRunner {
   }
 
   async detectVersion(): Promise<string | undefined> {
-    if(!this.versionRegex) {
-      return undefined;
-    }
-    
-    let execPath = '';
-    if(this.serverPath) {
-      execPath = this.serverPath;
-    } else if(this.executable) {
-      execPath = this.executable;
-    }
-
-    if(execPath.includes(' ')) {
-      execPath=`"${execPath}"`;
-    }
-
-    let versionCmd = `${execPath} --version`;
-    return new Promise<string | undefined>((resolve) => {
-      execCommandWithEnv(versionCmd, undefined, (error: any, stdout: string, stderr: string) => {
-        if (error) {
-          resolve(undefined);
-          return;
-        }
-
-        // Merge both outputs, since some tools (e.g., OpenOCD) print version info to stderr
-        const output = `${stdout}\n${stderr}`;
-
-        const match = output.match(this.versionRegex);
-        if (match) {
-          resolve(match[1]);
-        } else {
-          resolve(undefined);
-        }
-      });
-    });
+    const execPath = this.serverPath || this.executable;
+    const normalizedExecPath = execPath?.replace(/^"(.*)"$/, '$1');
+    return detectRunnerVersion(this.name, normalizedExecPath);
   }
 
   get versionRegex(): any | undefined {
