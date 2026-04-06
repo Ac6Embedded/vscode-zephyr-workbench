@@ -22,15 +22,23 @@
     "Samuel Oliveira"
   ],
   "keywords": [
-    "cmake",
+    "zephyr project",
+    "zephyr ide",
+    "zephyr rtos",
+    "zephyr",
     "west",
-    "yaml",
-    "tools",
-    "build",
-    "c",
-    "c++",
     "rtos",
-    "zephyr"
+    "embedded",
+    "firmware",
+    "microcontroller",
+    "sdk",
+    "kconfig",
+    "devicetree",
+    "debugger",
+    "sysbuild",
+    "jlink",
+    "stm32",
+    "nxp"
   ],
   "engines": {
     "vscode": "^1.88.0"
