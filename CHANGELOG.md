@@ -4,6 +4,13 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.6.6]
+
+### Install Runners
+- Fixed ModusToolbox installation and OpenOCD detection
+- Fixed JLink executable name on Linux
+- Centralized debug tool version probing and runner detection
+
 ## [2.6.5]
 
 ### Install Runners
