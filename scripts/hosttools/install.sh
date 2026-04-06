@@ -19,6 +19,9 @@ INSTALL_DIR=""
 
 # Track if system Python is too old for Zephyr
 PYTHON_TOO_OLD=false
+PYTHON_MIN_MAJOR=3
+PYTHON_MIN_MINOR=12
+PYTHON_MIN_VERSION="${PYTHON_MIN_MAJOR}.${PYTHON_MIN_MINOR}"
 
 zinstaller_version="2.0"
 zinstaller_md5=$(md5sum "$BASH_SOURCE")
@@ -152,7 +155,7 @@ MINIMUM_PACKAGES=(
     "dfu-util"
     "device-tree-compiler (dtc)"
     "wget or curl"
-    "python3 (>= 3.10) with pip, venv, setuptools, wheel, tk"
+    "python3 (>= ${PYTHON_MIN_VERSION}) with pip, venv, setuptools, wheel, tk"
     "xz-utils / xz"
     "file"
     "make"
@@ -177,10 +180,10 @@ debug() {
     fi
 }
 
-# Check that Python version is >= 3.10 and set PYTHON_TOO_OLD accordingly
+# Check that Python version meets the minimum requirement and set PYTHON_TOO_OLD accordingly
 check_python_version_requirement() {
-    local min_major=3
-    local min_minor=10
+    local min_major="$PYTHON_MIN_MAJOR"
+    local min_minor="$PYTHON_MIN_MINOR"
 
     local pyexe=""
     debug "Checking Python version requirement"
@@ -189,7 +192,7 @@ check_python_version_requirement() {
     elif command -v python >/dev/null 2>&1; then
         pyexe=python
     else
-        pr_warn "Python not found on PATH; Zephyr requires Python >= 3.10"
+        pr_warn "Python not found on PATH; Zephyr requires Python >= ${PYTHON_MIN_VERSION}"
         PYTHON_TOO_OLD=true
         debug "No python found on PATH"
         return 1
@@ -198,7 +201,7 @@ check_python_version_requirement() {
     local ver_str="$($pyexe -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)"
     debug "Using pyexe: $pyexe, version_str: $ver_str"
     if [[ -z "$ver_str" ]]; then
-        pr_warn "Unable to determine Python version; Zephyr requires Python >= 3.10"
+        pr_warn "Unable to determine Python version; Zephyr requires Python >= ${PYTHON_MIN_VERSION}"
         PYTHON_TOO_OLD=true
         debug "Unable to determine version"
         return 1
@@ -213,7 +216,7 @@ check_python_version_requirement() {
         return 0
     else
         PYTHON_TOO_OLD=true
-        pr_warn "Detected Python ${ver_str}; Zephyr requires version >= 3.10"
+        pr_warn "Detected Python ${ver_str}; Zephyr requires version >= ${PYTHON_MIN_VERSION}"
         debug "Python too old: ${ver_str}"
         return 1
     fi
@@ -535,7 +538,7 @@ if [[ $non_root_packages == true ]]; then
     # If the system Python is not supported, switch to portable AppImage
     check_python_version_requirement || true
     if [[ "$PYTHON_TOO_OLD" == true ]]; then
-        pr_warn "System Python is older than 3.10 or missing."
+        pr_warn "System Python is older than ${PYTHON_MIN_VERSION} or missing."
         pr_warn "Applying workaround: installing portable Python via AppImage."
         pr_warn "More info: https://python-appimage.readthedocs.io"
         debug "Switching to portable Python: PYTHON_TOO_OLD=$PYTHON_TOO_OLD (before portable_python=$portable_python)"
