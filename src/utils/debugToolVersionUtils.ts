@@ -7,6 +7,7 @@ import {
   DetectPlatform,
   DetectableToolLike,
   evaluateDetectPatterns,
+  findDetectedToolRoot,
   getDetectPlatform,
   preserveDetectPatterns,
 } from './debugToolPathUtils';
@@ -23,6 +24,8 @@ import { getInternalDirRealPath } from './utils';
  *   are PATH-based.
  * - Alias entries can own the shared `version-command` / `version-regex`, while a
  *   specific child tool still provides the real executable path to probe.
+ * - Some packages expose the install version in their detected path instead of a
+ *   CLI/file probe; `version-source: detect-path` handles that case.
  */
 type VersionProbeSetting = string | Partial<Record<'default' | DetectPlatform, string>>;
 
@@ -33,6 +36,7 @@ export interface DebugToolEntry extends DetectableToolLike {
   ['auto-detect']?: Partial<Record<DetectPlatform, string[]>>;
   ['version-file']?: VersionProbeSetting;
   ['version-command']?: VersionProbeSetting;
+  ['version-source']?: VersionProbeSetting;
   ['version-regex']?: VersionProbeSetting;
 }
 
@@ -42,6 +46,7 @@ export interface DebugToolAliasEntry {
   name?: string;
   ['version-file']?: VersionProbeSetting;
   ['version-command']?: VersionProbeSetting;
+  ['version-source']?: VersionProbeSetting;
   ['version-regex']?: VersionProbeSetting;
 }
 
@@ -59,6 +64,7 @@ interface ToolVersionProbeResult {
 interface ProbeConfig {
   command?: string;
   filePath?: string;
+  pathValue?: string;
   regex?: RegExp;
 }
 
@@ -298,6 +304,11 @@ function compileVersionRegex(rawRegex: string | undefined): RegExp | undefined {
   }
 }
 
+export function extractVersionFromProbeText(value: string, regex?: RegExp): string | undefined {
+  const match = regex?.exec(value);
+  return match?.[1]?.trim() || match?.[0]?.trim();
+}
+
 function renderVersionCommand(
   commandTemplate: string,
   executablePath?: string,
@@ -358,7 +369,12 @@ function resolveProbeOwner(
   // need to repeat the same command/regex.
   if (tool.alias) {
     const aliasEntry = findDebugToolAlias(manifest, tool.alias);
-    if (aliasEntry?.['version-command'] || aliasEntry?.['version-file'] || aliasEntry?.['version-regex']) {
+    if (
+      aliasEntry?.['version-command'] ||
+      aliasEntry?.['version-file'] ||
+      aliasEntry?.['version-source'] ||
+      aliasEntry?.['version-regex']
+    ) {
       return aliasEntry;
     }
   }
@@ -391,6 +407,7 @@ function resolveVersionProbeFilePath(
 
 function buildProbeConfig(
   probeOwner: DebugToolEntry | DebugToolAliasEntry | undefined,
+  tool: DetectableToolLike | undefined,
   executablePath?: string,
   executableName?: string,
   envData?: any,
@@ -402,6 +419,7 @@ function buildProbeConfig(
   }
 
   const rawRegex = resolveVersionProbeSetting(probeOwner['version-regex'], platform);
+  const probeSource = resolveVersionProbeSetting(probeOwner['version-source'], platform);
   const filePath = resolveVersionProbeFilePath(probeOwner, envData, ziBaseDir, platform);
   if (filePath) {
     return {
@@ -413,7 +431,19 @@ function buildProbeConfig(
   const commandTemplate = resolveVersionProbeSetting(probeOwner['version-command'], platform);
 
   if (!commandTemplate) {
-    return undefined;
+    if (probeSource !== 'detect-path' || !tool) {
+      return undefined;
+    }
+
+    const detectedPath = findDetectedToolRoot(tool, ziBaseDir, platform);
+    if (!detectedPath) {
+      return undefined;
+    }
+
+    return {
+      pathValue: normalizePathSlashes(detectedPath),
+      regex: compileVersionRegex(rawRegex),
+    };
   }
 
   const command = renderVersionCommand(commandTemplate, executablePath, executableName);
@@ -454,11 +484,19 @@ function resolveToolExecutablePath(
 
 async function executeVersionProbe(probe: ProbeConfig): Promise<{ installed: boolean; version?: string }> {
   return new Promise(resolve => {
+    if (probe.pathValue) {
+      const version = extractVersionFromProbeText(probe.pathValue, probe.regex);
+      resolve({
+        installed: true,
+        version: version && version.length > 0 ? version : undefined,
+      });
+      return;
+    }
+
     if (probe.filePath) {
       try {
         const contents = fs.readFileSync(probe.filePath, 'utf8');
-        const match = probe.regex?.exec(contents);
-        const version = match?.[1]?.trim() || match?.[0]?.trim();
+        const version = extractVersionFromProbeText(contents, probe.regex);
         resolve({
           installed: true,
           version: version && version.length > 0 ? version : undefined,
@@ -476,8 +514,7 @@ async function executeVersionProbe(probe: ProbeConfig): Promise<{ installed: boo
 
     execCommandWithEnv(adaptProbeCommandForShell(probe.command), undefined, (error, stdout, stderr) => {
       const output = `${stdout ?? ''}\n${stderr ?? ''}`;
-      const match = probe.regex?.exec(output);
-      const version = match?.[1]?.trim() || match?.[0]?.trim();
+      const version = extractVersionFromProbeText(output, probe.regex);
       if (version && version.length > 0) {
         // Some tools print a valid version to stderr or still return a non-zero
         // exit code for `--version`. A regex match is enough to treat the probe
@@ -534,9 +571,9 @@ export async function probeDebugToolVersion(options: {
     return { installed: false, updateAvailable: false };
   }
 
-  const probe = buildProbeConfig(probeOwner, executablePath, executableName, envData, ziBaseDir, platform);
+  const probe = buildProbeConfig(probeOwner, tool, executablePath, executableName, envData, ziBaseDir, platform);
 
-  if (!probe || (!probe.filePath && !probe.command?.trim())) {
+  if (!probe || (!probe.pathValue && !probe.filePath && !probe.command?.trim())) {
     return {
       installed: installedFromDetect ?? false,
       updateAvailable: false,
@@ -566,13 +603,14 @@ async function probeInstalledVersion(
   const probeOwner = tool ? resolveProbeOwner(manifest, tool) : alias;
   const probe = buildProbeConfig(
     probeOwner,
+    tool,
     executablePath,
     executablePath ? path.basename(executablePath) : undefined,
     undefined,
     getInternalDirRealPath(),
   );
 
-  if (!probe || (!probe.filePath && !probe.command?.trim())) {
+  if (!probe || (!probe.pathValue && !probe.filePath && !probe.command?.trim())) {
     return { installed: false };
   }
 

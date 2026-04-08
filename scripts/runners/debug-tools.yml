@@ -7,8 +7,9 @@
 # `no_edit` = path editing disabled in the UI so "EDIT" button will be hidden,
 # `auto-detect` = env.yml auto-detect glob paths, `explicit-detect` = exact panel detection paths,
 # `version` = reference/install version used for update comparisons only,
-# `version-command` / `version-file` / `version-regex` = installed-version probe metadata.
-# `version-command` and `version-file` can be a string or OS-specific map.
+# `version-command` / `version-file` / `version-regex` = installed-version probe metadata,
+# `version-source: detect-path` = extract the version from the detected install path itself.
+# `version-command`, `version-file`, and `version-source` can be a string or OS-specific map.
 
 #--- use versionning, this is needed to manage env.yml, mainly for auto-detect ---
 version: 2
@@ -229,6 +230,26 @@ debug_tools:
     darwin:
       - "/Applications/STMicroelectronics/STM32CubeProgrammer/STM32CubeProgrammer.app/Contents/MacOS/bin"
       - "/Applications/STM32CubeProgrammer/STM32CubeProgrammer.app/Contents/MacOS/bin"
+- tool: stm32cubeclt
+  name: STM32CubeCLT
+  version: 1.21.0
+  version-source: detect-path
+  version-regex: '/STM32CubeCLT_([\d.]+)/i'
+  website: https://www.st.com/en/development-tools/stm32cubeclt.html#section-get-software-table
+  vendor: ST
+  type: debug_server
+  group: STM32
+  root: false
+  no_edit: true
+  # Detect the bundled ST-LINK GDB Server directory and extract the package
+  # version from the matched STM32CubeCLT_<version> path segment.
+  explicit-detect:
+    windows:
+      - "C:/ST/STM32CubeCLT_*/STLink-gdb-server/bin"
+    linux:
+      - "/opt/st/STM32CubeCLT_*/STLink-gdb-server/bin"
+    darwin:
+      - "/opt/ST/STM32CubeCLT_*/STLink-gdb-server/bin"
 - tool: linkserver
   name: NXP LinkServer for Microcontrollers
   version: 24.9.75
@@ -383,7 +404,7 @@ debug_tools:
 packs:
 - pack: stm32
   name: STM32
-  tools: [openocd-zephyr, stm32cubeprogrammer, jlink, udev-rules]
+  tools: [stm32cubeclt, openocd-zephyr, jlink, udev-rules]
 - pack: nxp
   name: NXP
   tools: [linkserver, jlink]
