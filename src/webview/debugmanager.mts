@@ -177,6 +177,10 @@ function setVSCodeMessageListener() {
         updateConfig(event.data);
         break;
       }
+      case 'updateConfigError': {
+        hideBrowseSpinners();
+        break;
+      }
       case 'updateRunnerConfig': {
         const runnerPath = event.data.runnerPath;
         const runnerArgs = event.data.runnerArgs;
@@ -536,16 +540,10 @@ function updateConfig(data: any) {
   runnerPathText.dispatchEvent(new Event('input'));
   stlinkPathDisabled();
 
-  const programLoaded = (programPathText.value ?? '').trim().length > 0;
-  const gdbLoaded = (gdbPathText.value ?? '').trim().length > 0;
-  const runnerLoaded = (runnerPathText.value ?? '').trim().length > 0;
-
-  if (programLoaded && gdbLoaded && runnerLoaded) {
-    hideBrowseSpinners();
-  } else {
-    if (programLoaded) {hideSpinner('programPathSpinner');}
-    if (gdbLoaded) {hideSpinner('gdbPathSpinner');}
-    if (runnerLoaded) {hideSpinner('runnerPathSpinner');}
+  hideSpinner('programPathSpinner');
+  hideSpinner('gdbPathSpinner');
+  if ((runnerPathText.value ?? '').trim().length > 0) {
+    hideSpinner('runnerPathSpinner');
   }
 }
 
@@ -563,8 +561,14 @@ function updateRunnerConfig(runnerPath: string, runnerArgs: string) {
 
 function updateRunnerDetect(runnerDetect: boolean, runnerName: string ) {
   const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
-  const resolvedRunnerName = runnerName;
+  const resolvedRunnerName = (runnerName ?? '').trim();
   hideSpinner('runnerPathSpinner');
+  if (!resolvedRunnerName) {
+    runnerDetectSpan.textContent = 'Choose a runner';
+    runnerDetectSpan.style.color = "#aa0000";
+    stlinkPathDisabled();
+    return;
+  }
   if (runnerDetect === true) {
     runnerDetectSpan.textContent = `${resolvedRunnerName} is installed`;
     runnerDetectSpan.style.color = "#00aa00";

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugUtils";
+import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugRunners, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugUtils";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
 import { getZephyrProject } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
@@ -290,114 +290,144 @@ export class DebugManagerPanel {
     webview.onDidReceiveMessage(
       async (message: any) => {
         const command = message.command;
-        switch (command) {
-          case 'webviewReady': {
-            // Send initial selection and load applications
-            this._setDefaultSelection(webview);
-            webview.postMessage({ command: 'applicationsLoading' });
-            await loadApplications(webview);
-            break;
-          }
-          case 'projectChanged': {
-            const projectPath = message.project;
-            const appProject = await getZephyrProject(projectPath);
+        try {
+          switch (command) {
+            case 'webviewReady': {
+              // Send initial selection and load applications
+              this._setDefaultSelection(webview);
+              webview.postMessage({ command: 'applicationsLoading' });
+              await loadApplications(webview);
+              break;
+            }
+            case 'projectChanged': {
+              const projectPath = message.project;
+              const appProject = await getZephyrProject(projectPath);
 
-            if(appProject) {
-              if(appProject.configs.length > 0) {
-                updateBuildConfigs(appProject);
-              }
-            }
-            break;
-          }
-          case 'buildConfigChanged': {
-            const projectPath = message.project;
-            const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
-            const appProject = await getZephyrProject(projectPath);
-            const buildConfig = appProject.getBuildConfiguration(buildConfigName);
-
-            if(appProject && buildConfig) {
-              await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: 'Debug Manager',
-                cancellable: false,
-              }, async (progress) => {
-                progress.report({ message: 'Preparing build configuration' });
-                await updateConfiguration(appProject, buildConfig);
-              });
-            }
-            break;
-          }
-          case 'runnerChanged': {
-            const runnerName = message.runner;
-            const runnerPath = message.runnerPath;
-            const runner = getRunner(runnerName);
-            if(runner) {
-              if(runnerPath && runnerPath.length > 0) {
-                runner.serverPath = runnerPath;
-              }
-              // let runner auto-discover its executable 
-              await runner.loadInternalArgs();
-              //await updateRunnerConfiguration(runner);
-              await updateRunnerDetect(runner);
-            }
-            break;
-          }
-          case 'runnerPathChanged': {
-            const runnerName = message.runner;
-            const runner = getRunner(runnerName);
-            if(runner) {
-              runner.serverPath = message.runnerPath;
-              await updateRunnerDetect(runner);
-            }
-            break;
-          }
-          case 'browseProgram': {
-            this.openFileDialog('programPath', { 'Binary File': ['bin'],  'Elf File': ['elf'], 'Hex File': ['hex'], 'All': ['*']});
-            break;
-          }
-          case 'browseSvd': {
-            this.openFileDialog('svdPath', { 'SVD File': ['svd'], 'All': ['*'] });
-            break;
-          }
-          case 'browseGdb': {
-            this.openFileDialog('gdbPath');
-            break;
-          }
-          case 'browseRunner': {
-            this.openFileDialog('runnerPath', { 'Executable': ['exe'], 'All': ['*'] });
-            break;
-          }
-          case 'install': {
-            vscode.commands.executeCommand('zephyr-workbench.install-runners');
-          }
-          case 'refreshApplications': {
-            webview.postMessage({ command: 'applicationsLoading' });
-            await loadApplications(webview);
-            break;
-          }
-          case 'reset': {
-            await resetHandler(message);
-            break;
-          }
-          case 'apply': {
-            await applyHandler(message);
-            break;
-          }
-          case 'debug': {
-            (async () => {
-              try {
-                const applied = await applyHandler(message);
-                if (applied) {
-                  await debugHandler(message);
+              if(appProject) {
+                if(appProject.configs.length > 0) {
+                  updateBuildConfigs(appProject);
                 }
-              } catch (error) {
-                console.error('Cannot start debug', error);
               }
-            })();
-            break;
+              break;
+            }
+            case 'buildConfigChanged': {
+              const projectPath = message.project;
+              const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
+              const appProject = await getZephyrProject(projectPath);
+              const buildConfig = appProject.getBuildConfiguration(buildConfigName);
+
+              if(appProject && buildConfig) {
+                await vscode.window.withProgress({
+                  location: vscode.ProgressLocation.Notification,
+                  title: 'Debug Manager',
+                  cancellable: false,
+                }, async (progress) => {
+                  progress.report({ message: 'Preparing build configuration' });
+                  await updateConfiguration(appProject, buildConfig);
+                });
+              } else {
+                webview.postMessage({ command: 'updateConfigError' });
+              }
+              break;
+            }
+            case 'runnerChanged': {
+              const runnerName = message.runner;
+              const runnerPath = message.runnerPath;
+              const runner = getRunner(runnerName);
+              if(runner) {
+                if(runnerPath && runnerPath.length > 0) {
+                  runner.serverPath = runnerPath;
+                }
+                // let runner auto-discover its executable 
+                await runner.loadInternalArgs();
+                //await updateRunnerConfiguration(runner);
+                await updateRunnerDetect(runner);
+              } else {
+                webview.postMessage({
+                  command: 'updateRunnerDetect',
+                  runnerDetect: 'false',
+                  runnerName: `${runnerName ?? ''}`,
+                  runnerPath: `${runnerPath ?? ''}`,
+                });
+              }
+              break;
+            }
+            case 'runnerPathChanged': {
+              const runnerName = message.runner;
+              const runner = getRunner(runnerName);
+              if(runner) {
+                runner.serverPath = message.runnerPath;
+                await updateRunnerDetect(runner);
+              } else {
+                webview.postMessage({
+                  command: 'updateRunnerDetect',
+                  runnerDetect: 'false',
+                  runnerName: `${runnerName ?? ''}`,
+                  runnerPath: `${message.runnerPath ?? ''}`,
+                });
+              }
+              break;
+            }
+            case 'browseProgram': {
+              this.openFileDialog('programPath', { 'Binary File': ['bin'],  'Elf File': ['elf'], 'Hex File': ['hex'], 'All': ['*']});
+              break;
+            }
+            case 'browseSvd': {
+              this.openFileDialog('svdPath', { 'SVD File': ['svd'], 'All': ['*'] });
+              break;
+            }
+            case 'browseGdb': {
+              this.openFileDialog('gdbPath');
+              break;
+            }
+            case 'browseRunner': {
+              this.openFileDialog('runnerPath', { 'Executable': ['exe'], 'All': ['*'] });
+              break;
+            }
+            case 'install': {
+              vscode.commands.executeCommand('zephyr-workbench.install-runners');
+            }
+            case 'refreshApplications': {
+              webview.postMessage({ command: 'applicationsLoading' });
+              await loadApplications(webview);
+              break;
+            }
+            case 'reset': {
+              await resetHandler(message);
+              break;
+            }
+            case 'apply': {
+              await applyHandler(message);
+              break;
+            }
+            case 'debug': {
+              (async () => {
+                try {
+                  const applied = await applyHandler(message);
+                  if (applied) {
+                    await debugHandler(message);
+                  }
+                } catch (error) {
+                  console.error('Cannot start debug', error);
+                }
+              })();
+              break;
+            }
+            default:
+              break;
           }
-          default:
-            break;
+        } catch (error) {
+          console.error(`Debug Manager command failed: ${command}`, error);
+          if (command === 'buildConfigChanged') {
+            webview.postMessage({ command: 'updateConfigError' });
+          } else if (command === 'runnerChanged' || command === 'runnerPathChanged') {
+            webview.postMessage({
+              command: 'updateRunnerDetect',
+              runnerDetect: 'false',
+              runnerName: `${message.runner ?? ''}`,
+              runnerPath: `${message.runnerPath ?? ''}`,
+            });
+          }
         }
       },
       undefined,
@@ -434,73 +464,82 @@ export class DebugManagerPanel {
     }
 
     async function updateConfiguration(project: ZephyrProject, buildConfig?: ZephyrProjectBuildConfiguration) {
-      // Extract information from configuration
-      let launchJson, config;
-      let compatibleRunners: string[] = [];
-      if(buildConfig) {
-        [launchJson, config] = await getLaunchConfiguration(project, buildConfig.name);
-        compatibleRunners = await buildConfig.getCompatibleRunners(project);
-      }
-
-      const programPath = config.program;
-      const svdPath = config.svdPath;
-      const gdbPath = config.miDebuggerPath;
-      const serverAddress = getServerAddressFromConfig(config);
-      let gdbAddress = 'localhost';
-      let gdbPort = '3333';
-      let gdbMode = getGdbMode(config.setupCommands);
-      if(serverAddress) {
-        if (serverAddress.includes(':')) {
-          [gdbAddress, gdbPort] = serverAddress.split(':');
-        } else {
-          gdbAddress = serverAddress;
-          gdbPort = '3333';
+      try {
+        // Extract information from configuration
+        let launchJson, config;
+        let compatibleRunners: string[] = [];
+        if(buildConfig) {
+          [launchJson, config] = await getLaunchConfiguration(project, buildConfig.name);
+          compatibleRunners = await buildConfig.getCompatibleRunners(project);
         }
-      }
 
-      let newRunnersHTML = '';
-      for(let runner of getDebugRunners()) {
-        if(compatibleRunners.includes(runner.name)) {
-          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
-        } else {
-          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
-        }
-      }
-      const runnerName = WestRunner.extractRunner(config.debugServerArgs);
-      let runnerLabel = "";
-      let runnerPath = "";
-      let runnerArgs = "";
-
-      if(runnerName) {
-        const runner = getRunner(runnerName);
-        if(runner) {
-          runner.loadArgs(config.debugServerArgs);
-          await runner.loadInternalArgs();
-          if(runner.label) {
-            runnerLabel = runner.label;
-          }
-          if(runner.serverPath) {
-            runnerPath = runner.serverPath;
-          }
-          if(runner.userArgs) {
-            runnerArgs = runner.userArgs;
+        const programPath = config.program;
+        const svdPath = config.svdPath;
+        const gdbPath = config.miDebuggerPath;
+        const serverAddress = getServerAddressFromConfig(config);
+        let gdbAddress = 'localhost';
+        let gdbPort = '3333';
+        let gdbMode = getGdbMode(config.setupCommands);
+        if(serverAddress) {
+          if (serverAddress.includes(':')) {
+            [gdbAddress, gdbPort] = serverAddress.split(':');
+          } else {
+            gdbAddress = serverAddress;
+            gdbPort = '3333';
           }
         }
-      }
 
-      webview.postMessage({ 
-        command: 'updateConfig', 
-        programPath: `${programPath}`,
-        svdPath: `${svdPath}`,
-        gdbPath: `${gdbPath}`,
-        gdbAddress: `${gdbAddress}`,
-        gdbPort: `${gdbPort}`,
-        gdbMode: `${gdbMode}`,
-        runnersHTML: `${newRunnersHTML}`,
-        runnerName: `${runnerLabel}`,
-        runnerPath: `${runnerPath}`,
-        runnerArgs: `${runnerArgs}`
-      });
+        let newRunnersHTML = '';
+        for(let runner of getDebugRunners()) {
+          if(compatibleRunners.includes(runner.name)) {
+            newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
+          } else {
+            newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
+          }
+        }
+        const runnerName = buildConfig ? (getDefaultDebugRunner(project, buildConfig) ?? WestRunner.extractRunner(config.debugServerArgs)) : WestRunner.extractRunner(config.debugServerArgs);
+        let runnerLabel = "";
+        let runnerPath = "";
+        let runnerArgs = "";
+
+        if(runnerName) {
+          const runner = getRunner(runnerName);
+          if(runner) {
+            runner.loadArgs(config.debugServerArgs);
+            try {
+              await runner.loadInternalArgs();
+            } catch {
+              // Keep the configuration responsive even if runner probing fails.
+            }
+            if(runner.label) {
+              runnerLabel = runner.label;
+            }
+            if(runner.serverPath) {
+              runnerPath = runner.serverPath;
+            }
+            if(runner.userArgs) {
+              runnerArgs = runner.userArgs;
+            }
+          }
+        }
+
+        webview.postMessage({ 
+          command: 'updateConfig', 
+          programPath: `${programPath}`,
+          svdPath: `${svdPath}`,
+          gdbPath: `${gdbPath}`,
+          gdbAddress: `${gdbAddress}`,
+          gdbPort: `${gdbPort}`,
+          gdbMode: `${gdbMode}`,
+          runnersHTML: `${newRunnersHTML}`,
+          runnerName: `${runnerLabel}`,
+          runnerPath: `${runnerPath}`,
+          runnerArgs: `${runnerArgs}`
+        });
+      } catch (error) {
+        console.error('Debug Manager: cannot update configuration', error);
+        webview.postMessage({ command: 'updateConfigError' });
+      }
     }
 
     async function updateRunnerConfiguration(runner: WestRunner) {
@@ -512,7 +551,12 @@ export class DebugManagerPanel {
     }
 
     async function updateRunnerDetect(runner: WestRunner) {
-      let found = await runner.detect();
+      let found = false;
+      try {
+        found = await runner.detect();
+      } catch (error) {
+        console.error('Debug Manager: cannot detect runner', error);
+      }
       webview.postMessage({ 
         command: 'updateRunnerDetect', 
         runnerDetect: found?'true':'false',
@@ -575,7 +619,9 @@ export class DebugManagerPanel {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
         }
       }
-      const serverArgs = config.debugServerArgs;
+      const runnerName = buildConfig ? getDefaultDebugRunner(project, buildConfig) : undefined;
+      const runner = runnerName ? getRunner(runnerName) : undefined;
+      const runnerLabel = runner?.label ?? '';
       
       webview.postMessage({ 
         command: 'updateConfig', 
@@ -585,7 +631,9 @@ export class DebugManagerPanel {
         gdbPort: `${gdbPort}`,
         gdbMode: `${gdbMode}`,
         runnersHTML: `${newRunnersHTML}`,
-        serverArgs: `${serverArgs}`
+        runnerName: `${runnerLabel}`,
+        runnerPath: '',
+        runnerArgs: ''
       });
     }
 

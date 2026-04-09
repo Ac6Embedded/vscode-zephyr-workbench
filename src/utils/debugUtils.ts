@@ -19,7 +19,7 @@ import { JLink } from '../debug/runners/JLink';
 import { PyOCD } from '../debug/runners/PyOCD';
 import { ZephyrBoard } from '../models/ZephyrBoard';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
-import { execWestCommandWithEnv, execWestCommandWithEnvAsync } from '../commands/WestCommands';
+import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeOnlyCommand } from '../commands/WestCommands';
 import { composeWestBuildArgs } from './westArgUtils';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
@@ -188,6 +188,194 @@ function parseFlashRunnersFromYaml(runnersYamlPath: string): { all: string[]; av
   } catch {
     return undefined;
   }
+}
+
+function findBoardYamlInDir(boardDir: string, boardIdentifier?: string): string | undefined {
+  if (!boardDir || !fs.existsSync(boardDir)) {
+    return undefined;
+  }
+
+  const yamlFiles = fs.readdirSync(boardDir, { withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith('.yaml'))
+    .map(entry => path.join(boardDir, entry.name));
+
+  if (yamlFiles.length === 0) {
+    return undefined;
+  }
+
+  if (boardIdentifier) {
+    for (const yamlFile of yamlFiles) {
+      try {
+        const data = yaml.parse(fs.readFileSync(yamlFile, 'utf8'));
+        if (data?.identifier === boardIdentifier) {
+          return yamlFile;
+        }
+      } catch {
+        // Ignore malformed board yaml and keep scanning candidates.
+      }
+    }
+  }
+
+  return yamlFiles[0];
+}
+
+function getBuildArtifactCandidates(buildDir: string, appFolderName: string | undefined, ...segments: string[]): string[] {
+  const candidates: string[] = [];
+
+  if (appFolderName && appFolderName.length > 0) {
+    candidates.push(path.join(buildDir, appFolderName, ...segments));
+  }
+  candidates.push(path.join(buildDir, ...segments));
+
+  return candidates;
+}
+
+function getFirstExistingBuildArtifact(buildDir: string, appFolderName: string | undefined, ...segments: string[]): string | undefined {
+  return getBuildArtifactCandidates(buildDir, appFolderName, ...segments).find(candidate => fileExists(candidate));
+}
+
+function parseGdbPathFromRunnersYaml(runnersYamlPath: string): string | undefined {
+  try {
+    const data = yaml.parse(fs.readFileSync(runnersYamlPath, 'utf8')) ?? {};
+    const gdbPath = data?.config?.gdb;
+    return typeof gdbPath === 'string' && gdbPath.trim().length > 0 ? gdbPath.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseDebugRunnerFromRunnersYaml(runnersYamlPath: string): string | undefined {
+  try {
+    const data = yaml.parse(fs.readFileSync(runnersYamlPath, 'utf8')) ?? {};
+    const runnerCandidates = [
+      data['debug-runner'],
+      data.debug_runner,
+      data?.config?.['debug-runner'],
+      data?.config?.debug_runner,
+    ];
+
+    const runnerName = runnerCandidates.find(
+      (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0
+    );
+
+    return runnerName?.trim();
+  } catch {
+    return undefined;
+  }
+}
+
+function parseGdbPathFromCMakeCache(cmakeCachePath: string): string | undefined {
+  try {
+    const cacheText = fs.readFileSync(cmakeCachePath, 'utf8');
+    const match = cacheText.match(/^CMAKE_GDB(?::[A-Z]+)?=(.+)$/m);
+    return match?.[1]?.trim().length ? match[1].trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeSdkRelativeDetectedPath(detectedPath: string, sdkPath: string): string {
+  const strippedDetectedPath = detectedPath.trim().replace(/^"(.*)"$/, '$1');
+  const normalizedDetectedPath = path.normalize(strippedDetectedPath);
+  const normalizedSdkPath = path.normalize(sdkPath);
+
+  const compareDetectedPath = process.platform === 'win32'
+    ? normalizedDetectedPath.toLowerCase()
+    : normalizedDetectedPath;
+  const compareSdkPath = process.platform === 'win32'
+    ? normalizedSdkPath.toLowerCase()
+    : normalizedSdkPath;
+
+  const pathIsInsideSdk =
+    compareDetectedPath === compareSdkPath ||
+    compareDetectedPath.startsWith(`${compareSdkPath}${path.sep}`);
+
+  if (!pathIsInsideSdk) {
+    return strippedDetectedPath;
+  }
+
+  const relativePath = path.relative(normalizedSdkPath, normalizedDetectedPath);
+  if (!relativePath || relativePath === '.') {
+    return '${config:zephyr-workbench.sdk}';
+  }
+
+  const separator = process.platform === 'win32' ? '\\' : '/';
+  const relativeSegments = relativePath.split(/[\\/]+/).filter(segment => segment.length > 0);
+  return ['${config:zephyr-workbench.sdk}', ...relativeSegments].join(separator);
+}
+
+function resolveGdbPathFromGeneratedFiles(buildDir: string, appFolderName: string | undefined): string | undefined {
+  const runnersYamlPath = getFirstExistingBuildArtifact(buildDir, appFolderName, ZEPHYR_DIRNAME, 'runners.yaml');
+  if (runnersYamlPath) {
+    const gdbPath = parseGdbPathFromRunnersYaml(runnersYamlPath);
+    if (gdbPath) {
+      return gdbPath;
+    }
+  }
+
+  const cmakeCachePath = getFirstExistingBuildArtifact(buildDir, appFolderName, 'CMakeCache.txt');
+  if (cmakeCachePath) {
+    const gdbPath = parseGdbPathFromCMakeCache(cmakeCachePath);
+    if (gdbPath) {
+      return gdbPath;
+    }
+  }
+
+  return undefined;
+}
+
+export function getDefaultDebugRunner(
+  project: ZephyrProject,
+  buildConfig: ZephyrProjectBuildConfiguration
+): string | undefined {
+  const runnersYamlPath = buildConfig.getBuildArtifactPath(project, ZEPHYR_DIRNAME, 'runners.yaml');
+  if (!runnersYamlPath) {
+    return undefined;
+  }
+
+  return parseDebugRunnerFromRunnersYaml(runnersYamlPath);
+}
+
+function resolveBoardFromGeneratedFiles(
+  buildDir: string,
+  appFolderName: string | undefined,
+  boardIdentifier?: string
+): ZephyrBoard | undefined {
+  const runnersYamlPath = getFirstExistingBuildArtifact(buildDir, appFolderName, ZEPHYR_DIRNAME, 'runners.yaml');
+  if (!runnersYamlPath) {
+    return undefined;
+  }
+
+  try {
+    const data = yaml.parse(fs.readFileSync(runnersYamlPath, 'utf8')) ?? {};
+    const boardDirCandidates = [
+      data?.config?.board_dir,
+      data?.board_dir,
+    ].filter((value: unknown): value is string => typeof value === 'string' && value.length > 0);
+
+    for (const boardDir of boardDirCandidates) {
+      const boardYamlPath = findBoardYamlInDir(boardDir, boardIdentifier);
+      if (boardYamlPath) {
+        return new ZephyrBoard(vscode.Uri.file(boardYamlPath));
+      }
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+function resolveBoardFromBuildArtifacts(
+  project: ZephyrProject,
+  buildConfig: ZephyrProjectBuildConfiguration,
+  boardIdentifier?: string
+): ZephyrBoard | undefined {
+  return resolveBoardFromGeneratedFiles(
+    buildConfig.getBuildDir(project),
+    project.workspaceContext?.name,
+    boardIdentifier
+  );
 }
 
 /**
@@ -452,6 +640,7 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
   const zephyrSDK = getZephyrSDK(project.sdkPath);
   let buildConfig: ZephyrProjectBuildConfiguration | undefined = undefined;
   let targetBoard: ZephyrBoard | undefined;
+  let generatedGdbPath: string | undefined;
   let boardIdentifier;
 
   if(buildConfigName) {
@@ -463,9 +652,31 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
     }
   }
 
-  const listBoards = await getSupportedBoards(westWorkspace, project, buildConfig);
-  if (boardIdentifier) {
-    targetBoard = findBoardByHierarchicalIdentifier(boardIdentifier, listBoards);
+  if (buildConfig) {
+    targetBoard = resolveBoardFromBuildArtifacts(project, buildConfig, boardIdentifier);
+    generatedGdbPath = resolveGdbPathFromGeneratedFiles(buildConfig.getBuildDir(project), project.workspaceContext?.name);
+
+    if ((!targetBoard || !generatedGdbPath) && !fileExists(buildConfig.getBuildDir(project))) {
+      const tmpBuildDir = path.join(project.folderPath, '.tmp');
+      try {
+        await westTmpBuildCmakeOnlyCommand(project, westWorkspace, buildConfig);
+        if (!targetBoard) {
+          targetBoard = resolveBoardFromGeneratedFiles(tmpBuildDir, project.workspaceContext?.name, boardIdentifier);
+        }
+        if (!generatedGdbPath) {
+          generatedGdbPath = resolveGdbPathFromGeneratedFiles(tmpBuildDir, project.workspaceContext?.name);
+        }
+      } finally {
+        deleteFolder(tmpBuildDir);
+      }
+    }
+  }
+
+  if (!targetBoard) {
+    const listBoards = await getSupportedBoards(westWorkspace, project, buildConfig);
+    if (boardIdentifier) {
+      targetBoard = findBoardByHierarchicalIdentifier(boardIdentifier, listBoards);
+    }
   }
   if(!targetBoard) {
     // Warn the user and throw to prevent pushing an invalid configuration
@@ -573,6 +784,10 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
       exceptions: true
     }
   };
+
+  launchJson.miDebuggerPath = generatedGdbPath
+    ? normalizeSdkRelativeDetectedPath(generatedGdbPath, project.sdkPath)
+    : `${zephyrSDK.getDebuggerPath(targetArch, socToolchainName)}`;
 
   return launchJson;
 }

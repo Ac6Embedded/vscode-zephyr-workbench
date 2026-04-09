@@ -656,7 +656,10 @@ export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?
           // Search the BOARD_ROOT definition from the zephyr_settings.txt 
           // By looking into an existing buildDir or generating a tmp buildDir from dry run
           let envVars: Record<string, string> | undefined;
-          if (fileExists(buildDir)) {
+          const settingsPath = buildConfig.getBuildArtifactPath(resource, 'zephyr_settings.txt');
+          if (settingsPath) {
+            envVars = readZephyrSettings(path.dirname(settingsPath));
+          } else if (fileExists(buildDir)) {
             envVars = readZephyrSettings(buildDir);
           } else {
             const tmpBuildDir = await westTmpBuildCmakeOnlyCommand(resource, westWorkspace, buildConfig);
