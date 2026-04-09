@@ -413,14 +413,18 @@ function initRunnersDropdown() {
   runnerInput.addEventListener('input', () => {
     // Clear previous detection text before triggering new detection
     const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
+    const runnerPathText = document.getElementById('runnerPath') as TextField;
     if (runnerDetectSpan) {
       runnerDetectSpan.innerHTML = '';
       runnerDetectSpan.style.color = '';
     }
+    if (runnerPathText) {
+      runnerPathText.value = '';
+    }
     webviewApi.postMessage({
       command: 'runnerChanged',
       runner: runnerInput.getAttribute('data-value'),
-      runnerPath: runnerPath.value ?? '',
+      runnerPath: '',
     });
     stlinkPathDisabled();
   });
