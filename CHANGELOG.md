@@ -4,6 +4,17 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.7.0-pre.0]
+
+### Debug Manager
+- Reused a single temporary CMake-only build to collect generated debug data
+- Fixed default debug runner selection from temporary `runners.yaml` data
+- Cleared `Runner Path` when changing the selected runner
+- Added OpenOCD default display and SDK-specific OpenOCD path handling
+- Added flash runner to be always shown in apps
+- Added west Flags
+- Runners: updated modustoolbox
+
 ## [2.6.6]
 
 ### Install Runners
