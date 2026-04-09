@@ -711,8 +711,12 @@ export function activate(context: vscode.ExtensionContext) {
 				if (found) {
 					await vscode.debug.startDebugging(workspaceFolder, configName);
 				} else {
-					// Fallback: open Debug Manager if config is not found
-					vscode.commands.executeCommand('zephyr-workbench.debug-manager', node);
+					// Fallback: open Debug Manager with the resolved project/config selection
+					const buildConfig = buildConfigName ? project.getBuildConfiguration(buildConfigName) : undefined;
+					vscode.commands.executeCommand('zephyr-workbench.debug-manager', {
+						project,
+						buildConfig,
+					});
 				}
 			}
 		})
