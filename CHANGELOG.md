@@ -4,7 +4,7 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [2.7.0-pre.0]
+## [2.7.0]
 
 ### Debug Manager
 - Reused a single temporary CMake-only build to collect generated debug data
