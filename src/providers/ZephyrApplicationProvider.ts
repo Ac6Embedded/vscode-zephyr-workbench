@@ -47,17 +47,12 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       } else if(element.project.configs.length === 1) {
         const config = element.project.configs[0];
         const boardItem = new ZephyrConfigBoardTreeItem(element.project, config);
-        // Show default runner just under the board when set
-        if (config.defaultRunner && config.defaultRunner.length > 0) {
-          const runnerItem = new ZephyrConfigDefaultRunnerTreeItem(element.project, config);
-          items.push(boardItem, runnerItem);
-          // Show custom args below the runner when set
-          if (config.customArgs && config.customArgs.length > 0) {
-            const customArgsItem = new ZephyrConfigCustomArgsTreeItem(element.project, config);
-            items.push(customArgsItem);
-          }
-        } else {
-          items.push(boardItem);
+        const runnerItem = new ZephyrConfigDefaultRunnerTreeItem(element.project, config);
+        items.push(boardItem, runnerItem);
+        // Show custom args below the runner when set
+        if (config.defaultRunner && config.defaultRunner.length > 0 && config.customArgs && config.customArgs.length > 0) {
+          const customArgsItem = new ZephyrConfigCustomArgsTreeItem(element.project, config);
+          items.push(customArgsItem);
         }
         const westArgsItem = new ZephyrConfigArgTreeItem(element.project, config, WEST_ARGUMENTS_LABEL, config.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
         items.push(westArgsItem);
@@ -82,17 +77,12 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
 
     if(element instanceof ZephyrConfigTreeItem) {
       const boardItem = new ZephyrConfigBoardTreeItem(element.project, element.buildConfig);
-      // Show default runner just under the board when set
-      if (element.buildConfig.defaultRunner && element.buildConfig.defaultRunner.length > 0) {
-        const runnerItem = new ZephyrConfigDefaultRunnerTreeItem(element.project, element.buildConfig);
-        items.push(boardItem, runnerItem);
-        // Show custom args below the runner when set
-        if (element.buildConfig.customArgs && element.buildConfig.customArgs.length > 0) {
-          const customArgsItem = new ZephyrConfigCustomArgsTreeItem(element.project, element.buildConfig);
-          items.push(customArgsItem);
-        }
-      } else {
-        items.push(boardItem);
+      const runnerItem = new ZephyrConfigDefaultRunnerTreeItem(element.project, element.buildConfig);
+      items.push(boardItem, runnerItem);
+      // Show custom args below the runner when set
+      if (element.buildConfig.defaultRunner && element.buildConfig.defaultRunner.length > 0 && element.buildConfig.customArgs && element.buildConfig.customArgs.length > 0) {
+        const customArgsItem = new ZephyrConfigCustomArgsTreeItem(element.project, element.buildConfig);
+        items.push(customArgsItem);
       }
       const westArgsItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, WEST_ARGUMENTS_LABEL, element.buildConfig.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
       items.push(westArgsItem);
@@ -291,13 +281,13 @@ export class ZephyrConfigDefaultRunnerTreeItem extends vscode.TreeItem {
     public readonly project: ZephyrAppProject,
     public readonly config: ZephyrProjectBuildConfiguration,
   ) {
-    // Label kept short to match existing style; description shows runner
     super('runner', vscode.TreeItemCollapsibleState.None);
-    this.description = config.defaultRunner ?? '';
-    this.tooltip = `Default runner: ${config.defaultRunner}`;
+    const hasDefaultRunner = !!(config.defaultRunner && config.defaultRunner.length > 0);
+    this.description = hasDefaultRunner ? config.defaultRunner : '[not set]';
+    this.tooltip = hasDefaultRunner ? `Default runner: ${config.defaultRunner}` : 'Default runner: not set';
     this.iconPath = new vscode.ThemeIcon('run');
+    this.contextValue = hasDefaultRunner ? 'zephyr-application-default-runner' : 'zephyr-application-default-runner-not-set';
   }
-  contextValue = 'zephyr-application-default-runner';
 }
 
 export class ZephyrConfigCustomArgsTreeItem extends vscode.TreeItem {

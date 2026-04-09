@@ -287,12 +287,13 @@
       {
         "command": "zephyr-workbench-app-explorer.set-default-runner",
         "title": "Set Default Runner",
-        "icon": "$(run)",
+        "icon": "$(add)",
         "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.change-default-runner",
         "title": "Change Runner",
+        "icon": "$(edit)",
         "category": "Zephyr Workbench/Application"
       },
       {
@@ -1056,6 +1057,11 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-default-runner"
         },
         {
+          "command": "zephyr-workbench-app-explorer.set-default-runner",
+          "group": "0@view/item/context@8.2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-default-runner-not-set"
+        },
+        {
           "command": "zephyr-workbench-app-explorer.set-custom-args",
           "group": "0@view/item/context@8.25",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-default-runner"
@@ -1066,9 +1072,19 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-default-runner"
         },
         {
-          "command": "zephyr-workbench-app-explorer.remove-default-runner",
-          "group": "inline",
+          "command": "zephyr-workbench-app-explorer.change-default-runner",
+          "group": "inline@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-default-runner"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.remove-default-runner",
+          "group": "inline@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-default-runner"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.set-default-runner",
+          "group": "inline@0",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-default-runner-not-set"
         },
         {
           "command": "zephyr-workbench-app-explorer.change-custom-args",

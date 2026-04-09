@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path, { resolve } from 'path';
 import * as vscode from 'vscode';
+import yaml from 'yaml';
 import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../constants";
 import { Linkserver } from "../debug/runners/Linkserver";
 import { Openocd } from "../debug/runners/Openocd";
@@ -8,7 +9,7 @@ import { WestRunner } from "../debug/runners/WestRunner";
 import { checkPyOCDTarget, concatCommands, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from './execUtils';
 import { ZephyrProject } from "../models/ZephyrProject";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
-import { getSupportedBoards, getWestWorkspace, getZephyrSDK, deleteFolder, findBoardByHierarchicalIdentifier } from './utils';
+import { getSupportedBoards, getWestWorkspace, getZephyrSDK, deleteFolder, findBoardByHierarchicalIdentifier, fileExists } from './utils';
 import { STM32CubeProgrammer } from '../debug/runners/STM32CubeProgrammer';
 import { StlinkGdbserver } from '../debug/runners/StlinkGdbserver';
 import { Nrfutil } from '../debug/runners/Nrfutil';
@@ -137,6 +138,58 @@ export function getRunRunners(): WestRunner[] {
   ];
 }
 
+function getExistingRunnersYamlPath(
+  project: ZephyrAppProject,
+  config: ZephyrProjectBuildConfiguration
+): string | undefined {
+  const buildDir = config.getBuildDir(project);
+  const appFolderName = project.workspaceContext?.name;
+  const candidates: string[] = [];
+
+  if (appFolderName && appFolderName.length > 0) {
+    candidates.push(path.join(buildDir, appFolderName, ZEPHYR_DIRNAME, 'runners.yaml'));
+  }
+  candidates.push(path.join(buildDir, ZEPHYR_DIRNAME, 'runners.yaml'));
+
+  return candidates.find(candidate => fileExists(candidate));
+}
+
+function parseFlashRunnersFromYaml(runnersYamlPath: string): { all: string[]; available: string[]; def?: string; output: string } | undefined {
+  try {
+    const raw = fs.readFileSync(runnersYamlPath, 'utf8');
+    const data = yaml.parse(raw) ?? {};
+    const runners = Array.isArray(data.runners)
+      ? data.runners.filter((value: unknown): value is string => typeof value === 'string' && value.length > 0)
+      : [];
+
+    if (runners.length === 0) {
+      return undefined;
+    }
+
+    const defaultRunnerCandidates = [
+      data['flash-runner'],
+      data.flash_runner,
+      data['default-runner'],
+      data.default_runner,
+      data?.config?.['flash-runner'],
+      data?.config?.flash_runner,
+      data?.config?.['default-runner'],
+      data?.config?.default_runner,
+    ];
+    const def = defaultRunnerCandidates.find((value: unknown): value is string => typeof value === 'string' && value.length > 0);
+    const available: string[] = Array.from(new Set<string>(runners));
+
+    return {
+      all: available,
+      available,
+      def,
+      output: raw,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Query west to get flash-capable runners and those available in runners.yaml for a given build config.
  * Runs with --build-dir and --board, using a temporary build dir if the main one doesn't exist.
@@ -146,6 +199,14 @@ export async function getFlashRunners(
   config: ZephyrProjectBuildConfiguration
 ): Promise<{ all: string[]; available: string[]; def?: string; output: string }>
 {
+  const existingRunnersYamlPath = getExistingRunnersYamlPath(project, config);
+  if (existingRunnersYamlPath) {
+    const parsed = parseFlashRunnersFromYaml(existingRunnersYamlPath);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
   return new Promise((resolve, reject) => {
     // Always use a temporary build directory for help query; avoids touching real build artifacts
     const buildDir = path.join(project.folderPath, '.tmp', 'flash-runners', config.name);
