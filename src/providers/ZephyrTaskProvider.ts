@@ -382,12 +382,6 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     // }).join(' ');
     // args = `${args} --build-dir ${buildDirVar}`;
     let args = _task.definition.args.join(' ');
-    if ((_task.name === westBuildTask.label || _task.name === rebuildTask.label)
-      && config) {
-      if (config.westArgs && config.westArgs.length > 0) {
-        args = `${args} ${westArgVar}`;
-      }
-    }
 
     // If a default runner is set on the build configuration, inject it to avoid prompting
     // We look for the input token rather than the task label to support temporary tasks like "West Flash [cfg]".
@@ -410,7 +404,12 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       ? snippets.map((s: string) => ` -S ${s}`).join('')
       : '';
 
-    const fullCommand = `${cmd} ${args}${sysbuildFlag}${snippetsFlag}`;
+    const westArgsFlag = isBuildTask && config &&
+      ((config.westArgs && config.westArgs.length > 0) || (Array.isArray(config.westFlagsD) && config.westFlagsD.length > 0))
+      ? ` ${westArgVar}`
+      : '';
+
+    const fullCommand = `${cmd} ${args}${sysbuildFlag}${snippetsFlag}${westArgsFlag}`;
 
     const envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
     let venvPath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);

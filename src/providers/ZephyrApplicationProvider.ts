@@ -3,9 +3,11 @@ import * as path from 'path';
 import { ZephyrAppProject } from '../models/ZephyrAppProject';
 import { getWestWorkspace } from '../utils/utils';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
-import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY } from '../constants';
+import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY } from '../constants';
 
 const EXTRA_ENV_KEYS = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES'];
+const WEST_ARGUMENTS_LABEL = 'west Arguments';
+const WEST_FLAGS_D_LABEL = 'west Flags -D';
 
 export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
 	private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | void>();
@@ -57,8 +59,9 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
         } else {
           items.push(boardItem);
         }
-        const westArgsItem = new ZephyrConfigArgTreeItem(element.project, config, 'west arguments', config.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
+        const westArgsItem = new ZephyrConfigArgTreeItem(element.project, config, WEST_ARGUMENTS_LABEL, config.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
         items.push(westArgsItem);
+        items.push(new ZephyrConfigWestFlagsDTreeItem(element.project, config));
         items.push(new ZephyrConfigExtraEnvTreeItem(element.project, config));
 
         for(let key of Object.keys(config.envVars)) {
@@ -91,8 +94,9 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       } else {
         items.push(boardItem);
       }
-      const westArgsItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, 'west arguments', element.buildConfig.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
+      const westArgsItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, WEST_ARGUMENTS_LABEL, element.buildConfig.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
       items.push(westArgsItem);
+      items.push(new ZephyrConfigWestFlagsDTreeItem(element.project, element.buildConfig));
       items.push(new ZephyrConfigExtraEnvTreeItem(element.project, element.buildConfig));
 
       for(let key of Object.keys(element.buildConfig.envVars)) {
@@ -128,7 +132,7 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       // Get West Argument
       const items: vscode.TreeItem[] = [];
       if(element.project.westArgs && element.project.westArgs.length > 0) {
-        const westArgsItem = new ZephyrApplicationArgValueTreeItem(element.project, 'west arguments', element.project.westArgs);
+        const westArgsItem = new ZephyrApplicationArgValueTreeItem(element.project, WEST_ARGUMENTS_LABEL, element.project.westArgs);
         items.push(westArgsItem);
       } 
       return Promise.resolve(items);
@@ -156,12 +160,19 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       return Promise.resolve(items);
     } 
 
+    if (element instanceof ZephyrConfigWestFlagsDTreeItem) {
+      for (const value of element.config.westFlagsD) {
+        items.push(new ZephyrConfigWestFlagsDValueTreeItem(element.project, element.config, value));
+      }
+      return Promise.resolve(items);
+    }
+
     if(element instanceof ZephyrConfigArgTreeItem) {
       // Get West Argument
       const items: vscode.TreeItem[] = [];
-      if(element.argName === 'west arguments') {
+      if(element.argName === WEST_ARGUMENTS_LABEL) {
         if(element.config.westArgs && element.config.westArgs.length > 0) {
-          const westArgsItem = new ZephyrConfigArgValueTreeItem(element.project, element.config, 'west arguments', element.config.westArgs);
+          const westArgsItem = new ZephyrConfigArgValueTreeItem(element.project, element.config, WEST_ARGUMENTS_LABEL, element.config.westArgs);
           items.push(westArgsItem);
         } 
       } else {
@@ -330,6 +341,20 @@ export class ZephyrConfigExtraEnvTreeItem extends vscode.TreeItem {
   contextValue = 'zephyr-application-extra';
 }
 
+export class ZephyrConfigWestFlagsDTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly project: ZephyrAppProject,
+    public readonly config: ZephyrProjectBuildConfiguration,
+  ) {
+    super(WEST_FLAGS_D_LABEL, vscode.TreeItemCollapsibleState.Collapsed);
+    this.description = config.westFlagsD.length === 0 ? '[not set]' : '';
+    this.tooltip = WEST_FLAGS_D_LABEL;
+    this.iconPath = new vscode.ThemeIcon('symbol-parameter');
+  }
+
+  contextValue = 'zephyr-application-west-d-flags';
+}
+
 export class ZephyrConfigEnvTreeItem extends vscode.TreeItem {
   constructor(
 		public readonly project: ZephyrAppProject,
@@ -390,7 +415,7 @@ export class ZephyrConfigArgTreeItem extends vscode.TreeItem {
     public readonly argSetting?: string
 	) {
     super(argName, vscode.TreeItemCollapsibleState.Collapsed);
-    // if(argName === 'west arguments') {
+    // if(argName === 'west Arguments') {
     //   this.description = ((config.westArgs === undefined) || (config.westArgs.length === 0)) ?'[not set]':'';
     // } else {
     //   this.description = ((config.envVars[argName] === undefined) || (config.envVars[argName].length === 0)) ?'[not set]':'';
@@ -423,4 +448,16 @@ export class ZephyrConfigArgValueTreeItem extends vscode.TreeItem {
     super(argValue, vscode.TreeItemCollapsibleState.None);
 	}
   contextValue = 'zephyr-application-arg-value';
+}
+
+export class ZephyrConfigWestFlagsDValueTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly project: ZephyrAppProject,
+    public readonly config: ZephyrProjectBuildConfiguration,
+    public readonly flagValue: string
+  ) {
+    super(flagValue, vscode.TreeItemCollapsibleState.None);
+    this.tooltip = `-D${flagValue}`;
+  }
+  contextValue = 'zephyr-application-west-d-flag';
 }

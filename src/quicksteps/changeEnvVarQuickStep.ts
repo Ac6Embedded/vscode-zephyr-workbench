@@ -10,6 +10,8 @@ export async function changeEnvVarQuickStep(
   key: string,
   value?: any
 ): Promise<string | undefined> {
+  const isWestFlagsD = key === 'west Flags -D';
+
   if (key === 'SHIELD') {
     let project: ZephyrProject | undefined;
     if (value instanceof ZephyrProject) {
@@ -92,8 +94,11 @@ export async function changeEnvVarQuickStep(
   const inputBox = vscode.window.createInputBox();
   inputBox.title = `Enter value for ${key}`;
   inputBox.value = typeof value === 'string' ? value : '';
-  inputBox.prompt = 'Enter variable value';
-  inputBox.buttons = [browseButton];
+  inputBox.prompt = isWestFlagsD
+    ? 'Format: VAR or VAR=VALUE. -D is added automatically.'
+    : 'Enter variable value';
+  inputBox.placeholder = isWestFlagsD ? 'Example: CONFIG_FOO=y' : undefined;
+  inputBox.buttons = isWestFlagsD ? [] : [browseButton];
   inputBox.ignoreFocusOut = true;
 
   return new Promise((resolve) => {

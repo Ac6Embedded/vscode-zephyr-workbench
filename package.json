@@ -229,6 +229,14 @@
                   "default": "",
                   "description": "User additional args to west command"
                 },
+                "west-flags": {
+                  "type": "array",
+                  "default": [],
+                  "description": "Additional CMake -D flags appended to west build after --.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "sysbuild": {
                   "type": "string",
                   "default": "false",
@@ -1140,17 +1148,17 @@
         {
           "command": "zephyr-workbench.env.add",
           "group": "inline@0",
-          "when": "(view == zephyr-workbench-west-workspace && viewItem == west-workspace-env) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-env)"
+          "when": "(view == zephyr-workbench-west-workspace && viewItem == west-workspace-env) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-env) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-west-d-flags)"
         },
         {
           "command": "zephyr-workbench.env.edit",
           "group": "inline@0",
-          "when": "(view == zephyr-workbench-west-workspace && viewItem == west-workspace-env-value) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-env-value)"
+          "when": "(view == zephyr-workbench-west-workspace && viewItem == west-workspace-env-value) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-env-value) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-west-d-flag)"
         },
         {
           "command": "zephyr-workbench.env.delete",
           "group": "inline@1",
-          "when": "(view == zephyr-workbench-west-workspace && viewItem == west-workspace-env-value) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-env-value)"
+          "when": "(view == zephyr-workbench-west-workspace && viewItem == west-workspace-env-value) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-env-value) || (view == zephyr-workbench-app-explorer && viewItem == zephyr-application-west-d-flag)"
         },
         {
           "command": "zephyr-workbench.arg.edit",

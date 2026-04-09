@@ -15,7 +15,7 @@ import { checkAndCreateTasksJson, createExtensionsJson, createTasksJson, setDefa
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
-import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
+import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
 import { getRunner, getRunRunners, getFlashRunners, getStaticFlashRunnerNames, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './utils/debugUtils';
 import { execShellTaskWithEnvAndWait, executeTask, getTerminalDefaultProfile, normalizeSlashesIfPath } from './utils/execUtils';
 import { importProjectQuickStep } from './quicksteps/importProjectQuickStep';
@@ -32,7 +32,7 @@ import { changeToolchainQuickStep } from "./quicksteps/changeToolchainQuickStep"
 import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
 import { WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
-import { ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigDefaultRunnerTreeItem, ZephyrConfigCustomArgsTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem } from './providers/ZephyrApplicationProvider';
+import { ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigDefaultRunnerTreeItem, ZephyrConfigCustomArgsTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem, ZephyrConfigWestFlagsDTreeItem, ZephyrConfigWestFlagsDValueTreeItem } from './providers/ZephyrApplicationProvider';
 import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsCommandProvider';
 import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ZephyrSdkDataProvider, ZephyrSdkTreeItem } from "./providers/ZephyrSdkDataProvider";
@@ -47,11 +47,54 @@ import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } fr
 import { exec } from 'child_process';
 import { syncAutoDetectEnv } from './utils/autoDetectSyncUtils';
 import { initDtsIntegration } from './utils/dtsIntegration';
+import { normalizeWestFlagDValue } from './utils/westArgUtils';
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
 let zephyrTaskProvider: vscode.Disposable | undefined;
 let zephyrDebugConfigurationProvide: vscode.Disposable | undefined;
+const WEST_FLAGS_D_LABEL = 'west Flags -D';
+
+function addWestFlagDValue(config: ZephyrProjectBuildConfiguration, value: string): boolean {
+	const normalized = normalizeWestFlagDValue(value);
+	if (!normalized || config.westFlagsD.includes(normalized)) {
+		return false;
+	}
+	config.westFlagsD.push(normalized);
+	return true;
+}
+
+function replaceWestFlagDValue(config: ZephyrProjectBuildConfiguration, oldValue: string, value: string): boolean {
+	const normalized = normalizeWestFlagDValue(value);
+	if (!normalized) {
+		return false;
+	}
+
+	const index = config.westFlagsD.indexOf(oldValue);
+	if (index === -1) {
+		return false;
+	}
+
+	if (normalized !== oldValue) {
+		const duplicateIndex = config.westFlagsD.indexOf(normalized);
+		if (duplicateIndex !== -1) {
+			config.westFlagsD.splice(index, 1);
+			return true;
+		}
+	}
+
+	config.westFlagsD[index] = normalized;
+	return true;
+}
+
+function removeWestFlagDValue(config: ZephyrProjectBuildConfiguration, value: string): boolean {
+	const index = config.westFlagsD.indexOf(value);
+	if (index === -1) {
+		return false;
+	}
+	config.westFlagsD.splice(index, 1);
+	return true;
+}
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -1304,6 +1347,20 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 					zephyrAppProvider.refresh();
 				}
+			} else if (node instanceof ZephyrConfigWestFlagsDTreeItem) {
+				if (node.config) {
+					const project = node.project;
+					const config = node.config;
+					const value = await changeEnvVarQuickStep(config, WEST_FLAGS_D_LABEL);
+					if (value) {
+						addWestFlagDValue(config, value);
+						const workspaceFolder = getWorkspaceFolder(project.folderPath);
+						if (workspaceFolder) {
+							await saveConfigSetting(workspaceFolder, config.name, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, config.westFlagsD);
+						}
+					}
+					zephyrAppProvider.refresh();
+				}
 			}
 		})
 	);
@@ -1350,6 +1407,19 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 					zephyrAppProvider.refresh();
 				}
+			} else if (node instanceof ZephyrConfigWestFlagsDValueTreeItem) {
+				if (node.config) {
+					const project = node.project;
+					const config = node.config;
+					const value = await changeEnvVarQuickStep(config, WEST_FLAGS_D_LABEL, node.flagValue);
+					if (value && replaceWestFlagDValue(config, node.flagValue, value)) {
+						const workspaceFolder = getWorkspaceFolder(project.folderPath);
+						if (workspaceFolder) {
+							await saveConfigSetting(workspaceFolder, config.name, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, config.westFlagsD);
+						}
+					}
+					zephyrAppProvider.refresh();
+				}
 			}
 		})
 	);
@@ -1384,6 +1454,18 @@ export function activate(context: vscode.ExtensionContext) {
 					let workspaceFolder = getWorkspaceFolder(project.folderPath);
 					if (workspaceFolder) {
 						await saveConfigEnv(workspaceFolder, config.name, node.envKey, config.envVars[node.envKey]);
+					}
+					zephyrAppProvider.refresh();
+				}
+			} else if (node instanceof ZephyrConfigWestFlagsDValueTreeItem) {
+				if (node.config) {
+					const project = node.project;
+					const config = node.config;
+					if (removeWestFlagDValue(config, node.flagValue)) {
+						const workspaceFolder = getWorkspaceFolder(project.folderPath);
+						if (workspaceFolder) {
+							await saveConfigSetting(workspaceFolder, config.name, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, config.westFlagsD);
+						}
 					}
 					zephyrAppProvider.refresh();
 				}

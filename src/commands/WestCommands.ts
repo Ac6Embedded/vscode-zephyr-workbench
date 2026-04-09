@@ -10,6 +10,7 @@ import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildCon
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, execShellCommandWithEnv, execCommandWithEnvCB, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
 import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from '../utils/utils'; 
+import { composeWestBuildArgs } from '../utils/westArgUtils';
 
 function quote(p: string): string {
   return /\s/.test(p) ? `"${p}"` : p;
@@ -126,7 +127,7 @@ export async function westTmpBuildCmakeOnlyCommand(
 
   const tmpPath = normalizePathForShell(shellKind, path.join(zephyrProject.folderPath, '.tmp'));
 
-  const westArgs = makeWestArgs(buildConfig.westArgs);
+  const westArgs = makeWestArgs(buildConfig.westArgs, buildConfig.westFlagsD);
 
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
   const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
@@ -187,7 +188,8 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
     throw new Error('The Zephyr SDK is missing, please install host tools first');
   }
   let buildDir = normalizePathForShell(shellKind, path.join(zephyrProject.folderPath, 'build', buildConfig.name));
-  const westArgs = makeWestArgs(extraWestArgs);
+  const rawWestArgs = extraWestArgs.length > 0 ? extraWestArgs : buildConfig.westArgs;
+  const westArgs = makeWestArgs(rawWestArgs, buildConfig.westFlagsD);
 
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
   const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
@@ -268,9 +270,8 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
     );
 }
 
-function makeWestArgs(raw: string | undefined): string {
-  if (!raw?.trim()) {return '';}
-  return raw.trim().startsWith('--') ? raw.trim() : `-- ${raw.trim()}`;
+function makeWestArgs(raw: string | undefined, westFlagsD: string[] | undefined = []): string {
+  return composeWestBuildArgs(raw, westFlagsD);
 }
 
 /**
