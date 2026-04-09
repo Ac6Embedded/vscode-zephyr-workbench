@@ -636,7 +636,12 @@ export async function getSupportedBoards2(westWorkspace: WestWorkspace): Promise
  *   to make the build system generate zephyr_settings.txt so we can read
  *   BOARD_ROOT. After that, the temporary folder is removed.
  */
-export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?: ZephyrProject | string, buildConfig?: ZephyrProjectBuildConfiguration | undefined): Promise<ZephyrBoard[]> {
+export async function getSupportedBoards(
+  westWorkspace: WestWorkspace,
+  resource?: ZephyrProject | string,
+  buildConfig?: ZephyrProjectBuildConfiguration | undefined,
+  generatedBuildDir?: string,
+): Promise<ZephyrBoard[]> {
   return new Promise(async (resolve, reject) => {
     let listBoards: ZephyrBoard[] = [];
     // Add West workspace root directory for search
@@ -656,8 +661,13 @@ export async function getSupportedBoards(westWorkspace: WestWorkspace, resource?
           // Search the BOARD_ROOT definition from the zephyr_settings.txt 
           // By looking into an existing buildDir or generating a tmp buildDir from dry run
           let envVars: Record<string, string> | undefined;
-          if (fileExists(buildDir)) {
+          const settingsPath = buildConfig.getBuildArtifactPath(resource, 'zephyr_settings.txt');
+          if (settingsPath) {
+            envVars = readZephyrSettings(path.dirname(settingsPath));
+          } else if (fileExists(buildDir)) {
             envVars = readZephyrSettings(buildDir);
+          } else if (generatedBuildDir && fileExists(generatedBuildDir)) {
+            envVars = readZephyrSettings(generatedBuildDir);
           } else {
             const tmpBuildDir = await westTmpBuildCmakeOnlyCommand(resource, westWorkspace, buildConfig);
             if (tmpBuildDir) {

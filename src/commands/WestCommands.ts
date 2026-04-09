@@ -138,7 +138,7 @@ export async function westTmpBuildCmakeOnlyCommand(
     'west build',
     '-t boards',
     '--cmake-only',
-    `--board 96b_aerocore2`,
+    `--board ${buildConfig.boardIdentifier}`,
     `--build-dir ${quote(tmpPath)}`,
     quote(normalizePathForShell(shellKind,zephyrProject.folderPath)),
     (westArgs ? ` ${westArgs}` : ''),

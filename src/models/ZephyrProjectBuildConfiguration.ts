@@ -95,6 +95,23 @@ export class ZephyrProjectBuildConfiguration {
     return path.join(parentProject.folderPath, this.relativeBuildDir);
   }
 
+  private getBuildArtifactCandidates(parentProject: ZephyrProject, ...segments: string[]): string[] {
+    const buildDir = this.getBuildDir(parentProject);
+    const appFolderName = parentProject.workspaceContext?.name;
+    const candidates: string[] = [];
+
+    if (appFolderName && appFolderName.length > 0) {
+      candidates.push(path.join(buildDir, appFolderName, ...segments));
+    }
+    candidates.push(path.join(buildDir, ...segments));
+
+    return candidates;
+  }
+
+  getBuildArtifactPath(parentProject: ZephyrProject, ...segments: string[]): string | undefined {
+    return this.getBuildArtifactCandidates(parentProject, ...segments).find(candidate => fileExists(candidate));
+  }
+
   /**
    * Under build directory, the internal debug directory is used to generate wrappers, files, etc...
    * and is not removed after pristine rebuilt. 
@@ -149,8 +166,8 @@ export class ZephyrProjectBuildConfiguration {
     let runners: string[] = [];
 
     // Search in project build directory runners.yaml
-    const runnersYAMLFilepath = path.join(this.getBuildDir(parentProject), ZEPHYR_DIRNAME, 'runners.yaml');
-    if (fileExists(runnersYAMLFilepath)) {
+    const runnersYAMLFilepath = this.getBuildArtifactPath(parentProject, ZEPHYR_DIRNAME, 'runners.yaml');
+    if (runnersYAMLFilepath && fileExists(runnersYAMLFilepath)) {
       const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
       const data = yaml.parse(runnersYAMLFile);
       runners = data.runners;
@@ -158,30 +175,21 @@ export class ZephyrProjectBuildConfiguration {
 
     // Search in board.cmake if runners.yaml does not exists
     if (runners.length === 0) {
-      const westWorkspace = getWestWorkspace(parentProject.westWorkspacePath);
-      const board = await getBoardFromIdentifier(this.boardIdentifier, westWorkspace, parentProject, this);
-      runners = board.getCompatibleRunners();
+      try {
+        const westWorkspace = getWestWorkspace(parentProject.westWorkspacePath);
+        const board = await getBoardFromIdentifier(this.boardIdentifier, westWorkspace, parentProject, this);
+        runners = board.getCompatibleRunners();
+      } catch {
+        runners = [];
+      }
     }
 
     return runners;
   }
 
   getPyOCDTarget(parentProject: ZephyrProject): string | undefined {
-    let runnersYAMLFilepath = undefined;
-    const appFolderName = parentProject.workspaceContext.name;
-    const buildFolderPath = path.join(this.getBuildDir(parentProject));
-    // Check if that folder exists inside the build directory
-    const appNameDir = path.join(buildFolderPath, appFolderName);
-
-    if (fs.existsSync(appNameDir)) {
-      runnersYAMLFilepath = path.join(this.getBuildDir(parentProject), appFolderName, ZEPHYR_DIRNAME, 'runners.yaml');
-
-    } else {
-      runnersYAMLFilepath = path.join(this.getBuildDir(parentProject), ZEPHYR_DIRNAME, 'runners.yaml');
-    }
-
-
-    if (fileExists(runnersYAMLFilepath)) {
+    const runnersYAMLFilepath = this.getBuildArtifactPath(parentProject, ZEPHYR_DIRNAME, 'runners.yaml');
+    if (runnersYAMLFilepath && fileExists(runnersYAMLFilepath)) {
       const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
       const data = yaml.parse(runnersYAMLFile);
       const pyOCDArgs = data?.args?.pyocd;
@@ -196,8 +204,8 @@ export class ZephyrProjectBuildConfiguration {
   }
 
   getKConfigValue(parentProject: ZephyrProject, configKey: string): string | undefined {
-    let dotConfig = path.join(this.getBuildDir(parentProject), 'zephyr', '.config');
-    if (fileExists(dotConfig)) {
+    const dotConfig = this.getBuildArtifactPath(parentProject, 'zephyr', '.config');
+    if (dotConfig && fileExists(dotConfig)) {
       return getConfigValue(dotConfig, configKey);
     }
     return undefined;
