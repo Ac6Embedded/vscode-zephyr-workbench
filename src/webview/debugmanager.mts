@@ -499,6 +499,7 @@ function updateConfig(data: any) {
   const gdbMode = data.gdbMode;
   const runnersHTML = data.runnersHTML;
   const runner = data.runnerName;
+  const runnerValue = data.runnerValue;
   const runnerPath = data.runnerPath;
   const runnerArgs = data.runnerArgs;
   const runnerDefaultInfo = data.runnerDefaultInfo;
@@ -526,7 +527,14 @@ function updateConfig(data: any) {
     addDropdownItemEventListeners(runnersDropdown, runnerInput);
   }
 
-  const selectedRunner = runnersDropdown.querySelector(`.dropdown-item[data-label="${runner}"]`) as HTMLDivElement;
+  const selectedRunner = (
+    (runnerValue
+      ? runnersDropdown.querySelector(`.dropdown-item[data-value="${runnerValue}"]`)
+      : null)
+    ?? (runner
+      ? runnersDropdown.querySelector(`.dropdown-item[data-label="${runner}"]`)
+      : null)
+  ) as HTMLDivElement | null;
   if (selectedRunner) {
     runnerInput.value = selectedRunner.getAttribute('data-label') || '';
     runnerInput.setAttribute('data-value', selectedRunner.getAttribute('data-value') || '');

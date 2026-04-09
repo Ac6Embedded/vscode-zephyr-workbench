@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugRunners, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugUtils";
+import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugManagerLaunchConfiguration, getDebugRunners, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugUtils";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
 import { compareVersions, getZephyrProject } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
@@ -526,9 +526,9 @@ export class DebugManagerPanel {
         // Extract information from configuration
         let launchJson, config;
         let compatibleRunners: string[] = [];
+        let defaultDebugRunner: string | undefined;
         if(buildConfig) {
-          [launchJson, config] = await getLaunchConfiguration(project, buildConfig.name);
-          compatibleRunners = await buildConfig.getCompatibleRunners(project);
+          [launchJson, config, compatibleRunners, defaultDebugRunner] = await getDebugManagerLaunchConfiguration(project, buildConfig);
         }
 
         const programPath = config.program;
@@ -555,8 +555,9 @@ export class DebugManagerPanel {
             newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
           }
         }
-        const runnerName = buildConfig ? (getDefaultDebugRunner(project, buildConfig) ?? WestRunner.extractRunner(config.debugServerArgs)) : WestRunner.extractRunner(config.debugServerArgs);
+        const runnerName = buildConfig ? (defaultDebugRunner ?? getDefaultDebugRunner(project, buildConfig) ?? WestRunner.extractRunner(config.debugServerArgs)) : WestRunner.extractRunner(config.debugServerArgs);
         let runnerLabel = "";
+        let runnerValue = runnerName ?? "";
         let runnerPath = "";
         let runnerArgs = "";
         let runnerDefaultInfo = '';
@@ -599,6 +600,7 @@ export class DebugManagerPanel {
           gdbMode: `${gdbMode}`,
           runnersHTML: `${newRunnersHTML}`,
           runnerName: `${runnerLabel}`,
+          runnerValue: `${runnerValue}`,
           runnerPath: `${runnerPath}`,
           runnerArgs: `${runnerArgs}`,
           runnerDefaultInfo: `${runnerDefaultInfo}`,
@@ -657,8 +659,11 @@ export class DebugManagerPanel {
 
     async function resetConfiguration(project: ZephyrProject, buildConfig?: ZephyrProjectBuildConfiguration) {
       let config;
+      let compatibleRunners: string[] = [];
+      let defaultDebugRunner: string | undefined;
       if(buildConfig) {
         config  = await createDefaultConfiguration(project, buildConfig.name);
+        [, , compatibleRunners, defaultDebugRunner] = await getDebugManagerLaunchConfiguration(project, buildConfig);
       }
      
       const programPath = config.program;
@@ -677,10 +682,6 @@ export class DebugManagerPanel {
       }
     
       let newRunnersHTML = '';
-      let compatibleRunners: string[] = [];
-      if(buildConfig && project) {
-        compatibleRunners = await buildConfig.getCompatibleRunners(project);
-      }
       for(let runner of getDebugRunners()) {
         if(compatibleRunners.includes(runner.name)) {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
@@ -688,9 +689,10 @@ export class DebugManagerPanel {
           newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
         }
       }
-      const runnerName = buildConfig ? getDefaultDebugRunner(project, buildConfig) : undefined;
+      const runnerName = buildConfig ? (defaultDebugRunner ?? getDefaultDebugRunner(project, buildConfig)) : undefined;
       const runner = runnerName ? getRunner(runnerName) : undefined;
       const runnerLabel = runner?.label ?? '';
+      const runnerValue = runnerName ?? '';
       const openocdInfo = runner?.name === 'openocd' ? getOpenocdDefaultInfo(project) : { info: '' };
       
       webview.postMessage({ 
@@ -702,6 +704,7 @@ export class DebugManagerPanel {
         gdbMode: `${gdbMode}`,
         runnersHTML: `${newRunnersHTML}`,
         runnerName: `${runnerLabel}`,
+        runnerValue: `${runnerValue}`,
         runnerPath: `${openocdInfo.forcedRunnerPath ?? ''}`,
         runnerArgs: '',
         runnerDefaultInfo: `${openocdInfo.info}`,

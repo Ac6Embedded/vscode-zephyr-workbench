@@ -24,6 +24,13 @@ import { composeWestBuildArgs } from './westArgUtils';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 
+interface LaunchConfigurationArtifacts {
+  compatibleRunners: string[];
+  defaultDebugRunner?: string;
+  generatedGdbPath?: string;
+  targetBoard?: ZephyrBoard;
+}
+
 /**
  * Auto-detect the SVD file path for STM32 boards using STM32CubeCLT.
  * Returns the SVD path if found, empty string otherwise.
@@ -264,6 +271,17 @@ function parseDebugRunnerFromRunnersYaml(runnersYamlPath: string): string | unde
   }
 }
 
+function parseCompatibleRunnersFromRunnersYaml(runnersYamlPath: string): string[] {
+  try {
+    const data = yaml.parse(fs.readFileSync(runnersYamlPath, 'utf8')) ?? {};
+    return Array.isArray(data.runners)
+      ? data.runners.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function parseGdbPathFromCMakeCache(cmakeCachePath: string): string | undefined {
   try {
     const cacheText = fs.readFileSync(cmakeCachePath, 'utf8');
@@ -324,6 +342,30 @@ function resolveGdbPathFromGeneratedFiles(buildDir: string, appFolderName: strin
   return undefined;
 }
 
+function resolveCompatibleRunnersFromGeneratedFiles(
+  buildDir: string,
+  appFolderName: string | undefined,
+): string[] {
+  const runnersYamlPath = getFirstExistingBuildArtifact(buildDir, appFolderName, ZEPHYR_DIRNAME, 'runners.yaml');
+  if (!runnersYamlPath) {
+    return [];
+  }
+
+  return parseCompatibleRunnersFromRunnersYaml(runnersYamlPath);
+}
+
+function resolveDefaultDebugRunnerFromGeneratedFiles(
+  buildDir: string,
+  appFolderName: string | undefined,
+): string | undefined {
+  const runnersYamlPath = getFirstExistingBuildArtifact(buildDir, appFolderName, ZEPHYR_DIRNAME, 'runners.yaml');
+  if (!runnersYamlPath) {
+    return undefined;
+  }
+
+  return parseDebugRunnerFromRunnersYaml(runnersYamlPath);
+}
+
 export function getDefaultDebugRunner(
   project: ZephyrProject,
   buildConfig: ZephyrProjectBuildConfiguration
@@ -376,6 +418,63 @@ function resolveBoardFromBuildArtifacts(
     project.workspaceContext?.name,
     boardIdentifier
   );
+}
+
+async function collectLaunchConfigurationArtifacts(
+  project: ZephyrProject,
+  buildConfig: ZephyrProjectBuildConfiguration,
+  westWorkspace: ReturnType<typeof getWestWorkspace>,
+): Promise<LaunchConfigurationArtifacts> {
+  const appFolderName = project.workspaceContext?.name;
+  const buildDir = buildConfig.getBuildDir(project);
+  const boardIdentifier = buildConfig.boardIdentifier;
+  let targetBoard = resolveBoardFromBuildArtifacts(project, buildConfig, boardIdentifier);
+  let generatedGdbPath = resolveGdbPathFromGeneratedFiles(buildDir, appFolderName);
+  let compatibleRunners = resolveCompatibleRunnersFromGeneratedFiles(buildDir, appFolderName);
+  let defaultDebugRunner = resolveDefaultDebugRunnerFromGeneratedFiles(buildDir, appFolderName);
+  let tmpBuildDir: string | undefined;
+
+  try {
+    if ((!targetBoard || !generatedGdbPath || compatibleRunners.length === 0 || !defaultDebugRunner) && !fileExists(buildDir)) {
+      tmpBuildDir = await westTmpBuildCmakeOnlyCommand(project, westWorkspace, buildConfig);
+      if (tmpBuildDir) {
+        if (!targetBoard) {
+          targetBoard = resolveBoardFromGeneratedFiles(tmpBuildDir, appFolderName, boardIdentifier);
+        }
+        if (!generatedGdbPath) {
+          generatedGdbPath = resolveGdbPathFromGeneratedFiles(tmpBuildDir, appFolderName);
+        }
+        if (compatibleRunners.length === 0) {
+          compatibleRunners = resolveCompatibleRunnersFromGeneratedFiles(tmpBuildDir, appFolderName);
+        }
+        if (!defaultDebugRunner) {
+          defaultDebugRunner = resolveDefaultDebugRunnerFromGeneratedFiles(tmpBuildDir, appFolderName);
+        }
+      }
+    }
+
+    if (!targetBoard) {
+      const listBoards = await getSupportedBoards(westWorkspace, project, buildConfig, tmpBuildDir);
+      if (boardIdentifier) {
+        targetBoard = findBoardByHierarchicalIdentifier(boardIdentifier, listBoards);
+      }
+    }
+
+    if (compatibleRunners.length === 0 && targetBoard) {
+      compatibleRunners = targetBoard.getCompatibleRunners();
+    }
+
+    return {
+      compatibleRunners,
+      defaultDebugRunner,
+      generatedGdbPath,
+      targetBoard,
+    };
+  } finally {
+    if (tmpBuildDir) {
+      deleteFolder(tmpBuildDir);
+    }
+  }
 }
 
 /**
@@ -635,7 +734,11 @@ export async function setupPyOCDTarget(project: ZephyrProject, buildConfigName?:
   }
 }
 
-export async function createLaunchConfiguration(project: ZephyrProject, buildConfigName?: string): Promise<any> {
+export async function createLaunchConfiguration(
+  project: ZephyrProject,
+  buildConfigName?: string,
+  artifacts?: LaunchConfigurationArtifacts,
+): Promise<any> {
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
   const zephyrSDK = getZephyrSDK(project.sdkPath);
   let buildConfig: ZephyrProjectBuildConfiguration | undefined = undefined;
@@ -653,30 +756,9 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
   }
 
   if (buildConfig) {
-    targetBoard = resolveBoardFromBuildArtifacts(project, buildConfig, boardIdentifier);
-    generatedGdbPath = resolveGdbPathFromGeneratedFiles(buildConfig.getBuildDir(project), project.workspaceContext?.name);
-
-    if ((!targetBoard || !generatedGdbPath) && !fileExists(buildConfig.getBuildDir(project))) {
-      const tmpBuildDir = path.join(project.folderPath, '.tmp');
-      try {
-        await westTmpBuildCmakeOnlyCommand(project, westWorkspace, buildConfig);
-        if (!targetBoard) {
-          targetBoard = resolveBoardFromGeneratedFiles(tmpBuildDir, project.workspaceContext?.name, boardIdentifier);
-        }
-        if (!generatedGdbPath) {
-          generatedGdbPath = resolveGdbPathFromGeneratedFiles(tmpBuildDir, project.workspaceContext?.name);
-        }
-      } finally {
-        deleteFolder(tmpBuildDir);
-      }
-    }
-  }
-
-  if (!targetBoard) {
-    const listBoards = await getSupportedBoards(westWorkspace, project, buildConfig);
-    if (boardIdentifier) {
-      targetBoard = findBoardByHierarchicalIdentifier(boardIdentifier, listBoards);
-    }
+    const resolvedArtifacts = artifacts ?? await collectLaunchConfigurationArtifacts(project, buildConfig, westWorkspace);
+    targetBoard = resolvedArtifacts.targetBoard;
+    generatedGdbPath = resolvedArtifacts.generatedGdbPath;
   }
   if(!targetBoard) {
     // Warn the user and throw to prevent pushing an invalid configuration
@@ -792,14 +874,18 @@ export async function createLaunchConfiguration(project: ZephyrProject, buildCon
   return launchJson;
 }
 
-export async function createLaunchJson(project: ZephyrProject, buildConfigName?: string): Promise<any> {
+export async function createLaunchJson(
+  project: ZephyrProject,
+  buildConfigName?: string,
+  artifacts?: LaunchConfigurationArtifacts,
+): Promise<any> {
   
   const launchJson : any = {
     version: "0.2.0",
     configurations: []
   };
 
-  let config = await createLaunchConfiguration(project, buildConfigName);
+  let config = await createLaunchConfiguration(project, buildConfigName, artifacts);
   launchJson.configurations.push(config);
 
   return launchJson;
@@ -865,7 +951,12 @@ export function pyocdLaunchJson(
   };
 }
 
-export async function findLaunchConfiguration(launchJson: any, project: ZephyrProject, buildConfigName?: string): Promise<any> {
+export async function findLaunchConfiguration(
+  launchJson: any,
+  project: ZephyrProject,
+  buildConfigName?: string,
+  artifacts?: LaunchConfigurationArtifacts,
+): Promise<any> {
   let debugConfigName: string;
   if(buildConfigName) {
     debugConfigName = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`;
@@ -881,7 +972,7 @@ export async function findLaunchConfiguration(launchJson: any, project: ZephyrPr
   // Create and push a new configuration only if valid
   let newCfg: any;
   try {
-    newCfg = await createLaunchConfiguration(project, buildConfigName);
+    newCfg = await createLaunchConfiguration(project, buildConfigName, artifacts);
   } catch (err) {
     console.error('[DebugManager] findLaunchConfiguration: failed to create configuration', err);
     // Propagate error; do not push invalid entry
@@ -895,7 +986,12 @@ export async function findLaunchConfiguration(launchJson: any, project: ZephyrPr
   return await findLaunchConfiguration(launchJson, project, buildConfigName);
 }
 
-export async function getLaunchConfiguration(project: ZephyrProject, buildConfigName?: string, createIfMissing: boolean = false): Promise<[any, any]> {
+export async function getLaunchConfiguration(
+  project: ZephyrProject,
+  buildConfigName?: string,
+  createIfMissing: boolean = false,
+  artifacts?: LaunchConfigurationArtifacts,
+): Promise<[any, any]> {
   let launchJson: any;
   const launchPath = path.join(project.sourceDir, '.vscode', 'launch.json');
 
@@ -903,20 +999,30 @@ export async function getLaunchConfiguration(project: ZephyrProject, buildConfig
     launchJson = await readLaunchJson(project);
   } else {
     // Create new launch.json if requested
-    launchJson = await createLaunchJson(project, buildConfigName);
+    launchJson = await createLaunchJson(project, buildConfigName, artifacts);
     // skip writing to avoid creating launch.json on selection too debug
   }
 
   if (launchJson) {
     let configurationJson;
     if (buildConfigName) {
-      configurationJson = await findLaunchConfiguration(launchJson, project, buildConfigName);
+      configurationJson = await findLaunchConfiguration(launchJson, project, buildConfigName, artifacts);
     } else {
-      configurationJson = await findLaunchConfiguration(launchJson, project);
+      configurationJson = await findLaunchConfiguration(launchJson, project, undefined, artifacts);
     }
     return [launchJson, configurationJson];
   }
   return [undefined, undefined];
+}
+
+export async function getDebugManagerLaunchConfiguration(
+  project: ZephyrProject,
+  buildConfig: ZephyrProjectBuildConfiguration,
+): Promise<[any, any, string[], string | undefined]> {
+  const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+  const artifacts = await collectLaunchConfigurationArtifacts(project, buildConfig, westWorkspace);
+  const [launchJson, config] = await getLaunchConfiguration(project, buildConfig.name, false, artifacts);
+  return [launchJson, config, artifacts.compatibleRunners, artifacts.defaultDebugRunner];
 }
 
 export function getServerAddressFromConfig(config: any) : any | undefined {
