@@ -16,6 +16,7 @@ export class ZephyrProject {
   readonly sourceDir: string;
   westWorkspacePath!: string;
   sdkPath!: string;
+  sdkVersion?: string;
   iarToolchain!: IARToolchain;
   configs: ZephyrProjectBuildConfiguration[] = [];
 
@@ -62,6 +63,14 @@ export class ZephyrProject {
       }
     } else {
       this.sdkPath = cfg.get<string>("sdk", "");
+    }
+    this.sdkVersion = undefined;
+    if (this.sdkPath) {
+      try {
+        this.sdkVersion = getZephyrSDK(this.sdkPath).version.trim();
+      } catch {
+        this.sdkVersion = undefined;
+      }
     }
 
     this.westArgs = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.workspaceContext).get(ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, '');
