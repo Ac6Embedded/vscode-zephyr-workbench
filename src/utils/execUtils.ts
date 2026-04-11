@@ -756,7 +756,20 @@ export async function getGitTags(gitUrl: string): Promise<string[]> {
           return parts[1] ? parts[1].replace('refs/tags/', '') : '';
         })
         .filter(tag => tag !== '')
-        .sort((a, b) => compareVersions(b, a));
+        .sort((a, b) => {
+          const aIsVersionTag = /^v\d/.test(a);
+          const bIsVersionTag = /^v\d/.test(b);
+
+          if (aIsVersionTag !== bIsVersionTag) {
+            return aIsVersionTag ? -1 : 1;
+          }
+
+          if (aIsVersionTag && bIsVersionTag) {
+            return compareVersions(b, a);
+          }
+
+          return a.localeCompare(b);
+        });
       resolve(tags);
     });
   });
