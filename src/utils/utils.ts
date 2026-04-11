@@ -143,9 +143,38 @@ export function fileExists(path: string): boolean {
   return fs.existsSync(path);
 }
 
+function isRetryableDeleteError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === 'EBUSY' || code === 'ENOTEMPTY' || code === 'EPERM';
+}
+
 export function deleteFolder(dir: string): void {
   if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+    try {
+      fs.rmSync(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: 60,
+        retryDelay: 250,
+      });
+    } catch (error) {
+      if (!isRetryableDeleteError(error) || fs.existsSync(dir)) {
+        console.warn(`Failed to delete folder "${dir}":`, error);
+      }
+
+      if (isRetryableDeleteError(error)) {
+        try {
+          vscode.window.showWarningMessage(
+            `Could not fully delete "${path.basename(dir)}" because it is in use. Close the terminal or tools using that build folder and retry.`,
+          );
+        } catch {
+          // Ignore UI notification failures from background cleanup paths.
+        }
+        return;
+      }
+
+      throw error;
+    }
   }
 }
 

@@ -702,62 +702,65 @@ export class DebugToolsPanel {
           case 'set-default': {
             const { tool, alias } = message;
             try {
-              const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-              let doc: any;
-              if (fs.existsSync(envYamlPath)) {
-                const text = fs.readFileSync(envYamlPath, 'utf8');
-                doc = yaml.parseDocument(text);
-              } else {
-                doc = yaml.parseDocument('{}');
+              if (!alias || typeof alias !== 'string') {
+                throw new Error('Missing runner alias');
               }
+
+              const jsEnv = this.readEnvYamlObject();
+              const runners = this.ensureRunners(jsEnv);
               
               // Keep only the alias entry and remove variant-specific overrides.
-              if (alias) {
-                const aliasVariants = this.data.debug_tools
-                  .filter((t: any) => t.alias === alias)
-                  .map((t: any) => t.tool);
-                for (const variantId of aliasVariants) {
-                  doc.deleteIn(['runners', variantId]);
-                }
+              const aliasVariants = this.data.debug_tools
+                .filter((t: any) => t.alias === alias)
+                .map((t: any) => t.tool);
+              for (const variantId of aliasVariants) {
+                delete runners[variantId];
               }
 
               // Keep alias path/version aligned with the selected default variant
               const selectedTool = this.data.debug_tools.find((t: any) => t.tool === tool);
+              if (!selectedTool) {
+                throw new Error(`Unknown runner tool: ${tool}`);
+              }
+
+              const aliasEntry = this.ensureRunnerEntry(jsEnv, alias);
               const selectedPath = selectedTool
                 ? this.getDetectedToolCommandDir(selectedTool)
                 : undefined;
               const hasExplicitDetect = Array.isArray(selectedTool?.['explicit-detect']?.[getDetectPlatform()]);
 
               if (selectedPath) {
-                doc.setIn(['runners', alias, 'path'], selectedPath);
+                aliasEntry.path = selectedPath.replace(/\\/g, '/');
               } else if (hasExplicitDetect) {
-                doc.deleteIn(['runners', alias, 'path']);
+                delete aliasEntry.path;
               } else {
                 const configuredPath = this.getRunnerPath(tool) || this.getRunnerPath(alias);
                 if (configuredPath) {
-                  doc.setIn(['runners', alias, 'path'], configuredPath);
+                  aliasEntry.path = configuredPath.replace(/\\/g, '/');
                 } else {
-                  doc.deleteIn(['runners', alias, 'path']);
+                  delete aliasEntry.path;
                 }
               }
               if (selectedTool?.version) {
-                doc.setIn(['runners', alias, 'version'], selectedTool.version);
+                aliasEntry.version = String(selectedTool.version);
+              } else {
+                delete aliasEntry.version;
               }
               const defaultFromDebugTools = this.data.aliases?.find((a: Aliases) => a.alias === alias)?.default;
               if (tool !== defaultFromDebugTools) {
-                doc.setIn(['runners', alias, 'default'], tool);
+                aliasEntry.default = tool;
               } else {
-                doc.deleteIn(['runners', alias, 'default']);
+                delete aliasEntry.default;
               }
 
-              formatYml(doc.contents);
-              const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
-              fs.writeFileSync(envYamlPath, yamlText, 'utf8');
-              this.reloadEnvYaml();
+              this.cleanupRunnerEntry(jsEnv, alias);
+              this.writeEnvYamlObject(jsEnv);
               vscode.window.showInformationMessage(`Set ${tool} as default for ${alias}`);
               webview.postMessage({ command: 'exec-install-finished' });
             } catch (e) {
-              vscode.window.showErrorMessage(`Failed to set default`);
+              console.error('Failed to set debug runner default:', e);
+              const reason = e instanceof Error ? e.message : String(e);
+              vscode.window.showErrorMessage(`Failed to set default: ${reason}`);
             }
             break;
           }
@@ -931,41 +934,66 @@ export class DebugToolsPanel {
     return undefined;
   }
 
-  private async saveRunnerPath(toolId: string, newPath: string): Promise<boolean> {
+  private readEnvYamlObject(): any {
     try {
       const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-      
-      // Normalizes to always use a slash "/" in the definitive path
-      const defPath = newPath.replace(/\\/g, '/');
-
-      // Load existing Document if present, otherwise start from empty document
-      let doc: any;
-      if (fs.existsSync(envYamlPath)) {
-        const text = fs.readFileSync(envYamlPath, 'utf8');
-        doc = yaml.parseDocument(text);
-      } else if (this.envYamlDoc) {
-        // use in-memory doc if we have it
-        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-      } else {
-        doc = yaml.parseDocument('{}');
+      if (!fs.existsSync(envYamlPath)) {
+        return {};
       }
 
-      // Ensure the runners mapping exists and set the specific path key
-      // use setIn to update nested path while preserving other content/comments
-      doc.setIn(['runners', toolId, 'path'], defPath);
+      const parsed = yaml.parse(fs.readFileSync(envYamlPath, 'utf8'));
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
 
-      // Ensures block style in root and children
-      formatYml(doc.contents);
+  private writeEnvYamlObject(jsEnv: any): void {
+    const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
+    const doc = yaml.parseDocument(yaml.stringify(jsEnv ?? {}, { flow: false }));
+    formatYml(doc.contents);
+    const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
+    fs.writeFileSync(envYamlPath, yamlText, 'utf8');
+    this.reloadEnvYaml();
+  }
 
-      // Serializes by forcing multi-line format
-      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
+  private ensureRunners(jsEnv: any): Record<string, any> {
+    if (!jsEnv.runners || typeof jsEnv.runners !== 'object' || Array.isArray(jsEnv.runners)) {
+      jsEnv.runners = {};
+    }
+    return jsEnv.runners;
+  }
 
-      fs.writeFileSync(envYamlPath, yamlText, 'utf8');
+  private ensureRunnerEntry(jsEnv: any, toolId: string): Record<string, any> {
+    const runners = this.ensureRunners(jsEnv);
+    if (!runners[toolId] || typeof runners[toolId] !== 'object' || Array.isArray(runners[toolId])) {
+      runners[toolId] = {};
+    }
+    return runners[toolId];
+  }
 
-      // Update in-memory representations
-      this.envYamlDoc = doc;
-      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
+  private cleanupRunnerEntry(jsEnv: any, toolId: string): void {
+    const runners = jsEnv?.runners;
+    if (!runners || typeof runners !== 'object' || Array.isArray(runners)) {
+      return;
+    }
 
+    const entry = runners[toolId];
+    if (entry && typeof entry === 'object' && !Array.isArray(entry) && Object.keys(entry).length === 0) {
+      delete runners[toolId];
+    }
+
+    if (Object.keys(runners).length === 0) {
+      delete jsEnv.runners;
+    }
+  }
+
+  private async saveRunnerPath(toolId: string, newPath: string): Promise<boolean> {
+    try {
+      const jsEnv = this.readEnvYamlObject();
+      const runner = this.ensureRunnerEntry(jsEnv, toolId);
+      runner.path = newPath.replace(/\\/g, '/');
+      this.writeEnvYamlObject(jsEnv);
       return true;
     } catch (e) {
       return false;
@@ -974,34 +1002,11 @@ export class DebugToolsPanel {
 
   private async removeRunnerPath(toolId: string): Promise<boolean> {
     try {
-      const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-
-      // Load existing Document if present, otherwise start from empty document
-      let doc: any;
-      if (fs.existsSync(envYamlPath)) {
-        const text = fs.readFileSync(envYamlPath, 'utf8');
-        doc = yaml.parseDocument(text);
-      } else if (this.envYamlDoc) {
-        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-      } else {
-        doc = yaml.parseDocument('{}');
-      }
-
-      // Remove the runner path if it exists
-      doc.deleteIn(['runners', toolId]);
-
-      // Ensures block style in root and children
-      formatYml(doc.contents);
-
-      // Serializes by forcing multi-line format
-      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
-
-      fs.writeFileSync(envYamlPath, yamlText, 'utf8');
-
-      // Update in-memory representations
-      this.envYamlDoc = doc;
-      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
-
+      const jsEnv = this.readEnvYamlObject();
+      const runners = this.ensureRunners(jsEnv);
+      delete runners[toolId];
+      this.cleanupRunnerEntry(jsEnv, toolId);
+      this.writeEnvYamlObject(jsEnv);
       return true;
     } catch {
       return false;
@@ -1010,34 +1015,10 @@ export class DebugToolsPanel {
 
   private async saveDoNotUse(toolId: string, doNotUse: boolean): Promise<boolean> {
     try {
-      const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-
-      // Load existing Document if present, otherwise start from empty document
-      let doc: any;
-      if (fs.existsSync(envYamlPath)) {
-        const text = fs.readFileSync(envYamlPath, 'utf8');
-        doc = yaml.parseDocument(text);
-      } else if (this.envYamlDoc) {
-        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-      } else {
-        doc = yaml.parseDocument('{}');
-      }
-
-      // Set do_not_use under the specific runner, using setIn to preserve others
-      doc.setIn(['runners', toolId, 'do_not_use'], doNotUse);
-
-      // Ensures block style in root and children
-      formatYml(doc.contents);
-
-      // Serializes by forcing multi-line format
-      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
-
-      fs.writeFileSync(envYamlPath, yamlText, 'utf8');
-
-      // Update in-memory representations
-      this.envYamlDoc = doc;
-      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
-
+      const jsEnv = this.readEnvYamlObject();
+      const runner = this.ensureRunnerEntry(jsEnv, toolId);
+      runner.do_not_use = doNotUse;
+      this.writeEnvYamlObject(jsEnv);
       return true;
     } catch {
       return false;
