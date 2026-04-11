@@ -11,6 +11,7 @@ import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTI
 import { concatCommands, execShellCommandWithEnv, execCommandWithEnvCB, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
 import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from '../utils/utils'; 
 import { composeWestBuildArgs } from '../utils/westArgUtils';
+import { getOpenocdBuildFlag, mergeOpenocdBuildFlag } from '../utils/debugToolSelectionUtils';
 
 function quote(p: string): string {
   return /\s/.test(p) ? `"${p}"` : p;
@@ -127,7 +128,7 @@ export async function westTmpBuildCmakeOnlyCommand(
 
   const tmpPath = normalizePathForShell(shellKind, path.join(zephyrProject.folderPath, '.tmp'));
 
-  const westArgs = makeWestArgs(buildConfig.westArgs, buildConfig.westFlagsD);
+  const westArgs = makeWestArgs(zephyrProject, buildConfig.westArgs, buildConfig.westFlagsD);
 
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
   const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
@@ -189,7 +190,7 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
   }
   let buildDir = normalizePathForShell(shellKind, path.join(zephyrProject.folderPath, 'build', buildConfig.name));
   const rawWestArgs = extraWestArgs.length > 0 ? extraWestArgs : buildConfig.westArgs;
-  const westArgs = makeWestArgs(rawWestArgs, buildConfig.westFlagsD);
+  const westArgs = makeWestArgs(zephyrProject, rawWestArgs, buildConfig.westFlagsD);
 
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
   const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
@@ -270,8 +271,14 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
     );
 }
 
-function makeWestArgs(raw: string | undefined, westFlagsD: string[] | undefined = []): string {
-  return composeWestBuildArgs(raw, westFlagsD);
+function makeWestArgs(
+  project: ZephyrProject,
+  raw: string | undefined,
+  westFlagsD: string[] | undefined = [],
+): string {
+  // Inject the computed OPENOCD override at execution time so build settings stay unchanged
+  // while still following the currently selected default OpenOCD tool.
+  return composeWestBuildArgs(raw, mergeOpenocdBuildFlag(project, westFlagsD));
 }
 
 /**
@@ -313,6 +320,13 @@ export async function westConfigCommand(
   if (target !== "hardenconfig") {
     const folderPath = normalizePathForShell(shellKind, zephyrProject.folderPath);
     command += ` ${folderPath}`;
+  }
+
+  // menuconfig/guiconfig reuse the same generated CMake cache, so they need the same OPENOCD
+  // override that regular west build uses for legacy SDKs.
+  const openocdBuildFlag = getOpenocdBuildFlag(zephyrProject);
+  if (openocdBuildFlag) {
+    command += ` -- -D${openocdBuildFlag}`;
   }
 
   const options: vscode.ShellExecutionOptions = {

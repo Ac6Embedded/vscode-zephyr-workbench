@@ -14,6 +14,7 @@ import { getWestWorkspace, getZephyrSDK, findIarEntry, msleep } from '../utils/u
 import { addConfig, deleteConfig } from '../utils/zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { getStaticFlashRunnerNames } from '../utils/debugUtils';
+import { mergeOpenocdBuildFlag } from '../utils/debugToolSelectionUtils';
 
 export interface TaskConfig {
   version: string;
@@ -399,13 +400,17 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     const sysbuildFlag = sysbuildEnabled ? " --sysbuild" : "";
 
     const isBuildTask = _task.name === westBuildTask.label || _task.name === rebuildTask.label;
+    const isWestBuildTask = cmd === 'west' && Array.isArray(_task.definition.args) && _task.definition.args[0] === 'build';
     const snippets = isBuildTask && config ? config.envVars?.['SNIPPETS'] : undefined;
     const snippetsFlag = Array.isArray(snippets) && snippets.length > 0
       ? snippets.map((s: string) => ` -S ${s}`).join('')
       : '';
 
-    const westArgsFlag = isBuildTask && config &&
-      ((config.westArgs && config.westArgs.length > 0) || (Array.isArray(config.westFlagsD) && config.westFlagsD.length > 0))
+    // WEST_ARGS comes from the environment, so the dynamic OPENOCD override must be merged before
+    // we decide whether a west build task needs that variable at all.
+    const effectiveWestFlagsD = config ? mergeOpenocdBuildFlag(project, config.westFlagsD) : [];
+    const westArgsFlag = isWestBuildTask && config &&
+      ((config.westArgs && config.westArgs.length > 0) || effectiveWestFlagsD.length > 0)
       ? ` ${westArgVar}`
       : '';
 

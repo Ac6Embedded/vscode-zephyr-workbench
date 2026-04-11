@@ -3,12 +3,12 @@ import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugManagerLaunchConfiguration, getDebugRunners, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugUtils";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
-import { compareVersions, getZephyrProject } from '../utils/utils';
+import { getZephyrProject } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
 import { ZephyrProject } from '../models/ZephyrProject';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { getGdbMode, getSetupCommands } from '../debug/gdbUtils';
-import { getDebugToolAliasSelection } from '../utils/debugToolSelectionUtils';
+import { getOpenocdSelectionInfo } from '../utils/debugToolSelectionUtils';
 
 export class DebugManagerPanel {
   public static currentPanel: DebugManagerPanel | undefined;
@@ -292,40 +292,16 @@ export class DebugManagerPanel {
   }
 
   private _setWebviewMessageListener(webview: vscode.Webview) {
-    const debugToolsYamlPath = vscode.Uri.joinPath(this._extensionUri, 'scripts', 'runners', 'debug-tools.yml').fsPath;
-
-    function usesLegacySdkVersion(project: ZephyrProject | undefined): boolean {
-      const sdkVersion = project?.sdkVersion?.trim();
-      return !!sdkVersion && /^(?:v)?1\./i.test(sdkVersion);
-    }
-
-    function shouldShowOpenocdDefaultInfo(project: ZephyrProject | undefined): boolean {
-      const sdkVersion = project?.sdkVersion?.trim();
-      return !!sdkVersion && compareVersions(sdkVersion, '1.0.0') >= 0;
-    }
-
-    function getOpenocdDefaultInfo(project: ZephyrProject | undefined): { info: string; forcedRunnerPath?: string } {
-      const openocdExecutable = getRunner('openocd')?.executable;
-      if (!openocdExecutable || !shouldShowOpenocdDefaultInfo(project)) {
+    const getOpenocdDefaultInfo = (project: ZephyrProject | undefined): { info: string; forcedRunnerPath?: string } => {
+      if (!project) {
         return { info: '' };
       }
+      return getOpenocdSelectionInfo(project, this._extensionUri);
+    };
 
-      const selection = getDebugToolAliasSelection('openocd', openocdExecutable, debugToolsYamlPath);
-      const defaultToolLabel = selection.defaultToolName
-        ? `${selection.defaultToolName}${selection.defaultToolId ? ` (${selection.defaultToolId})` : ''}`
-        : (selection.defaultToolId ?? 'unknown');
-
-      return {
-        info: `Default: ${defaultToolLabel}`,
-        forcedRunnerPath: usesLegacySdkVersion(project) && selection.defaultToolId !== 'openocd-zephyr'
-          ? selection.executablePath
-          : undefined,
-      };
-    }
-
-    function getRunnerDefaultInfo(project: ZephyrProject | undefined, runnerName: string | undefined): string {
+    const getRunnerDefaultInfo = (project: ZephyrProject | undefined, runnerName: string | undefined): string => {
       return runnerName === 'openocd' ? getOpenocdDefaultInfo(project).info : '';
-    }
+    };
 
     webview.onDidReceiveMessage(
       async (message: any) => {

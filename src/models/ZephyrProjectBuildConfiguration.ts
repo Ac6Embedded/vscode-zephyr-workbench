@@ -8,6 +8,7 @@ import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalS
 import { fileExists, getBoardFromIdentifier, getConfigValue, getWestWorkspace, getZephyrSDK } from '../utils/utils';
 import { ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { composeWestBuildArgs, normalizeWestFlagDValue } from '../utils/westArgUtils';
+import { mergeOpenocdBuildFlag } from '../utils/debugToolSelectionUtils';
 
 export class ZephyrProjectBuildConfiguration {
   name: string;
@@ -121,7 +122,7 @@ export class ZephyrProjectBuildConfiguration {
   }
 
   getBuildEnv(parentProject: ZephyrProject): { [key: string]: string; } {
-    const westBuildArgs = composeWestBuildArgs(this.westArgs, this.westFlagsD);
+    const westBuildArgs = composeWestBuildArgs(this.westArgs, mergeOpenocdBuildFlag(parentProject, this.westFlagsD));
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
       BUILD_DIR: this.getBuildDir(parentProject),
@@ -142,7 +143,7 @@ export class ZephyrProjectBuildConfiguration {
   }
 
   getBuildEnvWithVar(parentProject: ZephyrProject): { [key: string]: string; } {
-    const westBuildArgs = composeWestBuildArgs(this.westArgs, this.westFlagsD);
+    const westBuildArgs = composeWestBuildArgs(this.westArgs, mergeOpenocdBuildFlag(parentProject, this.westFlagsD));
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
       BUILD_DIR: this.getBuildDir(parentProject),

@@ -21,6 +21,7 @@ import { ZephyrBoard } from '../models/ZephyrBoard';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeOnlyCommand } from '../commands/WestCommands';
 import { composeWestBuildArgs } from './westArgUtils';
+import { mergeOpenocdBuildFlag } from './debugToolSelectionUtils';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 
@@ -501,7 +502,7 @@ export async function getFlashRunners(
 
     // 1) Ensure runner properties are generated for this build dir
     //    Use dedicated target runners_yaml_props_target then query help
-    const composedWestArgs = composeWestBuildArgs(config.westArgs, config.westFlagsD);
+    const composedWestArgs = composeWestBuildArgs(config.westArgs, mergeOpenocdBuildFlag(project, config.westFlagsD));
     const westArgs = composedWestArgs.length > 0 ? ` ${composedWestArgs}` : '';
     const buildCmd = `west build -t runners_yaml_props_target --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.folderPath}"${westArgs}`;
     const helpCmd  = `west flash -H --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.folderPath}"`;
