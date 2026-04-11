@@ -122,7 +122,7 @@ export class ZephyrProjectBuildConfiguration {
   }
 
   private composeBuildEnv(parentProject: ZephyrProject): { [key: string]: string; } {
-    const westBuildArgs = composeWestBuildArgs(this.westArgs, mergeOpenocdBuildFlag(parentProject, this.westFlagsD));
+    const westBuildArgs = composeWestBuildArgs(this.westArgs, mergeOpenocdBuildFlag(parentProject, this.westArgs, this.westFlagsD));
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
       BUILD_DIR: this.getBuildDir(parentProject),

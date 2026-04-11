@@ -408,7 +408,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
     // WEST_ARGS comes from the environment, so the dynamic OPENOCD override must be merged before
     // we decide whether a west build task needs that variable at all.
-    const effectiveWestFlagsD = config ? mergeOpenocdBuildFlag(project, config.westFlagsD) : [];
+    const effectiveWestFlagsD = config ? mergeOpenocdBuildFlag(project, config.westArgs, config.westFlagsD) : [];
     const westArgsFlag = isWestBuildTask && config &&
       ((config.westArgs && config.westArgs.length > 0) || effectiveWestFlagsD.length > 0)
       ? ` ${westArgVar}`

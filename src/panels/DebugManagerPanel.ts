@@ -260,8 +260,16 @@ export class DebugManagerPanel {
                 <span class="browse-spinner-inline"><span id="runnerPathSpinner" class="spinner" aria-label="Loading runner path" style="display:none;"></span></span>
               </div>
 
-              <div class="grid-group-div">
-                <span id="runnerDefaultInfo" style="color: var(--vscode-descriptionForeground); font-size: calc(var(--type-ramp-base-font-size) - 2px);"></span>
+              <div id="runnerDefaultInfoRow" class="grid-group-div" style="display: none;">
+                <div>
+                  <div style="display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span id="runnerDefaultInfo" style="color: var(--vscode-descriptionForeground); font-size: calc(var(--type-ramp-base-font-size) - 2px);"></span>
+                    <vscode-button id="changeRunnerDefaultButton" class="browse-input-button" style="vertical-align: middle">Change</vscode-button>
+                  </div>
+                  <div>
+                    <span id="runnerDefaultPathInfo" style="color: var(--vscode-descriptionForeground); font-size: calc(var(--type-ramp-base-font-size) - 2px);"></span>
+                  </div>
+                </div>
               </div>
             
               <div class="grid-group-div">
@@ -292,15 +300,24 @@ export class DebugManagerPanel {
   }
 
   private _setWebviewMessageListener(webview: vscode.Webview) {
-    const getOpenocdRunnerInfo = (project: ZephyrProject | undefined): { info: string; forcedRunnerPath?: string } => {
+    let currentOpenocdInfoText: { defaultInfo: string; pathInfo: string } = { defaultInfo: '', pathInfo: '' };
+
+    const buildOpenocdInfoText = (project: ZephyrProject | undefined, openocdPath?: string): { defaultInfo: string; pathInfo: string } => {
       if (!project) {
-        return { info: '' };
+        return { defaultInfo: '', pathInfo: '' };
       }
-      return getOpenocdSelectionInfo(project, this._extensionUri);
+      const openocdInfo = getOpenocdSelectionInfo(project, this._extensionUri);
+      if (!openocdInfo.info) {
+        return { defaultInfo: '', pathInfo: '' };
+      }
+      return {
+        defaultInfo: openocdInfo.info,
+        pathInfo: openocdPath && openocdPath.trim().length > 0 ? `Detected Path: ${openocdPath.trim()}` : '',
+      };
     };
 
-    const getRunnerInfo = (project: ZephyrProject | undefined, runnerName: string | undefined): { info: string; forcedRunnerPath?: string } => {
-      return runnerName === 'openocd' ? getOpenocdRunnerInfo(project) : { info: '' };
+    const getRunnerInfo = (runnerName: string | undefined): { defaultInfo: string; pathInfo: string } => {
+      return runnerName === 'openocd' ? currentOpenocdInfoText : { defaultInfo: '', pathInfo: '' };
     };
 
     function getRunnersHtml(compatibleRunners: string[]): string {
@@ -318,8 +335,8 @@ export class DebugManagerPanel {
       project: ZephyrProject | undefined,
       runnerName: string | undefined,
       debugServerArgs?: string,
-    ): Promise<{ runnerLabel: string; runnerValue: string; runnerPath: string; runnerArgs: string; runnerDefaultInfo: string; }> {
-      const runnerInfo = getRunnerInfo(project, runnerName);
+    ): Promise<{ runnerLabel: string; runnerValue: string; runnerPath: string; runnerArgs: string; runnerDefaultInfo: string; runnerDefaultPathInfo: string; }> {
+      const runnerInfo = getRunnerInfo(runnerName);
       const runnerValue = runnerName ?? '';
       const runner = runnerName ? getRunner(runnerName) : undefined;
 
@@ -327,9 +344,10 @@ export class DebugManagerPanel {
         return {
           runnerLabel: '',
           runnerValue,
-          runnerPath: runnerInfo.forcedRunnerPath ?? '',
+          runnerPath: '',
           runnerArgs: '',
-          runnerDefaultInfo: runnerInfo.info,
+          runnerDefaultInfo: runnerInfo.defaultInfo,
+          runnerDefaultPathInfo: runnerInfo.pathInfo,
         };
       }
 
@@ -345,9 +363,10 @@ export class DebugManagerPanel {
       return {
         runnerLabel: runner.label ?? '',
         runnerValue,
-        runnerPath: runnerInfo.forcedRunnerPath ?? runner.serverPath ?? '',
+        runnerPath: runner.serverPath ?? '',
         runnerArgs: runner.userArgs ?? '',
-        runnerDefaultInfo: runnerInfo.info,
+        runnerDefaultInfo: runnerInfo.defaultInfo,
+        runnerDefaultPathInfo: runnerInfo.pathInfo,
       };
     }
 
@@ -356,6 +375,7 @@ export class DebugManagerPanel {
       runnerName: string | undefined,
       runnerPath: string | undefined,
       runnerDefaultInfo: string,
+      runnerDefaultPathInfo: string,
     ) {
       webview.postMessage({
         command: 'updateRunnerDetect',
@@ -363,6 +383,7 @@ export class DebugManagerPanel {
         runnerName: `${runnerName ?? ''}`,
         runnerPath: `${runnerPath ?? ''}`,
         runnerDefaultInfo: `${runnerDefaultInfo}`,
+        runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
       });
     };
 
@@ -385,6 +406,7 @@ export class DebugManagerPanel {
               if(appProject) {
                 this.project = appProject;
                 this.buildConfig = undefined;
+                currentOpenocdInfoText = { defaultInfo: '', pathInfo: '' };
                 if(appProject.configs.length > 0) {
                   updateBuildConfigs(appProject);
                 }
@@ -417,32 +439,28 @@ export class DebugManagerPanel {
               const runnerName = message.runner;
               const runnerPath = message.runnerPath;
               const runner = getRunner(runnerName);
-              const runnerInfo = getRunnerInfo(this.project, runnerName);
+              const runnerInfo = getRunnerInfo(runnerName);
               if(runner) {
                 if(runnerPath && runnerPath.length > 0) {
                   runner.serverPath = runnerPath;
                 }
                 // let runner auto-discover its executable 
                 await runner.loadInternalArgs();
-                if (runnerInfo.forcedRunnerPath) {
-                  runner.serverPath = runnerInfo.forcedRunnerPath;
-                  await updateRunnerConfiguration(runner, runnerInfo.info);
-                }
-                await updateRunnerDetect(runner, runnerInfo.info);
+                await updateRunnerDetect(runner, runnerInfo.defaultInfo, runnerInfo.pathInfo);
               } else {
-                postRunnerDetectState(false, runnerName, runnerPath, runnerInfo.info);
+                postRunnerDetectState(false, runnerName, runnerPath, runnerInfo.defaultInfo, runnerInfo.pathInfo);
               }
               break;
             }
             case 'runnerPathChanged': {
               const runnerName = message.runner;
               const runner = getRunner(runnerName);
-              const runnerInfo = getRunnerInfo(this.project, runnerName);
+              const runnerInfo = getRunnerInfo(runnerName);
               if(runner) {
                 runner.serverPath = message.runnerPath;
-                await updateRunnerDetect(runner, runnerInfo.info);
+                await updateRunnerDetect(runner, runnerInfo.defaultInfo, runnerInfo.pathInfo);
               } else {
-                postRunnerDetectState(false, runnerName, message.runnerPath, runnerInfo.info);
+                postRunnerDetectState(false, runnerName, message.runnerPath, runnerInfo.defaultInfo, runnerInfo.pathInfo);
               }
               break;
             }
@@ -500,7 +518,8 @@ export class DebugManagerPanel {
           if (command === 'buildConfigChanged') {
             webview.postMessage({ command: 'updateConfigError' });
           } else if (command === 'runnerChanged' || command === 'runnerPathChanged') {
-            postRunnerDetectState(false, message.runner, message.runnerPath, getRunnerInfo(this.project, message.runner).info);
+            const runnerInfo = getRunnerInfo(message.runner);
+            postRunnerDetectState(false, message.runner, message.runnerPath, runnerInfo.defaultInfo, runnerInfo.pathInfo);
           }
         }
       },
@@ -543,9 +562,11 @@ export class DebugManagerPanel {
         let launchJson, config;
         let compatibleRunners: string[] = [];
         let defaultDebugRunner: string | undefined;
+        let generatedOpenocdPath: string | undefined;
         if(buildConfig) {
-          [launchJson, config, compatibleRunners, defaultDebugRunner] = await getDebugManagerLaunchConfiguration(project, buildConfig);
+          [launchJson, config, compatibleRunners, defaultDebugRunner, generatedOpenocdPath] = await getDebugManagerLaunchConfiguration(project, buildConfig);
         }
+        currentOpenocdInfoText = buildOpenocdInfoText(project, generatedOpenocdPath);
 
         const programPath = config.program;
         const svdPath = config.svdPath;
@@ -565,7 +586,7 @@ export class DebugManagerPanel {
 
         const newRunnersHTML = getRunnersHtml(compatibleRunners);
         const runnerName = buildConfig ? (defaultDebugRunner ?? getDefaultDebugRunner(project, buildConfig) ?? WestRunner.extractRunner(config.debugServerArgs)) : WestRunner.extractRunner(config.debugServerArgs);
-        const { runnerLabel, runnerValue, runnerPath, runnerArgs, runnerDefaultInfo } = await getRunnerWebviewState(
+        const { runnerLabel, runnerValue, runnerPath, runnerArgs, runnerDefaultInfo, runnerDefaultPathInfo } = await getRunnerWebviewState(
           project,
           runnerName,
           config.debugServerArgs,
@@ -585,6 +606,7 @@ export class DebugManagerPanel {
           runnerPath: `${runnerPath}`,
           runnerArgs: `${runnerArgs}`,
           runnerDefaultInfo: `${runnerDefaultInfo}`,
+          runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
         });
       } catch (error) {
         console.error('Debug Manager: cannot update configuration', error);
@@ -592,16 +614,7 @@ export class DebugManagerPanel {
       }
     }
 
-    async function updateRunnerConfiguration(runner: WestRunner, runnerDefaultInfo: string = '') {
-      webview.postMessage({ 
-        command: 'updateRunnerConfig', 
-        runnerPath: runner.serverPath? runner.serverPath:'',
-        runnerArgs: runner.userArgs? runner.userArgs:'',
-        runnerDefaultInfo: `${runnerDefaultInfo}`,
-      });
-    }
-
-    async function updateRunnerDetect(runner: WestRunner, runnerDefaultInfo: string = '') {
+    async function updateRunnerDetect(runner: WestRunner, runnerDefaultInfo: string = '', runnerDefaultPathInfo: string = '') {
       let found = false;
       try {
         found = await runner.detect();
@@ -614,6 +627,7 @@ export class DebugManagerPanel {
         runnerName: runner.label ? runner.label : (runner.name ? runner.name : ''),
         runnerPath: runner.serverPath? runner.serverPath:'',
         runnerDefaultInfo: `${runnerDefaultInfo}`,
+        runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
       });
     }
 
@@ -642,10 +656,12 @@ export class DebugManagerPanel {
       let config;
       let compatibleRunners: string[] = [];
       let defaultDebugRunner: string | undefined;
+      let generatedOpenocdPath: string | undefined;
       if(buildConfig) {
         config  = await createDefaultConfiguration(project, buildConfig.name);
-        [, , compatibleRunners, defaultDebugRunner] = await getDebugManagerLaunchConfiguration(project, buildConfig);
+        [, , compatibleRunners, defaultDebugRunner, generatedOpenocdPath] = await getDebugManagerLaunchConfiguration(project, buildConfig);
       }
+      currentOpenocdInfoText = buildOpenocdInfoText(project, generatedOpenocdPath);
      
       const programPath = config.program;
       const gdbPath = config.miDebuggerPath;
@@ -664,7 +680,7 @@ export class DebugManagerPanel {
     
       const newRunnersHTML = getRunnersHtml(compatibleRunners);
       const runnerName = buildConfig ? (defaultDebugRunner ?? getDefaultDebugRunner(project, buildConfig)) : undefined;
-      const { runnerLabel, runnerValue, runnerPath, runnerDefaultInfo } = await getRunnerWebviewState(project, runnerName);
+      const { runnerLabel, runnerValue, runnerPath, runnerDefaultInfo, runnerDefaultPathInfo } = await getRunnerWebviewState(project, runnerName);
       
       webview.postMessage({ 
         command: 'updateConfig', 
@@ -679,6 +695,7 @@ export class DebugManagerPanel {
         runnerPath: `${runnerPath}`,
         runnerArgs: '',
         runnerDefaultInfo: `${runnerDefaultInfo}`,
+        runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
       });
     }
 

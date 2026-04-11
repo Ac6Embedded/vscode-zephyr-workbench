@@ -276,9 +276,9 @@ function makeWestArgs(
   raw: string | undefined = undefined,
   westFlagsD: string[] | undefined = [],
 ): string {
-  // Inject the computed OPENOCD override at execution time so build settings stay unchanged
-  // while still following the currently selected default OpenOCD tool.
-  return composeWestBuildArgs(raw, mergeOpenocdBuildFlag(project, westFlagsD));
+  // Inject the computed OPENOCD override at execution time so build settings stay unchanged,
+  // but keep any explicit user-provided OPENOCD value in west args or west flags as higher priority.
+  return composeWestBuildArgs(raw, mergeOpenocdBuildFlag(project, raw, westFlagsD));
 }
 
 /**

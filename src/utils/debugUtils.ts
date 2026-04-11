@@ -29,6 +29,7 @@ interface LaunchConfigurationArtifacts {
   compatibleRunners: string[];
   defaultDebugRunner?: string;
   generatedGdbPath?: string;
+  generatedOpenocdPath?: string;
   targetBoard?: ZephyrBoard;
 }
 
@@ -283,6 +284,27 @@ function parseCompatibleRunnersFromRunnersYaml(runnersYamlPath: string): string[
   }
 }
 
+function parseRunnerPathFromRunnersYaml(runnersYamlPath: string, runnerName: string): string | undefined {
+  try {
+    const data = yaml.parse(fs.readFileSync(runnersYamlPath, 'utf8')) ?? {};
+    const normalizedRunnerName = runnerName.replace(/-/g, '_');
+    const pathCandidates = [
+      data?.config?.[runnerName],
+      data?.config?.[normalizedRunnerName],
+      data?.[runnerName],
+      data?.[normalizedRunnerName],
+    ];
+
+    const runnerPath = pathCandidates.find(
+      (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0
+    );
+
+    return runnerPath?.trim();
+  } catch {
+    return undefined;
+  }
+}
+
 function parseGdbPathFromCMakeCache(cmakeCachePath: string): string | undefined {
   try {
     const cacheText = fs.readFileSync(cmakeCachePath, 'utf8');
@@ -367,6 +389,19 @@ function resolveDefaultDebugRunnerFromGeneratedFiles(
   return parseDebugRunnerFromRunnersYaml(runnersYamlPath);
 }
 
+function resolveRunnerPathFromGeneratedFiles(
+  buildDir: string,
+  appFolderName: string | undefined,
+  runnerName: string,
+): string | undefined {
+  const runnersYamlPath = getFirstExistingBuildArtifact(buildDir, appFolderName, ZEPHYR_DIRNAME, 'runners.yaml');
+  if (!runnersYamlPath) {
+    return undefined;
+  }
+
+  return parseRunnerPathFromRunnersYaml(runnersYamlPath, runnerName);
+}
+
 export function getDefaultDebugRunner(
   project: ZephyrProject,
   buildConfig: ZephyrProjectBuildConfiguration
@@ -433,10 +468,11 @@ async function collectLaunchConfigurationArtifacts(
   let generatedGdbPath = resolveGdbPathFromGeneratedFiles(buildDir, appFolderName);
   let compatibleRunners = resolveCompatibleRunnersFromGeneratedFiles(buildDir, appFolderName);
   let defaultDebugRunner = resolveDefaultDebugRunnerFromGeneratedFiles(buildDir, appFolderName);
+  let generatedOpenocdPath = resolveRunnerPathFromGeneratedFiles(buildDir, appFolderName, 'openocd');
   let tmpBuildDir: string | undefined;
 
   try {
-    if ((!targetBoard || !generatedGdbPath || compatibleRunners.length === 0 || !defaultDebugRunner) && !fileExists(buildDir)) {
+    if ((!targetBoard || !generatedGdbPath || compatibleRunners.length === 0 || !defaultDebugRunner || !generatedOpenocdPath) && !fileExists(buildDir)) {
       tmpBuildDir = await westTmpBuildCmakeOnlyCommand(project, westWorkspace, buildConfig);
       if (tmpBuildDir) {
         if (!targetBoard) {
@@ -450,6 +486,9 @@ async function collectLaunchConfigurationArtifacts(
         }
         if (!defaultDebugRunner) {
           defaultDebugRunner = resolveDefaultDebugRunnerFromGeneratedFiles(tmpBuildDir, appFolderName);
+        }
+        if (!generatedOpenocdPath) {
+          generatedOpenocdPath = resolveRunnerPathFromGeneratedFiles(tmpBuildDir, appFolderName, 'openocd');
         }
       }
     }
@@ -469,6 +508,7 @@ async function collectLaunchConfigurationArtifacts(
       compatibleRunners,
       defaultDebugRunner,
       generatedGdbPath,
+      generatedOpenocdPath,
       targetBoard,
     };
   } finally {
@@ -502,7 +542,7 @@ export async function getFlashRunners(
 
     // 1) Ensure runner properties are generated for this build dir
     //    Use dedicated target runners_yaml_props_target then query help
-    const composedWestArgs = composeWestBuildArgs(config.westArgs, mergeOpenocdBuildFlag(project, config.westFlagsD));
+    const composedWestArgs = composeWestBuildArgs(config.westArgs, mergeOpenocdBuildFlag(project, config.westArgs, config.westFlagsD));
     const westArgs = composedWestArgs.length > 0 ? ` ${composedWestArgs}` : '';
     const buildCmd = `west build -t runners_yaml_props_target --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.folderPath}"${westArgs}`;
     const helpCmd  = `west flash -H --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.folderPath}"`;
@@ -1019,11 +1059,11 @@ export async function getLaunchConfiguration(
 export async function getDebugManagerLaunchConfiguration(
   project: ZephyrProject,
   buildConfig: ZephyrProjectBuildConfiguration,
-): Promise<[any, any, string[], string | undefined]> {
+): Promise<[any, any, string[], string | undefined, string | undefined]> {
   const westWorkspace = getWestWorkspace(project.westWorkspacePath);
   const artifacts = await collectLaunchConfigurationArtifacts(project, buildConfig, westWorkspace);
   const [launchJson, config] = await getLaunchConfiguration(project, buildConfig.name, false, artifacts);
-  return [launchJson, config, artifacts.compatibleRunners, artifacts.defaultDebugRunner];
+  return [launchJson, config, artifacts.compatibleRunners, artifacts.defaultDebugRunner, artifacts.generatedOpenocdPath];
 }
 
 export function getServerAddressFromConfig(config: any) : any | undefined {

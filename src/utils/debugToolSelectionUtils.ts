@@ -27,7 +27,7 @@ export interface DebugToolAliasSelection {
 export interface OpenocdSelectionInfo {
   defaultToolId?: string;
   defaultToolName?: string;
-  forcedRunnerPath?: string;
+  cmakeOverridePath?: string;
   info: string;
 }
 
@@ -214,8 +214,8 @@ export function getOpenocdSelectionInfo(
 ): OpenocdSelectionInfo {
   const sdkVersion = project.sdkVersion?.trim();
   // "Legacy OpenOCD selection" refers to SDK 1.x behavior: the effective default OpenOCD tool
-  // matters, so Debug Manager and west builds must follow that selected tool explicitly when it
-  // is not the Zephyr-provided openocd-zephyr.
+  // matters. west builds must pass that tool to CMake explicitly when it is not the
+  // Zephyr-provided openocd-zephyr, and Debug Manager should surface which tool the build resolved.
   // Older SDKs do not need any of this handling, and the UI should stay quiet for them.
   if (!shouldShowOpenocdDefaultInfo(sdkVersion)) {
     return { info: '' };
@@ -231,8 +231,8 @@ export function getOpenocdSelectionInfo(
     defaultToolId: selection.defaultToolId,
     defaultToolName: selection.defaultToolName,
     // SDK 1.x is sensitive to which OpenOCD is effectively used. If the default tool is not
-    // the Zephyr-provided one, Debug Manager must pass the resolved executable explicitly.
-    forcedRunnerPath: usesLegacySdkVersion(sdkVersion) && selection.defaultToolId !== 'openocd-zephyr'
+    // the Zephyr-provided one, west/CMake must receive the resolved executable explicitly.
+    cmakeOverridePath: usesLegacySdkVersion(sdkVersion) && selection.defaultToolId !== 'openocd-zephyr'
       ? selection.executablePath
       : undefined,
     info: `Default: ${defaultToolLabel}`,
@@ -243,9 +243,9 @@ export function getOpenocdBuildFlag(
   project: { sdkVersion?: string },
   extensionUri?: vscode.Uri,
 ): string | undefined {
-  // Reuse the exact same decision path as Debug Manager so the runner path shown in the UI and
-  // the CMake OPENOCD override stay in sync.
-  const openocdPath = getOpenocdSelectionInfo(project, extensionUri).forcedRunnerPath;
+  // Reuse the exact same decision path as Debug Manager so the displayed default tool and the
+  // CMake OPENOCD override stay in sync.
+  const openocdPath = getOpenocdSelectionInfo(project, extensionUri).cmakeOverridePath;
   if (!openocdPath) {
     return undefined;
   }
@@ -260,8 +260,13 @@ function isOpenocdFlagDValue(value: string): boolean {
   return /^OPENOCD\s*=/.test(normalizedValue);
 }
 
+function rawWestArgsContainOpenocd(rawWestArgs: string | undefined): boolean {
+  return /(?:^|\s)-DOPENOCD\s*=/.test(rawWestArgs?.trim() ?? '');
+}
+
 export function mergeOpenocdBuildFlag(
   project: { sdkVersion?: string },
+  rawWestArgs: string | undefined = undefined,
   westFlagsD: string[] | undefined = [],
   extensionUri?: vscode.Uri,
 ): string[] {
@@ -272,10 +277,15 @@ export function mergeOpenocdBuildFlag(
     return mergedFlags;
   }
 
-  // OPENOCD is derived from the current SDK/default-tool selection, so it must not be treated as
-  // a persisted custom -D flag. Replace any previous OPENOCD entry with the current computed one.
+  // An explicit OPENOCD value in west args or west flags must win over the automatic one.
+  if (rawWestArgsContainOpenocd(rawWestArgs) || mergedFlags.some(isOpenocdFlagDValue)) {
+    return mergedFlags;
+  }
+
+  // OPENOCD is derived from the current SDK/default-tool selection, so add it only when the user
+  // did not already provide an explicit value.
   return [
-    ...mergedFlags.filter(flag => !isOpenocdFlagDValue(flag)),
+    ...mergedFlags,
     openocdBuildFlag,
   ];
 }

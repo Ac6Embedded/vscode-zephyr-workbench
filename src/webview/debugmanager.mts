@@ -10,6 +10,7 @@ function main() {
   setVSCodeMessageListener();
 
   hideBrowseSpinners();
+  updateRunnerDefaultInfo('', '');
   initApplicationsDropdown();
   initBuildConfigsDropdown();
   initRunnersDropdown();
@@ -21,6 +22,7 @@ function main() {
   const browseGdbButton = document.getElementById("browseGdbButton") as Button;
   const browseRunnerButton = document.getElementById("browseRunnerButton") as Button;
   const installButton = document.getElementById("installRunnerButton") as Button;
+  const changeRunnerDefaultButton = document.getElementById("changeRunnerDefaultButton") as Button;
   const resetButton = document.getElementById("resetButton") as Button;
   const applyButton = document.getElementById("applyButton") as Button;
   const debugButton = document.getElementById("debugButton") as Button;
@@ -40,6 +42,7 @@ function main() {
   browseRunnerButton?.addEventListener("click", browseRunnerHandler);
 
   installButton.addEventListener("click", installHandler);
+  changeRunnerDefaultButton?.addEventListener("click", installHandler);
   resetButton.addEventListener("click", resetHandler);
   applyButton.addEventListener("click", applyHandler);
   debugButton.addEventListener("click", debugHandler);
@@ -83,6 +86,7 @@ function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputEl
       // since that triggers the heavy work (parse + populate fields).
       if (input.id === 'buildConfigInput') {
         showBrowseSpinnersWhileLoading();
+        updateRunnerDefaultInfo('', '');
       }
 
       if (input.id === 'runnerInput') {
@@ -92,6 +96,7 @@ function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputEl
           runnerDetectSpan.innerHTML = '';
           runnerDetectSpan.style.color = '';
         }
+        updateRunnerDefaultInfo('', '');
         showSpinner('runnerPathSpinner');
       }
     });
@@ -178,19 +183,20 @@ function setVSCodeMessageListener() {
         break;
       }
       case 'updateConfigError': {
+        updateRunnerDefaultInfo('', '');
         hideBrowseSpinners();
         break;
       }
       case 'updateRunnerConfig': {
         const runnerPath = event.data.runnerPath;
         const runnerArgs = event.data.runnerArgs;
-        updateRunnerConfig(runnerPath, runnerArgs, event.data.runnerDefaultInfo);
+        updateRunnerConfig(runnerPath, runnerArgs, event.data.runnerDefaultInfo, event.data.runnerDefaultPathInfo);
         break;
       }
       case 'updateRunnerDetect': {
         const runnerDetect = event.data.runnerDetect;
         const runnerName = event.data.runnerName;
-        updateRunnerDetect(runnerDetect === 'true' ? true : false, runnerName, event.data.runnerDefaultInfo);
+        updateRunnerDetect(runnerDetect === 'true' ? true : false, runnerName, event.data.runnerDefaultInfo, event.data.runnerDefaultPathInfo);
         break;
       }
       case 'resetStarted': {
@@ -507,6 +513,7 @@ function updateConfig(data: any) {
   const runnerPath = data.runnerPath;
   const runnerArgs = data.runnerArgs;
   const runnerDefaultInfo = data.runnerDefaultInfo;
+  const runnerDefaultPathInfo = data.runnerDefaultPathInfo;
 
   const programPathText = document.getElementById('programPath') as TextField;
   const svdPathText = document.getElementById('svdPath') as TextField;
@@ -546,7 +553,7 @@ function updateConfig(data: any) {
 
   runnerPathText.value = runnerPath ?? '';
   runnerArgsText.value = runnerArgs ?? '';
-  updateRunnerDefaultInfo(runnerDefaultInfo ?? '');
+  updateRunnerDefaultInfo(runnerDefaultInfo ?? '', runnerDefaultPathInfo ?? '');
 
   programPathText.dispatchEvent(new Event('input'));
   svdPathText.dispatchEvent(new Event('input'));
@@ -561,31 +568,37 @@ function updateConfig(data: any) {
   }
 }
 
-function updateRunnerConfig(runnerPath: string, runnerArgs: string, runnerDefaultInfo?: string) {
+function updateRunnerConfig(runnerPath: string, runnerArgs: string, runnerDefaultInfo?: string, runnerDefaultPathInfo?: string) {
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const runnerArgsText = document.getElementById('runnerArgs') as TextField;
   runnerPathText.value = runnerPath ?? '';
   runnerPathText.dispatchEvent(new Event('input'));
   runnerArgsText.value = runnerArgs ?? '';
   runnerArgsText.dispatchEvent(new Event('input'));
-  updateRunnerDefaultInfo(runnerDefaultInfo ?? '');
+  updateRunnerDefaultInfo(runnerDefaultInfo ?? '', runnerDefaultPathInfo ?? '');
   stlinkPathDisabled();
 
   if ((runnerPath ?? '').trim().length > 0) {hideSpinner('runnerPathSpinner');}
 }
 
-function updateRunnerDefaultInfo(runnerDefaultInfo: string) {
+function updateRunnerDefaultInfo(runnerDefaultInfo: string, runnerDefaultPathInfo: string) {
+  const runnerDefaultInfoRow = document.getElementById('runnerDefaultInfoRow') as HTMLElement | null;
   const runnerDefaultInfoSpan = document.getElementById('runnerDefaultInfo') as HTMLElement | null;
-  if (!runnerDefaultInfoSpan) {
+  const runnerDefaultPathInfoSpan = document.getElementById('runnerDefaultPathInfo') as HTMLElement | null;
+  if (!runnerDefaultInfoRow || !runnerDefaultInfoSpan || !runnerDefaultPathInfoSpan) {
     return;
   }
-  runnerDefaultInfoSpan.textContent = (runnerDefaultInfo ?? '').trim();
+  const resolvedDefaultInfo = (runnerDefaultInfo ?? '').trim();
+  const resolvedPathInfo = (runnerDefaultPathInfo ?? '').trim();
+  runnerDefaultInfoSpan.textContent = resolvedDefaultInfo;
+  runnerDefaultPathInfoSpan.textContent = resolvedPathInfo;
+  runnerDefaultInfoRow.style.display = resolvedDefaultInfo.length > 0 ? '' : 'none';
 }
 
-function updateRunnerDetect(runnerDetect: boolean, runnerName: string, runnerDefaultInfo?: string ) {
+function updateRunnerDetect(runnerDetect: boolean, runnerName: string, runnerDefaultInfo?: string, runnerDefaultPathInfo?: string ) {
   const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
   const resolvedRunnerName = (runnerName ?? '').trim();
-  updateRunnerDefaultInfo(runnerDefaultInfo ?? '');
+  updateRunnerDefaultInfo(runnerDefaultInfo ?? '', runnerDefaultPathInfo ?? '');
   hideSpinner('runnerPathSpinner');
   if (!resolvedRunnerName) {
     runnerDetectSpan.textContent = 'Choose a runner';
