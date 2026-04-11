@@ -374,12 +374,6 @@
         "category": "Zephyr Workbench"
       },
       {
-        "command": "zephyr-workbench-app-explorer.import-app-wizard",
-        "title": "Import Zephyr Application",
-        "icon": "$(arrow-down)",
-        "category": "Zephyr Workbench"
-      },
-      {
         "command": "zephyr-workbench-app-explorer.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
@@ -780,7 +774,7 @@
     "viewsWelcome": [
       {
         "view": "zephyr-workbench-app-explorer",
-        "contents": "[Add Application](command:zephyr-workbench-app-explorer.open-wizard)\n[Import Existing Application](command:zephyr-workbench-app-explorer.import-app-wizard)\n"
+        "contents": "[Add Application](command:zephyr-workbench-app-explorer.open-wizard)\n"
       },
       {
         "view": "zephyr-workbench-west-workspace",
@@ -861,11 +855,6 @@
       "view/title": [
         {
           "command": "zephyr-workbench-app-explorer.open-wizard",
-          "group": "navigation",
-          "when": "view == zephyr-workbench-app-explorer"
-        },
-        {
-          "command": "zephyr-workbench-app-explorer.import-app-wizard",
           "group": "navigation",
           "when": "view == zephyr-workbench-app-explorer"
         },
