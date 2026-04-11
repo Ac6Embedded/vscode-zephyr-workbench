@@ -2131,7 +2131,7 @@ export function activate(context: vscode.ExtensionContext) {
 			await withAppRefreshBatch(async () => {
 				await vscode.window.withProgress({
 					location: vscode.ProgressLocation.Notification,
-					title: "Creating new application...",
+					title: "Adding application...",
 					cancellable: false,
 				}, async (progress, token) => {
 					let projLoc: string;
@@ -2168,7 +2168,7 @@ export function activate(context: vscode.ExtensionContext) {
 						}
 						CreateZephyrAppPanel.currentPanel?.dispose();
 
-						vscode.window.showInformationMessage(`New Application '${workspaceFolder.name}' created !`);
+						vscode.window.showInformationMessage(`Application '${workspaceFolder.name}' added !`);
 						requestAppRefresh();
 					}
 				});
