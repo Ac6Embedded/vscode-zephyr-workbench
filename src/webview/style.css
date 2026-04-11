@@ -944,9 +944,22 @@ vscode-button {
   margin: 0;
 }
 
+.alias-variant-header {
+  display: inline-flex;
+  align-items: center;
+}
+
 .alias-variant-name {
   display: inline-block;
   min-width: 150px;
+}
+
+.tooltip-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
 }
 
 .advanced-options {

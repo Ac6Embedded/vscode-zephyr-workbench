@@ -332,14 +332,16 @@ export class DebugToolsPanel {
       // Child rows (variants for OpenOCD) 
       for (let tool of tools) {
         const childToolName = tool.name;
-        const childTooltip = this.renderTooltip(tool.tooltip);
+        const childTooltip = this.renderTooltip(tool.tooltip, true);
         const isDefault = tool.tool === defaultEnvYml;
         const childVersion = alias ? '' : (tool.version || '');
         
         toolsHTML += `<tr id="row-${tool.tool}" class="details-row hidden alias-variant-row">
           <td></td>
           <td style="padding-left:20px">
-            <span class="alias-variant-name">${childToolName}</span>${childTooltip}
+            <span class="alias-variant-header">
+              <span class="alias-variant-name">${childToolName}</span>${childTooltip}
+            </span>
             <label class="set-default-radio">
               <input type="radio" class="set-default-radio-input" name="default-${alias}" data-tool="${tool.tool}" data-alias="${alias}" ${isDefault ? 'checked' : ''}>
               <span>Set default</span>
@@ -486,13 +488,14 @@ export class DebugToolsPanel {
       .replace(/>/g, '&gt;');
   }
 
-  private renderTooltip(tooltip: string | undefined): string {
+  private renderTooltip(tooltip: string | undefined, reserveSpace: boolean = false): string {
     const trimmedTooltip = tooltip?.trim();
     if (!trimmedTooltip) {
-      return '';
+      return reserveSpace ? ' <span class="tooltip-slot"></span>' : '';
     }
 
-    return ` <span class="tooltip" data-tooltip="${this.escapeHtmlAttribute(trimmedTooltip)}">?</span>`;
+    const tooltipHtml = `<span class="tooltip" data-tooltip="${this.escapeHtmlAttribute(trimmedTooltip)}">?</span>`;
+    return reserveSpace ? ` <span class="tooltip-slot">${tooltipHtml}</span>` : ` ${tooltipHtml}`;
   }
 
   private async getExtraPathRunner(): Promise<string> {

@@ -55,6 +55,7 @@ debug_tools:
   alias: openocd
   name: OpenOCD Zephyr
   version: 0.12.0-01025-g662bf274f
+  tooltip: Ignored if SDK >= 1.x
   website: https://github.com/zephyrproject-rtos/openocd
   type: debug_server
   group: Openocds/Zephyr
