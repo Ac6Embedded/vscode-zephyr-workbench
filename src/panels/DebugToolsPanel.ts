@@ -7,7 +7,6 @@ import { getNonce } from "../utilities/getNonce";
 import { getRunner } from "../utils/debugUtils";
 import {
   getDetectPlatform,
-  getToolCommandDir,
 } from "../utils/debugToolPathUtils";
 import {
   DebugToolEntry,
@@ -19,6 +18,7 @@ import { getInternalDirRealPath } from "../utils/utils";
 import { formatYml } from "../utilities/formatYml";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
 import { Aliases } from "../interface/interfaceDebugTools";
+import { setDebugToolAliasDefault } from "../utils/debugToolEnvUtils";
 
 export class DebugToolsPanel {
 
@@ -702,59 +702,16 @@ export class DebugToolsPanel {
           case 'set-default': {
             const { tool, alias } = message;
             try {
-              if (!alias || typeof alias !== 'string') {
-                throw new Error('Missing runner alias');
-              }
-
-              const jsEnv = this.readEnvYamlObject();
-              const runners = this.ensureRunners(jsEnv);
-              
-              // Keep only the alias entry and remove variant-specific overrides.
-              const aliasVariants = this.data.debug_tools
-                .filter((t: any) => t.alias === alias)
-                .map((t: any) => t.tool);
-              for (const variantId of aliasVariants) {
-                delete runners[variantId];
-              }
-
-              // Keep alias path/version aligned with the selected default variant
               const selectedTool = this.data.debug_tools.find((t: any) => t.tool === tool);
-              if (!selectedTool) {
-                throw new Error(`Unknown runner tool: ${tool}`);
-              }
-
-              const aliasEntry = this.ensureRunnerEntry(jsEnv, alias);
-              const selectedPath = selectedTool
-                ? this.getDetectedToolCommandDir(selectedTool)
-                : undefined;
-              const hasExplicitDetect = Array.isArray(selectedTool?.['explicit-detect']?.[getDetectPlatform()]);
-
-              if (selectedPath) {
-                aliasEntry.path = selectedPath.replace(/\\/g, '/');
-              } else if (hasExplicitDetect) {
-                delete aliasEntry.path;
-              } else {
-                const configuredPath = this.getRunnerPath(tool) || this.getRunnerPath(alias);
-                if (configuredPath) {
-                  aliasEntry.path = configuredPath.replace(/\\/g, '/');
-                } else {
-                  delete aliasEntry.path;
-                }
-              }
-              if (selectedTool?.version) {
-                aliasEntry.version = String(selectedTool.version);
-              } else {
-                delete aliasEntry.version;
-              }
-              const defaultFromDebugTools = this.data.aliases?.find((a: Aliases) => a.alias === alias)?.default;
-              if (tool !== defaultFromDebugTools) {
-                aliasEntry.default = tool;
-              } else {
-                delete aliasEntry.default;
-              }
-
-              this.cleanupRunnerEntry(jsEnv, alias);
-              this.writeEnvYamlObject(jsEnv);
+              const executableName = selectedTool ? this.getToolExecutableName(selectedTool) : undefined;
+              setDebugToolAliasDefault({
+                manifest: this.data,
+                alias,
+                toolId: tool,
+                executableName,
+                fallbackPath: this.getRunnerPath(tool) || this.getRunnerPath(alias),
+              });
+              this.reloadEnvYaml();
               vscode.window.showInformationMessage(`Set ${tool} as default for ${alias}`);
               webview.postMessage({ command: 'exec-install-finished' });
             } catch (e) {
@@ -914,14 +871,6 @@ export class DebugToolsPanel {
     const defaultDebugToolsYml = this.data.aliases?.find((a: Aliases) => a.alias === alias)?.default;
     const firstAliasTool = this.data.debug_tools.find((t: any) => t.alias === alias)?.tool;
     return this.envData?.runners?.[alias]?.default || defaultDebugToolsYml || firstAliasTool;
-  }
-
-  private getDetectedToolCommandDir(tool: any): string | undefined {
-    const executableName = this.getToolExecutableName(tool);
-    if (!executableName) {
-      return undefined;
-    }
-    return getToolCommandDir(tool, getInternalDirRealPath(), executableName, getDetectPlatform());
   }
 
   private getRunnerPath(toolId: string): string | undefined {

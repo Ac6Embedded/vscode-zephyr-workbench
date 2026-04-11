@@ -15,6 +15,7 @@ import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefau
 import { getRunner } from "./debugUtils";
 import { getZephyrTerminal } from "./zephyrTerminalUtils";
 import { ensurePowershellExecutionPolicy } from "./powershellUtils";
+import { setDebugToolAliasDefault } from './debugToolEnvUtils';
 
 export let output = vscode.window.createOutputChannel("Installing Host Tools");
 
@@ -810,6 +811,14 @@ export async function installOpenOcdRunnerSilently(context: vscode.ExtensionCont
     const exePath = path.join(getInternalDirRealPath(), 'tools', 'openocds', 'openocd-zephyr', 'bin', execName);
 
     if (fileExists(exePath)) {
+      const debugToolsPath = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'runners', 'debug-tools.yml').fsPath;
+      const manifest = yaml.parse(fs.readFileSync(debugToolsPath, 'utf8'));
+      setDebugToolAliasDefault({
+        manifest,
+        alias: 'openocd',
+        toolId: 'openocd-zephyr',
+        executableName: execName,
+      });
       vscode.window.showInformationMessage('OpenOCD runner installation successful');
     } else {
       vscode.window.showErrorMessage('OpenOCD runner installation failed');
