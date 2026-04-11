@@ -666,6 +666,11 @@ else
     echo "[ERROR] Python environment loader not found: $PY_FILE" >&2
 fi
 
+# Keep the active venv Python ahead of host-tools Python after env.py updates PATH. Required for Sysbuild
+if [[ -n "$VIRTUAL_ENV" ]]; then
+    export PATH="$VIRTUAL_ENV/bin${PATH:+:$PATH}"
+fi
+
 EOF
 }
 

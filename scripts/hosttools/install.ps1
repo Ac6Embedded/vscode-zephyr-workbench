@@ -664,9 +664,16 @@ if not defined VIRTUAL_ENV (
     exit /b 1
 )
 
+set "VENV_BIN=%VIRTUAL_ENV%\Scripts"
+
 :: === Run env.py and apply its output ===
 for /f "usebackq delims=" %%L in (``python "%PY_FILE%" --shell=cmd``) do (
     if not "%%L"=="" call %%L
+)
+
+REM Keep the active venv Python ahead of host-tools Python after env.py updates PATH. Required for Sysbuild
+if exist "%VENV_BIN%\python.exe" (
+    set "PATH=%VENV_BIN%;%PATH%"
 )
 "@ | Out-File -FilePath "$InstallDirectory\env.bat" -Encoding ASCII
 
@@ -796,6 +803,16 @@ else
     echo "[ERROR] Python environment loader not found: `$PY_FILE" >&2
 fi
 
+# Keep the active venv Python ahead of host-tools Python after env.py updates PATH. Required for Sysbuild
+if [[ -n "`$PYTHON_VENV_PATH" ]]; then
+    venv_bin_path="`$(to_unix_path "`$PYTHON_VENV_PATH")/Scripts"
+else
+    venv_bin_path="`$global_venv_path/Scripts"
+fi
+if [[ -d "`$venv_bin_path" ]]; then
+    export PATH="`$venv_bin_path`${PATH:+:`$PATH}"
+fi
+
 "@ | Out-File -FilePath "$InstallDirectory\env.sh" -Encoding ASCII
 
 # (optional) make it executable for WSL, Git-Bash, etc.
@@ -881,6 +898,12 @@ if (-not `$env:VIRTUAL_ENV) {
 }
 
 python `$EnvPyPath --shell=powershell | Out-String | Invoke-Expression
+
+# Keep the active venv Python ahead of host-tools Python after env.py updates PATH. Required for Sysbuild
+`$VenvBinPath = Join-Path `$env:VIRTUAL_ENV "Scripts"
+if (Test-Path (Join-Path `$VenvBinPath "python.exe")) {
+    `$env:PATH = "`$VenvBinPath;`$env:PATH"
+}
 "@ | Out-File -FilePath "$InstallDirectory\env.ps1" -Encoding ASCII
 
 @"
