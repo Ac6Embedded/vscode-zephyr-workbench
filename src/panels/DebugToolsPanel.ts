@@ -340,7 +340,10 @@ export class DebugToolsPanel {
           <td></td>
           <td style="padding-left:20px">
             <span class="alias-variant-name">${childToolName}</span>${childTooltip}
-            <vscode-checkbox class="set-default-checkbox" data-tool="${tool.tool}" data-alias="${alias}" ${isDefault ? 'checked' : ''}> Set default</vscode-checkbox>
+            <label class="set-default-radio">
+              <input type="radio" class="set-default-radio-input" name="default-${alias}" data-tool="${tool.tool}" data-alias="${alias}" ${isDefault ? 'checked' : ''}>
+              <span>Set default</span>
+            </label>
           </td>
           <td id="version-${tool.tool}">${childVersion}</td>
           <td id="detect-${tool.tool}">${tool.found || ''}</td>

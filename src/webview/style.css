@@ -932,11 +932,16 @@ vscode-button {
   width: 320px !important;
 }
 
-.set-default-checkbox {
+.set-default-radio {
   margin-left: 15px;
   vertical-align: middle;
   display: inline-flex;
   align-items: center;
+  gap: 6px;
+}
+
+.set-default-radio-input {
+  margin: 0;
 }
 
 .alias-variant-name {

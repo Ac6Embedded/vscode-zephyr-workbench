@@ -68,14 +68,14 @@ function main() {
     pw.style.display = 'none';
   });
 
-  // Set default checkbox
-  const setDefaultCheckboxes = document.querySelectorAll('.set-default-checkbox');
-  setDefaultCheckboxes.forEach(checkbox => {
-    checkbox.addEventListener('change', (e) => {
-      const target = e.target as HTMLElement;
+  // Set default radio
+  const setDefaultRadios = document.querySelectorAll('.set-default-radio-input');
+  setDefaultRadios.forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      const target = e.target as HTMLInputElement;
       const tool = target.getAttribute('data-tool');
       const alias = target.getAttribute('data-alias');
-      if ((e.target as HTMLInputElement).checked) {
+      if (target.checked) {
         webviewApi.postMessage({
           command: 'set-default',
           tool: tool,
