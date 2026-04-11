@@ -369,7 +369,7 @@
       },
       {
         "command": "zephyr-workbench-app-explorer.open-wizard",
-        "title": "Create new Zephyr Application",
+        "title": "Add Application",
         "icon": "$(add)",
         "category": "Zephyr Workbench"
       },
@@ -780,7 +780,7 @@
     "viewsWelcome": [
       {
         "view": "zephyr-workbench-app-explorer",
-        "contents": "[Create New Application](command:zephyr-workbench-app-explorer.open-wizard)\n[Import Existing Application](command:zephyr-workbench-app-explorer.import-app-wizard)\n"
+        "contents": "[Add Application](command:zephyr-workbench-app-explorer.open-wizard)\n[Import Existing Application](command:zephyr-workbench-app-explorer.import-app-wizard)\n"
       },
       {
         "view": "zephyr-workbench-west-workspace",

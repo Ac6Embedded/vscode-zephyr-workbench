@@ -32,12 +32,12 @@ const installHostToolsMenuItem = new MenuItem(
 );
 
 const newAppMenuItem = new MenuItem(
-  'New Application',
+  'Add Application',
   vscode.TreeItemCollapsibleState.None,
   'file-directory-create',
   {
     command: 'zephyr-workbench-app-explorer.open-wizard',
-    title: 'New Application',
+    title: 'Add Application',
   }
 );
 

@@ -26,7 +26,7 @@ export class CreateZephyrAppPanel {
     if (CreateZephyrAppPanel.currentPanel) {
       CreateZephyrAppPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
     } else {
-      const panel = vscode.window.createWebviewPanel("zephyr-workbench-new-app-panel", "Create new application", vscode.ViewColumn.One, {
+      const panel = vscode.window.createWebviewPanel("zephyr-workbench-new-app-panel", "Add Application", vscode.ViewColumn.One, {
         // Enable javascript in the webview
         enableScripts: true,
         // Restrict the webview to only load resources from the `out` directory
@@ -92,11 +92,11 @@ export class CreateZephyrAppPanel {
           <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' * data: ; style-src ${webview.cspSource}; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
           <link nonce="${nonce}" rel="stylesheet" href="${styleUri}">
           <link nonce="${nonce}" rel="stylesheet" href="${codiconUri}">
-          <title>Create Zephyr Application</title>
+          <title>Add Application</title>
         </head>
         
         <body class="create-app-panel">
-          <h1>Create a new Zephyr Application Project</h1>
+          <h1>Add Application</h1>
           <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/application">Read Docs</a>
           <form>
             <div class="app-form-layout">
@@ -162,8 +162,8 @@ export class CreateZephyrAppPanel {
                   </div>
 
                   <div class="grid-group-div">
-                    <vscode-radio-group id="appTypeGroup" orientation="horizontal">
-                      <label slot="label">Application type:&nbsp;</label>
+                    <vscode-radio-group id="appFromGroup" orientation="horizontal">
+                      <label slot="label">New or existing application?&nbsp;</label>
                       <vscode-radio value="create" checked>Create new application</vscode-radio>
                       <vscode-radio value="import">Import existing application</vscode-radio>
                     </vscode-radio-group>
@@ -298,7 +298,7 @@ export class CreateZephyrAppPanel {
           case "create": {
             /* always present */
             const projectLoc = message.projectParentPath;
-            const isCreate = message.appType === "create";
+            const isCreate = message.appFrom === "create";
 
             if (isCreate) {
               if (!checkCreateParameters(message)) { return; }

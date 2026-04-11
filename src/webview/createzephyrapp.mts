@@ -31,7 +31,7 @@ function main() {
   const browseParentButton = document.getElementById("browseParentButton") as Button;
   const boardImage = document.getElementById('boardImg') as HTMLImageElement;
   const createButton = document.getElementById("createButton") as Button;
-  const appTypeGroup = document.getElementById('appTypeGroup') as RadioGroup;
+  const appFromGroup = document.getElementById('appFromGroup') as RadioGroup;
   const createOnlyElems = document.querySelectorAll<HTMLElement>('.create-only');
   const advancedDetails = document.querySelector('.advanced-options') as HTMLDetailsElement | null;
   const advancedArrow = document.querySelector('.advanced-arrow') as HTMLElement | null;
@@ -228,11 +228,11 @@ function main() {
   createButton.addEventListener("click", createHandler);
 
   const refreshCreateOnlyRows = () => {
-    const show = appTypeGroup.value === 'create';
+    const show = appFromGroup.value === 'create';
     createOnlyElems.forEach(el => (el.style.display = show ? '' : 'none'));
   };
 
-  appTypeGroup.addEventListener('change', refreshCreateOnlyRows);
+  appFromGroup.addEventListener('change', refreshCreateOnlyRows);
   refreshCreateOnlyRows();        // call once on load
 
   if (advancedDetails && advancedArrow) {
@@ -405,14 +405,14 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const projectNameText = document.getElementById("projectName") as TextField;
   const projectParentPathText = document.getElementById("projectParentPath") as TextField;
   const pristineRadioGroup = document.getElementById("pristineMode") as RadioGroup;
-  const appTypeGroup = document.getElementById('appTypeGroup') as RadioGroup;
+  const appFromGroup = document.getElementById('appFromGroup') as RadioGroup;
   const venvRadioGroup = document.getElementById('venvMode') as RadioGroup;
   const debugPresetCheckbox = document.getElementById('debugPresetCheckbox') as HTMLInputElement | null;
 
   webviewApi.postMessage(
     {
       command:            "create",
-      appType:            appTypeGroup.value,
+      appFrom:            appFromGroup.value,
       westWorkspacePath:  workspaceInput.getAttribute("data-value"),
       zephyrSdkPath:      sdkInput.getAttribute("data-value"),
       boardYamlPath: boardInput.getAttribute('data-value'),
