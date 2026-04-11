@@ -163,6 +163,7 @@ debug_tools:
   alias: openocd
   name: OpenOCD Custom 
   version: IGNORE
+  tooltip: You need to set the PATH to your custom OpenOCD binary in the "Path" field above.
   website: https://openocd.org/
   type: debug_server
   group: Openocds
@@ -234,6 +235,7 @@ debug_tools:
 - tool: stm32cubeclt
   name: STM32CubeCLT
   version: 1.21.0
+  tooltip: It includes most of the STM32 tools, including the ST-LINK GDB Server, STM32CubeProgrammer and the SVDs 
   version-source: detect-path
   version-regex: '/STM32CubeCLT_([\d.]+)/i'
   website: https://www.st.com/en/development-tools/stm32cubeclt.html#section-get-software-table
@@ -352,6 +354,7 @@ debug_tools:
 - tool: pyocd
   name: pyOCD
   version: 0.36.0
+  tooltip: PyOCD in the global venv
   version-command:
     windows: pyocd --version
     linux: pyocd --version

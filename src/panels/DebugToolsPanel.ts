@@ -366,7 +366,7 @@ export class DebugToolsPanel {
               break;
           }
           if (hasSource) {
-            toolsHTML += `<vscode-button appearance="icon" class="install-button" data-tool="${tool.tool}">
+            toolsHTML += `<vscode-button appearance="icon" class="install-button no-icon-tooltip" data-tool="${tool.tool}" data-tooltip="Download and Install automatically" title="Download and Install automatically">
               <span class="codicon codicon-desktop-download"></span>
             </vscode-button>`;
           }
@@ -420,7 +420,7 @@ export class DebugToolsPanel {
             break;
         }
         if(hasSource) {
-          toolHTML +=`<vscode-button appearance="icon" class="install-button" data-tool="${tool.tool}">
+          toolHTML +=`<vscode-button appearance="icon" class="install-button no-icon-tooltip" data-tool="${tool.tool}" data-tooltip="Download and Install automatically" title="Download and Install automatically">
                          <span class="codicon codicon-desktop-download"></span>
                        </vscode-button>`;
         }

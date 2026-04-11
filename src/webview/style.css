@@ -167,6 +167,15 @@ form {
   padding-top: 24px;
 }
 
+.debug-tools-table tr.alias-variant-row td {
+  vertical-align: middle;
+}
+
+.debug-tools-table tr.alias-variant-row td:nth-child(3),
+.debug-tools-table tr.alias-variant-row td:nth-child(4) {
+  padding-top: 6px;
+}
+
 fieldset {
   margin-bottom: 10px;
   width: calc(var(--design-unit)* 140px);
