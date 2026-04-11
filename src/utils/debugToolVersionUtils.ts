@@ -32,6 +32,7 @@ type VersionProbeSetting = string | Partial<Record<'default' | DetectPlatform, s
 export interface DebugToolEntry extends DetectableToolLike {
   tool: string;
   alias?: string;
+  tooltip?: string;
   version?: string | number;
   ['auto-detect']?: Partial<Record<DetectPlatform, string[]>>;
   ['version-file']?: VersionProbeSetting;
@@ -44,6 +45,7 @@ export interface DebugToolAliasEntry {
   alias: string;
   default?: string;
   name?: string;
+  tooltip?: string;
   ['version-file']?: VersionProbeSetting;
   ['version-command']?: VersionProbeSetting;
   ['version-source']?: VersionProbeSetting;

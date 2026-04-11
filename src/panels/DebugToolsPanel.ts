@@ -295,6 +295,7 @@ export class DebugToolsPanel {
       // "info" try to acess the object Aliases and try to find the same alias to Aliases and Tool, e.g: a.alias === alias
       const info = this.data.aliases?.find((a:Aliases) => a.alias === alias) || {};
       const parentToolName = info.name || '-';
+      const parentTooltip = this.renderTooltip(info.tooltip);
 
       // Get default tool from env.yml, fallback to debug-tools.yml default
       const defaultDebugToolsYml = this.data.aliases?.find((a:Aliases) => a.alias === alias)?.default;
@@ -303,7 +304,7 @@ export class DebugToolsPanel {
       // Parent row is populated asynchronously once the selected default tool is probed.
       toolsHTML += `<tr id="row-${alias}">
         <td><button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right" data-tool="${alias}" aria-label="Expand/Collapse"></button></td>
-        <td id="name-${alias}">${parentToolName}</td>
+        <td id="name-${alias}">${parentToolName}${parentTooltip}</td>
         <td id="version-${alias}"></td>
         <td id="detect-${alias}"></td>
         <td></td>
@@ -331,13 +332,14 @@ export class DebugToolsPanel {
       // Child rows (variants for OpenOCD) 
       for (let tool of tools) {
         const childToolName = tool.name;
+        const childTooltip = this.renderTooltip(tool.tooltip);
         const isDefault = tool.tool === defaultEnvYml;
         const childVersion = alias ? '' : (tool.version || '');
         
         toolsHTML += `<tr id="row-${tool.tool}" class="details-row hidden alias-variant-row">
           <td></td>
           <td style="padding-left:20px">
-            <span class="alias-variant-name">${childToolName}</span>
+            <span class="alias-variant-name">${childToolName}</span>${childTooltip}
             <vscode-checkbox class="set-default-checkbox" data-tool="${tool.tool}" data-alias="${alias}" ${isDefault ? 'checked' : ''}> Set default</vscode-checkbox>
           </td>
           <td id="version-${tool.tool}">${childVersion}</td>
@@ -381,6 +383,7 @@ export class DebugToolsPanel {
     for(let tool of noAlias) {
       let toolHTML = '';
       let hasSource = false;
+      const toolTooltip = this.renderTooltip(tool.tooltip);
 
       // Keep YAML version for comparisons; render empty cells initially.
       const initialVersion = '';
@@ -394,7 +397,7 @@ export class DebugToolsPanel {
         toolHTML += `<td></td>`; // empty cell if no_edit is true
       }
 
-      toolHTML += `<td id="name-${tool.tool}">${tool.name}</td>
+      toolHTML += `<td id="name-${tool.tool}">${tool.name}${toolTooltip}</td>
         <td id="version-${tool.tool}">${initialVersion}</td>
         <td id="detect-${tool.tool}">${initialStatus}</td>
         <td id="buttons-${tool.tool}">`;
@@ -470,6 +473,23 @@ export class DebugToolsPanel {
       }
     }
     return toolsHTML;
+  }
+
+  private escapeHtmlAttribute(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  private renderTooltip(tooltip: string | undefined): string {
+    const trimmedTooltip = tooltip?.trim();
+    if (!trimmedTooltip) {
+      return '';
+    }
+
+    return ` <span class="tooltip" data-tooltip="${this.escapeHtmlAttribute(trimmedTooltip)}">?</span>`;
   }
 
   private async getExtraPathRunner(): Promise<string> {

@@ -424,6 +424,7 @@ packs:
 aliases:
 - alias: openocd
   name: OpenOCD
+  tooltip: Set the default OpenOCD to use. For SDK >= 1.x, it passes the selected tool via -DOPENOCD=..., and you should do a pristine rebuild after changing it.
   version-command:
     windows: openocd.exe --version
     linux: openocd --version
