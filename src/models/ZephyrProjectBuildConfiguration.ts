@@ -121,7 +121,7 @@ export class ZephyrProjectBuildConfiguration {
     return path.join(parentProject.folderPath, this.relativeInternalDebugDir);
   }
 
-  getBuildEnv(parentProject: ZephyrProject): { [key: string]: string; } {
+  private composeBuildEnv(parentProject: ZephyrProject): { [key: string]: string; } {
     const westBuildArgs = composeWestBuildArgs(this.westArgs, mergeOpenocdBuildFlag(parentProject, this.westFlagsD));
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
@@ -142,25 +142,12 @@ export class ZephyrProjectBuildConfiguration {
     return baseEnv;
   }
 
+  getBuildEnv(parentProject: ZephyrProject): { [key: string]: string; } {
+    return this.composeBuildEnv(parentProject);
+  }
+
   getBuildEnvWithVar(parentProject: ZephyrProject): { [key: string]: string; } {
-    const westBuildArgs = composeWestBuildArgs(this.westArgs, mergeOpenocdBuildFlag(parentProject, this.westFlagsD));
-    let baseEnv: { [key: string]: string; } = {
-      BOARD: this.boardIdentifier,
-      BUILD_DIR: this.getBuildDir(parentProject),
-      ...(westBuildArgs) ? { WEST_ARGS: westBuildArgs } : {}
-    };
-
-    // Make a copy of envVars to modify
-    let envVars = { ...this.envVars };
-
-    // If sysbuild is true, remove EXTRA_CONF_FILE from envVars
-    if (this.sysbuild === "true") {
-      delete envVars.EXTRA_CONF_FILE;
-    }
-
-    let additionalEnv = getBuildEnv(envVars);
-    baseEnv = { ...baseEnv, ...additionalEnv };
-    return baseEnv;
+    return this.composeBuildEnv(parentProject);
   }
 
   async getCompatibleRunners(parentProject: ZephyrProject): Promise<string[]> {

@@ -292,15 +292,78 @@ export class DebugManagerPanel {
   }
 
   private _setWebviewMessageListener(webview: vscode.Webview) {
-    const getOpenocdDefaultInfo = (project: ZephyrProject | undefined): { info: string; forcedRunnerPath?: string } => {
+    const getOpenocdRunnerInfo = (project: ZephyrProject | undefined): { info: string; forcedRunnerPath?: string } => {
       if (!project) {
         return { info: '' };
       }
       return getOpenocdSelectionInfo(project, this._extensionUri);
     };
 
-    const getRunnerDefaultInfo = (project: ZephyrProject | undefined, runnerName: string | undefined): string => {
-      return runnerName === 'openocd' ? getOpenocdDefaultInfo(project).info : '';
+    const getRunnerInfo = (project: ZephyrProject | undefined, runnerName: string | undefined): { info: string; forcedRunnerPath?: string } => {
+      return runnerName === 'openocd' ? getOpenocdRunnerInfo(project) : { info: '' };
+    };
+
+    function getRunnersHtml(compatibleRunners: string[]): string {
+      let runnersHtml = '';
+      for (const runner of getDebugRunners()) {
+        const runnerLabel = compatibleRunners.includes(runner.name)
+          ? `${runner.label} (compatible)`
+          : runner.label;
+        runnersHtml = runnersHtml.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runnerLabel}</div>`);
+      }
+      return runnersHtml;
+    }
+
+    async function getRunnerWebviewState(
+      project: ZephyrProject | undefined,
+      runnerName: string | undefined,
+      debugServerArgs?: string,
+    ): Promise<{ runnerLabel: string; runnerValue: string; runnerPath: string; runnerArgs: string; runnerDefaultInfo: string; }> {
+      const runnerInfo = getRunnerInfo(project, runnerName);
+      const runnerValue = runnerName ?? '';
+      const runner = runnerName ? getRunner(runnerName) : undefined;
+
+      if (!runner) {
+        return {
+          runnerLabel: '',
+          runnerValue,
+          runnerPath: runnerInfo.forcedRunnerPath ?? '',
+          runnerArgs: '',
+          runnerDefaultInfo: runnerInfo.info,
+        };
+      }
+
+      if (debugServerArgs) {
+        runner.loadArgs(debugServerArgs);
+        try {
+          await runner.loadInternalArgs();
+        } catch {
+          // Keep the configuration responsive even if runner probing fails.
+        }
+      }
+
+      return {
+        runnerLabel: runner.label ?? '',
+        runnerValue,
+        runnerPath: runnerInfo.forcedRunnerPath ?? runner.serverPath ?? '',
+        runnerArgs: runner.userArgs ?? '',
+        runnerDefaultInfo: runnerInfo.info,
+      };
+    }
+
+    function postRunnerDetectState(
+      runnerDetect: boolean,
+      runnerName: string | undefined,
+      runnerPath: string | undefined,
+      runnerDefaultInfo: string,
+    ) {
+      webview.postMessage({
+        command: 'updateRunnerDetect',
+        runnerDetect: runnerDetect ? 'true' : 'false',
+        runnerName: `${runnerName ?? ''}`,
+        runnerPath: `${runnerPath ?? ''}`,
+        runnerDefaultInfo: `${runnerDefaultInfo}`,
+      });
     };
 
     webview.onDidReceiveMessage(
@@ -354,49 +417,32 @@ export class DebugManagerPanel {
               const runnerName = message.runner;
               const runnerPath = message.runnerPath;
               const runner = getRunner(runnerName);
-              const runnerDefaultInfo = getRunnerDefaultInfo(this.project, runnerName);
+              const runnerInfo = getRunnerInfo(this.project, runnerName);
               if(runner) {
                 if(runnerPath && runnerPath.length > 0) {
                   runner.serverPath = runnerPath;
                 }
                 // let runner auto-discover its executable 
                 await runner.loadInternalArgs();
-                if (runner.name === 'openocd') {
-                  const openocdInfo = getOpenocdDefaultInfo(this.project);
-                  if (openocdInfo.forcedRunnerPath) {
-                    runner.serverPath = openocdInfo.forcedRunnerPath;
-                    await updateRunnerConfiguration(runner, openocdInfo.info);
-                  }
-                  await updateRunnerDetect(runner, openocdInfo.info);
-                } else {
-                  await updateRunnerDetect(runner, runnerDefaultInfo);
+                if (runnerInfo.forcedRunnerPath) {
+                  runner.serverPath = runnerInfo.forcedRunnerPath;
+                  await updateRunnerConfiguration(runner, runnerInfo.info);
                 }
+                await updateRunnerDetect(runner, runnerInfo.info);
               } else {
-                webview.postMessage({
-                  command: 'updateRunnerDetect',
-                  runnerDetect: 'false',
-                  runnerName: `${runnerName ?? ''}`,
-                  runnerPath: `${runnerPath ?? ''}`,
-                  runnerDefaultInfo: `${runnerDefaultInfo}`,
-                });
+                postRunnerDetectState(false, runnerName, runnerPath, runnerInfo.info);
               }
               break;
             }
             case 'runnerPathChanged': {
               const runnerName = message.runner;
               const runner = getRunner(runnerName);
-              const runnerDefaultInfo = getRunnerDefaultInfo(this.project, runnerName);
+              const runnerInfo = getRunnerInfo(this.project, runnerName);
               if(runner) {
                 runner.serverPath = message.runnerPath;
-                await updateRunnerDetect(runner, runnerDefaultInfo);
+                await updateRunnerDetect(runner, runnerInfo.info);
               } else {
-                webview.postMessage({
-                  command: 'updateRunnerDetect',
-                  runnerDetect: 'false',
-                  runnerName: `${runnerName ?? ''}`,
-                  runnerPath: `${message.runnerPath ?? ''}`,
-                  runnerDefaultInfo: `${runnerDefaultInfo}`,
-                });
+                postRunnerDetectState(false, runnerName, message.runnerPath, runnerInfo.info);
               }
               break;
             }
@@ -418,6 +464,7 @@ export class DebugManagerPanel {
             }
             case 'install': {
               vscode.commands.executeCommand('zephyr-workbench.install-runners');
+              break;
             }
             case 'refreshApplications': {
               webview.postMessage({ command: 'applicationsLoading' });
@@ -453,14 +500,7 @@ export class DebugManagerPanel {
           if (command === 'buildConfigChanged') {
             webview.postMessage({ command: 'updateConfigError' });
           } else if (command === 'runnerChanged' || command === 'runnerPathChanged') {
-            const runnerDefaultInfo = getRunnerDefaultInfo(this.project, message.runner);
-            webview.postMessage({
-              command: 'updateRunnerDetect',
-              runnerDetect: 'false',
-              runnerName: `${message.runner ?? ''}`,
-              runnerPath: `${message.runnerPath ?? ''}`,
-              runnerDefaultInfo: `${runnerDefaultInfo}`,
-            });
+            postRunnerDetectState(false, message.runner, message.runnerPath, getRunnerInfo(this.project, message.runner).info);
           }
         }
       },
@@ -523,48 +563,13 @@ export class DebugManagerPanel {
           }
         }
 
-        let newRunnersHTML = '';
-        for(let runner of getDebugRunners()) {
-          if(compatibleRunners.includes(runner.name)) {
-            newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
-          } else {
-            newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
-          }
-        }
+        const newRunnersHTML = getRunnersHtml(compatibleRunners);
         const runnerName = buildConfig ? (defaultDebugRunner ?? getDefaultDebugRunner(project, buildConfig) ?? WestRunner.extractRunner(config.debugServerArgs)) : WestRunner.extractRunner(config.debugServerArgs);
-        let runnerLabel = "";
-        let runnerValue = runnerName ?? "";
-        let runnerPath = "";
-        let runnerArgs = "";
-        let runnerDefaultInfo = '';
-
-        if(runnerName) {
-          const runner = getRunner(runnerName);
-          if(runner) {
-            runner.loadArgs(config.debugServerArgs);
-            try {
-              await runner.loadInternalArgs();
-            } catch {
-              // Keep the configuration responsive even if runner probing fails.
-            }
-            if(runner.label) {
-              runnerLabel = runner.label;
-            }
-            if(runner.serverPath) {
-              runnerPath = runner.serverPath;
-            }
-            if(runner.userArgs) {
-              runnerArgs = runner.userArgs;
-            }
-            if (runner.name === 'openocd') {
-              const openocdInfo = getOpenocdDefaultInfo(project);
-              runnerDefaultInfo = openocdInfo.info;
-              if (openocdInfo.forcedRunnerPath) {
-                runnerPath = openocdInfo.forcedRunnerPath;
-              }
-            }
-          }
-        }
+        const { runnerLabel, runnerValue, runnerPath, runnerArgs, runnerDefaultInfo } = await getRunnerWebviewState(
+          project,
+          runnerName,
+          config.debugServerArgs,
+        );
 
         webview.postMessage({ 
           command: 'updateConfig', 
@@ -657,19 +662,9 @@ export class DebugManagerPanel {
         }
       }
     
-      let newRunnersHTML = '';
-      for(let runner of getDebugRunners()) {
-        if(compatibleRunners.includes(runner.name)) {
-          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label} (compatible)</div>`);
-        } else {
-          newRunnersHTML = newRunnersHTML.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
-        }
-      }
+      const newRunnersHTML = getRunnersHtml(compatibleRunners);
       const runnerName = buildConfig ? (defaultDebugRunner ?? getDefaultDebugRunner(project, buildConfig)) : undefined;
-      const runner = runnerName ? getRunner(runnerName) : undefined;
-      const runnerLabel = runner?.label ?? '';
-      const runnerValue = runnerName ?? '';
-      const openocdInfo = runner?.name === 'openocd' ? getOpenocdDefaultInfo(project) : { info: '' };
+      const { runnerLabel, runnerValue, runnerPath, runnerDefaultInfo } = await getRunnerWebviewState(project, runnerName);
       
       webview.postMessage({ 
         command: 'updateConfig', 
@@ -681,9 +676,9 @@ export class DebugManagerPanel {
         runnersHTML: `${newRunnersHTML}`,
         runnerName: `${runnerLabel}`,
         runnerValue: `${runnerValue}`,
-        runnerPath: `${openocdInfo.forcedRunnerPath ?? ''}`,
+        runnerPath: `${runnerPath}`,
         runnerArgs: '',
-        runnerDefaultInfo: `${openocdInfo.info}`,
+        runnerDefaultInfo: `${runnerDefaultInfo}`,
       });
     }
 

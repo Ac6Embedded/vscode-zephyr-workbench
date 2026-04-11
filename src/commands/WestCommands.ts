@@ -11,7 +11,7 @@ import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTI
 import { concatCommands, execShellCommandWithEnv, execCommandWithEnvCB, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
 import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from '../utils/utils'; 
 import { composeWestBuildArgs } from '../utils/westArgUtils';
-import { getOpenocdBuildFlag, mergeOpenocdBuildFlag } from '../utils/debugToolSelectionUtils';
+import { mergeOpenocdBuildFlag } from '../utils/debugToolSelectionUtils';
 
 function quote(p: string): string {
   return /\s/.test(p) ? `"${p}"` : p;
@@ -273,7 +273,7 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
 
 function makeWestArgs(
   project: ZephyrProject,
-  raw: string | undefined,
+  raw: string | undefined = undefined,
   westFlagsD: string[] | undefined = [],
 ): string {
   // Inject the computed OPENOCD override at execution time so build settings stay unchanged
@@ -322,11 +322,9 @@ export async function westConfigCommand(
     command += ` ${folderPath}`;
   }
 
-  // menuconfig/guiconfig reuse the same generated CMake cache, so they need the same OPENOCD
-  // override that regular west build uses for legacy SDKs.
-  const openocdBuildFlag = getOpenocdBuildFlag(zephyrProject);
-  if (openocdBuildFlag) {
-    command += ` -- -D${openocdBuildFlag}`;
+  const westArgs = makeWestArgs(zephyrProject);
+  if (westArgs) {
+    command += ` ${westArgs}`;
   }
 
   const options: vscode.ShellExecutionOptions = {
