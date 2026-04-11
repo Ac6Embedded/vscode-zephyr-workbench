@@ -99,12 +99,6 @@
             "description": "The path to the attached west workspace",
             "scope": "resource"
           },
-          "zephyr-workbench.board": {
-            "type": "string",
-            "default": "",
-            "description": "The identifier of target board",
-            "scope": "resource"
-          },
           "zephyr-workbench.sdk": {
             "type": "string",
             "default": "",

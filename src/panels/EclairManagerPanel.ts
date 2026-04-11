@@ -883,11 +883,8 @@ export class EclairManagerPanel {
       throw new Error(`Build configuration '${build_config}' not found.`);
     }
 
-    // Resolve BOARD from configuration (configurations[].board > zephyr-workbench.board > env)
-    const board =
-      (configs?.[idx]?.board?.toString()?.trim() || "") ||
-      (config.get<string>("zephyr-workbench.board")?.trim() || "") ||
-      (process.env.BOARD?.trim() || "");
+    // Resolve BOARD from the selected build configuration.
+    const board = configs?.[idx]?.board?.toString()?.trim() || "";
 
     if (!board) {
       throw new Error("BOARD not set. Please set it before running ECLAIR analysis.");
