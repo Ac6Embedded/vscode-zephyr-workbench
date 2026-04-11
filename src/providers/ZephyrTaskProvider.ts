@@ -374,8 +374,8 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     //   if (arg.startsWith('--build-dir')) {
     //     // Do not add user any --build-dir option, use value from BUILD_DIR variable
     //     return '';
-    //   } else if (arg === '--board ${config:zephyr-workbench.board}') {
-    //     // To avoid error with legacy project, if --board argument is set, remove it, west will
+    //   } else if (arg.startsWith('--board ')) {
+    //     // To avoid error with legacy tasks, if --board argument is set, remove it, west will
     //     // use BOARD environment variable instead
     //     return '';
     //   }
@@ -688,7 +688,6 @@ export async function setDefaultProjectSettings(workspaceFolder: vscode.Workspac
   // Zephyr Workbench settings
   const boardIdentifier = zephyrBoard.identifier ? zephyrBoard.identifier : '';
   await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, westWorkspace.rootUri.fsPath, vscode.ConfigurationTarget.WorkspaceFolder);
-  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_BOARD_SETTING_KEY, boardIdentifier, vscode.ConfigurationTarget.WorkspaceFolder);
   if (toolchain instanceof ZephyrSDK) {
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
       .update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "zephyr_sdk", vscode.ConfigurationTarget.WorkspaceFolder);
