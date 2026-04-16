@@ -1,5 +1,5 @@
 import {
-  Button, Dropdown, RadioGroup, TextField, allComponents,
+  Button, RadioGroup, TextField, allComponents,
   provideVSCodeDesignSystem
 } from "@vscode/webview-ui-toolkit/";
 
@@ -8,6 +8,26 @@ provideVSCodeDesignSystem().register(
 );
 
 const webviewApi = acquireVsCodeApi();
+let currentWorkspaceRequestId = 0;
+
+type DiscoveryTarget = 'board' | 'sample';
+
+const discoveryTargets = {
+  board: {
+    inputId: 'boardInput',
+    dropdownId: 'boardDropdown',
+    spinnerId: 'boardDropdownSpinner',
+    statusId: 'boardStatus',
+    emptyMessage: 'No boards were found for this workspace.',
+  },
+  sample: {
+    inputId: 'sampleInput',
+    dropdownId: 'samplesDropdown',
+    spinnerId: 'samplesDropdownSpinner',
+    statusId: 'sampleStatus',
+    emptyMessage: 'No sample projects were found for this workspace.',
+  },
+} as const;
 
 window.addEventListener("load", main);
 
@@ -15,7 +35,6 @@ function main() {
 
   setVSCodeMessageListener();
 
-  const listWorkspaces = document.getElementById('listWorkspaces') as Dropdown;
   const workspaceInput = document.getElementById('workspaceInput') as HTMLInputElement;
   const sdkInput = document.getElementById('sdkInput') as HTMLInputElement;
   const workspaceDropdown = document.getElementById('workspaceDropdown') as HTMLElement;
@@ -36,14 +55,6 @@ function main() {
   const advancedDetails = document.querySelector('.advanced-options') as HTMLDetailsElement | null;
   const advancedArrow = document.querySelector('.advanced-arrow') as HTMLElement | null;
 
-
-  if (listWorkspaces && boardDropdown && samplesDropdown) {
-    listWorkspaces.addEventListener('change', (event: Event) => {
-      const selectedWorkspace = (event.target as HTMLSelectElement).value;
-      westWorkspaceChanged(selectedWorkspace);
-    });
-  }
-
   workspaceInput.addEventListener('focusin', function () {
     if (workspaceDropdown) {
       workspaceDropdown.style.display = 'block';
@@ -63,7 +74,8 @@ function main() {
   });
 
   workspaceInput.addEventListener('input', () => {
-    westWorkspaceChanged(workspaceInput.getAttribute('data-value') as string);
+    clearSelectedValueIfEdited(workspaceInput);
+    westWorkspaceChanged(workspaceInput.getAttribute('data-value') ?? '');
   });
 
   workspaceInput.addEventListener('keyup', () => {
@@ -100,6 +112,10 @@ function main() {
 
   sdkInput.addEventListener('keyup', () => {
     filterFunction(sdkInput, sdkDropdown);
+  });
+
+  sdkInput.addEventListener('input', () => {
+    clearSelectedValueIfEdited(sdkInput);
   });
 
   sdkDropdown.addEventListener('mousedown', function (event) {
@@ -144,11 +160,11 @@ function main() {
   });
 
   boardInput.addEventListener('input', () => {
+    clearSelectedValueIfEdited(boardInput);
     webviewApi.postMessage(
       {
         command: 'boardChanged',
-        workspace: listWorkspaces.value,
-        boardYamlPath: boardInput.getAttribute('data-value')
+        boardYamlPath: boardInput.getAttribute('data-value') ?? ''
       }
     );
   });
@@ -192,6 +208,7 @@ function main() {
   });
 
   sampleInput.addEventListener('input', () => {
+    clearSelectedValueIfEdited(sampleInput);
     projectNameText.value = sampleInput.value || '';
   });
 
@@ -223,6 +240,7 @@ function main() {
   boardDropdownSpinner.style.visibility = 'hidden';
   samplesDropdownSpinner.style.display = 'none';
   samplesDropdownSpinner.style.visibility = 'hidden';
+  resetWorkspaceDiscoveryControls();
 
   browseParentButton.addEventListener("click", browseParentHandler);
   createButton.addEventListener("click", createHandler);
@@ -261,10 +279,25 @@ function addDropdownItemEventListeners(dropdown: HTMLElement,
         /* Zephyr SDK or IAR – same visual behaviour */
         input.value = label;
         input.setAttribute("data-value", value);
+        input.setAttribute("data-selected-label", label);
         input.dispatchEvent(new Event("input"));
         dropdown.style.display = "none";
       });
     });
+}
+
+function clearSelectedValueIfEdited(input: HTMLInputElement) {
+  const selectedLabel = input.getAttribute('data-selected-label') ?? '';
+  if (selectedLabel.length > 0 && input.value !== selectedLabel) {
+    input.setAttribute('data-value', '');
+    input.setAttribute('data-selected-label', '');
+  }
+}
+
+function resetComboInput(input: HTMLInputElement) {
+  input.value = '';
+  input.setAttribute('data-value', '');
+  input.setAttribute('data-selected-label', '');
 }
 
 function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
@@ -284,57 +317,25 @@ function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
 
 
 async function westWorkspaceChanged(selectedWorkspaceUri: string) {
+  currentWorkspaceRequestId += 1;
+  const requestId = currentWorkspaceRequestId;
+
+  if (!selectedWorkspaceUri) {
+    resetWorkspaceDiscoveryControls();
+    return;
+  }
+
+  setDiscoveryLoadingState('board', 'Loading boards...');
+  setDiscoveryLoadingState('sample', 'Loading sample projects...');
+  updateBoardImage('noImg');
+
   webviewApi.postMessage(
     {
       command: 'westWorkspaceChanged',
-      workspace: selectedWorkspaceUri
+      workspace: selectedWorkspaceUri,
+      requestId,
     }
   );
-
-  const boardDropdownSpinner = document.getElementById('boardDropdownSpinner') as HTMLElement;
-  const samplesDropdownSpinner = document.getElementById('samplesDropdownSpinner') as HTMLElement;
-  const boardInput = document.getElementById('boardInput') as HTMLInputElement;
-  const boardDropdown = document.getElementById('boardDropdown') as HTMLElement;
-  const sampleInput = document.getElementById('sampleInput') as HTMLInputElement;
-  const samplesDropdown = document.getElementById('samplesDropdown') as HTMLElement;
-  
-  if (boardInput) {
-    boardInput.disabled = true;
-  }
-  if (boardDropdown) {
-    boardDropdown.style.display = 'none';
-  }
-  if (sampleInput) {
-    sampleInput.disabled = true;
-  }
-  if (samplesDropdown) {
-    samplesDropdown.style.display = 'none';
-  }
-  boardDropdownSpinner.style.display = 'block';
-  boardDropdownSpinner.style.visibility = 'visible';
-  samplesDropdownSpinner.style.display = 'block';
-  samplesDropdownSpinner.style.visibility = 'visible';
-}
-
-async function updateBoardDropdown(boardHTML: string) {
-  const boardInput = document.getElementById('boardInput') as HTMLInputElement;
-  const boardDropdown = document.getElementById('boardDropdown') as HTMLElement;
-  const boardDropdownSpinner = document.getElementById('boardDropdownSpinner') as HTMLElement;
-
-  boardInput.disabled = true;
-  boardDropdown.style.display = 'none';
-  boardDropdownSpinner.style.display = 'block';
-  boardDropdownSpinner.style.visibility = 'visible';
-
-  await new Promise(resolve => setTimeout(resolve, 300)); 
-
-  boardDropdown.innerHTML = boardHTML;
-  addDropdownItemEventListeners(boardDropdown, boardInput);
-
-  boardDropdownSpinner.style.display = 'none';
-  boardDropdownSpinner.style.visibility = 'hidden';
-  boardDropdown.style.display = 'block';
-  boardInput.disabled = false;
 }
 
 function updateBoardImage(imgSrc: string) {
@@ -350,25 +351,93 @@ function updateBoardImage(imgSrc: string) {
   }
 }
 
-async function updateSamplesDropdown(samplesHTML: string) {
-  const samplesDropdown = document.getElementById('samplesDropdown') as HTMLElement;
-  const sampleInput = document.getElementById('sampleInput') as HTMLInputElement;
-  const samplesDropdownSpinner = document.getElementById('samplesDropdownSpinner') as HTMLElement;
+function getDiscoveryElements(target: DiscoveryTarget) {
+  const config = discoveryTargets[target];
+  return {
+    input: document.getElementById(config.inputId) as HTMLInputElement,
+    dropdown: document.getElementById(config.dropdownId) as HTMLElement,
+    spinner: document.getElementById(config.spinnerId) as HTMLElement,
+    status: document.getElementById(config.statusId) as HTMLElement,
+    emptyMessage: config.emptyMessage,
+  };
+}
 
-  sampleInput.disabled = true;
-  samplesDropdown.style.display = 'none';
-  samplesDropdownSpinner.style.display = 'block';
-  samplesDropdownSpinner.style.visibility = 'visible';
+function setDiscoveryStatus(target: DiscoveryTarget, message: string, tone: 'info' | 'error' = 'info') {
+  const { status } = getDiscoveryElements(target);
+  status.textContent = message;
+  status.classList.toggle('error', tone === 'error');
+  status.hidden = message.length === 0;
+}
 
-  await new Promise(resolve => setTimeout(resolve, 300));
+function resetDiscoveryState(target: DiscoveryTarget, message: string) {
+  const { input, dropdown, spinner } = getDiscoveryElements(target);
+  resetComboInput(input);
+  input.disabled = true;
+  dropdown.innerHTML = '';
+  dropdown.style.display = 'none';
+  spinner.style.display = 'none';
+  spinner.style.visibility = 'hidden';
+  setDiscoveryStatus(target, message);
+}
 
-  samplesDropdown.innerHTML = samplesHTML;
-  addDropdownItemEventListeners(samplesDropdown, sampleInput);
+function setDiscoveryLoadingState(target: DiscoveryTarget, message: string) {
+  const { input, dropdown, spinner } = getDiscoveryElements(target);
+  resetComboInput(input);
+  input.disabled = true;
+  dropdown.innerHTML = '';
+  dropdown.style.display = 'none';
+  spinner.style.display = 'block';
+  spinner.style.visibility = 'visible';
+  setDiscoveryStatus(target, message);
+}
 
-  samplesDropdownSpinner.style.display = 'none';
-  samplesDropdownSpinner.style.visibility = 'hidden';
-  samplesDropdown.style.display = 'none';
-  sampleInput.disabled = false;
+function setDiscoveryReadyState(target: DiscoveryTarget, html: string, message?: string) {
+  const { input, dropdown, spinner, emptyMessage } = getDiscoveryElements(target);
+  const hasItems = html.trim().length > 0;
+
+  resetComboInput(input);
+  dropdown.innerHTML = html;
+  addDropdownItemEventListeners(dropdown, input);
+  dropdown.style.display = 'none';
+  spinner.style.display = 'none';
+  spinner.style.visibility = 'hidden';
+  input.disabled = !hasItems;
+  setDiscoveryStatus(target, message ?? (hasItems ? '' : emptyMessage));
+}
+
+function setDiscoveryErrorState(target: DiscoveryTarget, message: string) {
+  const { input, dropdown, spinner } = getDiscoveryElements(target);
+  resetComboInput(input);
+  input.disabled = true;
+  dropdown.innerHTML = '';
+  dropdown.style.display = 'none';
+  spinner.style.display = 'none';
+  spinner.style.visibility = 'hidden';
+  setDiscoveryStatus(target, message, 'error');
+}
+
+function resetWorkspaceDiscoveryControls() {
+  resetDiscoveryState('board', 'Choose a west workspace from the list to load boards.');
+  resetDiscoveryState('sample', 'Choose a west workspace from the list to load sample projects.');
+  updateBoardImage('noImg');
+}
+
+function applyDiscoveryState(
+  requestId: number,
+  target: DiscoveryTarget,
+  status: 'ready' | 'error',
+  html?: string,
+  message?: string
+) {
+  if (requestId !== currentWorkspaceRequestId) {
+    return;
+  }
+
+  if (status === 'ready') {
+    setDiscoveryReadyState(target, html ?? '', message);
+  } else {
+    setDiscoveryErrorState(target, message ?? 'This list could not be loaded.');
+  }
 }
 
 function setVSCodeMessageListener() {
@@ -378,11 +447,14 @@ function setVSCodeMessageListener() {
       case 'folderSelected':
         setLocalPath(event.data.id, event.data.folderUri);
         break;
-      case 'updateBoardDropdown':
-        updateBoardDropdown(event.data.boardHTML);
-        break;
-      case 'updateSamplesDropdown':
-        updateSamplesDropdown(event.data.samplesHTML);
+      case 'setDiscoveryState':
+        applyDiscoveryState(
+          event.data.requestId,
+          event.data.target,
+          event.data.status,
+          event.data.html,
+          event.data.message
+        );
         break;
       case 'updateBoardImage':
         updateBoardImage(event.data.imgPath);
@@ -413,10 +485,10 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
     {
       command:            "create",
       appFrom:            appFromGroup.value,
-      westWorkspacePath:  workspaceInput.getAttribute("data-value"),
-      zephyrSdkPath:      sdkInput.getAttribute("data-value"),
-      boardYamlPath: boardInput.getAttribute('data-value'),
-      samplePath: sampleInput.getAttribute('data-value'),
+      westWorkspacePath:  workspaceInput.getAttribute("data-value") ?? '',
+      zephyrSdkPath:      sdkInput.getAttribute("data-value") ?? '',
+      boardYamlPath: boardInput.getAttribute('data-value') ?? '',
+      samplePath: sampleInput.getAttribute('data-value') ?? '',
       projectName: projectNameText.value,
       projectParentPath: projectParentPathText.value,
       pristine: pristineRadioGroup.value,
@@ -431,7 +503,7 @@ function browseParentHandler(this: HTMLElement, ev: MouseEvent) {
   webviewApi.postMessage(
     {
       command: 'openLocationDialog',
-      westWorkspacePath: workspaceInput.getAttribute('data-value')
+      westWorkspacePath: workspaceInput.getAttribute('data-value') ?? ''
     }
   );
 }

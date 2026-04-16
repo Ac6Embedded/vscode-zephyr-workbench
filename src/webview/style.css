@@ -66,6 +66,17 @@ form {
   margin-bottom: 6px;
 }
 
+.combo-status {
+  margin-top: 4px;
+  min-height: 1.2em;
+  font-size: calc(var(--type-ramp-base-font-size) - 1px);
+  color: var(--vscode-descriptionForeground);
+}
+
+.combo-status.error {
+  color: var(--vscode-errorForeground);
+}
+
 .app-form-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 36vw);
