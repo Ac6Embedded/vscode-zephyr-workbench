@@ -1,7 +1,9 @@
 // Utility function to enforce block style in YAML nodes
 
 export function formatYml(node: any): void {
-  if (!node || typeof node !== "object") return;
+  if (!node || typeof node !== "object") {
+    return;
+  }
 
   // If it's a document node, apply recursively to its main contents
   if (node.type === "DOCUMENT" && node.contents) {
@@ -15,8 +17,12 @@ export function formatYml(node: any): void {
 
     if (Array.isArray(node.items)) {
       for (const item of node.items) {
-        if (item.key) formatYml(item.key);
-        if (item.value) formatYml(item.value);
+        if (item.key) {
+          formatYml(item.key);
+        }
+        if (item.value) {
+          formatYml(item.value);
+        }
       }
     }
   }
