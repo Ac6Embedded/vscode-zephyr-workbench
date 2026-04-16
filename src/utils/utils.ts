@@ -15,6 +15,7 @@ import { ZephyrProject } from '../models/ZephyrProject';
 import { getBoardsDirectories, westTmpBuildCmakeOnlyCommand } from '../commands/WestCommands';
 import { checkOrCreateTask, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
+import { readInstalledZinstallerVersion, versionAtLeast } from './zinstallerVersionUtils';
 
 let zephyrTasksFetchPromise: Promise<vscode.Task[]> | undefined;
 
@@ -962,34 +963,11 @@ export async function validateProjectLocation(location: string) {
   }
 }
 
-function versionAtLeast(current: string, minimum: string): boolean {
-  const a = current.split('.').map(Number);
-  const b = minimum.split('.').map(Number);
-  const len = Math.max(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-      const x = a[i] ?? 0;
-      const y = b[i] ?? 0;
-      if (x > y) {return true;}
-      if (x < y) {return false;}
-  }
-  return true;
-}
-
 // Returns true if zinstaller_version is missing or below the minimum required
 export function isZinstallerUpdateNeeded(): boolean {
   try {
-    const versionFile = path.join(getInternalDirRealPath(), 'zinstaller_version');
-    if (!fs.existsSync(versionFile)) { return true; }
-
-    let current = '0';
-    try {
-      const txt = fs.readFileSync(versionFile, 'utf8');
-      const m = /^Script Version:\s*([0-9.]+)/m.exec(txt);
-      if (m) { current = m[1]; }
-    } catch {
-      return true; // unreadable or unparsable
-    }
-
+    const current = readInstalledZinstallerVersion();
+    if (!current) { return true; }
     return !versionAtLeast(current, ZINSTALLER_MINIMUM_VERSION);
   } catch {
     return true;
@@ -1018,24 +996,8 @@ export async function checkZinstallerVersion(
     // If detection fails, continue to the version check
   }
 
-  const versionFile = path.join(
-    getInternalDirRealPath(),
-    "zinstaller_version"
-  );
-
-  const fileExists = fs.existsSync(versionFile);
-
-  let current = "0";
-  if (fileExists) {
-    try {
-      const txt = await fs.promises.readFile(versionFile, "utf8");
-      const m = /^Script Version:\s*([0-9.]+)/m.exec(txt);
-      if (m) { current = m[1]; }
-    } catch {
-      // If unreadable, treat as outdated
-      current = "0";
-    }
-  }
+  const current = readInstalledZinstallerVersion();
+  const fileExists = !!current;
 
   // If version file exists and meets minimum, no action; otherwise prompt
   if (fileExists && versionAtLeast(current, ZINSTALLER_MINIMUM_VERSION)) { return; }
