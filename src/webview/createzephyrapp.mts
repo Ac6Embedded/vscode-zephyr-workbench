@@ -25,7 +25,7 @@ const discoveryTargets = {
     dropdownId: 'samplesDropdown',
     spinnerId: 'samplesDropdownSpinner',
     statusId: 'sampleStatus',
-    emptyMessage: 'No sample projects were found for this workspace.',
+    emptyMessage: 'No sample or test projects were found for this workspace.',
   },
 } as const;
 
@@ -303,6 +303,7 @@ function resetComboInput(input: HTMLInputElement) {
 function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
   const filter = input.value.toUpperCase();
   const items = dropdown.getElementsByClassName('dropdown-item');
+  const headers = dropdown.getElementsByClassName('dropdown-header');
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i] as HTMLElement;
@@ -312,6 +313,25 @@ function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
     } else {
       item.style.display = 'none';
     }
+  }
+
+  for (let i = 0; i < headers.length; i++) {
+    const header = headers[i] as HTMLElement;
+    let nextElement = header.nextElementSibling;
+    let hasVisibleItems = false;
+
+    while (nextElement && !nextElement.classList.contains('dropdown-header')) {
+      if (nextElement.classList.contains('dropdown-item')) {
+        const itemElement = nextElement as HTMLElement;
+        if (itemElement.style.display !== 'none') {
+          hasVisibleItems = true;
+          break;
+        }
+      }
+      nextElement = nextElement.nextElementSibling;
+    }
+
+    header.style.display = hasVisibleItems ? '' : 'none';
   }
 }
 
@@ -326,7 +346,7 @@ async function westWorkspaceChanged(selectedWorkspaceUri: string) {
   }
 
   setDiscoveryLoadingState('board', 'Loading boards...');
-  setDiscoveryLoadingState('sample', 'Loading sample projects...');
+  setDiscoveryLoadingState('sample', 'Loading sample and test projects...');
   updateBoardImage('noImg');
 
   webviewApi.postMessage(
@@ -418,7 +438,7 @@ function setDiscoveryErrorState(target: DiscoveryTarget, message: string) {
 
 function resetWorkspaceDiscoveryControls() {
   resetDiscoveryState('board', 'Choose a west workspace from the list to load boards.');
-  resetDiscoveryState('sample', 'Choose a west workspace from the list to load sample projects.');
+  resetDiscoveryState('sample', 'Choose a west workspace from the list to load sample and test projects.');
   updateBoardImage('noImg');
 }
 
