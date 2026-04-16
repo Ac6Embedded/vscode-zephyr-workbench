@@ -1,42 +1,18 @@
-import fs from 'fs';
-import path from 'path';
-import yaml from 'yaml';
-import { getInternalDirRealPath } from '../utils/utils';
-import { formatYml } from '../utilities/formatYml';
+import { readEnvYamlObject, writeEnvYamlObject } from './envYamlFileUtils';
 
-// Utilities to manage env.yml extra paths for both Host Tools and Debug Runners.
-// How to use:
-// - In your panel message handler, call setExtraPath('EXTRA_TOOLS'|'EXTRA_RUNNERS', idx, newPath)
-//   to append/replace a path (no empty placeholders are created). The function writes env.yml
-//   and returns the updated parsed object. Use the returned value to refresh any in-memory state.
-// - Call removeExtraPath('EXTRA_TOOLS'|'EXTRA_RUNNERS', idx) to delete an entry. If the list
-//   becomes empty, the helper also removes empty containers from env.yml.
-// - Call getExtraPaths('EXTRA_TOOLS'|'EXTRA_RUNNERS') to retrieve the current list of paths.
+// High-level helpers for the shared EXTRA_TOOLS / EXTRA_RUNNERS structure in env.yml.
+// Use this module when the caller only needs to read, add, replace, or remove
+// entries under other.EXTRA_TOOLS.path or other.EXTRA_RUNNERS.path without
+// dealing with the full env.yml document shape.
 
 export type ExtraKind = 'EXTRA_TOOLS' | 'EXTRA_RUNNERS';
 
-function getEnvYamlPath(): string {
-  return path.join(getInternalDirRealPath(), 'env.yml');
-}
-
 function readEnv(): any {
-  const p = getEnvYamlPath();
-  if (!fs.existsSync(p)) {return {};}
-  try {
-    const txt = fs.readFileSync(p, 'utf8');
-    return yaml.parse(txt) || {};
-  } catch {
-    return {};
-  }
+  return readEnvYamlObject();
 }
 
 function writeEnv(jsEnv: any): any {
-  // Serialize in block style
-  const doc = yaml.parseDocument(yaml.stringify(jsEnv, { flow: false }));
-  formatYml(doc.contents);
-  const txt = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
-  fs.writeFileSync(getEnvYamlPath(), txt, 'utf8');
-  try { return yaml.parse(txt); } catch { return undefined; }
+  return writeEnvYamlObject(jsEnv).data;
 }
 
 function ensurePaths(jsEnv: any, kind: ExtraKind): string[] {
@@ -96,4 +72,3 @@ export function removeExtraPath(kind: ExtraKind, idx: number): any {
   }
   return writeEnv(jsEnv);
 }
-

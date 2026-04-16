@@ -1,32 +1,11 @@
-import * as fs from 'fs';
-import path from 'path';
-import yaml from 'yaml';
-
-import { formatYml } from '../utilities/formatYml';
 import { getDetectPlatform, getToolCommandDir } from './debugToolPathUtils';
+import { readEnvYamlObject, writeEnvYamlObject } from './envYamlFileUtils';
 import { getInternalDirRealPath } from './utils';
 
-function readEnvYamlObject(): any {
-  try {
-    const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-    if (!fs.existsSync(envYamlPath)) {
-      return {};
-    }
-
-    const parsed = yaml.parse(fs.readFileSync(envYamlPath, 'utf8'));
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeEnvYamlObject(jsEnv: any): void {
-  const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-  const doc = yaml.parseDocument(yaml.stringify(jsEnv ?? {}, { flow: false }));
-  formatYml(doc.contents);
-  const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
-  fs.writeFileSync(envYamlPath, yamlText, 'utf8');
-}
+// Debug-runner-specific env.yml updates.
+// This module builds on the shared env.yml file helpers and owns the logic for
+// runner alias defaults, resolved tool paths, stored versions, and cleanup of
+// runner entries under env.runners.
 
 function ensureRunners(jsEnv: any): Record<string, any> {
   if (!jsEnv.runners || typeof jsEnv.runners !== 'object' || Array.isArray(jsEnv.runners)) {

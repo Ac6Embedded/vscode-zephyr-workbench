@@ -1,12 +1,10 @@
 
 import z from "zod";
 import fs from "fs";
-import path from "path";
-import yaml from "yaml";
-import { getInternalDirRealPath } from "../../utils/utils";
 import { getOutputChannel } from "../../utils/execUtils";
 import { Result } from "../../utils/typing_utils";
 import * as vscode from "vscode";
+import { getEnvYamlPath, readEnvYamlObjectStrict, writeEnvYamlObject } from "../../utils/envYamlFileUtils";
 
 const EnvDataSchema = z.looseObject({
   other: z
@@ -34,7 +32,7 @@ export class EclairManagerEnv {
   }
 
   get env_yaml_path(): string {
-    return path.join(getInternalDirRealPath(), "env.yml");
+    return getEnvYamlPath();
   }
 
   get data(): EnvData | undefined {
@@ -55,7 +53,7 @@ export class EclairManagerEnv {
     try {
       const env_yaml_path = this.env_yaml_path;
       if (fs.existsSync(env_yaml_path)) {
-        const data = yaml.parse(fs.readFileSync(env_yaml_path, "utf-8"));
+        const data = readEnvYamlObjectStrict();
         this._data = EnvDataSchema.parse(data);
       } else {
         // the env.yml file does not exist yet, so we start with an
@@ -81,10 +79,9 @@ export class EclairManagerEnv {
     try {
       const env_yaml_path = this.env_yaml_path;
 
-      const yaml_data = yaml.stringify(this._data);
+      const { text: yaml_data } = writeEnvYamlObject(this._data);
       const out = getOutputChannel();
       out.appendLine(`[EclairManagerEnv] Saving env data to ${env_yaml_path}:\n${yaml_data}`);
-      fs.writeFileSync(env_yaml_path, yaml_data, "utf-8");
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       vscode.window.showErrorMessage(`[EclairManagerEnv] Failed to save env data: ${message}`);

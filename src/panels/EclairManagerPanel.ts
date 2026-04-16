@@ -2,12 +2,12 @@ import * as vscode from "vscode";
 import fs, { accessSync, existsSync } from "fs";
 import path from "path";
 import os from "os";
-import yaml from "yaml";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { execCommandWithEnv, execShellCommandWithEnv, getOutputChannel, classifyShell, getShellExe, concatCommands } from "../utils/execUtils";
-import { getInternalDirRealPath, getZephyrSDK } from "../utils/utils";
+import { getZephyrSDK } from "../utils/utils";
 import { getExtraPaths, normalizePath, setExtraPath } from "../utils/envYamlUtils";
+import { readEnvYamlObject, writeEnvYamlObject } from "../utils/envYamlFileUtils";
 import type { IEclairExtension } from "../ext/eclair_api";
 import type { BuildConfigInfo, ExtensionMessage, RpcRequestMessage, WebviewMessage } from "../utils/eclairEvent";
 import type { EclairRpcMethods, OpenDialog, RpcHandlerMap } from "../utils/eclairRpcTypes";
@@ -42,11 +42,7 @@ export class EclairManagerPanel {
    */
   public static saveEclairAbsolutePath(dir: string) {
     try {
-      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-      let envObj: any = {};
-      if (fs.existsSync(envYamlPath)) {
-        envObj = yaml.parse(fs.readFileSync(envYamlPath, "utf8")) || {};
-      }
+      const envObj: any = readEnvYamlObject();
       if (!envObj.other) {
         envObj.other = {};
       }
@@ -54,7 +50,7 @@ export class EclairManagerPanel {
         envObj.other.EXTRA_TOOLS = {};
       }
       envObj.other.EXTRA_TOOLS.path = [normalizePath(dir)];
-      fs.writeFileSync(envYamlPath, yaml.stringify(envObj), "utf8");
+      writeEnvYamlObject(envObj);
     } catch (err) {
       vscode.window.showErrorMessage("ECLAIR is not installed. Please install ECLAIR and try again.");
     }
@@ -342,11 +338,7 @@ export class EclairManagerPanel {
    */
   private saveEclairPathOnceIfMissing(detectedDir: string) {
     try {
-      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-      let envObj: any = {};
-      if (fs.existsSync(envYamlPath)) {
-        envObj = yaml.parse(fs.readFileSync(envYamlPath, "utf8")) || {};
-      }
+      const envObj: any = readEnvYamlObject();
       if (!envObj.other) {
         envObj.other = {};
       }
@@ -360,7 +352,7 @@ export class EclairManagerPanel {
       }
       // If it's a string or an empty array, overwrite
       envObj.other.EXTRA_TOOLS.path = [normalizePath(detectedDir)];
-      fs.writeFileSync(envYamlPath, yaml.stringify(envObj), "utf8");
+      writeEnvYamlObject(envObj);
     } catch (err) {
     }
   }
