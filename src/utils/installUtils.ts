@@ -825,7 +825,11 @@ export async function installOpenOcdRunnerSilently(context: vscode.ExtensionCont
   }
 }
 
-export async function createLocalVenv(context: vscode.ExtensionContext, workbenchFolder: vscode.WorkspaceFolder): Promise<string | undefined> {
+export async function createLocalVenv(
+  context: vscode.ExtensionContext,
+  workbenchFolder: vscode.WorkspaceFolder,
+  westWorkspacePathOverride?: string
+): Promise<string | undefined> {
   // Prefer hosttools installer for Windows to create venv directly; legacy scripts on others
   let installDirUri = vscode.Uri.joinPath(
     context.extensionUri,
@@ -888,7 +892,7 @@ export async function createLocalVenv(context: vscode.ExtensionContext, workbenc
     envScript = expandEnvVariables(envScript);
 
     // Add ZEPHYR_BASE so install scripts can use workspace's Zephyr tree
-    const westWorkspacePath = vscode.workspace
+    const westWorkspacePath = westWorkspacePathOverride ?? vscode.workspace
       .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workbenchFolder)
       .get<string>(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, '');
     let zephyrBase = path.join(destDir, 'zephyr');

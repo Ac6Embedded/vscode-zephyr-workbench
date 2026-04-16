@@ -3,6 +3,7 @@
 import * as fs from 'fs';
 import * as fsPromise from 'fs/promises';
 import * as path from 'path';
+import * as ts from 'typescript';
 import * as vscode from 'vscode';
 import { WestWorkspace } from '../models/WestWorkspace';
 import { ZephyrAppProject } from '../models/ZephyrAppProject';
@@ -11,7 +12,6 @@ import { ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
 import { ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, getEnvVarFormat, getShell, getShellArgs } from '../utils/execUtils';
 import { getWestWorkspace, getZephyrSDK, findIarEntry, msleep } from '../utils/utils';
-import { addConfig, deleteConfig } from '../utils/env/zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
@@ -246,6 +246,17 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
 ]);
 
 type TasksJsonConfig = TaskConfig & { inputs?: any[] };
+type SettingsJsonConfig = Record<string, any>;
+
+export interface CreateTasksJsonOptions {
+  sdkPath?: string;
+  westWorkspace?: WestWorkspace;
+}
+
+export interface DefaultProjectSettingsOptions {
+  pristine?: string;
+  venvPath?: string;
+}
 
 const runnerPickInput = {
   id: "west.runner",
@@ -339,6 +350,168 @@ async function writeTasksJson(tasksJsonPath: string, config: TasksJsonConfig, pr
 
   await fsPromise.writeFile(tasksJsonPath, nextSerialized, 'utf8');
   return true;
+}
+
+async function ensureSettingsFile(workspaceFolder: vscode.WorkspaceFolder): Promise<{ config: SettingsJsonConfig, settingsJsonPath: string, serialized?: string, directWriteSupported: boolean }> {
+  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
+  const settingsJsonPath = path.join(vscodeFolderPath, 'settings.json');
+
+  await fsPromise.mkdir(vscodeFolderPath, { recursive: true });
+
+  if (!fs.existsSync(settingsJsonPath)) {
+    return { config: {}, settingsJsonPath, directWriteSupported: true };
+  }
+
+  try {
+    const serialized = await fsPromise.readFile(settingsJsonPath, 'utf8');
+    const parsed = ts.parseConfigFileTextToJson(settingsJsonPath, serialized);
+    if (parsed.error || !parsed.config || typeof parsed.config !== 'object' || Array.isArray(parsed.config)) {
+      return { config: {}, settingsJsonPath, serialized, directWriteSupported: false };
+    }
+
+    return {
+      config: parsed.config as SettingsJsonConfig,
+      settingsJsonPath,
+      serialized,
+      directWriteSupported: true
+    };
+  } catch {
+    return { config: {}, settingsJsonPath, directWriteSupported: false };
+  }
+}
+
+async function writeSettingsJson(settingsJsonPath: string, config: SettingsJsonConfig, previousSerialized?: string): Promise<boolean> {
+  const nextSerialized = JSON.stringify(config, null, 2);
+  if (nextSerialized === previousSerialized) {
+    return false;
+  }
+
+  await fsPromise.writeFile(settingsJsonPath, nextSerialized, 'utf8');
+  return true;
+}
+
+function upsertPrimaryBuildConfig(existingConfigs: unknown, boardIdentifier: string): any[] {
+  const configs = Array.isArray(existingConfigs)
+    ? existingConfigs.filter(config => config && typeof config === 'object' && (config as { name?: string }).name !== 'primary')
+    : [];
+
+  configs.push({
+    name: 'primary',
+    board: boardIdentifier,
+    active: 'true'
+  });
+
+  return configs;
+}
+
+async function tryWriteDefaultProjectSettingsFile(
+  workspaceFolder: vscode.WorkspaceFolder,
+  westWorkspace: WestWorkspace,
+  zephyrBoard: ZephyrBoard,
+  toolchain: ZephyrSDK | IARToolchain,
+  options: DefaultProjectSettingsOptions
+): Promise<boolean> {
+  const { config, settingsJsonPath, serialized, directWriteSupported } = await ensureSettingsFile(workspaceFolder);
+  if (!directWriteSupported) {
+    return false;
+  }
+
+  const boardIdentifier = zephyrBoard.identifier ?? '';
+  const buildDir = path.join('${workspaceFolder}', 'build', 'primary');
+  const compilerPath = toolchain instanceof ZephyrSDK
+    ? toolchain.getCompilerPath(zephyrBoard.arch)
+    : toolchain.compilerPath;
+  const pristineValue = options.pristine ?? 'auto';
+
+  config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY}`] = westWorkspace.rootUri.fsPath;
+  config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY}`] = pristineValue;
+  config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.build.configurations`] = upsertPrimaryBuildConfig(
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.build.configurations`],
+    boardIdentifier
+  );
+
+  if (toolchain instanceof ZephyrSDK) {
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY}`] = 'zephyr_sdk';
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_SDK_SETTING_KEY}`] = toolchain.rootUri.fsPath;
+    delete config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_IAR_SETTING_KEY}`];
+  } else {
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY}`] = 'iar';
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_IAR_SETTING_KEY}`] = toolchain.iarPath;
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_SDK_SETTING_KEY}`] = toolchain.zephyrSdkPath;
+  }
+
+  if (options.venvPath) {
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}`] = options.venvPath;
+  }
+
+  config['cmake.configureOnOpen'] = false;
+  config['cmake.enableAutomaticKitScan'] = false;
+  config['C_Cpp.default.compilerPath'] = compilerPath;
+  config['C_Cpp.default.compileCommands'] = path.join(buildDir, 'compile_commands.json');
+
+  await writeSettingsJson(settingsJsonPath, config, serialized);
+  return true;
+}
+
+async function applyDefaultProjectSettingsViaConfigurationApi(
+  workspaceFolder: vscode.WorkspaceFolder,
+  westWorkspace: WestWorkspace,
+  zephyrBoard: ZephyrBoard,
+  toolchain: ZephyrSDK | IARToolchain,
+  options: DefaultProjectSettingsOptions
+): Promise<void> {
+  const boardIdentifier = zephyrBoard.identifier ? zephyrBoard.identifier : '';
+  const pristineValue = options.pristine ?? 'auto';
+
+  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, westWorkspace.rootUri.fsPath, vscode.ConfigurationTarget.WorkspaceFolder);
+  if (toolchain instanceof ZephyrSDK) {
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+      .update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, 'zephyr_sdk', vscode.ConfigurationTarget.WorkspaceFolder);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+      .update(ZEPHYR_PROJECT_SDK_SETTING_KEY, toolchain.rootUri.fsPath, vscode.ConfigurationTarget.WorkspaceFolder);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+      .update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+  } else {
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+      .update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, 'iar', vscode.ConfigurationTarget.WorkspaceFolder);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+      .update(ZEPHYR_PROJECT_IAR_SETTING_KEY, toolchain.iarPath, vscode.ConfigurationTarget.WorkspaceFolder);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+      .update(ZEPHYR_PROJECT_SDK_SETTING_KEY, toolchain.zephyrSdkPath, vscode.ConfigurationTarget.WorkspaceFolder);
+  }
+  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
+
+  const config = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder);
+  const buildConfigs = config.get<any[]>('build.configurations') ?? [];
+  const nextBuildConfigs = upsertPrimaryBuildConfig(buildConfigs, boardIdentifier);
+  await config.update('build.configurations', nextBuildConfigs, vscode.ConfigurationTarget.WorkspaceFolder);
+
+  if (options.venvPath) {
+    await config.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, options.venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+  }
+
+  try {
+    await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('configureOnOpen', false, vscode.ConfigurationTarget.WorkspaceFolder);
+    await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('enableAutomaticKitScan', false, vscode.ConfigurationTarget.WorkspaceFolder);
+  } catch (e) {
+    vscode.window.showWarningMessage('Cannot setup cmake setting on project');
+  }
+
+  try {
+    const buildDir = path.join('${workspaceFolder}', 'build', 'primary');
+    const compilerPath = toolchain instanceof ZephyrSDK
+      ? toolchain.getCompilerPath(zephyrBoard.arch)
+      : toolchain.compilerPath;
+
+    await vscode.workspace.getConfiguration('C_Cpp', workspaceFolder).update(
+      'default.compilerPath',
+      compilerPath,
+      vscode.ConfigurationTarget.WorkspaceFolder
+    );
+    await vscode.workspace.getConfiguration('C_Cpp', workspaceFolder).update('default.compileCommands', path.join(buildDir, 'compile_commands.json'), vscode.ConfigurationTarget.WorkspaceFolder);
+  } catch (e) {
+    vscode.window.showWarningMessage('Cannot setup C/C++ settings on project');
+  }
 }
 
 export class ZephyrTaskProvider implements vscode.TaskProvider {
@@ -513,10 +686,10 @@ export async function checkAndCreateTasksJson(workspaceFolder: vscode.WorkspaceF
   }
 }
 
-export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
+export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder, options?: CreateTasksJsonOptions): Promise<void> {
   const project = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-  const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-  const activeSdk = getZephyrSDK(project.sdkPath);
+  const westWorkspace = options?.westWorkspace ?? getWestWorkspace(project.westWorkspacePath);
+  const activeSdk = getZephyrSDK(options?.sdkPath ?? project.sdkPath);
 
   if (!westWorkspace || !activeSdk) {
     return;
@@ -648,34 +821,6 @@ export async function updateTasks(workspaceFolder: vscode.WorkspaceFolder, activ
   return changed;
 }
 
-export async function createExtensionsJson(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
-  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
-  const extensionsJsonPath = path.join(vscodeFolderPath, 'extensions.json');
-
-  // Ensure .vscode directory exists
-  if (!fs.existsSync(vscodeFolderPath)) {
-    fs.mkdirSync(vscodeFolderPath);
-  }
-
-  // If extensions.json already exists, do not overwrite it
-  if (fs.existsSync(extensionsJsonPath)) {
-    return;
-  }
-
-  // Define extensions.json content
-  const extensionsJsonContent = {
-    recommendations: [
-      "ms-vscode.cpptools-extension-pack",
-      "ms-vscode.vscode-embedded-tools",
-      "ms-vscode.vscode-serial-monitor",
-    ]
-  };
-
-  // Write extensions.json file
-  fs.writeFileSync(extensionsJsonPath, JSON.stringify(extensionsJsonContent, null, 2));
-
-}
-
 /**
  * Set default settings.json for newly created project
  * @param workspaceFolder 
@@ -683,56 +828,15 @@ export async function createExtensionsJson(workspaceFolder: vscode.WorkspaceFold
  * @param zephyrBoard 
  * @param zephyrSDK 
  */
-export async function setDefaultProjectSettings(workspaceFolder: vscode.WorkspaceFolder, westWorkspace: WestWorkspace, zephyrBoard: ZephyrBoard, toolchain: ZephyrSDK | IARToolchain): Promise<void> {
-  // Zephyr Workbench settings
-  const boardIdentifier = zephyrBoard.identifier ? zephyrBoard.identifier : '';
-  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, westWorkspace.rootUri.fsPath, vscode.ConfigurationTarget.WorkspaceFolder);
-  if (toolchain instanceof ZephyrSDK) {
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-      .update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "zephyr_sdk", vscode.ConfigurationTarget.WorkspaceFolder);
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-      .update(ZEPHYR_PROJECT_SDK_SETTING_KEY, toolchain.rootUri.fsPath, vscode.ConfigurationTarget.WorkspaceFolder);
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-      .update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
-  } else {                      // IARToolchain
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-      .update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "iar", vscode.ConfigurationTarget.WorkspaceFolder);
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-      .update(ZEPHYR_PROJECT_IAR_SETTING_KEY, toolchain.iarPath, vscode.ConfigurationTarget.WorkspaceFolder);
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-      .update(ZEPHYR_PROJECT_SDK_SETTING_KEY, toolchain.zephyrSdkPath, vscode.ConfigurationTarget.WorkspaceFolder);
-  }
-  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, 'auto', vscode.ConfigurationTarget.WorkspaceFolder);
-  let newConfig = new ZephyrProjectBuildConfiguration('primary');
-  // Remove old config if exists (while importing project)
-  await deleteConfig(workspaceFolder, newConfig);
-
-  newConfig.boardIdentifier = boardIdentifier;
-  await addConfig(workspaceFolder, newConfig);
-
-  try {
-    // Hush CMake settings
-    await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('configureOnOpen', false, vscode.ConfigurationTarget.WorkspaceFolder);
-    await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('enableAutomaticKitScan', false, vscode.ConfigurationTarget.WorkspaceFolder);
-  } catch (e) {
-    vscode.window.showWarningMessage('Cannot setup cmake setting on project');
-  }
-
-  try {
-    // IntelliSense settings
-    let buildDir = path.join('${workspaceFolder}', 'build', 'primary');
-    let targetArch = zephyrBoard.arch;
-    const compilerPath = toolchain instanceof ZephyrSDK
-      ? toolchain.getCompilerPath(targetArch)
-      : toolchain.compilerPath;
-
-    await vscode.workspace.getConfiguration('C_Cpp', workspaceFolder).update(
-      'default.compilerPath',
-      compilerPath,
-      vscode.ConfigurationTarget.WorkspaceFolder
-    );
-    await vscode.workspace.getConfiguration('C_Cpp', workspaceFolder).update('default.compileCommands', path.join(buildDir, 'compile_commands.json'), vscode.ConfigurationTarget.WorkspaceFolder);
-  } catch (e) {
-    vscode.window.showWarningMessage('Cannot setup C/C++ settings on project');
+export async function setDefaultProjectSettings(
+  workspaceFolder: vscode.WorkspaceFolder,
+  westWorkspace: WestWorkspace,
+  zephyrBoard: ZephyrBoard,
+  toolchain: ZephyrSDK | IARToolchain,
+  options: DefaultProjectSettingsOptions = {}
+): Promise<void> {
+  const directWriteApplied = await tryWriteDefaultProjectSettingsFile(workspaceFolder, westWorkspace, zephyrBoard, toolchain, options);
+  if (!directWriteApplied) {
+    await applyDefaultProjectSettingsViaConfigurationApi(workspaceFolder, westWorkspace, zephyrBoard, toolchain, options);
   }
 }
