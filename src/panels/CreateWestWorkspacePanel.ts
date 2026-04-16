@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { execCommandWithEnv, getGitTags, getGitBranches } from "../utils/execUtils";
+import { getGitTags, getGitBranches } from "../utils/execUtils";
 import { listHals } from "../utils/zephyr/manifestUtils";
 import * as path from "path";
 import * as fs from "fs";

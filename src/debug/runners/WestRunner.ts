@@ -3,7 +3,6 @@ import path from "path";
 import { ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
 import { execCommandWithEnv } from '../../utils/execUtils';
 import { detectRunnerVersion } from '../../utils/debugTools/debugToolVersionUtils';
-import { formatWindowsPath } from '../../utils/utils';
 
 export const ZEPHYR_WORKBENCH_DEBUG_PATH_SETTING_KEY = 'pathExec';
 

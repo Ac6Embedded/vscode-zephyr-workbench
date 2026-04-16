@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { concatCommands, execShellCommand,   classifyShell, getShellExe,getShell, getShellArgs, getShellSourceCommand, normalizePathForShell, normalisePathsInString } from "../utils/execUtils";
+import { concatCommands, execShellCommand, classifyShell, getShellExe, getShellArgs, getShellSourceCommand, normalizePathForShell, normalisePathsInString } from "../utils/execUtils";
 import { ZephyrProject } from '../models/ZephyrProject';
 import { findVenvSPDXActivateScript } from '../utils/installUtils';
 import { fileExists } from '../utils/utils';
