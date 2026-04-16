@@ -1726,7 +1726,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.import-official-sdk", async (sdkType, sdkVersion, listToolchains, parentPath) => {
+		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.import-official-sdk", async (sdkType, sdkVersion, listToolchains, parentPath, includeLlvm = false) => {
 			if (!parentPath) {
 				vscode.window.showErrorMessage("No folder path was provided.");
 				return;
@@ -1747,7 +1747,7 @@ export function activate(context: vscode.ExtensionContext) {
 					cancellable: true,
 				}, async (progress, token) => {
 					let toolchains = listToolchains.split(' ');
-					let urls = generateSdkUrls(sdkType, sdkVersion, toolchains);
+					let urls = generateSdkUrls(sdkType, sdkVersion, toolchains, includeLlvm);
 
 					try {
 						let url = urls[0];
@@ -1767,12 +1767,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 							// If toolchain urls exist, download them
 							if (urls.length > 1) {
-								const toolchainDestPath =
+								const gnuToolchainDestPath =
 									(sdkVersion.startsWith('1.') || sdkVersion.startsWith('v1.'))
 										? path.join(zephyrSDKPath, 'gnu')
 										: zephyrSDKPath;
-								if (!fs.existsSync(toolchainDestPath)) {
-									fs.mkdirSync(toolchainDestPath, { recursive: true });
+								if (!fs.existsSync(gnuToolchainDestPath)) {
+									fs.mkdirSync(gnuToolchainDestPath, { recursive: true });
 								}
 								for (let i = 1; i < urls.length; i++) {
 									progress.report({
@@ -1782,7 +1782,10 @@ export function activate(context: vscode.ExtensionContext) {
 									progress.report({
 										message: `Extracting ${downloadedFileUri}`,
 									});
-									await extractSDK(downloadedFileUri.fsPath, toolchainDestPath, progress, token);
+									// LLVM archive already contains its llvm/ top-level folder; extract at SDK root.
+									const isLlvm = urls[i].includes('/toolchain_llvm_');
+									const destPath = isLlvm ? zephyrSDKPath : gnuToolchainDestPath;
+									await extractSDK(downloadedFileUri.fsPath, destPath, progress, token);
 								}
 							}
 

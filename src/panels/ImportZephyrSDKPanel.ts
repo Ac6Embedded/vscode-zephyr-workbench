@@ -243,6 +243,11 @@ export class ImportZephyrSDKPanel {
 
     <div class="grid-group-div" id="toolchainSection">
       <fieldset class="no-border">
+        <div id="llvmToolchainRow" style="display:none;">
+          <vscode-checkbox id="llvmToolchain" value="llvm">
+            Include LLVM/Clang toolchain
+          </vscode-checkbox>
+        </div>
         <div class="toolchains-container" id="toolchainsContainer">
           <div class="toolchain-placeholder">
             Select "Minimal" to fetch toolchains for your platform.
@@ -341,6 +346,7 @@ export class ImportZephyrSDKPanel {
                   msg.sdkVersion,
                   msg.listToolchains,
                   workspacePath,
+                  !!msg.includeLlvm,
                 );
                 break;
 

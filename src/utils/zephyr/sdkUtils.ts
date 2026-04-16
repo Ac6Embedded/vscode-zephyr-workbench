@@ -66,6 +66,12 @@ export function getSdkHostTarget(): SdkHostTarget | undefined {
 	return undefined;
 }
 
+export function isSdkV1OrLater(version: string): boolean {
+	const v = version.startsWith('v') ? version.slice(1) : version;
+	const major = parseInt(v.split('.')[0], 10);
+	return Number.isFinite(major) && major >= 1;
+}
+
 export async function getSdkVersion(): Promise<any[]> {
 	try {
 		const tags = await getGitTags(sdkRepoURL);
@@ -84,13 +90,14 @@ export async function getSdkVersion(): Promise<any[]> {
 	}
 }
 
-export function generateSdkUrls(type: string, version: string, toolchains: string[]): string[] {
+export function generateSdkUrls(type: string, version: string, toolchains: string[], includeLlvm: boolean = false): string[] {
 	let urls: string[] = [];
 	const host = getSdkHostTarget();
+	const v1Plus = isSdkV1OrLater(version);
 
 	if(host) {
 		if(type === 'full') {
-			const fullSuffix = version.startsWith('1.') || version.startsWith('v1.') ? '_gnu' : '';
+			const fullSuffix = v1Plus ? '_gnu' : '';
 			const fullUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/zephyr-sdk-${version}_${host.os}-${host.arch}${fullSuffix}.${host.ext}`;
 			urls.push(fullUrl);
 		} else if(type === 'minimal') {
@@ -100,13 +107,18 @@ export function generateSdkUrls(type: string, version: string, toolchains: strin
 			for(const tArch of toolchains) {
 				const toolchain = mapToolchainIdToPackage(tArch);
 				if (!toolchain) { continue; }
-				const toolPrefix = version.startsWith('1.') || version.startsWith('v1.') ? 'toolchain_gnu' : 'toolchain';
+				const toolPrefix = v1Plus ? 'toolchain_gnu' : 'toolchain';
 				const toolUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/${toolPrefix}_${host.os}-${host.arch}_${toolchain}.${host.ext}`;
 				urls.push(toolUrl);
 			}
-		} 
+
+			if (includeLlvm && v1Plus) {
+				const llvmUrl = `https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${version}/toolchain_llvm_${host.os}-${host.arch}.${host.ext}`;
+				urls.push(llvmUrl);
+			}
+		}
 	}
-	
+
 	return urls;
 }
 

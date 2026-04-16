@@ -170,6 +170,28 @@ function modifySdkTypeHandler(): void {
     clearToolchainContainer();
     toggleVersionSpinner(false);
   }
+  updateLlvmRowVisibility();
+}
+
+function isV1OrLater(versionTag: string): boolean {
+  const v = versionTag.startsWith("v") ? versionTag.slice(1) : versionTag;
+  const major = parseInt(v.split(".")[0], 10);
+  return Number.isFinite(major) && major >= 1;
+}
+
+function updateLlvmRowVisibility(): void {
+  const row = document.getElementById("llvmToolchainRow");
+  if (!row) { return; }
+  const show = isMinimalSelected() && isV1OrLater(getSelectedVersionTag());
+  if (show) {
+    row.style.display = "block";
+    row.style.paddingBottom = "10px";
+  } else {
+    row.style.display = "none";
+    row.style.paddingBottom = "";
+    const cb = document.getElementById("llvmToolchain") as unknown as { checked: boolean } | null;
+    if (cb) { cb.checked = false; }
+  }
 }
 
 function isMinimalSelected(): boolean {
@@ -183,6 +205,7 @@ function getSelectedVersionTag(): string {
 }
 
 function loadMinimalToolchains(): void {
+  updateLlvmRowVisibility();
   const version = getSelectedVersionTag();
   if (!version) {
     renderToolchainError("Select a version to load toolchains.", version);
@@ -348,9 +371,15 @@ function importHandler(): void {
     sdkType:        (getEl<RadioGroup>("sdkType") as unknown as { value: string }).value,
     sdkVersion:     getEl<HTMLInputElement>("versionInput").getAttribute("data-value"),
     listToolchains: getListSelectedToolchains(),
+    includeLlvm:    isLlvmSelected(),
     iarZephyrSdkPath:     getEl<HTMLInputElement>("sdkInput").getAttribute("data-value") || "",
     iarToken:       (getEl<TextField>("iarToken") as unknown as { value: string }).value,
   });
+}
+
+function isLlvmSelected(): boolean {
+  const cb = document.getElementById("llvmToolchain") as unknown as { checked?: boolean } | null;
+  return !!cb?.checked;
 }
 
 /*──────────────── dropdown helpers (Version) ─────────────*/
