@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
 import fs from 'fs';
 import path from "path";
-import yaml from 'yaml';
 import { fileExists, findTask, getWestWorkspace, getZephyrSDK, findIarEntry } from '../utils/utils';
-import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
+import { ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { concatCommands, getShellClearCommand, getShellEchoCommand, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
 import { loadEnv } from '../utils/env/zephyrEnvUtils';

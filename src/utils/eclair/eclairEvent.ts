@@ -1,5 +1,5 @@
 import { EclairPresetTemplateSource, EclairRepos, FullEclairScaConfig } from "./config";
-import { EclairTemplate, EclairTemplateKind } from "./template";
+import { EclairTemplate } from "./template";
 
 
 // Commands sent FROM extension backend TO webview frontend
