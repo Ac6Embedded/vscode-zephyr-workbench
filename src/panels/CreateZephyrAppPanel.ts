@@ -2,13 +2,14 @@ import * as vscode from "vscode";
 import path from "path";
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from "../constants";
 import { WestWorkspace } from "../models/WestWorkspace";
+import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
 import { fileExists, getBase64, getBoard, getListIARs, getListSamples, getListZephyrSDKs, getIarToolchainForSdk, getSample, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils/utils";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 
 type CreateAppDiscoveryTarget = 'board' | 'sample';
-type CreateAppDiscoveryIssueCode = 'invalid-workspace' | 'env-script' | 'invalid-venv' | 'generic';
+type CreateAppDiscoveryIssueCode = 'invalid-workspace' | 'missing-workspace-content' | 'env-script' | 'invalid-venv' | 'generic';
 
 interface CreateAppDiscoveryState {
   html: string;
@@ -21,6 +22,11 @@ interface CreateAppDiscoveryIssue {
   userMessage: string;
   logMessage: string;
   settingsKey?: string;
+}
+
+interface CreateAppPanelErrorOptions {
+  settingsKey?: string;
+  workspaceToUpdate?: WestWorkspace;
 }
 
 export class CreateZephyrAppPanel {
@@ -312,7 +318,7 @@ export class CreateZephyrAppPanel {
             } catch (error) {
               const issue = normalizeCreateActionIssue(error);
               logCreateAppPanelError('Failed to prepare application command', issue.logMessage);
-              await showCreateAppPanelError(issue.userMessage, issue.settingsKey);
+              await showCreateAppPanelError(issue.userMessage, { settingsKey: issue.settingsKey });
             }
             break;
         }
@@ -352,6 +358,14 @@ async function updateForm(
 
   let completed = false;
   let warningTimeout: ReturnType<typeof setTimeout> | undefined;
+  const finishDiscovery = () => {
+    completed = true;
+    if (warningTimeout) {
+      clearTimeout(warningTimeout);
+      warningTimeout = undefined;
+    }
+  };
+
   if (process.platform === 'win32') {
     warningTimeout = setTimeout(() => {
       if (!completed) {
@@ -401,7 +415,8 @@ async function updateForm(
     }
 
     if (issues.length > 0) {
-      await showDiscoveryIssues(issues);
+      finishDiscovery();
+      await showDiscoveryIssues(issues, westWorkspace);
     }
   } catch (error) {
     if (!isActiveDiscoveryRequest(requestId, getCurrentRequestId)) {
@@ -415,12 +430,10 @@ async function updateForm(
     postDiscoveryState(webview, requestId, 'sample', 'error', { message: sampleIssue.userMessage });
 
     logCreateAppPanelError('Failed to resolve selected workspace', boardIssue.logMessage);
+    finishDiscovery();
     await showDiscoveryIssues([boardIssue, sampleIssue]);
   } finally {
-    completed = true;
-    if (warningTimeout) {
-      clearTimeout(warningTimeout);
-    }
+    finishDiscovery();
   }
 }
 
@@ -542,6 +555,12 @@ function resolveSelectedWorkspace(workspaceUri: string): WestWorkspace {
 }
 
 async function buildBoardsDiscoveryState(westWorkspace: WestWorkspace): Promise<CreateAppDiscoveryState> {
+  await ensureWorkspaceDirectoryExists(
+    westWorkspace.boardsDirUri,
+    'boards',
+    'The workspace boards folder could not be found. This workspace may not have been imported correctly. Try running west update or reimporting the workspace.'
+  );
+
   const boards = await getSupportedBoards(westWorkspace);
   boards.sort((a, b) => {
     if (a.name < b.name) {
@@ -565,10 +584,11 @@ async function buildBoardsDiscoveryState(westWorkspace: WestWorkspace): Promise<
 }
 
 async function buildSamplesDiscoveryState(westWorkspace: WestWorkspace): Promise<CreateAppDiscoveryState> {
-  const samplesDirStat = await vscode.workspace.fs.stat(westWorkspace.samplesDirUri);
-  if ((samplesDirStat.type & vscode.FileType.Directory) !== vscode.FileType.Directory) {
-    throw new Error('The workspace samples folder is not available');
-  }
+  await ensureWorkspaceDirectoryExists(
+    westWorkspace.samplesDirUri,
+    'samples',
+    'The workspace samples folder could not be found. This workspace may not have been imported correctly. Try running west update or reimporting the workspace.'
+  );
 
   const samples = await getListSamples(westWorkspace);
   const helloWorldPath = path.join('samples', 'hello_world');
@@ -662,6 +682,20 @@ function normalizeDiscoveryIssue(target: CreateAppDiscoveryTarget, error: unknow
     };
   }
 
+  if (
+    normalized.includes('workspace boards folder could not be found')
+    || normalized.includes('workspace samples folder could not be found')
+  ) {
+    return {
+      code: 'missing-workspace-content',
+      target,
+      userMessage: target === 'board'
+        ? 'Boards could not be loaded because this workspace looks incomplete. Try running west update or reimporting the workspace.'
+        : 'Sample projects could not be loaded because this workspace looks incomplete. Try running west update or reimporting the workspace.',
+      logMessage: details,
+    };
+  }
+
   return {
     code: 'generic',
     target,
@@ -716,10 +750,18 @@ function normalizeCreateActionIssue(error: unknown) {
   };
 }
 
-async function showDiscoveryIssues(issues: CreateAppDiscoveryIssue[]) {
+async function showDiscoveryIssues(
+  issues: CreateAppDiscoveryIssue[],
+  workspaceToUpdate?: WestWorkspace
+) {
   const commonSettingsKey = getCommonSettingsKey(issues);
   const message = buildDiscoveryIssuesMessage(issues);
-  await showCreateAppPanelError(message, commonSettingsKey);
+  await showCreateAppPanelError(message, {
+    settingsKey: commonSettingsKey,
+    workspaceToUpdate: issues.some(issue => issue.code === 'missing-workspace-content')
+      ? workspaceToUpdate
+      : undefined,
+  });
 }
 
 function buildDiscoveryIssuesMessage(issues: CreateAppDiscoveryIssue[]): string {
@@ -737,6 +779,8 @@ function buildDiscoveryIssuesMessage(issues: CreateAppDiscoveryIssue[]): string 
     switch (firstCode) {
       case 'invalid-workspace':
         return 'The selected workspace is not a valid west workspace. Please choose a different workspace and try again.';
+      case 'missing-workspace-content':
+        return 'This workspace looks incomplete. The boards or samples folder is missing. Try running west update or reimporting the workspace.';
       case 'env-script':
         return 'Boards and sample projects could not be loaded because the Zephyr environment setting needs attention.';
       case 'invalid-venv':
@@ -764,16 +808,68 @@ function getCommonSettingsKey(issues: CreateAppDiscoveryIssue[]): string | undef
     : undefined;
 }
 
-async function showCreateAppPanelError(message: string, settingsKey?: string) {
+async function showCreateAppPanelError(message: string, options: CreateAppPanelErrorOptions = {}) {
   const openLogItem = 'Open Log';
   const openSettingsItem = 'Open Settings';
-  const actions = settingsKey ? [openSettingsItem, openLogItem] : [openLogItem];
+  const updateWorkspaceItem = 'Update Workspace';
+  const actions: string[] = [];
+
+  if (options.workspaceToUpdate) {
+    actions.push(updateWorkspaceItem);
+  }
+  if (options.settingsKey) {
+    actions.push(openSettingsItem);
+  }
+  actions.push(openLogItem);
+
   const choice = await vscode.window.showErrorMessage(message, ...actions);
 
-  if (choice === openSettingsItem && settingsKey) {
-    await vscode.commands.executeCommand('workbench.action.openSettings', settingsKey);
+  if (choice === updateWorkspaceItem && options.workspaceToUpdate) {
+    await updateWorkspaceFromCreateAppPanel(options.workspaceToUpdate);
+  } else if (choice === openSettingsItem && options.settingsKey) {
+    await vscode.commands.executeCommand('workbench.action.openSettings', options.settingsKey);
   } else if (choice === openLogItem) {
     getOutputChannel().show(true);
+  }
+}
+
+async function updateWorkspaceFromCreateAppPanel(westWorkspace: WestWorkspace) {
+  try {
+    const treeItem = new WestWorkspaceTreeItem(westWorkspace, vscode.TreeItemCollapsibleState.Collapsed);
+    await vscode.commands.executeCommand('zephyr-workbench-west-workspace.update', treeItem);
+  } catch (error) {
+    const details = getErrorDetails(error);
+    logCreateAppPanelError('Failed to update workspace from Add Application panel', details);
+    await vscode.window.showErrorMessage(
+      'The workspace could not be updated. Please review the log and try again.',
+      'Open Log'
+    ).then(choice => {
+      if (choice === 'Open Log') {
+        getOutputChannel().show(true);
+      }
+    });
+  }
+}
+
+async function ensureWorkspaceDirectoryExists(
+  directoryUri: vscode.Uri,
+  folderLabel: 'boards' | 'samples',
+  missingMessage: string
+) {
+  try {
+    const stat = await vscode.workspace.fs.stat(directoryUri);
+    if ((stat.type & vscode.FileType.Directory) !== vscode.FileType.Directory) {
+      throw new Error(missingMessage);
+    }
+  } catch (error) {
+    const code = (error as vscode.FileSystemError | undefined)?.code;
+    if (code === 'FileNotFound') {
+      throw new Error(missingMessage);
+    }
+    if (error instanceof Error && error.message === missingMessage) {
+      throw error;
+    }
+    throw new Error(`The workspace ${folderLabel} folder could not be checked. This workspace may not have been imported correctly. Try running west update or reimporting the workspace.`);
   }
 }
 
