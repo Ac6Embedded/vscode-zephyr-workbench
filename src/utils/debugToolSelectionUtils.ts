@@ -6,6 +6,7 @@ import yaml from 'yaml';
 import { getDetectPlatform, findDetectedToolRoot, evaluateDetectPatterns } from './debugToolPathUtils';
 import type { DebugToolAliasEntry, DebugToolEntry } from './debugToolVersionUtils';
 import { compareVersions, getInternalDirRealPath } from './utils';
+import { loadEnvYamlState } from './envYamlFileUtils';
 
 interface DebugToolsManifest {
   debug_tools?: DebugToolEntry[];
@@ -59,15 +60,8 @@ function loadDebugToolsManifest(debugToolsYamlPath: string): DebugToolsManifest 
 }
 
 function loadDebugEnvData(): DebugEnvData | undefined {
-  try {
-    const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-    if (!fs.existsSync(envYamlPath)) {
-      return undefined;
-    }
-    return yaml.parse(fs.readFileSync(envYamlPath, 'utf8')) as DebugEnvData;
-  } catch {
-    return undefined;
-  }
+  const { data } = loadEnvYamlState();
+  return data as DebugEnvData | undefined;
 }
 
 function expandConfiguredPathTemplate(

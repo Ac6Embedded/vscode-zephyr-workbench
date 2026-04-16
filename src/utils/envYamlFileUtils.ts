@@ -97,7 +97,9 @@ function formatEnvYamlDocument(doc: any): string {
 
 export function writeEnvYamlDocument(doc: any): { data: any; doc: any; text: string } {
   const text = formatEnvYamlDocument(doc);
-  fs.writeFileSync(getEnvYamlPath(), text, "utf8");
+  const envYamlPath = getEnvYamlPath();
+  fs.mkdirSync(path.dirname(envYamlPath), { recursive: true });
+  fs.writeFileSync(envYamlPath, text, "utf8");
 
   return {
     data: parseEnvYamlObject(text),
