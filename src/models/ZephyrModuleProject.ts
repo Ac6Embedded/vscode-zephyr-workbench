@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import fs from "fs";
 import { ZephyrProject } from "./ZephyrProject";
 import { fileExists } from '../utils/utils';
 

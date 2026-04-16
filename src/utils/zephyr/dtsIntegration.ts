@@ -28,7 +28,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import yaml from 'yaml';
 
-import { WestWorkspace } from '../../models/WestWorkspace';
 import { ZephyrAppProject } from '../../models/ZephyrAppProject';
 import { ZephyrProject } from '../../models/ZephyrProject';
 import { ZephyrProjectBuildConfiguration } from '../../models/ZephyrProjectBuildConfiguration';

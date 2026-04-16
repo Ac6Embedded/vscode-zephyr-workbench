@@ -3,7 +3,7 @@ import * as path from 'path';
 import { ZephyrAppProject } from '../models/ZephyrAppProject';
 import { getWestWorkspace } from '../utils/utils';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
-import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY } from '../constants';
+import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY } from '../constants';
 
 const EXTRA_ENV_KEYS = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES'];
 const WEST_ARGUMENTS_LABEL = 'west Arguments';

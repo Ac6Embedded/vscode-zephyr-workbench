@@ -1,6 +1,4 @@
 import * as vscode from "vscode";
-import fs from "fs";
-import path from "path";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getInternalDirRealPath } from "../utils/utils";
