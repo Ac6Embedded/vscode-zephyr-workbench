@@ -1,14 +1,14 @@
 import * as vscode from 'vscode';
 import fs from "fs";
 import path from 'path';
-import yaml from 'yaml';
 import { ZephyrProject } from "./ZephyrProject";
 import { getBuildEnv, loadConfigEnv } from "../utils/zephyrEnvUtils";
 import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalShell, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
 import { fileExists, getBoardFromIdentifier, getConfigValue, getWestWorkspace, getZephyrSDK } from '../utils/utils';
-import { ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
+import { ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { composeWestBuildArgs, normalizeWestFlagDValue } from '../utils/westArgUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugToolSelectionUtils';
+import { getPyOcdTargetFromRunnersYaml, readRunnersYamlForProject } from '../utils/runnersYamlUtils';
 
 export class ZephyrProjectBuildConfiguration {
   name: string;
@@ -151,15 +151,8 @@ export class ZephyrProjectBuildConfiguration {
   }
 
   async getCompatibleRunners(parentProject: ZephyrProject): Promise<string[]> {
-    let runners: string[] = [];
-
-    // Search in project build directory runners.yaml
-    const runnersYAMLFilepath = this.getBuildArtifactPath(parentProject, ZEPHYR_DIRNAME, 'runners.yaml');
-    if (runnersYAMLFilepath && fileExists(runnersYAMLFilepath)) {
-      const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
-      const data = yaml.parse(runnersYAMLFile);
-      runners = data.runners;
-    }
+    const runnersYaml = readRunnersYamlForProject(parentProject, this);
+    let runners = runnersYaml?.runners ?? [];
 
     // Search in board.cmake if runners.yaml does not exists
     if (runners.length === 0) {
@@ -176,19 +169,7 @@ export class ZephyrProjectBuildConfiguration {
   }
 
   getPyOCDTarget(parentProject: ZephyrProject): string | undefined {
-    const runnersYAMLFilepath = this.getBuildArtifactPath(parentProject, ZEPHYR_DIRNAME, 'runners.yaml');
-    if (runnersYAMLFilepath && fileExists(runnersYAMLFilepath)) {
-      const runnersYAMLFile = fs.readFileSync(runnersYAMLFilepath, 'utf8');
-      const data = yaml.parse(runnersYAMLFile);
-      const pyOCDArgs = data?.args?.pyocd;
-      if (pyOCDArgs) {
-        const targetArg = pyOCDArgs.find((arg: string) => arg.startsWith('--target='));
-        if (targetArg) {
-          return targetArg.split('=')[1];
-        }
-      }
-    }
-    return undefined;
+    return getPyOcdTargetFromRunnersYaml(readRunnersYamlForProject(parentProject, this));
   }
 
   getKConfigValue(parentProject: ZephyrProject, configKey: string): string | undefined {
