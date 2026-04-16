@@ -1,4 +1,4 @@
-const { build } = require("esbuild");
+const { build, context } = require("esbuild");
 const { copy } = require("esbuild-plugin-copy");
 
 const baseConfig = {
@@ -24,21 +24,6 @@ const extensionConfig = {
       },
     }),
   ],
-};
-
-const watchConfig = {
-  watch: {
-    onRebuild(error, result) {
-      console.log("[watch] build started");
-      if (error) {
-        error.errors.forEach(error =>
-          console.error(`> ${error.location.file}:${error.location.line}:${error.location.column}: error: ${error.text}`)
-        );
-      } else {
-        console.log("[watch] build finished");
-      }
-    },
-  },
 };
 
 const webviewCreateWestWorkspaceConfig = {
@@ -122,45 +107,165 @@ const webviewEclairManagerConfig = {
   outfile: "./out/eclairmanager.js",
 };
 
+const buildConfigs = [
+  extensionConfig,
+  webviewCreateWestWorkspaceConfig,
+  webviewImportSDKConfig,
+  webviewCreateZephyrAppConfig,
+  webviewNewModuleConfig,
+  webviewDebugToolsConfig,
+  webviewDebugManagerConfig,
+  webviewHostToolsConfig,
+  webviewSdkManagerConfig,
+  webviewEclairManagerConfig,
+];
+
+function formatError(error) {
+  if (error?.location) {
+    return `> ${error.location.file}:${error.location.line}:${error.location.column}: error: ${error.text}`;
+  }
+
+  if (error?.text) {
+    return `> error: ${error.text}`;
+  }
+
+  return `> ${String(error)}`;
+}
+
+function reportErrors(errors = []) {
+  errors.forEach(error => console.error(formatError(error)));
+}
+
+function createWatchPlugin(label, watchState) {
+  return {
+    name: `watch-logger:${label}`,
+    setup(buildContext) {
+      buildContext.onStart(() => {
+        console.log(`[watch] ${label} build started`);
+      });
+
+      buildContext.onEnd(result => {
+        if (result.errors.length > 0) {
+          reportErrors(result.errors);
+          return;
+        }
+
+        console.log(`[watch] ${label} build finished`);
+
+        if (watchState && !watchState.initialBuildComplete) {
+          watchState.pendingInitialBuilds.delete(label);
+
+          if (watchState.pendingInitialBuilds.size === 0) {
+            watchState.initialBuildComplete = true;
+            console.log("[watch] initial build complete");
+            console.log("[watch] watching for changes...");
+          }
+        }
+      });
+    },
+  };
+}
+
+function withWatchPlugin(config, watchState) {
+  return {
+    ...config,
+    plugins: [...(config.plugins ?? []), createWatchPlugin(config.outfile, watchState)],
+  };
+}
+
+function createLegacyWatchConfig(label) {
+  return {
+    watch: {
+      onRebuild(error, result) {
+        console.log(`[watch] ${label} build started`);
+
+        if (error) {
+          reportErrors(error.errors ?? [error]);
+          return;
+        }
+
+        if (result?.errors?.length > 0) {
+          reportErrors(result.errors);
+          return;
+        }
+
+        console.log(`[watch] ${label} build finished`);
+      },
+    },
+  };
+}
+
+async function watchAll(configs) {
+  if (typeof context !== "function") {
+    await Promise.all(
+      configs.map(async config => {
+        console.log(`[watch] ${config.outfile} build started`);
+        const result = await build({
+          ...config,
+          ...createLegacyWatchConfig(config.outfile),
+        });
+
+        if (result?.errors?.length > 0) {
+          reportErrors(result.errors);
+          return;
+        }
+
+        console.log(`[watch] ${config.outfile} build finished`);
+      })
+    );
+
+    console.log("[watch] initial build complete");
+    console.log("[watch] watching for changes...");
+    return;
+  }
+
+  const watchState = {
+    initialBuildComplete: false,
+    pendingInitialBuilds: new Set(configs.map(config => config.outfile)),
+  };
+
+  const contexts = await Promise.all(configs.map(config => context(withWatchPlugin(config, watchState))));
+
+  const disposeAll = async () => {
+    await Promise.all(contexts.map(ctx => ctx.dispose()));
+  };
+
+  process.once("SIGINT", () => {
+    disposeAll().finally(() => process.exit(0));
+  });
+
+  process.once("SIGTERM", () => {
+    disposeAll().finally(() => process.exit(0));
+  });
+
+  await Promise.all(contexts.map(ctx => ctx.watch()));
+}
+
+function reportBuildFailure(error) {
+  if (Array.isArray(error?.errors) && error.errors.length > 0) {
+    reportErrors(error.errors);
+    return;
+  }
+
+  if (typeof error?.stderr === "string" && error.stderr.length > 0) {
+    process.stderr.write(error.stderr);
+    return;
+  }
+
+  console.error(error?.message ?? String(error));
+}
+
 (async () => {
   const args = process.argv.slice(2);
   try {
     if (args.includes("--watch")) {
-      // Build and watch extension and webview code
-      console.log("[watch] build started");
-      await build({
-        ...extensionConfig,
-        ...watchConfig,
-      });
-      await build({
-        ...webviewCreateWestWorkspaceConfig,
-        ...webviewImportSDKConfig,
-        ...webviewCreateZephyrAppConfig,
-        ...webviewNewModuleConfig,
-        ...webviewDebugToolsConfig,
-        ...webviewDebugManagerConfig,
-        ...webviewHostToolsConfig,
-        ...webviewSdkManagerConfig,
-        ...webviewEclairManagerConfig,
-        ...watchConfig,
-      });
-      console.log("[watch] build finished");
+      await watchAll(buildConfigs);
     } else {
-      // Build extension and webview code
-      await build(extensionConfig);
-      await build(webviewCreateWestWorkspaceConfig);
-      await build(webviewImportSDKConfig);
-      await build(webviewCreateZephyrAppConfig);
-      await build(webviewNewModuleConfig);
-      await build(webviewDebugToolsConfig);
-      await build(webviewDebugManagerConfig);
-      await build(webviewHostToolsConfig);
-      await build(webviewSdkManagerConfig);
-      await build(webviewEclairManagerConfig);
+      await Promise.all(buildConfigs.map(config => build(config)));
       console.log("build complete");
     }
   } catch (err) {
-    process.stderr.write(err.stderr);
+    reportBuildFailure(err);
     process.exit(1);
   }
 })();
