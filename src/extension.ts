@@ -10,7 +10,7 @@ import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigu
 import { ZephyrProject } from './models/ZephyrProject';
 import { ZephyrProjectBuildConfiguration } from './models/ZephyrProjectBuildConfiguration';
 import { ZephyrSDK, IARToolchain } from './models/ZephyrSDK';
-import { checkAndCreateTasksJson, createExtensionsJson, createTasksJson, setDefaultProjectSettings, updateTasks, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
+import { checkAndCreateTasksJson, createTasksJson, setDefaultProjectSettings, updateTasks, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
@@ -2113,19 +2113,19 @@ export function activate(context: vscode.ExtensionContext) {
 							await debugPresetContent(workspaceFolder.uri.fsPath);
 						}
 
-						await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchain);
-						await createTasksJson(workspaceFolder);
-						await createExtensionsJson(workspaceFolder);
-						await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
-
-						// Create a local Python venv if requested
+						let venvPath: string | undefined;
 						if (venvMode === 'local') {
-							const venvPath = await createLocalVenv(context, workspaceFolder);
-							if (venvPath) {
-								await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-									.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
-							}
+							venvPath = await createLocalVenv(context, workspaceFolder, westWorkspace.rootUri.fsPath);
 						}
+
+						await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchain, {
+							pristine: pristineValue,
+							venvPath
+						});
+						await createTasksJson(workspaceFolder, {
+							westWorkspace,
+							sdkPath: toolchain instanceof ZephyrSDK ? toolchain.rootUri.fsPath : toolchain.zephyrSdkPath
+						});
 						CreateZephyrAppPanel.currentPanel?.dispose();
 
 						vscode.window.showInformationMessage(`Application '${workspaceFolder.name}' added !`);
@@ -2148,17 +2148,18 @@ export function activate(context: vscode.ExtensionContext) {
 
 				let workspaceFolder = getWorkspaceFolder(projectLoc);
 				if (workspaceFolder && westWorkspace && zephyrBoard && zephyrSDK) {
-					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK);
-					await createTasksJson(workspaceFolder);
-					await createExtensionsJson(workspaceFolder);
-					// Optionally create a local venv for the imported project
+					let venvPath: string | undefined;
 					if (venvMode === 'local') {
-						const venvPath = await createLocalVenv(context, workspaceFolder);
-						if (venvPath) {
-							await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-								.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
-						}
+						venvPath = await createLocalVenv(context, workspaceFolder, westWorkspace.rootUri.fsPath);
 					}
+
+					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK, {
+						venvPath
+					});
+					await createTasksJson(workspaceFolder, {
+						westWorkspace,
+						sdkPath: zephyrSDK instanceof ZephyrSDK ? zephyrSDK.rootUri.fsPath : zephyrSDK.zephyrSdkPath
+					});
 					vscode.window.showInformationMessage(`Importing Application '${workspaceFolder.name}' done`);
 					requestAppRefresh();
 				}
