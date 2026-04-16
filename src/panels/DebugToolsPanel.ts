@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import fs from "fs";
 import yaml from 'yaml';
-import path from "path";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getRunner } from "../utils/debugUtils";
@@ -15,7 +14,7 @@ import {
   probeDebugToolVersion,
 } from "../utils/debugToolVersionUtils";
 import { getInternalDirRealPath } from "../utils/utils";
-import { formatYml } from "../utilities/formatYml";
+import { getEnvYamlPath, loadEnvYamlState, readEnvYamlObject as readEnvYamlObjectFile, writeEnvYamlObject as writeEnvYamlObjectFile } from "../utils/envYamlFileUtils";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
 import { Aliases } from "../interface/interfaceDebugTools";
 import { setDebugToolAliasDefault } from "../utils/debugToolEnvUtils";
@@ -30,8 +29,6 @@ export class DebugToolsPanel {
   private _disposables: vscode.Disposable[] = [];
   private data: any;
   private envData: any | undefined;
-  // store parsed YAML Document to preserve comments/structure when updating
-  private envYamlDoc: any | undefined;
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -42,12 +39,9 @@ export class DebugToolsPanel {
 
     // Load env.yml to retrieve installed paths for runners (if present)
     try {
-      const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-      if (fs.existsSync(envYamlPath)) {
-        const envYaml = fs.readFileSync(envYamlPath, 'utf8');
-        this.envData = yaml.parse(envYaml);
-        // Preserve the parsed Document so we can update only specific nodes later
-        this.envYamlDoc = yaml.parseDocument(envYaml);
+      this.reloadEnvYaml();
+      const envYamlPath = getEnvYamlPath();
+      if (fs.existsSync(envYamlPath) && this.envData !== undefined) {
         // Add watcher to auto-reload when env.yml was changed externally (installed from extension or manually edited)
         this._envWatcher = fs.watch(envYamlPath, async () => {
           this.reloadEnvYaml();
@@ -57,7 +51,6 @@ export class DebugToolsPanel {
     } catch (e) {
       // Ignore if not found or invalid; details will show fallback
       this.envData = undefined;
-      this.envYamlDoc = undefined;
     }
   }
 
@@ -800,6 +793,7 @@ export class DebugToolsPanel {
               }
               const updated = setEnvExtraPath('EXTRA_RUNNERS', idx, trimmed);
               this.envData = updated;
+              this.reloadEnvYaml();
               webview.postMessage({ command: 'extra-path-updated', idx, path: trimmed.replace(/\\/g, '/'), success: true });
               // Rebuild UI to update summary row with saved path
               this._panel.webview.html = await this._getWebviewContent(webview, this._extensionUri);
@@ -824,6 +818,7 @@ export class DebugToolsPanel {
               }
               // Persist via shared helper
               this.envData = setEnvExtraPath('EXTRA_RUNNERS', idx, chosen);
+              this.reloadEnvYaml();
               webview.postMessage({ command: 'extra-path-updated', idx, path: chosen.replace(/\\/g, '/'), success: true });
               // Refresh UI so summary row updates
               this._panel.webview.html = await this._getWebviewContent(webview, this._extensionUri);
@@ -840,6 +835,7 @@ export class DebugToolsPanel {
                 break;
               }
               this.envData = removeEnvExtraPath('EXTRA_RUNNERS', idx);
+              this.reloadEnvYaml();
               webview.postMessage({ command: 'extra-path-removed', idx, success: true });
             } catch (e) {
               webview.postMessage({ command: 'extra-path-removed', idx: message.idx, success: false, error: 'Exception removing extra path' });
@@ -884,25 +880,11 @@ export class DebugToolsPanel {
   }
 
   private readEnvYamlObject(): any {
-    try {
-      const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-      if (!fs.existsSync(envYamlPath)) {
-        return {};
-      }
-
-      const parsed = yaml.parse(fs.readFileSync(envYamlPath, 'utf8'));
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
+    return readEnvYamlObjectFile();
   }
 
   private writeEnvYamlObject(jsEnv: any): void {
-    const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-    const doc = yaml.parseDocument(yaml.stringify(jsEnv ?? {}, { flow: false }));
-    formatYml(doc.contents);
-    const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
-    fs.writeFileSync(envYamlPath, yamlText, 'utf8');
+    writeEnvYamlObjectFile(jsEnv);
     this.reloadEnvYaml();
   }
 
@@ -975,19 +957,7 @@ export class DebugToolsPanel {
   }
   
   private reloadEnvYaml(): void {
-    try {
-      const envYamlPath = path.join(getInternalDirRealPath(), 'env.yml');
-      if (!fs.existsSync(envYamlPath)) {
-        this.envData = undefined;
-        this.envYamlDoc = undefined;
-        return;
-      }
-      const envYaml = fs.readFileSync(envYamlPath, 'utf8');
-      this.envData = yaml.parse(envYaml);
-      this.envYamlDoc = yaml.parseDocument(envYaml);
-    } catch {
-      this.envData = undefined;
-      this.envYamlDoc = undefined;
-    }
+    const { data } = loadEnvYamlState();
+    this.envData = data;
   }
 }

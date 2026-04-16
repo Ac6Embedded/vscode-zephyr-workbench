@@ -1,14 +1,13 @@
 import * as vscode from "vscode";
 import fs from "fs";
-import yaml from "yaml";
 import path from "path";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getInternalDirRealPath } from "../utils/utils";
 import { execCommandWithEnv } from "../utils/execUtils";
 import { ZINSTALLER_MINIMUM_VERSION } from "../constants";
-import { formatYml } from "../utilities/formatYml";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
+import { createWritableEnvYamlDocument, loadEnvYamlState, writeEnvYamlDocument } from "../utils/envYamlFileUtils";
 import { checkPathSpace } from "../utils/utils";
 
 export class HostToolsPanel {
@@ -27,18 +26,7 @@ export class HostToolsPanel {
     this._extensionUri = extensionUri;
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
-    // Load env.yml
-    try {
-      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-      if (fs.existsSync(envYamlPath)) {
-        const text = fs.readFileSync(envYamlPath, "utf8");
-        this.envData = yaml.parse(text);
-        this.envYamlDoc = yaml.parseDocument(text);
-      }
-    } catch {
-      this.envData = undefined;
-      this.envYamlDoc = undefined;
-    }
+    this.loadEnvYaml();
   }
 
   public async createContent() {
@@ -71,20 +59,7 @@ export class HostToolsPanel {
   }
 
   public async refresh() {
-    try {
-      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-      if (fs.existsSync(envYamlPath)) {
-        const text = fs.readFileSync(envYamlPath, "utf8");
-        this.envData = yaml.parse(text);
-        this.envYamlDoc = yaml.parseDocument(text);
-      } else {
-        this.envData = undefined;
-        this.envYamlDoc = undefined;
-      }
-    } catch {
-      this.envData = undefined;
-      this.envYamlDoc = undefined;
-    }
+    this.loadEnvYaml();
 
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
 
@@ -559,6 +534,7 @@ export class HostToolsPanel {
                 break;
               }
               this.envData = setEnvExtraPath('EXTRA_TOOLS', idx, trimmed);
+              this.loadEnvYaml();
 
               webview.postMessage({ command: "extra-path-updated", idx, path: trimmed, success: true });
               // Rebuild UI so the summary row (Current Path: ...) reflects the saved value
@@ -582,35 +558,9 @@ export class HostToolsPanel {
                 webview.postMessage({ command: "extra-path-updated", idx, path: "", success: false });
                 break;
               }
-              const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-              let doc: any;
-              if (fs.existsSync(envYamlPath)) {
-                const text = fs.readFileSync(envYamlPath, "utf8");
-                doc = yaml.parseDocument(text);
-              } else if (this.envYamlDoc) {
-                doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-              } else {
-                doc = yaml.parseDocument("{}");
-              }
-
-              const jsEnv: any = yaml.parse(doc.toString()) || {};
-              jsEnv.other = jsEnv.other || {};
-              jsEnv.other.EXTRA_TOOLS = jsEnv.other.EXTRA_TOOLS || {};
-              jsEnv.other.EXTRA_TOOLS.path = Array.isArray(jsEnv.other.EXTRA_TOOLS.path) ? jsEnv.other.EXTRA_TOOLS.path : [];
-              const arr: string[] = jsEnv.other.EXTRA_TOOLS.path;
               const defPath = chosen.replace(/\\/g, "/");
-              if (idx === arr.length) {
-                arr.push(defPath);
-              } else if (idx >= 0 && idx < arr.length) {
-                arr[idx] = defPath;
-              } else {
-                arr.push(defPath);
-              }
-
-              const yamlText = yaml.stringify(jsEnv, { flow: false });
-              fs.writeFileSync(envYamlPath, yamlText, "utf8");
-              this.envYamlDoc = yaml.parseDocument(yamlText);
-              try { this.envData = yaml.parse(yamlText); } catch { this.envData = undefined; }
+              this.envData = setEnvExtraPath('EXTRA_TOOLS', idx, defPath);
+              this.loadEnvYaml();
 
               webview.postMessage({ command: "extra-path-updated", idx, path: defPath, success: true });
               // Refresh table view to update summary row title
@@ -628,6 +578,7 @@ export class HostToolsPanel {
                 break;
               }
               this.envData = removeEnvExtraPath('EXTRA_TOOLS', idx);
+              this.loadEnvYaml();
 
               webview.postMessage({ command: "extra-path-removed", idx, success: true });
             } catch {
@@ -670,26 +621,13 @@ export class HostToolsPanel {
 
   private async saveEnvVar(prevKey: string, key: string, value: any): Promise<boolean> {
     try {
-      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-      let doc: any;
-      if (fs.existsSync(envYamlPath)) {
-        const text = fs.readFileSync(envYamlPath, "utf8");
-        doc = yaml.parseDocument(text);
-      } else if (this.envYamlDoc) {
-        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-      } else {
-        doc = yaml.parseDocument("{}");
-      }
+      const doc = this.getWritableEnvYamlDoc();
 
       if (prevKey && prevKey !== key) {
         doc.deleteIn(["env", prevKey]);
       }
       doc.setIn(["env", key], value);
-      formatYml(doc.contents);
-      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
-      fs.writeFileSync(envYamlPath, yamlText, "utf8");
-      this.envYamlDoc = doc;
-      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
+      this.writeEnvYamlDoc(doc);
       return true;
     } catch {
       return false;
@@ -698,22 +636,9 @@ export class HostToolsPanel {
 
   private async removeEnvVar(key: string): Promise<boolean> {
     try {
-      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-      let doc: any;
-      if (fs.existsSync(envYamlPath)) {
-        const text = fs.readFileSync(envYamlPath, "utf8");
-        doc = yaml.parseDocument(text);
-      } else if (this.envYamlDoc) {
-        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-      } else {
-        doc = yaml.parseDocument("{}");
-      }
+      const doc = this.getWritableEnvYamlDoc();
       doc.deleteIn(["env", key]);
-      formatYml(doc.contents);
-      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
-      fs.writeFileSync(envYamlPath, yamlText, "utf8");
-      this.envYamlDoc = doc;
-      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
+      this.writeEnvYamlDoc(doc);
       return true;
     } catch {
       return false;
@@ -758,16 +683,7 @@ export class HostToolsPanel {
 
   private async saveToolPath(toolId: string, newPath: string): Promise<boolean> {
     try {
-      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-      let doc: any;
-      if (fs.existsSync(envYamlPath)) {
-        const text = fs.readFileSync(envYamlPath, "utf8");
-        doc = yaml.parseDocument(text);
-      } else if (this.envYamlDoc) {
-        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-      } else {
-        doc = yaml.parseDocument("{}");
-      }
+      const doc = this.getWritableEnvYamlDoc();
 
       const normalized = newPath.replace(/\\\\/g, "/");
       // if contains ';', split into sequence
@@ -776,11 +692,7 @@ export class HostToolsPanel {
         : normalized;
 
       doc.setIn(["tools", toolId, "path"], value);
-      formatYml(doc.contents);
-      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
-      fs.writeFileSync(envYamlPath, yamlText, "utf8");
-      this.envYamlDoc = doc;
-      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
+      this.writeEnvYamlDoc(doc);
       return true;
     } catch {
       return false;
@@ -789,22 +701,9 @@ export class HostToolsPanel {
 
   private async removeToolPath(toolId: string): Promise<boolean> {
     try {
-      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-      let doc: any;
-      if (fs.existsSync(envYamlPath)) {
-        const text = fs.readFileSync(envYamlPath, "utf8");
-        doc = yaml.parseDocument(text);
-      } else if (this.envYamlDoc) {
-        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-      } else {
-        doc = yaml.parseDocument("{}");
-      }
+      const doc = this.getWritableEnvYamlDoc();
       doc.deleteIn(["tools", toolId, "path"]);
-      formatYml(doc.contents);
-      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
-      fs.writeFileSync(envYamlPath, yamlText, "utf8");
-      this.envYamlDoc = doc;
-      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
+      this.writeEnvYamlDoc(doc);
       return true;
     } catch {
       return false;
@@ -813,25 +712,28 @@ export class HostToolsPanel {
 
   private async saveDoNotUse(toolId: string, doNotUse: boolean): Promise<boolean> {
     try {
-      const envYamlPath = path.join(getInternalDirRealPath(), "env.yml");
-      let doc: any;
-      if (fs.existsSync(envYamlPath)) {
-        const text = fs.readFileSync(envYamlPath, "utf8");
-        doc = yaml.parseDocument(text);
-      } else if (this.envYamlDoc) {
-        doc = this.envYamlDoc.clone ? this.envYamlDoc.clone() : yaml.parseDocument(String(this.envYamlDoc));
-      } else {
-        doc = yaml.parseDocument("{}");
-      }
+      const doc = this.getWritableEnvYamlDoc();
       doc.setIn(["tools", toolId, "do_not_use"], doNotUse);
-      formatYml(doc.contents);
-      const yamlText = yaml.stringify(yaml.parse(doc.toString()), { flow: false });
-      fs.writeFileSync(envYamlPath, yamlText, "utf8");
-      this.envYamlDoc = doc;
-      try { this.envData = yaml.parse(String(doc)); } catch { this.envData = undefined; }
+      this.writeEnvYamlDoc(doc);
       return true;
     } catch {
       return false;
     }
+  }
+
+  private loadEnvYaml(): void {
+    const { data, doc } = loadEnvYamlState();
+    this.envData = data;
+    this.envYamlDoc = doc;
+  }
+
+  private getWritableEnvYamlDoc(): any {
+    return createWritableEnvYamlDocument(this.envYamlDoc);
+  }
+
+  private writeEnvYamlDoc(doc: any): void {
+    const state = writeEnvYamlDocument(doc);
+    this.envData = state.data;
+    this.envYamlDoc = state.doc;
   }
 }
