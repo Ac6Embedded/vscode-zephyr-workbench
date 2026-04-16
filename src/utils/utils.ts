@@ -7,7 +7,7 @@ import { WestWorkspace } from "../models/WestWorkspace";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
 import { ZephyrBoard } from "../models/ZephyrBoard";
 import { ZephyrSDK, IARToolchain } from "../models/ZephyrSDK";
-import { ZephyrSample } from "../models/ZephyrSample";
+import { ZephyrAppTemplateKind, ZephyrSample } from "../models/ZephyrSample";
 import { getEnvVarFormat, getOutputChannel, getShell } from "./execUtils";
 import { checkHostTools, checkEnvFile } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY, ZINSTALLER_MINIMUM_VERSION } from '../constants';
@@ -18,6 +18,11 @@ import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildCon
 import { readInstalledZinstallerVersion, versionAtLeast } from './env/zinstallerVersionUtils';
 
 let zephyrTasksFetchPromise: Promise<vscode.Task[]> | undefined;
+const APP_TEMPLATE_METADATA_FILES: Record<string, ZephyrAppTemplateKind> = {
+  'sample.yaml': 'sample',
+  'testcase.yaml': 'test',
+  'testcases.yml': 'test',
+};
 
 export function msleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -298,19 +303,21 @@ export function getBoard(boardYamlPath: string): ZephyrBoard {
 }
 
 export function copySampleSync(sampleDir: string, destDir: string): string {
-  copyFolderSync(sampleDir, destDir, ['.vscode', 'build', 'sample.yaml']);
+  copyFolderSync(sampleDir, destDir, ['.vscode', 'build', ...Object.keys(APP_TEMPLATE_METADATA_FILES)]);
   return destDir;
 }
 
 export async function getSample(filePath: string): Promise<ZephyrSample> {
   const sampleFolderUri = vscode.Uri.file(filePath);
   const name = path.basename(filePath);
-  const sampleYamlPath = vscode.Uri.joinPath(sampleFolderUri, "sample.yaml");
   try {
-    await vscode.workspace.fs.stat(sampleYamlPath);
-    return new ZephyrSample(name, sampleFolderUri);
+    const kind = await findAppTemplateKind(sampleFolderUri);
+    if (!kind) {
+      throw new Error('Missing app template metadata');
+    }
+    return new ZephyrSample(name, sampleFolderUri, kind);
   } catch (error) {
-    throw new Error('Cannot parse the sample folder');
+    throw new Error('Cannot parse the sample or test folder');
   }
 
 }
@@ -318,19 +325,37 @@ export async function getSample(filePath: string): Promise<ZephyrSample> {
 export async function getListSamples(westWorkspace: WestWorkspace): Promise<ZephyrSample[]> {
   let samplesList: ZephyrSample[] = [];
   if (westWorkspace) {
-    const samplesUri = westWorkspace.samplesDirUri;
-    // Recursively parse from Zephyr sample directory
-    await parseSamples(samplesUri, samplesList);
+    await parseAppTemplates(westWorkspace.samplesDirUri, samplesList);
+    await parseAppTemplates(westWorkspace.testsDirUri, samplesList);
 
     // Parse only from Workspace directory
-    await parseWorkspaceSamples(westWorkspace.rootUri, samplesList);
+    await parseWorkspaceAppTemplates(westWorkspace.rootUri, samplesList);
   }
   return new Promise((resolve) => {
     resolve(samplesList);
   });
 }
 
-export async function parseSamples(directory: vscode.Uri, projectList: ZephyrSample[], relativePath = ''): Promise<void> {
+async function findAppTemplateKind(directory: vscode.Uri): Promise<ZephyrAppTemplateKind | undefined> {
+  for (const [metadataFile, kind] of Object.entries(APP_TEMPLATE_METADATA_FILES)) {
+    const metadataPath = vscode.Uri.joinPath(directory, metadataFile);
+    try {
+      await vscode.workspace.fs.stat(metadataPath);
+      return kind;
+    } catch (error) {
+    }
+  }
+  return undefined;
+}
+
+function pushUniqueAppTemplate(projectList: ZephyrSample[], name: string, directory: vscode.Uri, kind: ZephyrAppTemplateKind) {
+  if (projectList.some(project => project.rootDir.fsPath === directory.fsPath)) {
+    return;
+  }
+  projectList.push(new ZephyrSample(name, directory, kind));
+}
+
+export async function parseAppTemplates(directory: vscode.Uri, projectList: ZephyrSample[], relativePath = ''): Promise<void> {
   try {
     const files = await vscode.workspace.fs.readDirectory(directory);
 
@@ -339,12 +364,11 @@ export async function parseSamples(directory: vscode.Uri, projectList: ZephyrSam
       const fullPath = path.join(relativePath, name); // Keep track of the full path
 
       if (type === vscode.FileType.Directory) {
-        const sampleYamlPath = vscode.Uri.joinPath(filePath, "sample.yaml");
-        try {
-          await vscode.workspace.fs.stat(sampleYamlPath);
-          projectList.push(new ZephyrSample(name, filePath));
-        } catch (error) {
-          await parseSamples(filePath, projectList, fullPath);
+        const kind = await findAppTemplateKind(filePath);
+        if (kind) {
+          pushUniqueAppTemplate(projectList, name, filePath, kind);
+        } else {
+          await parseAppTemplates(filePath, projectList, fullPath);
         }
       }
     }
@@ -352,7 +376,7 @@ export async function parseSamples(directory: vscode.Uri, projectList: ZephyrSam
   }
 }
 
-export async function parseWorkspaceSamples(directory: vscode.Uri, projectList: ZephyrSample[], relativePath = ''): Promise<void> {
+export async function parseWorkspaceAppTemplates(directory: vscode.Uri, projectList: ZephyrSample[], relativePath = ''): Promise<void> {
   try {
     const files = await vscode.workspace.fs.readDirectory(directory);
 
@@ -360,12 +384,9 @@ export async function parseWorkspaceSamples(directory: vscode.Uri, projectList: 
       const filePath = vscode.Uri.joinPath(directory, name);
 
       if (type === vscode.FileType.Directory) {
-        const sampleYamlPath = vscode.Uri.joinPath(filePath, "sample.yaml");
-        try {
-          await vscode.workspace.fs.stat(sampleYamlPath);
-          projectList.push(new ZephyrSample(name, filePath));
-        } catch (error) {
-
+        const kind = await findAppTemplateKind(filePath);
+        if (kind) {
+          pushUniqueAppTemplate(projectList, name, filePath, kind);
         }
       }
     }

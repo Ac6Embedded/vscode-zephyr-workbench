@@ -187,11 +187,11 @@ export class CreateZephyrAppPanel {
 
                 <div class="grid-group-div create-only">
                   <div class="grid-header-div">
-                    <label for="listBoards">Select Sample project:</label>
+                    <label for="listBoards">Select template:</label>
                   </div>
                   <div id="listSamples" class="combo-dropdown grid-value-div">
                     <div class="combo-dropdown-input">
-                      <input type="text" id="sampleInput" class="combo-dropdown-control" placeholder="Choose a sample as base..." data-value="">
+                      <input type="text" id="sampleInput" class="combo-dropdown-control" placeholder="Choose a sample or test as base..." data-value="">
                       <div aria-hidden="true" class="indicator" part="indicator">
                         <slot name="indicator">  
                           <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
@@ -201,7 +201,7 @@ export class CreateZephyrAppPanel {
                       </div>
                     </div>
                     <div class="combo-dropdown-controls">
-                      <div id="samplesDropdownSpinner" class="spinner" aria-label="Loading samples"></div>
+                      <div id="samplesDropdownSpinner" class="spinner" aria-label="Loading sample and test projects"></div>
                     </div>
                     <div id="samplesDropdown" class="dropdown-content"></div>
                   </div>
@@ -411,7 +411,7 @@ async function updateForm(
       const issue = normalizeDiscoveryIssue('sample', samplesResult.reason);
       issues.push(issue);
       postDiscoveryState(webview, requestId, 'sample', 'error', { message: issue.userMessage });
-      logCreateAppPanelError('Failed to load sample projects', issue.logMessage);
+      logCreateAppPanelError('Failed to load sample or test projects', issue.logMessage);
     }
 
     if (issues.length > 0) {
@@ -590,9 +590,9 @@ async function buildSamplesDiscoveryState(westWorkspace: WestWorkspace): Promise
     'The workspace samples folder could not be found. This workspace may not have been imported correctly. Try running west update or reimporting the workspace.'
   );
 
-  const samples = await getListSamples(westWorkspace);
+  const appTemplates = await getListSamples(westWorkspace);
   const helloWorldPath = path.join('samples', 'hello_world');
-  samples.sort((a, b) => {
+  const sortTemplates = (a: typeof appTemplates[number], b: typeof appTemplates[number]) => {
     if (a.rootDir.fsPath.endsWith(helloWorldPath)) {
       return -99;
     }
@@ -606,16 +606,32 @@ async function buildSamplesDiscoveryState(westWorkspace: WestWorkspace): Promise
       return 1;
     }
     return 0;
-  });
+  };
+  const samples = appTemplates
+    .filter(template => template.kind === 'sample')
+    .sort(sortTemplates);
+  const tests = appTemplates
+    .filter(template => template.kind === 'test')
+    .sort(sortTemplates);
 
   let html = '';
-  for (const sample of samples) {
-    html += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${sample.rootDir.fsPath}</span></div>`;
+  if (samples.length > 0) {
+    html += '<div class="dropdown-header">SAMPLES</div>';
+    for (const sample of samples) {
+      html += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${sample.rootDir.fsPath}</span></div>`;
+    }
+  }
+
+  if (tests.length > 0) {
+    html += '<div class="dropdown-header">TESTS</div>';
+    for (const sample of tests) {
+      html += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${sample.rootDir.fsPath}</span></div>`;
+    }
   }
 
   return {
     html,
-    message: html.length === 0 ? 'No sample projects were found for this workspace.' : undefined,
+    message: html.length === 0 ? 'No sample or test projects were found for this workspace.' : undefined,
   };
 }
 
@@ -653,7 +669,7 @@ function normalizeDiscoveryIssue(target: CreateAppDiscoveryTarget, error: unknow
       target,
       userMessage: target === 'board'
         ? 'Boards are unavailable until a valid west workspace is selected.'
-        : 'Sample projects are unavailable until a valid west workspace is selected.',
+        : 'Sample and test projects are unavailable until a valid west workspace is selected.',
       logMessage: details,
     };
   }
@@ -664,7 +680,7 @@ function normalizeDiscoveryIssue(target: CreateAppDiscoveryTarget, error: unknow
       target,
       userMessage: target === 'board'
         ? 'Boards could not be loaded because the Zephyr environment setting needs attention.'
-        : 'Sample projects could not be loaded because the Zephyr environment setting needs attention.',
+        : 'Sample and test projects could not be loaded because the Zephyr environment setting needs attention.',
       logMessage: details,
       settingsKey: buildWorkbenchSettingKey(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY),
     };
@@ -676,7 +692,7 @@ function normalizeDiscoveryIssue(target: CreateAppDiscoveryTarget, error: unknow
       target,
       userMessage: target === 'board'
         ? 'Boards could not be loaded because the Python environment setting needs attention.'
-        : 'Sample projects could not be loaded because the Python environment setting needs attention.',
+        : 'Sample and test projects could not be loaded because the Python environment setting needs attention.',
       logMessage: details,
       settingsKey: buildWorkbenchSettingKey(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY),
     };
@@ -691,7 +707,7 @@ function normalizeDiscoveryIssue(target: CreateAppDiscoveryTarget, error: unknow
       target,
       userMessage: target === 'board'
         ? 'Boards could not be loaded because this workspace looks incomplete. Try running west update or reimporting the workspace.'
-        : 'Sample projects could not be loaded because this workspace looks incomplete. Try running west update or reimporting the workspace.',
+        : 'Sample and test projects could not be loaded because this workspace looks incomplete. Try running west update or reimporting the workspace.',
       logMessage: details,
     };
   }
@@ -701,7 +717,7 @@ function normalizeDiscoveryIssue(target: CreateAppDiscoveryTarget, error: unknow
     target,
     userMessage: target === 'board'
       ? 'Boards could not be loaded for this workspace.'
-      : 'Sample projects could not be loaded for this workspace.',
+      : 'Sample and test projects could not be loaded for this workspace.',
     logMessage: details,
   };
 }
@@ -721,9 +737,9 @@ function normalizeCreateActionIssue(error: unknown) {
     };
   }
 
-  if (normalized.includes('cannot parse the sample folder')) {
+  if (normalized.includes('cannot parse the sample or test folder')) {
     return {
-      userMessage: 'The selected sample project is no longer available. Please choose another sample.',
+      userMessage: 'The selected sample or test project is no longer available. Please choose another one.',
       logMessage: details,
     };
   }
@@ -745,7 +761,7 @@ function normalizeCreateActionIssue(error: unknown) {
   }
 
   return {
-    userMessage: 'The application could not be prepared. Please review the selected workspace, toolchain, board, and sample.',
+    userMessage: 'The application could not be prepared. Please review the selected workspace, toolchain, board, and base app.',
     logMessage: details,
   };
 }
@@ -766,7 +782,7 @@ async function showDiscoveryIssues(
 
 function buildDiscoveryIssuesMessage(issues: CreateAppDiscoveryIssue[]): string {
   if (issues.length === 0) {
-    return 'Boards and sample projects could not be loaded for this workspace.';
+    return 'Boards and sample or test projects could not be loaded for this workspace.';
   }
 
   if (issues.length === 1) {
@@ -782,15 +798,15 @@ function buildDiscoveryIssuesMessage(issues: CreateAppDiscoveryIssue[]): string 
       case 'missing-workspace-content':
         return 'This workspace looks incomplete. The boards or samples folder is missing. Try running west update or reimporting the workspace.';
       case 'env-script':
-        return 'Boards and sample projects could not be loaded because the Zephyr environment setting needs attention.';
+        return 'Boards and sample or test projects could not be loaded because the Zephyr environment setting needs attention.';
       case 'invalid-venv':
-        return 'Boards and sample projects could not be loaded because the Python environment setting needs attention.';
+        return 'Boards and sample or test projects could not be loaded because the Python environment setting needs attention.';
       default:
         break;
     }
   }
 
-  return 'Boards and sample projects could not be loaded for this workspace.';
+  return 'Boards and sample or test projects could not be loaded for this workspace.';
 }
 
 function getCommonSettingsKey(issues: CreateAppDiscoveryIssue[]): string | undefined {
@@ -930,7 +946,7 @@ function checkCreateParameters(message: any) {
   }
 
   if (isMissingValue(message.samplePath)) {
-    vscode.window.showErrorMessage('Missing selected sample, it serves as base for your project');
+    vscode.window.showErrorMessage('Missing selected sample or test app, it serves as base for your project');
     return false;
   }
 

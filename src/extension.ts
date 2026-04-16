@@ -2079,7 +2079,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			if (!zephyrSample) {
-				vscode.window.showErrorMessage('Missing selected sample, it serves as base for your project');
+				vscode.window.showErrorMessage('Missing selected sample or test app, it serves as base for your project');
 				return;
 			}
 

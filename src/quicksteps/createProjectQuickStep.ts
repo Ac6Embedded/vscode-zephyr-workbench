@@ -129,7 +129,26 @@ export async function createProjectQuickStep(context: ExtensionContext) {
     const sampleItems: QuickPickItem[] = [];
 
     const samples = await getListSamples(state.westWorkspace as WestWorkspace);
-    for(let sample of samples) {
+    const groupedSamples = samples.filter(sample => sample.kind === 'sample');
+    const groupedTests = samples.filter(sample => sample.kind === 'test');
+
+    if (groupedSamples.length > 0) {
+      sampleItems.push({
+        kind: vscode.QuickPickItemKind.Separator,
+        label: 'Samples',
+      });
+    }
+    for(let sample of groupedSamples) {
+      sampleItems.push({ label: sample.name, description: sample.rootDir.fsPath });
+    }
+
+    if (groupedTests.length > 0) {
+      sampleItems.push({
+        kind: vscode.QuickPickItemKind.Separator,
+        label: 'Tests',
+      });
+    }
+    for(let sample of groupedTests) {
       sampleItems.push({ label: sample.name, description: sample.rootDir.fsPath });
     }
 
@@ -138,7 +157,7 @@ export async function createProjectQuickStep(context: ExtensionContext) {
 			title,
 			step: 4,
 			totalSteps: 6,
-			placeholder: 'Select sample',
+			placeholder: 'Select sample or test',
 			items: sampleItems,
 			shouldResume: shouldResume
 		});
@@ -228,5 +247,3 @@ export async function createProjectQuickStep(context: ExtensionContext) {
   const state = await collectInputs();
   vscode.commands.executeCommand("zephyr-workbench-app-explorer.create-app", state.westWorkspace, state.sample, state.board, state.projectLoc, state.projectName, state.sdk);
 }
-
-
