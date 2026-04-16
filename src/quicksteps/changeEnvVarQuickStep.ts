@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { WestWorkspace } from "../models/WestWorkspace";
 import { ZephyrProject } from "../models/ZephyrProject";
-import { saveConfigSetting } from '../utils/zephyrEnvUtils';
+import { saveConfigSetting } from '../utils/env/zephyrEnvUtils';
 import { getWestWorkspace } from "../utils/utils";
 import { getSupportedShields, getSupportedSnippets } from '../commands/WestCommands';
 

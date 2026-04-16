@@ -15,7 +15,7 @@ import { ZephyrProject } from '../models/ZephyrProject';
 import { getBoardsDirectories, westTmpBuildCmakeOnlyCommand } from '../commands/WestCommands';
 import { checkOrCreateTask, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
-import { readInstalledZinstallerVersion, versionAtLeast } from './zinstallerVersionUtils';
+import { readInstalledZinstallerVersion, versionAtLeast } from './env/zinstallerVersionUtils';
 
 let zephyrTasksFetchPromise: Promise<vscode.Task[]> | undefined;
 

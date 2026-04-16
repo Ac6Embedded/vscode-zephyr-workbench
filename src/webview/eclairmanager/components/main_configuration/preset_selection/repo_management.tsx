@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { EclairRepos } from "../../../../../utils/eclair/config";
 import { AvailablePresetsState, EclairStateAction, RepoScanState } from "../../../state";
-import { WebviewMessage } from "../../../../../utils/eclairEvent";
+import { WebviewMessage } from "../../../../../utils/eclair/eclairEvent";
 import { Monospace, RichHelpTooltip, StatusBadge, StatusBadgeState, VscodeBadge, VscodeButton, VscodePanel, VscodeTextField } from "../../common_components";
 import { match } from "ts-pattern";
 

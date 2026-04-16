@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-import { getInternalDirRealPath } from "./utils";
+import { getInternalDirRealPath } from "../utils";
 
 // Shared helpers for the installed zinstaller_version metadata file.
 // This module owns locating the file, extracting the script version from its

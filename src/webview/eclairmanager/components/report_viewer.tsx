@@ -1,6 +1,6 @@
 import React from "react";
 import { RichHelpTooltip, VscodeButton } from "./common_components";
-import { WebviewMessage } from "../../../utils/eclairEvent";
+import { WebviewMessage } from "../../../utils/eclair/eclairEvent";
 
 export function ReportViewerSection(props: {
   workspace: string;

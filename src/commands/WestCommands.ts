@@ -10,8 +10,8 @@ import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildCon
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, execShellCommandWithEnv, execCommandWithEnvCB, getShell, getShellNullRedirect, getShellIgnoreErrorCommand, getShellSourceCommand, execShellCommandWithEnvInteractive, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
 import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from '../utils/utils'; 
-import { composeWestBuildArgs } from '../utils/westArgUtils';
-import { mergeOpenocdBuildFlag } from '../utils/debugToolSelectionUtils';
+import { composeWestBuildArgs } from '../utils/zephyr/westArgUtils';
+import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
 
 function quote(p: string): string {
   return /\s/.test(p) ? `"${p}"` : p;

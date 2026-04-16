@@ -2,13 +2,13 @@ import * as vscode from 'vscode';
 import fs from "fs";
 import path from 'path';
 import { ZephyrProject } from "./ZephyrProject";
-import { getBuildEnv, loadConfigEnv } from "../utils/zephyrEnvUtils";
+import { getBuildEnv, loadConfigEnv } from "../utils/env/zephyrEnvUtils";
 import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalShell, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
 import { fileExists, getBoardFromIdentifier, getConfigValue, getWestWorkspace, getZephyrSDK } from '../utils/utils';
 import { ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
-import { composeWestBuildArgs, normalizeWestFlagDValue } from '../utils/westArgUtils';
-import { mergeOpenocdBuildFlag } from '../utils/debugToolSelectionUtils';
-import { getPyOcdTargetFromRunnersYaml, readRunnersYamlForProject } from '../utils/runnersYamlUtils';
+import { composeWestBuildArgs, normalizeWestFlagDValue } from '../utils/zephyr/westArgUtils';
+import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
+import { getPyOcdTargetFromRunnersYaml, readRunnersYamlForProject } from '../utils/zephyr/runnersYamlUtils';
 
 export class ZephyrProjectBuildConfiguration {
   name: string;

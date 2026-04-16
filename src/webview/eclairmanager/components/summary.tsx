@@ -1,7 +1,7 @@
 import React from "react";
 import { StatusState, EclairStateAction } from "../state";
 import { VscodeButton, PickPath, Spinner, RichHelpTooltip } from "./common_components";
-import { WebviewMessage } from "../../../utils/eclairEvent";
+import { WebviewMessage } from "../../../utils/eclair/eclairEvent";
 import { useRpc } from "../rpc";
 import { BUGSENG_ECLAIR_OVERVIEW_URL, ECLAIR_MANAGE_LICENSE_URL, ECLAIR_REQUEST_TRIAL_URL, ZEPHYR_ECLAIR_PREREQUISITES_URL } from "../docs";
 

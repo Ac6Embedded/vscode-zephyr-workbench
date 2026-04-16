@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'yaml';
 
-import { ZEPHYR_DIRNAME } from '../constants';
+import { ZEPHYR_DIRNAME } from '../../constants';
 
 type ArtifactProject = {
   folderPath: string;

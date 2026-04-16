@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getShellExe, getResolvedShell } from './execUtils';
+import { getShellExe, getResolvedShell } from '../execUtils';
 
 /* detect Windows profile env (keeps file self-contained) */
 function getProfileEnv(): Record<string, string> | undefined {

@@ -6,10 +6,10 @@ import { getNonce } from "../utilities/getNonce";
 import { getInternalDirRealPath } from "../utils/utils";
 import { execCommandWithEnv } from "../utils/execUtils";
 import { ZINSTALLER_MINIMUM_VERSION } from "../constants";
-import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
-import { createWritableEnvYamlDocument, loadEnvYamlState, writeEnvYamlDocument } from "../utils/envYamlFileUtils";
+import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/env/envYamlUtils";
+import { createWritableEnvYamlDocument, loadEnvYamlState, writeEnvYamlDocument } from "../utils/env/envYamlFileUtils";
 import { checkPathSpace } from "../utils/utils";
-import { readInstalledZinstallerVersion, versionAtLeast } from "../utils/zinstallerVersionUtils";
+import { readInstalledZinstallerVersion, versionAtLeast } from "../utils/env/zinstallerVersionUtils";
 
 export class HostToolsPanel {
   public static currentPanel: HostToolsPanel | undefined;

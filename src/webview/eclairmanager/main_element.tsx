@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useReducer, useMemo } from "react";
 import { createRoot } from "react-dom/client";
-import type { ExtensionMessage, WebviewMessage } from "../../utils/eclairEvent";
+import type { ExtensionMessage, WebviewMessage } from "../../utils/eclair/eclairEvent";
 import { MainAnalysisConfigurationState, EclairStateAction, PresetsSelectionState, default_eclair_state, eclairReducer, EclairConfig, EclairWorkspaceBuildState, EclairState } from "./state";
 import { Summary } from "./components/summary";
 import { ReportsSection } from "./components/reports_section";
@@ -14,7 +14,7 @@ import { Result } from "../../utils/typing_utils";
 import { EditableTextField, RichHelpTooltip, SearchableDropdown, Spinner, VscodeButton } from "./components/common_components";
 import { EasyMark } from "./components/easymark_render";
 import { RpcClient, RpcProvider } from "./rpc";
-import type { EclairRpcMethods } from "../../utils/eclairRpcTypes";
+import type { EclairRpcMethods } from "../../utils/eclair/eclairRpcTypes";
 import {
   BUGSENG_ECLAIR_OVERVIEW_URL,
   ECLAIR_MANAGER_DOC_URL,

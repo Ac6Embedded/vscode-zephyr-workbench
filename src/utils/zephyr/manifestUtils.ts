@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import fs from "fs";
 import yaml from 'yaml';
-import { fileExists } from "./utils";
+import { fileExists } from "../utils";
 import path from "path";
 
 export const listHals: any[] = [

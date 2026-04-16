@@ -1,6 +1,6 @@
 import { getDetectPlatform, getToolCommandDir } from './debugToolPathUtils';
-import { readEnvYamlObject, writeEnvYamlObject } from './envYamlFileUtils';
-import { getInternalDirRealPath } from './utils';
+import { readEnvYamlObject, writeEnvYamlObject } from '../env/envYamlFileUtils';
+import { getInternalDirRealPath } from '../utils';
 
 // Debug-runner-specific env.yml updates.
 // This module builds on the shared env.yml file helpers and owns the logic for

@@ -1,6 +1,6 @@
 import React from "react";
 import { VscodeButton, VscodeAlert, RichHelpTooltip } from "./common_components";
-import { WebviewMessage } from "../../../utils/eclairEvent";
+import { WebviewMessage } from "../../../utils/eclair/eclairEvent";
 import { FullEclairScaConfig } from "../../../utils/eclair/config";
 import { Result } from "../../../utils/typing_utils";
 import { EclairStateAction } from "../state";

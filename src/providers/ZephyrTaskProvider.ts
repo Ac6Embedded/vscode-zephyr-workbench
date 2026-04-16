@@ -11,10 +11,10 @@ import { ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
 import { ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, getEnvVarFormat, getShell, getShellArgs } from '../utils/execUtils';
 import { getWestWorkspace, getZephyrSDK, findIarEntry, msleep } from '../utils/utils';
-import { addConfig, deleteConfig } from '../utils/zephyrEnvUtils';
+import { addConfig, deleteConfig } from '../utils/env/zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
-import { getStaticFlashRunnerNames } from '../utils/debugUtils';
-import { mergeOpenocdBuildFlag } from '../utils/debugToolSelectionUtils';
+import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
+import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
 
 export interface TaskConfig {
   version: string;
