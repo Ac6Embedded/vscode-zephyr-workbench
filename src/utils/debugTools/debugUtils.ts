@@ -623,13 +623,10 @@ export async function createLaunchConfiguration(
   let buildConfig: ZephyrProjectBuildConfiguration | undefined = undefined;
   let targetBoard: ZephyrBoard | undefined;
   let generatedGdbPath: string | undefined;
-  let boardIdentifier;
 
   if(buildConfigName) {
     buildConfig = project.getBuildConfiguration(buildConfigName);
-    if(buildConfig) {
-      boardIdentifier = buildConfig.boardIdentifier;
-    } else {
+    if(!buildConfig) {
       resolve('Cannot find build configuration');
     }
   }
@@ -792,7 +789,6 @@ export function pyocdLaunchJson(
     miDebuggerPath,
     debugServerPath,
     debugServerArgs,
-    setupCommands,
     logging,
     ...beforeServerAddress
   } = config;

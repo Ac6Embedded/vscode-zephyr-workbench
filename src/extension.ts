@@ -1124,13 +1124,6 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.ram-plot', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder) => {
-			let folder: any = node;
-			if (node instanceof ZephyrApplicationTreeItem) {
-				if (node.project) {
-					folder = node.project.workspaceFolder;
-				}
-			}
-			
 			let taskExec = await executeConfigTask('West RAM Plot', node);
 			const taskStartListener = vscode.tasks.onDidStartTask(async (event) => {
 				if (taskExec && event.execution === taskExec[0]) {
@@ -1146,13 +1139,6 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.rom-plot', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder) => {
-			let folder: any = node;
-			if (node instanceof ZephyrApplicationTreeItem) {
-				if (node.project) {
-					folder = node.project.workspaceFolder;
-				}
-			}
-
 			let taskExec = await executeConfigTask('West ROM Plot', node);
 			const taskStartListener = vscode.tasks.onDidStartTask(async (event) => {
 				if (taskExec && event.execution === taskExec[0]) {
@@ -1168,13 +1154,6 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.memory-analysis.puncover', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder) => {
-			let folder: any = node;
-			if (node instanceof ZephyrApplicationTreeItem) {
-				if (node.project) {
-					folder = node.project.workspaceFolder;
-				}
-			}
-
 			let taskExec = await executeConfigTask('West Puncover', node);
 			const taskStartListener = vscode.tasks.onDidStartTask(async (event) => {
 				if (taskExec && event.execution === taskExec[0]) {

@@ -359,7 +359,6 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     const westWorkspace = getWestWorkspace(project.westWorkspacePath);
     const shell: string = getShell();
     const shellArgs: string[] = getShellArgs(shell);
-    const buildDirVar = getEnvVarFormat(shell, 'BUILD_DIR');
     const westArgVar = getEnvVarFormat(shell, 'WEST_ARGS');
 
     let config = undefined;

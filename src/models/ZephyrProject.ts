@@ -248,7 +248,7 @@ export class ZephyrProject {
     }
 
     let terminal = ZephyrProject.openTerminal(zephyrProject);
-    const { path: shellPath, args: shellArgs } = getResolvedShell();
+    const { path: shellPath } = getResolvedShell();
     const shellType = classifyShell(shellPath);
     envScript = normalizePathForShell(shellType, envScript);
     let srcEnvCmd = `. ${envScript}`;

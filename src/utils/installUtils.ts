@@ -748,7 +748,6 @@ export async function installHostDebugToolsSilent(context: vscode.ExtensionConte
   let installCmd = '';
   let installArgs = '';
   let destDir = '';
-  let shell = '';
 
   destDir = getInstallDirRealPath();
   installArgs += ` -D ${destDir}`;
@@ -757,7 +756,6 @@ export async function installHostDebugToolsSilent(context: vscode.ExtensionConte
     case 'linux': {
       installScript = 'install-debug-tools.sh';
       installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
-      shell = 'bash';
       break;
     }
     case 'win32': {
@@ -765,14 +763,12 @@ export async function installHostDebugToolsSilent(context: vscode.ExtensionConte
       if (!ok) { return; }
       installScript = 'install-debug-tools.ps1';
       installCmd = `powershell -File ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
-      shell = 'powershell.exe';
       installArgs += ' -Tools ';
       break;
     }
     case 'darwin': {
       installScript = 'install-debug-tools-mac.sh';
       installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
-      shell = 'bash';
       break;
     }
     default: {

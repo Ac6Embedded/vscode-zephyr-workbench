@@ -559,12 +559,12 @@ export class DebugManagerPanel {
     async function updateConfiguration(project: ZephyrProject, buildConfig?: ZephyrProjectBuildConfiguration) {
       try {
         // Extract information from configuration
-        let launchJson, config;
+        let config;
         let compatibleRunners: string[] = [];
         let defaultDebugRunner: string | undefined;
         let generatedOpenocdPath: string | undefined;
         if(buildConfig) {
-          [launchJson, config, compatibleRunners, defaultDebugRunner, generatedOpenocdPath] = await getDebugManagerLaunchConfiguration(project, buildConfig);
+          [/* launchJson */, config, compatibleRunners, defaultDebugRunner, generatedOpenocdPath] = await getDebugManagerLaunchConfiguration(project, buildConfig);
         }
         currentOpenocdInfoText = buildOpenocdInfoText(project, generatedOpenocdPath);
 

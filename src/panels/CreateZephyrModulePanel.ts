@@ -154,13 +154,7 @@ export class CreateZephyrModulePanel {
           case 'openFolderDialog':
             this.openFolderDialog();
             break;
-          case 'import':
-            let srcType = message.srcType;
-            let remotePath = message.remotePath;
-            let remoteBranch = message.remoteBranch;
-            let localPath = message.localPath;
-            
-            break;
+
         }
       },
       undefined,

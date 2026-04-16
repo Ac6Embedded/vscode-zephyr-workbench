@@ -1194,63 +1194,6 @@ async function load_applications(): Promise<ZephyrAppProject[]> {
 }
 
 /**
- * Resolves the most appropriate application (workspace folder) to use for the ECLAIR analysis based on the following priority:
- * @param applications The list of available applications
- * @param current_workspace_folder The current workspace folder associated with the panel (if any) (e.g. the one that was active when the panel was created)
- * @returns 
- */
-function resolve_application(
-  applications: ZephyrAppProject[],
-  current_workspace_folder: vscode.WorkspaceFolder | undefined,
-): number | undefined {
-  const hasTopLevelCMakeLists = (uri: vscode.Uri | undefined) => {
-    if (!uri) {
-      return false;
-    }
-    try {
-      return fs.existsSync(path.join(uri.fsPath, "CMakeLists.txt"));
-    } catch {
-      return false;
-    }
-  };
-
-  const find_app_by_uri = (uri: vscode.Uri | undefined) => {
-    if (!uri) {
-      return undefined;
-    }
-    for (const [i, app] of applications.entries()) {
-      if (app.workspaceFolder.uri.toString() === uri.toString()) {
-        return i;
-      }
-    }
-    return undefined;
-  };
-
-  // 1) Prefer the folder that created the panel, if it looks like an app
-  if (current_workspace_folder) {
-    const idx = find_app_by_uri(current_workspace_folder.uri);
-    if (idx !== undefined) {
-      return idx;
-    }
-  }
-
-  // 2) Prefer active editor's workspace folder, if it looks like an app
-  const active_editor = vscode.window.activeTextEditor;
-  if (active_editor) {
-    const wf = vscode.workspace.getWorkspaceFolder(active_editor.document.uri);
-    if (wf && hasTopLevelCMakeLists(wf.uri)) {
-      const idx = find_app_by_uri(wf.uri);
-      if (idx !== undefined) {
-        return idx;
-      }
-    }
-  }
-
-  // 4) Fall back first folder
-  return applications.length > 0 ? 0 : undefined;
-}
-
-/**
  * Recursively walks `obj` and replaces every string that starts with the
  * workspace folder path with `${workspaceFolder}/...`.
  * TODO: this is a blunt recursive string replacement, a more precise
@@ -1312,17 +1255,6 @@ function deep_resolve_paths(obj: any, folderUri: vscode.Uri): any {
     return val;
   };
   return walk(obj);
-}
-
-/**
- * Expands `${workspaceFolder}` in a single string.
- * Used when sending stored paths back to the webview.
- */
-function resolveVsCodeVariables(p: string, folderUri: vscode.Uri): string {
-  if (!p || !p.includes("${workspaceFolder}")) {
-    return p;
-  }
-  return p.replace(/\$\{workspaceFolder\}/g, folderUri.fsPath);
 }
 
 // Gets the west workspace path from settings.json configuration.
@@ -1436,17 +1368,6 @@ async function load_all_sca_configs(): Promise<Result<Record<string, [FullEclair
     const msg = err?.message || String(err);
     return { err: `Failed to load SCA configs for all apps: ${msg}` };
   }
-}
-
-function preset_source_key(source: EclairPresetTemplateSource, repos: EclairRepos): string {
-  if (source.type === "repo-path") {
-    const repo = repos[source.repo];
-    return JSON.stringify({
-      source,
-      repo: repo ? { origin: repo.origin, ref: repo.ref, rev: repo.rev } : undefined,
-    });
-  }
-  return JSON.stringify(source);
 }
 
 function getEclairManagerSettingsUri(folderUri: vscode.Uri): vscode.Uri {

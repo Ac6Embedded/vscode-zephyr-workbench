@@ -213,18 +213,6 @@ function get_checkout_dir(origin: string, ref: string, rev: string): string {
 }
 
 /**
- * Returns a unique temporary checkout dir for a given origin/ref. This is used
- * when no revision is known yet, to avoid conflicts between concurrent
- * workspaces that share the same origin+ref.
- */
-function get_temp_checkout_dir(origin: string, ref: string): string {
-  const hash = origin_hash(origin);
-  const safe_ref = sanitize_path_component(ref);
-  const suffix = crypto.randomBytes(4).toString("hex");
-  return path.join(get_repo_checkouts_root(), hash, "tmp", `${safe_ref}-${suffix}`);
-}
-
-/**
  * Reads the `remote.origin.url` of an existing checkout using `git remote
  * get-url origin`.  Returns `undefined` if the command fails (e.g. the
  * directory is not a git repo or has no remote named "origin").

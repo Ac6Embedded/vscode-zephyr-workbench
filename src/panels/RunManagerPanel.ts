@@ -236,7 +236,7 @@ export class RunManagerPanel {
 
     async function updateConfiguration(project: ZephyrProject) {
       // Extract information from configuration
-      let [launchJson, config] = await getLaunchConfiguration(project);
+      let [/* launchJson */, config] = await getLaunchConfiguration(project);
       const programPath = config.program;
 
       let newRunnersHTML = '';
