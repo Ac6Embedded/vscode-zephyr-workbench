@@ -20,6 +20,7 @@ import { PyOCD } from '../debug/runners/PyOCD';
 import { ZephyrBoard } from '../models/ZephyrBoard';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeOnlyCommand } from '../commands/WestCommands';
+import { ParsedRunnersYaml, findRunnersYamlForProject, getRunnerPathFromRunnersYaml, readRunnersYamlFile, readRunnersYamlForBuildDir, readRunnersYamlForProject } from './runnersYamlUtils';
 import { composeWestBuildArgs } from './westArgUtils';
 import { mergeOpenocdBuildFlag } from './debugToolSelectionUtils';
 
@@ -151,52 +152,21 @@ function getExistingRunnersYamlPath(
   project: ZephyrAppProject,
   config: ZephyrProjectBuildConfiguration
 ): string | undefined {
-  const buildDir = config.getBuildDir(project);
-  const appFolderName = project.workspaceContext?.name;
-  const candidates: string[] = [];
-
-  if (appFolderName && appFolderName.length > 0) {
-    candidates.push(path.join(buildDir, appFolderName, ZEPHYR_DIRNAME, 'runners.yaml'));
-  }
-  candidates.push(path.join(buildDir, ZEPHYR_DIRNAME, 'runners.yaml'));
-
-  return candidates.find(candidate => fileExists(candidate));
+  return findRunnersYamlForProject(project, config);
 }
 
 function parseFlashRunnersFromYaml(runnersYamlPath: string): { all: string[]; available: string[]; def?: string; output: string } | undefined {
-  try {
-    const raw = fs.readFileSync(runnersYamlPath, 'utf8');
-    const data = yaml.parse(raw) ?? {};
-    const runners = Array.isArray(data.runners)
-      ? data.runners.filter((value: unknown): value is string => typeof value === 'string' && value.length > 0)
-      : [];
-
-    if (runners.length === 0) {
-      return undefined;
-    }
-
-    const defaultRunnerCandidates = [
-      data['flash-runner'],
-      data.flash_runner,
-      data['default-runner'],
-      data.default_runner,
-      data?.config?.['flash-runner'],
-      data?.config?.flash_runner,
-      data?.config?.['default-runner'],
-      data?.config?.default_runner,
-    ];
-    const def = defaultRunnerCandidates.find((value: unknown): value is string => typeof value === 'string' && value.length > 0);
-    const available: string[] = Array.from(new Set<string>(runners));
-
-    return {
-      all: available,
-      available,
-      def,
-      output: raw,
-    };
-  } catch {
+  const runnersYaml = readRunnersYamlFile(runnersYamlPath);
+  if (!runnersYaml || runnersYaml.runners.length === 0) {
     return undefined;
   }
+
+  return {
+    all: runnersYaml.runners,
+    available: runnersYaml.runners,
+    def: runnersYaml.defaultFlashRunner,
+    output: runnersYaml.raw,
+  };
 }
 
 function findBoardYamlInDir(boardDir: string, boardIdentifier?: string): string | undefined {
@@ -243,68 +213,6 @@ function getFirstExistingBuildArtifact(buildDir: string, appFolderName: string |
   return getBuildArtifactCandidates(buildDir, appFolderName, ...segments).find(candidate => fileExists(candidate));
 }
 
-function parseGdbPathFromRunnersYaml(runnersYamlPath: string): string | undefined {
-  try {
-    const data = yaml.parse(fs.readFileSync(runnersYamlPath, 'utf8')) ?? {};
-    const gdbPath = data?.config?.gdb;
-    return typeof gdbPath === 'string' && gdbPath.trim().length > 0 ? gdbPath.trim() : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function parseDebugRunnerFromRunnersYaml(runnersYamlPath: string): string | undefined {
-  try {
-    const data = yaml.parse(fs.readFileSync(runnersYamlPath, 'utf8')) ?? {};
-    const runnerCandidates = [
-      data['debug-runner'],
-      data.debug_runner,
-      data?.config?.['debug-runner'],
-      data?.config?.debug_runner,
-    ];
-
-    const runnerName = runnerCandidates.find(
-      (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0
-    );
-
-    return runnerName?.trim();
-  } catch {
-    return undefined;
-  }
-}
-
-function parseCompatibleRunnersFromRunnersYaml(runnersYamlPath: string): string[] {
-  try {
-    const data = yaml.parse(fs.readFileSync(runnersYamlPath, 'utf8')) ?? {};
-    return Array.isArray(data.runners)
-      ? data.runners.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function parseRunnerPathFromRunnersYaml(runnersYamlPath: string, runnerName: string): string | undefined {
-  try {
-    const data = yaml.parse(fs.readFileSync(runnersYamlPath, 'utf8')) ?? {};
-    const normalizedRunnerName = runnerName.replace(/-/g, '_');
-    const pathCandidates = [
-      data?.config?.[runnerName],
-      data?.config?.[normalizedRunnerName],
-      data?.[runnerName],
-      data?.[normalizedRunnerName],
-    ];
-
-    const runnerPath = pathCandidates.find(
-      (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0
-    );
-
-    return runnerPath?.trim();
-  } catch {
-    return undefined;
-  }
-}
-
 function parseGdbPathFromCMakeCache(cmakeCachePath: string): string | undefined {
   try {
     const cacheText = fs.readFileSync(cmakeCachePath, 'utf8');
@@ -345,115 +253,50 @@ function normalizeSdkRelativeDetectedPath(detectedPath: string, sdkPath: string)
   return ['${config:zephyr-workbench.sdk}', ...relativeSegments].join(separator);
 }
 
-function resolveGdbPathFromGeneratedFiles(buildDir: string, appFolderName: string | undefined): string | undefined {
-  const runnersYamlPath = getFirstExistingBuildArtifact(buildDir, appFolderName, ZEPHYR_DIRNAME, 'runners.yaml');
-  if (runnersYamlPath) {
-    const gdbPath = parseGdbPathFromRunnersYaml(runnersYamlPath);
-    if (gdbPath) {
-      return gdbPath;
-    }
+function resolveBoardFromRunnersYaml(runnersYaml: ParsedRunnersYaml | undefined, boardIdentifier?: string): ZephyrBoard | undefined {
+  if (!runnersYaml) {
+    return undefined;
   }
 
-  const cmakeCachePath = getFirstExistingBuildArtifact(buildDir, appFolderName, 'CMakeCache.txt');
-  if (cmakeCachePath) {
-    const gdbPath = parseGdbPathFromCMakeCache(cmakeCachePath);
-    if (gdbPath) {
-      return gdbPath;
+  for (const boardDir of runnersYaml.boardDirCandidates) {
+    const boardYamlPath = findBoardYamlInDir(boardDir, boardIdentifier);
+    if (boardYamlPath) {
+      return new ZephyrBoard(vscode.Uri.file(boardYamlPath));
     }
   }
 
   return undefined;
 }
 
-function resolveCompatibleRunnersFromGeneratedFiles(
+function resolveGeneratedArtifactsFromBuildDir(
   buildDir: string,
   appFolderName: string | undefined,
-): string[] {
-  const runnersYamlPath = getFirstExistingBuildArtifact(buildDir, appFolderName, ZEPHYR_DIRNAME, 'runners.yaml');
-  if (!runnersYamlPath) {
-    return [];
+  boardIdentifier?: string,
+): LaunchConfigurationArtifacts {
+  const runnersYaml = readRunnersYamlForBuildDir(buildDir, appFolderName);
+  let generatedGdbPath = runnersYaml?.gdbPath;
+
+  if (!generatedGdbPath) {
+    const cmakeCachePath = getFirstExistingBuildArtifact(buildDir, appFolderName, 'CMakeCache.txt');
+    if (cmakeCachePath) {
+      generatedGdbPath = parseGdbPathFromCMakeCache(cmakeCachePath);
+    }
   }
 
-  return parseCompatibleRunnersFromRunnersYaml(runnersYamlPath);
-}
-
-function resolveDefaultDebugRunnerFromGeneratedFiles(
-  buildDir: string,
-  appFolderName: string | undefined,
-): string | undefined {
-  const runnersYamlPath = getFirstExistingBuildArtifact(buildDir, appFolderName, ZEPHYR_DIRNAME, 'runners.yaml');
-  if (!runnersYamlPath) {
-    return undefined;
-  }
-
-  return parseDebugRunnerFromRunnersYaml(runnersYamlPath);
-}
-
-function resolveRunnerPathFromGeneratedFiles(
-  buildDir: string,
-  appFolderName: string | undefined,
-  runnerName: string,
-): string | undefined {
-  const runnersYamlPath = getFirstExistingBuildArtifact(buildDir, appFolderName, ZEPHYR_DIRNAME, 'runners.yaml');
-  if (!runnersYamlPath) {
-    return undefined;
-  }
-
-  return parseRunnerPathFromRunnersYaml(runnersYamlPath, runnerName);
+  return {
+    compatibleRunners: runnersYaml?.runners ?? [],
+    defaultDebugRunner: runnersYaml?.defaultDebugRunner,
+    generatedGdbPath,
+    generatedOpenocdPath: getRunnerPathFromRunnersYaml(runnersYaml, 'openocd'),
+    targetBoard: resolveBoardFromRunnersYaml(runnersYaml, boardIdentifier),
+  };
 }
 
 export function getDefaultDebugRunner(
   project: ZephyrProject,
   buildConfig: ZephyrProjectBuildConfiguration
 ): string | undefined {
-  const runnersYamlPath = buildConfig.getBuildArtifactPath(project, ZEPHYR_DIRNAME, 'runners.yaml');
-  if (!runnersYamlPath) {
-    return undefined;
-  }
-
-  return parseDebugRunnerFromRunnersYaml(runnersYamlPath);
-}
-
-function resolveBoardFromGeneratedFiles(
-  buildDir: string,
-  appFolderName: string | undefined,
-  boardIdentifier?: string
-): ZephyrBoard | undefined {
-  const runnersYamlPath = getFirstExistingBuildArtifact(buildDir, appFolderName, ZEPHYR_DIRNAME, 'runners.yaml');
-  if (!runnersYamlPath) {
-    return undefined;
-  }
-
-  try {
-    const data = yaml.parse(fs.readFileSync(runnersYamlPath, 'utf8')) ?? {};
-    const boardDirCandidates = [
-      data?.config?.board_dir,
-      data?.board_dir,
-    ].filter((value: unknown): value is string => typeof value === 'string' && value.length > 0);
-
-    for (const boardDir of boardDirCandidates) {
-      const boardYamlPath = findBoardYamlInDir(boardDir, boardIdentifier);
-      if (boardYamlPath) {
-        return new ZephyrBoard(vscode.Uri.file(boardYamlPath));
-      }
-    }
-  } catch {
-    return undefined;
-  }
-
-  return undefined;
-}
-
-function resolveBoardFromBuildArtifacts(
-  project: ZephyrProject,
-  buildConfig: ZephyrProjectBuildConfiguration,
-  boardIdentifier?: string
-): ZephyrBoard | undefined {
-  return resolveBoardFromGeneratedFiles(
-    buildConfig.getBuildDir(project),
-    project.workspaceContext?.name,
-    boardIdentifier
-  );
+  return readRunnersYamlForProject(project, buildConfig)?.defaultDebugRunner;
 }
 
 async function collectLaunchConfigurationArtifacts(
@@ -464,32 +307,27 @@ async function collectLaunchConfigurationArtifacts(
   const appFolderName = project.workspaceContext?.name;
   const buildDir = buildConfig.getBuildDir(project);
   const boardIdentifier = buildConfig.boardIdentifier;
-  let targetBoard = resolveBoardFromBuildArtifacts(project, buildConfig, boardIdentifier);
-  let generatedGdbPath = resolveGdbPathFromGeneratedFiles(buildDir, appFolderName);
-  let compatibleRunners = resolveCompatibleRunnersFromGeneratedFiles(buildDir, appFolderName);
-  let defaultDebugRunner = resolveDefaultDebugRunnerFromGeneratedFiles(buildDir, appFolderName);
-  let generatedOpenocdPath = resolveRunnerPathFromGeneratedFiles(buildDir, appFolderName, 'openocd');
+  let {
+    targetBoard,
+    generatedGdbPath,
+    compatibleRunners,
+    defaultDebugRunner,
+    generatedOpenocdPath,
+  } = resolveGeneratedArtifactsFromBuildDir(buildDir, appFolderName, boardIdentifier);
   let tmpBuildDir: string | undefined;
 
   try {
     if ((!targetBoard || !generatedGdbPath || compatibleRunners.length === 0 || !defaultDebugRunner || !generatedOpenocdPath) && !fileExists(buildDir)) {
       tmpBuildDir = await westTmpBuildCmakeOnlyCommand(project, westWorkspace, buildConfig);
       if (tmpBuildDir) {
-        if (!targetBoard) {
-          targetBoard = resolveBoardFromGeneratedFiles(tmpBuildDir, appFolderName, boardIdentifier);
-        }
-        if (!generatedGdbPath) {
-          generatedGdbPath = resolveGdbPathFromGeneratedFiles(tmpBuildDir, appFolderName);
-        }
+        const generatedArtifacts = resolveGeneratedArtifactsFromBuildDir(tmpBuildDir, appFolderName, boardIdentifier);
+        targetBoard = targetBoard ?? generatedArtifacts.targetBoard;
+        generatedGdbPath = generatedGdbPath ?? generatedArtifacts.generatedGdbPath;
         if (compatibleRunners.length === 0) {
-          compatibleRunners = resolveCompatibleRunnersFromGeneratedFiles(tmpBuildDir, appFolderName);
+          compatibleRunners = generatedArtifacts.compatibleRunners;
         }
-        if (!defaultDebugRunner) {
-          defaultDebugRunner = resolveDefaultDebugRunnerFromGeneratedFiles(tmpBuildDir, appFolderName);
-        }
-        if (!generatedOpenocdPath) {
-          generatedOpenocdPath = resolveRunnerPathFromGeneratedFiles(tmpBuildDir, appFolderName, 'openocd');
-        }
+        defaultDebugRunner = defaultDebugRunner ?? generatedArtifacts.defaultDebugRunner;
+        generatedOpenocdPath = generatedOpenocdPath ?? generatedArtifacts.generatedOpenocdPath;
       }
     }
 
