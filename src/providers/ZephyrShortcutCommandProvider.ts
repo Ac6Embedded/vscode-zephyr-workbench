@@ -41,16 +41,6 @@ const newAppMenuItem = new MenuItem(
   }
 );
 
-const createModMenuItem = new MenuItem(
-  'Create Extra Module',
-  vscode.TreeItemCollapsibleState.None,
-  'file-directory-create',
-  {
-    command: 'zephyr-workbench-module-explorer.create-module',
-    title: 'Create New Module',
-  }
-);
-
 const newWestWorkspaceMenuItem = new MenuItem(
   'New West Workspace',
   vscode.TreeItemCollapsibleState.None,

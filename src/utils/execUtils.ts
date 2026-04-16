@@ -337,7 +337,7 @@ export function expandEnvVariables(input: string): string {
 }
 
 export async function executeTask(task: vscode.Task): Promise<vscode.TaskExecution> {
-  const exec = await vscode.tasks.executeTask(task);
+  await vscode.tasks.executeTask(task);
   return new Promise(resolve => {
     const disp = vscode.tasks.onDidEndTask(e => {
       if (e.execution.task.name === task.name) {
@@ -392,8 +392,6 @@ export async function execShellCommand(
     throw new Error('Missing command to execute');
   }
 
-  const shellPath = options.executable ?? getShellExe();
-  const shellType = classifyShell(shellPath);
   const shExec = new vscode.ShellExecution(cmd, options);
   const task = new vscode.Task(
     { label: cmdName, type: 'shell' },
@@ -496,9 +494,6 @@ export async function execShellCommandWithEnvInteractive(
   const isPosixish =
     shellKind === 'bash' || shellKind === 'zsh' ||
     shellKind === 'dash' || shellKind === 'fish';
-
-  const norm = (p?: string) =>
-    p ? normalizePathForShell(shellKind, p) : p;
 
   const envScript = normalizePathForShell(shellKind, envScriptRaw!);
   const venvPath = venvRaw ? normalizePathForShell(shellKind, venvRaw!) : undefined;

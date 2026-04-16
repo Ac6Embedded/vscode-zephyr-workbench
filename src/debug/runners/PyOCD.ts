@@ -50,8 +50,4 @@ export class PyOCD extends WestRunner {
     }
     return cmdArgs;
   }
-
-  isTargetSupported() {
-    const command = 'pyocd list --targets';
-  }
 }

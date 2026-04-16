@@ -131,7 +131,7 @@ export async function westTmpBuildCmakeOnlyCommand(
   const westArgs = makeWestArgs(zephyrProject, buildConfig.westArgs, buildConfig.westFlagsD);
 
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
-  const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
+  normalizeEnvVarsForShell(rawEnvVars, shellKind);
 
   const redirect = getShellNullRedirect(shellKind);
 
@@ -656,7 +656,6 @@ export function execWestCommandWithEnvAsync(
   }
 
   const shellKind = classifyShell(getShellExe());
-  const redirect = getShellNullRedirect(shellKind);
   const envScriptForShell = normalizePathForShell(shellKind, envScript);
 
   const cmdEnv = `${getShellSourceCommand(shellKind, envScriptForShell)}`;

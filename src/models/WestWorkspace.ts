@@ -74,8 +74,6 @@ export class WestWorkspace {
   }
 
   parseVersion(): { [key: string]: string } {
-    let version: string = '';
-
     // If the config does not exists, assume missing information
     if (!fileExists(this.versionUri.fsPath)) {
       return {};
@@ -236,7 +234,7 @@ export class WestWorkspace {
     }
 
     let terminal = WestWorkspace.openTerminal(westWorkspace);
-    const { path: shellPath, args: shellArgs } = getResolvedShell();
+    const { path: shellPath } = getResolvedShell();
     const shellType = classifyShell(shellPath);
     envScript = normalizePathForShell(shellType, envScript);
     let srcEnvCmd = `. ${envScript}`;

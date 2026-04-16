@@ -151,10 +151,6 @@ export async function toggleSysbuild(
   project: ZephyrProject,
   buildConfigName?: string | undefined,
 ): Promise<void> {
-  const config: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration(key, workspaceFolder.uri);
-
-  const buildConfigs = config.get<any[]>('build.configurations') || [];
-
   let targetConfig;
   if (buildConfigName) {
     targetConfig = project.getBuildConfiguration(buildConfigName);

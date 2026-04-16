@@ -358,7 +358,6 @@ export async function parseWorkspaceSamples(directory: vscode.Uri, projectList: 
 
     for (const [name, type] of files) {
       const filePath = vscode.Uri.joinPath(directory, name);
-      const fullPath = path.join(relativePath, name); // Keep track of the full path
 
       if (type === vscode.FileType.Directory) {
         const sampleYamlPath = vscode.Uri.joinPath(filePath, "sample.yaml");
@@ -518,24 +517,6 @@ export async function getInternalZephyrSDK(): Promise<ZephyrSDK | undefined> {
   }
 
   return undefined;
-}
-
-async function fetchTasksFromWorkspaceFolder(workspaceFolder: vscode.WorkspaceFolder) {
-  try {
-    // Fetch all tasks
-    const allTasks = await vscode.tasks.fetchTasks();
-
-    // Filter tasks that belong to the given workspace folder
-    const tasksInWorkspaceFolder = allTasks.filter(task => {
-      const folder = task.scope as vscode.WorkspaceFolder;
-      return folder && folder.uri.toString() === workspaceFolder.uri.toString();
-    });
-
-    return tasksInWorkspaceFolder;
-  } catch (error) {
-    console.error('Error fetching tasks:', error);
-    return [];
-  }
 }
 
 async function getZephyrWorkbenchTasks(): Promise<vscode.Task[]> {
@@ -744,31 +725,6 @@ export async function getSupportedBoards(
 
   await Promise.all(dirPromises);
   return listBoards;
-}
-
-async function findBoardDirectories(dirUri: vscode.Uri): Promise<vscode.Uri[]> {
-  let boardDirs: vscode.Uri[] = [];
-  const entries = await vscode.workspace.fs.readDirectory(dirUri);
-
-  let containsBoardFile = false;
-
-  for (const [name, type] of entries) {
-    const entryUri = vscode.Uri.joinPath(dirUri, name);
-
-    if (type === vscode.FileType.File && (name === 'board.cmake' || name === 'board.yml')) {
-      containsBoardFile = true;
-    }
-    if (type === vscode.FileType.Directory) {
-      const subBoardDirs = await findBoardDirectories(entryUri);
-      boardDirs = boardDirs.concat(subBoardDirs);
-    }
-  }
-
-  if (containsBoardFile) {
-    boardDirs.push(dirUri);
-  }
-
-  return boardDirs;
 }
 
 export async function parseSupportedBoards(westWorkspace: WestWorkspace, directory: vscode.Uri, listBoards: ZephyrBoard[], rootPath: string, relativePath = ''): Promise<void> {
