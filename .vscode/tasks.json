@@ -1,32 +1,39 @@
-// See https://go.microsoft.com/fwlink/?LinkId=733558
-// for the documentation about the tasks.json format
 {
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "compile",
+			"type": "npm",
+			"script": "compile",
+			"group": "build"
+		},
+		{
+			"label": "watch",
 			"type": "npm",
 			"script": "watch",
 			"problemMatcher": {
-				"owner": "esbuild",
-				"fileLocation": ["relative", "${workspaceFolder}"],
-				"severity": "error",
 				"pattern": {
-					"regexp": "> (.*):(\\d+):(\\d+): error: (.*)$",
-					"file": 1,
-					"line": 2,
-					"column": 3,
-					"message": 4
+					"regexp": "^(\\b\\B)$",
+					"message": 1
 				},
 				"background": {
 					"activeOnStart": true,
-					"beginsPattern": "\\[watch\\] build started",
-					"endsPattern": "\\[watch\\] build finished"
+					"beginsPattern": "\\[watch\\].*build started",
+					"endsPattern": "\\[watch\\] initial build complete"
 				}
 			},
 			"isBackground": true,
 			"presentation": {
 				"reveal": "never"
-			},
+			}
+		},
+		{
+			"label": "build",
+			"dependsOrder": "sequence",
+			"dependsOn": [
+				"compile",
+				"watch"
+			],
 			"group": {
 				"kind": "build",
 				"isDefault": true
