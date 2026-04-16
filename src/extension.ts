@@ -3,8 +3,7 @@
 import path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { westBoardsCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBuildCommand, execWestCommandWithEnvAsync, westConfigCommand } from './commands/WestCommands';
-import { execShellCommandWithEnv, getOutputChannel } from './utils/execUtils';
+import { westBoardsCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBuildCommand, westConfigCommand } from './commands/WestCommands';
 import { WestWorkspace } from './models/WestWorkspace';
 import { ZephyrAppProject } from './models/ZephyrAppProject';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
@@ -16,7 +15,7 @@ import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
 import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
-import { getRunner, getRunRunners, getFlashRunners, getStaticFlashRunnerNames, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './utils/debugTools/debugUtils';
+import { getRunner, getFlashRunners, getStaticFlashRunnerNames, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './utils/debugTools/debugUtils';
 import { execShellTaskWithEnvAndWait, executeTask, getTerminalDefaultProfile, normalizeSlashesIfPath } from './utils/execUtils';
 import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
@@ -43,7 +42,6 @@ import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfi
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
-import { exec } from 'child_process';
 import { syncAutoDetectEnv } from './utils/debugTools/autoDetectSyncUtils';
 import { initDtsIntegration } from './utils/zephyr/dtsIntegration';
 import { normalizeWestFlagDValue } from './utils/zephyr/westArgUtils';

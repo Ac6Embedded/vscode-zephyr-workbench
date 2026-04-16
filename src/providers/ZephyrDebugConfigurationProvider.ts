@@ -3,7 +3,6 @@ import { findConfigTask, getZephyrProject } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
 import { createOpenocdCfg, createWestWrapper } from '../utils/debugTools/debugUtils';
 import { ZephyrProject } from '../models/ZephyrProject';
-import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { getTerminalDefaultProfile } from '../utils/execUtils';
 
 export class ZephyrDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
