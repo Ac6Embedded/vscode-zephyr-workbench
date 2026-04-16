@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import fs from 'fs';
 import path from "path";
-import { fileExists, findTask, getWestWorkspace, getZephyrSDK, findIarEntry } from '../utils/utils';
+import { fileExists, findTask, getWestWorkspace, getZephyrSDK, findIarEntry, migrateToolchainVariant } from '../utils/utils';
 import { ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { concatCommands, getShellClearCommand, getShellEchoCommand, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
@@ -45,7 +45,7 @@ export class ZephyrProject {
     const cfg = vscode.workspace.getConfiguration(
       ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.workspaceContext);
 
-    const toolchainSel = cfg.get<string>("toolchain") ?? "zephyr_sdk";
+    const toolchainSel = migrateToolchainVariant(cfg, cfg.get<string>("toolchain") ?? "zephyr");
 
     if (toolchainSel === "iar") {
       const selectedIarPath = cfg.get<string>("iar", "");

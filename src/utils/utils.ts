@@ -455,6 +455,16 @@ export function getZephyrSDK(sdkPath: string): ZephyrSDK {
   throw new Error('Cannot parse the Zephyr SDK');
 }
 
+// TEMPORARY retrocompat — remove a few months after 2026-04.
+// Projects that stored "zephyr_sdk" are migrated on first read to the new variant value "zephyr".
+export function migrateToolchainVariant(cfg: vscode.WorkspaceConfiguration, raw: string): string {
+  if (raw === 'zephyr_sdk') {
+    cfg.update('toolchain', 'zephyr', vscode.ConfigurationTarget.WorkspaceFolder);
+    return 'zephyr';
+  }
+  return raw;
+}
+
 export function findIarEntry(iarPath: string): IARToolchain | undefined {
   const list: any[] = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)

@@ -11,7 +11,7 @@ import { ZephyrBoard } from '../models/ZephyrBoard';
 import { ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
 import { ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, getEnvVarFormat, getShell, getShellArgs } from '../utils/execUtils';
-import { getWestWorkspace, getZephyrSDK, findIarEntry, msleep } from '../utils/utils';
+import { getWestWorkspace, getZephyrSDK, findIarEntry, migrateToolchainVariant, msleep } from '../utils/utils';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
@@ -620,7 +620,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
     const cfg = vscode.workspace.getConfiguration(
       ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder);
-    const toolchainKind = cfg.get<string>("toolchain") ?? "sdk";
+    const toolchainKind = migrateToolchainVariant(cfg, cfg.get<string>("toolchain") ?? "zephyr");
 
     if (toolchainKind === "iar") {
       const selectedIarPath = cfg.get<string>("iar", "");
@@ -628,7 +628,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
       if (iarEntry) {
         const armSubdir = process.platform === "win32"
-          ? path.join(iarEntry.iarPath, "arm") 
+          ? path.join(iarEntry.iarPath, "arm")
           : path.posix.join(iarEntry.iarPath, "arm");
 
         options.env = {
@@ -639,9 +639,11 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
         };
       } else {
         vscode.window.showWarningMessage(
-          `IAR toolchain “${selectedIarPath}” not found in listIARs; ` +
+          `IAR toolchain "${selectedIarPath}" not found in listIARs; ` +
           `tasks will run with the default Zephyr SDK.`);
       }
+    } else {
+      options.env = { ...options.env, ZEPHYR_TOOLCHAIN_VARIANT: toolchainKind };
     }
 
     if (config) {

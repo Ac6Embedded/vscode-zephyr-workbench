@@ -9,7 +9,7 @@ import { ZephyrSDK } from '../models/ZephyrSDK';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, execShellCommandWithEnv, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
-import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, normalizePath } from '../utils/utils'; 
+import { fileExists, findIarEntry, getWestWorkspace, getZephyrSDK, migrateToolchainVariant, normalizePath } from '../utils/utils';
 import { composeWestBuildArgs } from '../utils/zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
 
@@ -214,7 +214,7 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
     folder ?? undefined
   );
 
-  const toolchainKind = (cfg.get<string>('toolchain') ?? 'sdk').toLowerCase();
+  const toolchainKind = migrateToolchainVariant(cfg, cfg.get<string>('toolchain') ?? 'zephyr');
   let iarEnv: Record<string, string> = {};
 
   // Add the venv Python to PATH so MCUBoot can find dependencies
@@ -236,6 +236,8 @@ export async function westBuildCommand(zephyrProject: ZephyrProject, westWorkspa
         IAR_LMS_BEARER_TOKEN: iarEntry.token ?? ''
       };
     }
+  } else {
+    iarEnv = { ZEPHYR_TOOLCHAIN_VARIANT: toolchainKind };
   }
 
   const command =

@@ -102,17 +102,27 @@
           "zephyr-workbench.sdk": {
             "type": "string",
             "default": "",
-            "description": "The path to the Zephyr SDK that provide toolchains",
+            "markdownDescription": "The path to the Zephyr SDK that provides toolchains. Exposed to the build as `ZEPHYR_SDK_INSTALL_DIR`.",
             "scope": "resource"
           },
           "zephyr-workbench.toolchain": {
             "type": "string",
             "enum": [
-              "zephyr_sdk",
-              "iar"
+              "zephyr",
+              "zephyr/gnu",
+              "zephyr/llvm",
+              "iar",
+              "zephyr_sdk"
             ],
-            "default": "zephyr_sdk",
-            "description": "Which toolchain to use for the project: 'zephyr_sdk' or 'iar'",
+            "enumDescriptions": [
+              "Zephyr SDK: GNU/GCC toolchain (alias for 'zephyr/gnu' SDK >= 1.x)",
+              "Zephyr SDK: GNU/GCC toolchain",
+              "Zephyr SDK: LLVM/Clang toolchain",
+              "IAR ARM toolchain",
+              "Deprecated: use 'zephyr' instead"
+            ],
+            "default": "zephyr",
+            "markdownDescription": "ZEPHYR_TOOLCHAIN_VARIANT to use for this project. The legacy value `zephyr_sdk` is automatically migrated to `zephyr` on first use.",
             "scope": "resource"
           },
           "zephyr-workbench.iar": {
