@@ -1,4 +1,4 @@
-import vscode, { ExtensionContext, QuickPickItem, WorkspaceFolder } from "vscode";
+import vscode, { QuickPickItem } from "vscode";
 import { ZephyrProject } from "../models/ZephyrProject";
 
 export async function pickBuildConfigQuickStep(project: ZephyrProject): Promise<string | undefined> {
