@@ -2,10 +2,9 @@
 // into %USERPROFILE%/.zinstaller/env.yml when versions differ or env.yml is missing.
 // This runs best-effort during extension activation and should never throw.
 import * as fs from 'fs';
-import * as path from 'path';
 import * as vscode from 'vscode';
 import yaml from 'yaml';
-import { getInstallDirRealPath } from './utils';
+import { readEnvYamlObject, writeEnvYamlObject } from './envYamlFileUtils';
 
 interface DebugToolEntry {
   tool: string;
@@ -39,16 +38,6 @@ function readYamlFile<T = any>(filePath: string): T | undefined {
   }
 }
 
-// Write YAML to disk, creating parent directory if needed
-function writeYamlFile(filePath: string, data: any) {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  const text = yaml.stringify(data);
-  fs.writeFileSync(filePath, text, 'utf8');
-}
-
 export async function syncAutoDetectEnv(context: vscode.ExtensionContext): Promise<void> {
   try {
     // Load debug-tools.yml from the extension bundle
@@ -60,9 +49,7 @@ export async function syncAutoDetectEnv(context: vscode.ExtensionContext): Promi
     }
 
     const debugVersion = debugDoc.version;
-    // env.yml is stored in the user (or portable) .zinstaller folder
-    const envYamlPath = path.join(getInstallDirRealPath(), '.zinstaller', 'env.yml');
-    const envDoc = readYamlFile<EnvYamlShape>(envYamlPath) || {};
+    const envDoc = readEnvYamlObject() as EnvYamlShape;
 
     const envAutoDetectVersion = envDoc.global?.['version_auto-detect'];
     // Update if env.yml missing auto-detect version or differs from debug-tools.yml
@@ -93,7 +80,7 @@ export async function syncAutoDetectEnv(context: vscode.ExtensionContext): Promi
       'auto-detect': autoDetect,
     };
 
-    writeYamlFile(envYamlPath, newEnv);
+    writeEnvYamlObject(newEnv);
   } catch (err) {
     // Best-effort; do not throw during activation
     return;
