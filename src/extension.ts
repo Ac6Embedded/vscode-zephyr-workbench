@@ -258,7 +258,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.analyze.dt-doctor', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			if (!node?.project) return;
+			if (!node?.project) {
+				return;
+			}
 			await executeConfigTask('DT Doctor', node);
 		})
 	);
