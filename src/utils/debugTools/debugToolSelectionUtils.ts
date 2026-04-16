@@ -5,8 +5,8 @@ import yaml from 'yaml';
 
 import { getDetectPlatform, findDetectedToolRoot, evaluateDetectPatterns } from './debugToolPathUtils';
 import type { DebugToolAliasEntry, DebugToolEntry } from './debugToolVersionUtils';
-import { compareVersions, getInternalDirRealPath } from './utils';
-import { loadEnvYamlState } from './envYamlFileUtils';
+import { compareVersions, getInternalDirRealPath } from '../utils';
+import { loadEnvYamlState } from '../env/envYamlFileUtils';
 
 interface DebugToolsManifest {
   debug_tools?: DebugToolEntry[];

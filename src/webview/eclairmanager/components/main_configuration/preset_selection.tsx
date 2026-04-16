@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { WebviewMessage } from "../../../../utils/eclairEvent";
+import { WebviewMessage } from "../../../../utils/eclair/eclairEvent";
 import { AvailablePresetsState, EclairStateAction, get_preset_template_by_source, MultiPresetSelectionState, PresetsSelectionState, RepoScanState } from "../../state";
 import { PickPath, SearchableDropdown, SearchableItem, VscodeAlert, VscodeBadge, VscodeButton, VscodeCheckbox, VscodePanel, RichHelpTooltip, Monospace, VscodeDropdown, VscodeOption } from "../common_components";
 import { EclairTemplate, EclairTemplateKind, EclairTemplateOption } from "../../../../utils/eclair/template";

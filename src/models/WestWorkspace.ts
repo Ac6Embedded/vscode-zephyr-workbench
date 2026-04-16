@@ -3,7 +3,7 @@ import fs from "fs";
 import path from 'path';
 import { fileExists, getWorkspaceFolder } from '../utils/utils';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from '../constants';
-import { getBuildEnv, loadEnv } from '../utils/zephyrEnvUtils';
+import { getBuildEnv, loadEnv } from '../utils/env/zephyrEnvUtils';
 import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalShell, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
 
 export class WestWorkspace {

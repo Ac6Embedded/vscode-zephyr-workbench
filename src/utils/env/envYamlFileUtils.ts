@@ -2,8 +2,8 @@ import fs from "fs";
 import path from "path";
 import yaml from "yaml";
 
-import { formatYml } from "../utilities/formatYml";
-import { getInternalDirRealPath } from "./utils";
+import { formatYml } from "../../utilities/formatYml";
+import { getInternalDirRealPath } from "../utils";
 
 // Low-level env.yml helpers shared by panels and utils.
 // This module owns locating env.yml, reading it as text/object/document,

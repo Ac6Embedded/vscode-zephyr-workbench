@@ -4,7 +4,7 @@ import { EclairTemplate, EclairTemplateKind } from "../../utils/eclair/template"
 import { match } from "ts-pattern";
 import { produce, WritableDraft } from "immer";
 import { Monospace } from "./components/common_components";
-import { BuildConfigInfo } from "../../utils/eclairEvent";
+import { BuildConfigInfo } from "../../utils/eclair/eclairEvent";
 import { sources_are_equal } from "./components/main_configuration/preset_selection";
 
 export const BUGSENG_REPO_LINK = <a href={BUGSENG_PRESETS_REPO_URL}><Monospace>BUGSENG/zephyr-workbench-eclair-presets</Monospace></a>;

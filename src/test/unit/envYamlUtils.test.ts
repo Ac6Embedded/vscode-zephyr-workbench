@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 import yaml from 'yaml';
 
-import { getExtraPaths, normalizePath, removeExtraPath, setExtraPath } from '../../utils/envYamlUtils';
+import { getExtraPaths, normalizePath, removeExtraPath, setExtraPath } from '../../utils/env/envYamlUtils';
 
 describe('envYamlUtils', () => {
   let tmpDir: string;

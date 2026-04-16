@@ -10,12 +10,12 @@ import * as vscode from "vscode";
 import yaml from 'yaml';
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
 import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs, getShellExe, classifyShell, normalizePathForShell, execCommandWithEnv } from "./execUtils";
-import { syncAutoDetectEnv } from "./autoDetectSyncUtils";
+import { syncAutoDetectEnv } from "./debugTools/autoDetectSyncUtils";
 import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSDK, getWestWorkspace } from "./utils";
-import { getRunner } from "./debugUtils";
-import { getZephyrTerminal } from "./zephyrTerminalUtils";
+import { getRunner } from "./debugTools/debugUtils";
+import { getZephyrTerminal } from "./zephyr/zephyrTerminalUtils";
 import { ensurePowershellExecutionPolicy } from "./powershellUtils";
-import { setDebugToolAliasDefault } from './debugToolEnvUtils';
+import { setDebugToolAliasDefault } from './debugTools/debugToolEnvUtils';
 
 export let output = vscode.window.createOutputChannel("Installing Host Tools");
 

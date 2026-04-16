@@ -28,11 +28,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import yaml from 'yaml';
 
-import { WestWorkspace } from '../models/WestWorkspace';
-import { ZephyrAppProject } from '../models/ZephyrAppProject';
-import { ZephyrProject } from '../models/ZephyrProject';
-import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
-import { getWestWorkspaces } from './utils';
+import { WestWorkspace } from '../../models/WestWorkspace';
+import { ZephyrAppProject } from '../../models/ZephyrAppProject';
+import { ZephyrProject } from '../../models/ZephyrProject';
+import { ZephyrProjectBuildConfiguration } from '../../models/ZephyrProjectBuildConfiguration';
+import { getWestWorkspaces } from '../utils';
 
 // Minimal copies of the external types we need
 // We keep them narrow to avoid adding new dependencies

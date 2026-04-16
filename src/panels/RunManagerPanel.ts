@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { createLaunchConfiguration as createDefaultConfiguration, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getRunRunners, getServerAddressFromConfig, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugUtils";
+import { createLaunchConfiguration as createDefaultConfiguration, createWestWrapper, getDebugRunners, getLaunchConfiguration, getRunner, getRunRunners, getServerAddressFromConfig, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugTools/debugUtils";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
 import { getZephyrProject } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
@@ -355,4 +355,3 @@ export class RunManagerPanel {
     }
   }  
 }
-

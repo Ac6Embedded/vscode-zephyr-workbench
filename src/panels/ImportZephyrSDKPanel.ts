@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { getMinimalToolchainsForVersion, getSdkVersion } from "../utils/sdkUtils";
+import { getMinimalToolchainsForVersion, getSdkVersion } from "../utils/zephyr/sdkUtils";
 import { getListZephyrSDKs } from "../utils/utils";
 
 export class ImportZephyrSDKPanel {

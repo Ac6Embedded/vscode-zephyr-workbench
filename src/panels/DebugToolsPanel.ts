@@ -3,21 +3,21 @@ import fs from "fs";
 import yaml from 'yaml';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { getRunner } from "../utils/debugUtils";
+import { getRunner } from "../utils/debugTools/debugUtils";
 import {
   getDetectPlatform,
-} from "../utils/debugToolPathUtils";
+} from "../utils/debugTools/debugToolPathUtils";
 import {
   DebugToolEntry,
   DebugToolAliasEntry,
   isIgnoredReferenceVersion,
   probeDebugToolVersion,
-} from "../utils/debugToolVersionUtils";
+} from "../utils/debugTools/debugToolVersionUtils";
 import { getInternalDirRealPath } from "../utils/utils";
-import { getEnvYamlPath, loadEnvYamlState, readEnvYamlObject as readEnvYamlObjectFile, writeEnvYamlObject as writeEnvYamlObjectFile } from "../utils/envYamlFileUtils";
-import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/envYamlUtils";
+import { getEnvYamlPath, loadEnvYamlState, readEnvYamlObject as readEnvYamlObjectFile, writeEnvYamlObject as writeEnvYamlObjectFile } from "../utils/env/envYamlFileUtils";
+import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/env/envYamlUtils";
 import { Aliases } from "../interface/interfaceDebugTools";
-import { setDebugToolAliasDefault } from "../utils/debugToolEnvUtils";
+import { setDebugToolAliasDefault } from "../utils/debugTools/debugToolEnvUtils";
 
 export class DebugToolsPanel {
 

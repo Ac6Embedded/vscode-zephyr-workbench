@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { findConfigTask, getZephyrProject } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
-import { createOpenocdCfg, createWestWrapper } from '../utils/debugUtils';
+import { createOpenocdCfg, createWestWrapper } from '../utils/debugTools/debugUtils';
 import { ZephyrProject } from '../models/ZephyrProject';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { getTerminalDefaultProfile } from '../utils/execUtils';

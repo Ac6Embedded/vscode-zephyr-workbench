@@ -6,7 +6,7 @@ import { getInternalToolsDirRealPath } from "../../utils/utils";
 import { Result } from "../../utils/typing_utils";
 import { exec } from "child_process";
 import yaml from "yaml";
-import type { ExtensionMessage } from "../../utils/eclairEvent";
+import type { ExtensionMessage } from "../../utils/eclair/eclairEvent";
 import { extract_yaml_from_ecl_content, parse_eclair_template_from_any } from "../../utils/eclair/template_utils";
 import type { EclairPresetTemplateSource, EclairRepos } from "../../utils/eclair/config";
 import { EclairTemplate } from "../../utils/eclair/template";
@@ -469,4 +469,3 @@ async function load_preset_from_path(
 
   return { ok: template };
 }
-

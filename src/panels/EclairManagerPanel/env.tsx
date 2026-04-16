@@ -4,7 +4,7 @@ import fs from "fs";
 import { getOutputChannel } from "../../utils/execUtils";
 import { Result } from "../../utils/typing_utils";
 import * as vscode from "vscode";
-import { getEnvYamlPath, readEnvYamlObjectStrict, writeEnvYamlObject } from "../../utils/envYamlFileUtils";
+import { getEnvYamlPath, readEnvYamlObjectStrict, writeEnvYamlObject } from "../../utils/env/envYamlFileUtils";
 
 const EnvDataSchema = z.looseObject({
   other: z

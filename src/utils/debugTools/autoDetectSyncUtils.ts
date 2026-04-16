@@ -4,7 +4,7 @@
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import yaml from 'yaml';
-import { readEnvYamlObject, writeEnvYamlObject } from './envYamlFileUtils';
+import { readEnvYamlObject, writeEnvYamlObject } from '../env/envYamlFileUtils';
 
 interface DebugToolEntry {
   tool: string;

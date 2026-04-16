@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'yaml';
 
-import { classifyShell, execCommandWithEnv, getShellExe } from './execUtils';
+import { classifyShell, execCommandWithEnv, getShellExe } from '../execUtils';
 import {
   DetectPlatform,
   DetectableToolLike,
@@ -11,7 +11,7 @@ import {
   getDetectPlatform,
   preserveDetectPatterns,
 } from './debugToolPathUtils';
-import { getInternalDirRealPath } from './utils';
+import { getInternalDirRealPath } from '../utils';
 
 /*
  * Shared debug-tool version probing.

@@ -6,7 +6,7 @@ import { fileExists, findTask, getBoardFromIdentifier, getConfigValue, getWestWo
 import { ZEPHYR_DIRNAME, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { concatCommands, getShellClearCommand, getShellEchoCommand, getTerminalShell, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
-import { getBuildEnv, loadEnv } from '../utils/zephyrEnvUtils';
+import { getBuildEnv, loadEnv } from '../utils/env/zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
 import { IARToolchain } from './ZephyrSDK';
 export class ZephyrProject {

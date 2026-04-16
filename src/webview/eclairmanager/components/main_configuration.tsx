@@ -1,5 +1,5 @@
 import React, { JSX } from "react";
-import { WebviewMessage } from "../../../utils/eclairEvent";
+import { WebviewMessage } from "../../../utils/eclair/eclairEvent";
 import { AvailablePresetsState, BUGSENG_REPO_LINK, EclairConfig, EclairStateAction, RepoScanState } from "../state";
 import { Monospace, RichHelpTooltip, VscodeRadio, VscodeRadioGroup } from "./common_components";
 import { RulesetSection } from "./main_configuration/ruleset_section";
