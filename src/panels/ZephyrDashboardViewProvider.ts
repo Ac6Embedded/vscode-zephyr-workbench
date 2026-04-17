@@ -114,8 +114,24 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			case 'refresh':
 				await this.refresh();
 				break;
+			case 'openFile':
+				await this._openFile(message?.path);
+				break;
 			default:
 				break;
+		}
+	}
+
+	private async _openFile(filePath: unknown): Promise<void> {
+		if (typeof filePath !== 'string' || filePath.length === 0) {
+			return;
+		}
+
+		try {
+			const document = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+			await vscode.window.showTextDocument(document, { preview: false, preserveFocus: false });
+		} catch {
+			void vscode.window.showWarningMessage(`Unable to open file: ${filePath}`);
 		}
 	}
 
@@ -194,6 +210,9 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		const mapPath = selectedConfig.getBuildArtifactPath(selectedProject, 'zephyr', 'zephyr.map');
 		const dotConfigPath = selectedConfig.getBuildArtifactPath(selectedProject, 'zephyr', '.config');
 		const cmakeCachePath = selectedConfig.getBuildArtifactPath(selectedProject, 'CMakeCache.txt');
+		const buildInfoPath = selectedConfig.getBuildArtifactPath(selectedProject, 'build_info.yml');
+		const metaPath = selectedConfig.getBuildArtifactPath(selectedProject, 'zephyr', 'zephyr.meta');
+		const statPath = selectedConfig.getBuildArtifactPath(selectedProject, 'zephyr', 'zephyr.stat');
 		const devicetreeHeaderPath = selectedConfig.getBuildArtifactPath(
 			selectedProject,
 			'zephyr',
@@ -210,6 +229,9 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			mapPath,
 			dotConfigPath,
 			cmakeCachePath,
+			buildInfoPath,
+			metaPath,
+			statPath,
 		});
 
 		if (!elfPath) {
@@ -614,59 +636,87 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			margin-top: 2px;
 		}
 
-		.summary-list {
-			display: grid;
-			gap: 6px;
-		}
-
-		.summary-item {
+		.summary-card-content {
 			display: flex;
-			align-items: flex-start;
-			justify-content: space-between;
-			gap: 10px;
-			font-size: 11px;
-		}
-
-		.summary-item-label {
-			color: var(--shell-muted);
-		}
-
-		.summary-item-value {
-			text-align: right;
-			word-break: break-word;
-		}
-
-		.summary-item-value code {
-			font-size: 10px;
-		}
-
-		.summary-artifact {
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			gap: 10px;
-			font-size: 11px;
-		}
-
-		.summary-artifact-main {
-			display: grid;
-			gap: 2px;
+			flex-wrap: wrap;
+			gap: 8px;
 			min-width: 0;
 		}
 
-		.summary-artifact-path {
-			font-size: 10px;
-			color: var(--shell-muted);
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
+		.summary-stat {
+			display: inline-flex;
+			align-items: baseline;
+			gap: 6px;
+			min-width: 0;
 			max-width: 100%;
+			padding: 6px 8px;
+			border-radius: 6px;
+			border: 1px solid color-mix(in srgb, var(--shell-border) 78%, transparent);
+			background: color-mix(in srgb, var(--shell-surface-strong) 96%, transparent);
+			font-size: 11px;
 		}
 
-		.summary-features {
-			display: flex;
-			flex-wrap: wrap;
+		.summary-stat-label {
+			color: var(--shell-muted);
+			font-size: 10px;
+			font-weight: 700;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+			white-space: nowrap;
+		}
+
+		.summary-stat-value {
+			min-width: 0;
+			word-break: break-word;
+			font-weight: 600;
+		}
+
+		.summary-stat-sources {
+			align-items: stretch;
+			flex-direction: column;
 			gap: 6px;
+		}
+
+		.summary-stat-sources .summary-stat-label {
+			margin-bottom: -1px;
+		}
+
+		.summary-source-list {
+			display: grid;
+			gap: 4px;
+			min-width: 0;
+		}
+
+		.summary-source-link {
+			display: inline-flex;
+			align-items: center;
+			min-width: 0;
+			max-width: 100%;
+			padding: 0;
+			border: 0;
+			background: transparent;
+			color: var(--shell-accent);
+			font: inherit;
+			font-size: 11px;
+			font-weight: 600;
+			text-align: left;
+			cursor: pointer;
+		}
+
+		.summary-source-link:hover {
+			text-decoration: underline;
+		}
+
+		.summary-source-link:focus-visible {
+			outline: 1px solid var(--shell-accent);
+			outline-offset: 2px;
+			border-radius: 3px;
+		}
+
+		.summary-stat-missing {
+			background: color-mix(in srgb, var(--shell-border) 20%, transparent);
+			border-color: color-mix(in srgb, var(--shell-border) 72%, transparent);
+			color: var(--shell-muted);
 		}
 
 		.chip-off {
@@ -970,19 +1020,160 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			return new Date(timestamp).toLocaleString();
 		}
 
-		function getRegion(summaryData, candidates) {
-			if (!summaryData?.memoryRegions) {
+		function shortRevision(value) {
+			if (typeof value !== 'string' || value.length === 0) {
+				return '';
+			}
+
+			return value.length > 8 ? value.slice(0, 8) : value;
+		}
+
+		function getCapacity(summaryData, candidates) {
+			if (!summaryData?.memoryCapacities) {
 				return undefined;
 			}
 
 			const names = candidates.map(name => name.toUpperCase());
-			return summaryData.memoryRegions.find(region => names.includes(String(region.name).toUpperCase()));
+			return summaryData.memoryCapacities.find(region => names.includes(String(region.name).toUpperCase()));
+		}
+
+		function getUsedBytes(bucketKey) {
+			const bucket = currentModel?.memoryReport?.[bucketKey];
+			return typeof bucket?.totalBytes === 'number' ? bucket.totalBytes : undefined;
+		}
+
+		function formatUsage(usedBytes, totalBytes) {
+			const hasUsed = typeof usedBytes === 'number' && Number.isFinite(usedBytes);
+			const hasTotal = typeof totalBytes === 'number' && Number.isFinite(totalBytes) && totalBytes > 0;
+
+			if (!hasUsed && !hasTotal) {
+				return undefined;
+			}
+
+			if (hasUsed && hasTotal) {
+				return formatBytes(usedBytes) + ' / ' + formatBytes(totalBytes) + ' (' + ((usedBytes * 100) / totalBytes).toFixed(1) + '%)';
+			}
+
+			return hasUsed ? formatBytes(usedBytes) : formatBytes(totalBytes);
+		}
+
+		function renderStat(label, value, extraClass) {
+			const hasValue = value !== undefined && value !== null && value !== '';
+			const classes = ['summary-stat'];
+			if (!hasValue) {
+				classes.push('summary-stat-missing');
+			}
+			if (extraClass) {
+				classes.push(extraClass);
+			}
+
+			return '<div class="' + classes.join(' ') + '">' +
+				'<span class="summary-stat-label">' + escapeHtml(label) + '</span>' +
+				'<span class="summary-stat-value">' + escapeHtml(hasValue ? value : 'Unknown') + '</span>' +
+			'</div>';
+		}
+
+		function renderSourceStat(label, files) {
+			const items = Array.isArray(files)
+				? files.filter(file => file && typeof file.label === 'string' && file.label.length > 0)
+				: [];
+			const body = items.length > 0
+				? '<div class="summary-source-list">' + items.map(file => {
+					const safeLabel = escapeHtml(file.label);
+					if (typeof file.path === 'string' && file.path.length > 0) {
+						return '<button class="summary-source-link" type="button" data-open-file="true" data-file-path="' + escapeHtml(file.path) + '">' +
+							safeLabel +
+						'</button>';
+					}
+
+					return '<span class="summary-stat-value">' + safeLabel + '</span>';
+				}).join('') + '</div>'
+				: '<span class="summary-stat-value">None</span>';
+
+			return '<div class="summary-stat summary-stat-sources">' +
+				'<span class="summary-stat-label">' + escapeHtml(label) + '</span>' +
+				body +
+			'</div>';
+		}
+
+		function renderSummaryRow(title, statsHtml) {
+			return '<section class="panel summary-card">' +
+				'<div class="summary-card-title">' + escapeHtml(title) + '</div>' +
+				'<div class="summary-card-content">' + statsHtml + '</div>' +
+			'</section>';
+		}
+
+		function formatBoardValue(summaryData) {
+			const target = summaryData?.target ?? {};
+			const boardValue = currentModel?.boardLabel
+				|| target.boardTarget
+				|| [target.boardName, target.boardQualifiers].filter(Boolean).join('/');
+			if (!boardValue) {
+				return undefined;
+			}
+
+			if (target.boardRevision) {
+				return boardValue + ' rev ' + target.boardRevision;
+			}
+
+			return boardValue;
+		}
+
+		function formatSocValue(target) {
+			const parts = [target?.socPartNumber, target?.socFamily].filter(Boolean);
+			return parts.length > 0 ? parts.join(' | ') : undefined;
+		}
+
+		function formatCpuValue(target) {
+			const parts = [target?.cpu, target?.arch].filter(Boolean);
+			return parts.length > 0 ? parts.join(' | ') : undefined;
+		}
+
+		function formatZephyrValue(target) {
+			const parts = [target?.zephyrVersion, shortRevision(target?.zephyrRevision)].filter(Boolean);
+			return parts.length > 0 ? parts.join(' | ') : undefined;
+		}
+
+		function formatDirtyValue(isDirty) {
+			if (isDirty === true) {
+				return 'Dirty';
+			}
+			if (isDirty === false) {
+				return 'Clean';
+			}
+			return undefined;
+		}
+
+		function formatXipValue(enabled) {
+			if (enabled === true) {
+				return 'Enabled';
+			}
+			if (enabled === false) {
+				return 'Disabled';
+			}
+			return undefined;
+		}
+
+		function formatArtifactValue(artifact) {
+			if (!artifact?.present) {
+				return 'Missing';
+			}
+
+			return typeof artifact.sizeBytes === 'number'
+				? 'Present | ' + formatBytes(artifact.sizeBytes)
+				: 'Present';
 		}
 
 		function renderMetrics() {
 			const activeTab = getActiveTab();
 			const summaryData = currentModel?.summary;
 			const report = currentModel?.report;
+			const romCapacity = getCapacity(summaryData, ['FLASH', 'ROM']);
+			const ramCapacity = getCapacity(summaryData, ['RAM', 'SRAM']);
+			const romBucket = currentModel?.memoryReport?.rom;
+			const ramBucket = currentModel?.memoryReport?.ram;
+			const romUsed = getUsedBytes('rom');
+			const ramUsed = getUsedBytes('ram');
 
 			if (activeTab === 'sys-init' && report) {
 				setMetric(entriesMetric, 'Calls', report.totalEntries, true);
@@ -991,29 +1182,23 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				return;
 			}
 
-			const romRegion = getRegion(summaryData, ['FLASH', 'ROM']);
-			const ramRegion = getRegion(summaryData, ['RAM', 'SRAM']);
-			const artifactLabel = summaryData
-				? summaryData.presentArtifactCount + '/' + summaryData.artifacts.length
-				: 0;
-
 			if (activeTab === 'ram') {
-				setMetric(entriesMetric, 'RAM', ramRegion ? formatBytes(ramRegion.usedBytes) : 'N/A', !!ramRegion);
-				setMetric(devicesMetric, 'Total', ramRegion ? formatBytes(ramRegion.totalBytes) : 'N/A', !!ramRegion);
-				setMetric(mappedMetric, 'Artifacts', artifactLabel, !!summaryData);
+				setMetric(entriesMetric, 'Used', formatBytes(ramUsed), typeof ramUsed === 'number');
+				setMetric(devicesMetric, 'Capacity', formatBytes(ramCapacity?.totalBytes), typeof ramCapacity?.totalBytes === 'number');
+				setMetric(mappedMetric, 'Sections', ramBucket?.sections.length ?? 0, !!ramBucket);
 				return;
 			}
 
 			if (activeTab === 'rom') {
-				setMetric(entriesMetric, 'ROM', romRegion ? formatBytes(romRegion.usedBytes) : 'N/A', !!romRegion);
-				setMetric(devicesMetric, 'Total', romRegion ? formatBytes(romRegion.totalBytes) : 'N/A', !!romRegion);
-				setMetric(mappedMetric, 'Artifacts', artifactLabel, !!summaryData);
+				setMetric(entriesMetric, 'Used', formatBytes(romUsed), typeof romUsed === 'number');
+				setMetric(devicesMetric, 'Capacity', formatBytes(romCapacity?.totalBytes), typeof romCapacity?.totalBytes === 'number');
+				setMetric(mappedMetric, 'Sections', romBucket?.sections.length ?? 0, !!romBucket);
 				return;
 			}
 
-			setMetric(entriesMetric, 'ROM', romRegion ? formatBytes(romRegion.usedBytes) : 'N/A', !!romRegion);
-			setMetric(devicesMetric, 'RAM', ramRegion ? formatBytes(ramRegion.usedBytes) : 'N/A', !!ramRegion);
-			setMetric(mappedMetric, 'Artifacts', artifactLabel, !!summaryData);
+			setMetric(entriesMetric, 'Bin', formatBytes(summaryData?.image?.binSizeBytes), typeof summaryData?.image?.binSizeBytes === 'number');
+			setMetric(devicesMetric, 'Flash', formatBytes(romUsed), typeof romUsed === 'number');
+			setMetric(mappedMetric, 'RAM', formatBytes(ramUsed), typeof ramUsed === 'number');
 		}
 
 		function getActiveTab() {
@@ -1078,74 +1263,52 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				return;
 			}
 
-			const artifactRows = summaryData.artifacts.map(artifact => {
-				const statusClass = artifact.present ? 'chip-system' : 'chip-off';
-				const statusLabel = artifact.present ? 'present' : 'missing';
-				const sizeLabel = artifact.present && typeof artifact.sizeBytes === 'number'
-					? formatBytes(artifact.sizeBytes)
-					: '';
-				return '<div class="summary-artifact">' +
-					'<div class="summary-artifact-main">' +
-						'<div><strong>' + escapeHtml(artifact.label) + '</strong></div>' +
-						(artifact.path ? '<div class="summary-artifact-path"><code>' + escapeHtml(artifact.path) + '</code></div>' : '') +
-					'</div>' +
-					'<div class="summary-artifact-main">' +
-						'<span class="chip ' + statusClass + '">' + statusLabel + '</span>' +
-						(sizeLabel ? '<div class="summary-artifact-path">' + escapeHtml(sizeLabel) + '</div>' : '') +
-					'</div>' +
-				'</div>';
-			}).join('');
-
-			const memoryRows = summaryData.memoryRegions.length > 0
-				? summaryData.memoryRegions.map(region =>
-					'<div class="summary-item">' +
-						'<span class="summary-item-label">' + escapeHtml(region.name) + '</span>' +
-						'<span class="summary-item-value">' +
-							escapeHtml(formatBytes(region.usedBytes)) + ' / ' + escapeHtml(formatBytes(region.totalBytes)) +
-							' (' + escapeHtml(region.usedPercent.toFixed(1)) + '%)' +
-						'</span>' +
-					'</div>'
-				).join('')
-				: '<div class="dim">No memory regions found in zephyr.map.</div>';
-
-			const featureRows = summaryData.features.map(feature =>
-				'<span class="chip ' + (feature.enabled ? 'chip-system' : 'chip-off') + '">' +
-					escapeHtml(feature.label) +
-				'</span>'
+			const target = summaryData.target ?? {};
+			const toolchain = summaryData.toolchain ?? {};
+			const sources = summaryData.sources ?? {};
+			const image = summaryData.image ?? {};
+			const romCapacity = getCapacity(summaryData, ['FLASH', 'ROM']);
+			const ramCapacity = getCapacity(summaryData, ['RAM', 'SRAM']);
+			const artifactStats = summaryData.artifacts.map(artifact =>
+				renderStat(artifact.label, formatArtifactValue(artifact), artifact.present ? '' : 'summary-stat-missing')
 			).join('');
 
 			reportPanel.innerHTML =
 				'<div class="summary-grid">' +
-					'<section class="panel summary-card">' +
-						'<div class="summary-card-title">Build</div>' +
-						'<div class="summary-list">' +
-							'<div class="summary-item"><span class="summary-item-label">Directory</span><span class="summary-item-value"><code>' + escapeHtml(summaryData.buildDir) + '</code></span></div>' +
-							'<div class="summary-item"><span class="summary-item-label">Last build</span><span class="summary-item-value">' + escapeHtml(formatDateTime(summaryData.lastBuildTimeMs)) + '</span></div>' +
-							'<div class="summary-item"><span class="summary-item-label">Toolchain</span><span class="summary-item-value">' + escapeHtml(summaryData.toolchain || 'Unknown') + '</span></div>' +
-							'<div class="summary-item"><span class="summary-item-label">Generator</span><span class="summary-item-value">' + escapeHtml(summaryData.generator || 'Unknown') + '</span></div>' +
-						'</div>' +
-					'</section>' +
-					'<section class="panel summary-card">' +
-						'<div class="summary-card-title">Platform</div>' +
-						'<div class="summary-list">' +
-							'<div class="summary-item"><span class="summary-item-label">Architecture</span><span class="summary-item-value">' + escapeHtml(summaryData.arch || 'Unknown') + '</span></div>' +
-							'<div class="summary-item"><span class="summary-item-label">SoC</span><span class="summary-item-value">' + escapeHtml(summaryData.soc || 'Unknown') + '</span></div>' +
-							'<div class="summary-item"><span class="summary-item-label">Board</span><span class="summary-item-value">' + escapeHtml(currentModel?.boardLabel || 'Unknown') + '</span></div>' +
-							'<div class="summary-item"><span class="summary-item-label">Config</span><span class="summary-item-value">' + escapeHtml(currentModel?.configLabel || 'Unknown') + '</span></div>' +
-						'</div>' +
-					'</section>' +
-					'<section class="panel summary-card">' +
-						'<div class="summary-card-title">Artifacts</div>' +
-						'<div class="summary-list">' + artifactRows + '</div>' +
-					'</section>' +
-					'<section class="panel summary-card">' +
-						'<div class="summary-card-title">Memory</div>' +
-						'<div class="summary-list">' + memoryRows + '</div>' +
-					'</section>' +
-					'<section class="panel summary-card">' +
-						'<div class="summary-card-title">Features</div>' +
-						'<div class="summary-features">' + featureRows + '</div>' +
-					'</section>' +
+					renderSummaryRow('Target', [
+						renderStat('App', target.applicationName || currentModel?.projectLabel),
+						renderStat('Board', formatBoardValue(summaryData)),
+						renderStat('SoC', formatSocValue(target)),
+						renderStat('CPU', formatCpuValue(target)),
+						renderStat('Zephyr', formatZephyrValue(target)),
+						renderStat('Workspace', formatDirtyValue(target.workspaceDirty)),
+					].join('')) +
+					renderSummaryRow('Memory', [
+						renderStat('Flash', formatUsage(currentModel?.memoryReport?.rom?.totalBytes, romCapacity?.totalBytes)),
+						renderStat('RAM', formatUsage(currentModel?.memoryReport?.ram?.totalBytes, ramCapacity?.totalBytes)),
+					].join('')) +
+					renderSummaryRow('Image', [
+						renderStat('Bin Size', typeof image.binSizeBytes === 'number' ? formatBytes(image.binSizeBytes) : undefined),
+						renderStat('Text (Code)', typeof image.textBytes === 'number' ? formatBytes(image.textBytes) : undefined),
+						renderStat('Read-Only Data', typeof image.rodataBytes === 'number' ? formatBytes(image.rodataBytes) : undefined),
+						renderStat('Read/Write Data', typeof image.dataBytes === 'number' ? formatBytes(image.dataBytes) : undefined),
+						renderStat('BSS (Zero Init)', typeof image.bssBytes === 'number' ? formatBytes(image.bssBytes) : undefined),
+					].join('')) +
+					renderSummaryRow('Toolchain', [
+						renderStat('Toolchain', toolchain.variant || toolchain.name),
+						renderStat('SDK', toolchain.sdkName || toolchain.sdkVersion),
+						renderStat('Generator', toolchain.generator),
+						renderStat('West', toolchain.westVersion),
+						renderStat('XIP', formatXipValue(toolchain.xip)),
+						renderStat('Built', formatDateTime(summaryData.lastBuildTimeMs)),
+					].join('')) +
+					renderSummaryRow('Sources', [
+						renderSourceStat('Kconfig', sources.kconfigUserFiles),
+						renderSourceStat('DTS', sources.dtsUserFiles),
+						renderSourceStat('Kconfig Base', sources.kconfigDefaultFiles),
+						renderSourceStat('DTS Base', sources.dtsDefaultFiles),
+					].join('')) +
+					renderSummaryRow('Artifacts', artifactStats) +
 				'</div>';
 		}
 
@@ -1448,6 +1611,25 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				searchInput.disabled = !isSearchableTab(nextTab) || !hasDataForTab(nextTab, currentModel);
 				renderActiveTab();
 			}
+		});
+
+		reportPanel.addEventListener('click', (event) => {
+			const target = event.target;
+			if (!target || typeof target.closest !== 'function') {
+				return;
+			}
+
+			const trigger = target.closest('[data-open-file="true"]');
+			if (!trigger) {
+				return;
+			}
+
+			const filePath = trigger.getAttribute('data-file-path');
+			if (!filePath) {
+				return;
+			}
+
+			vscode.postMessage({ command: 'openFile', path: filePath });
 		});
 
 		reportPanel.addEventListener('toggle', (event) => {
