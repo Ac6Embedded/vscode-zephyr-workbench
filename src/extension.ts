@@ -26,6 +26,7 @@ import { DebugToolsPanel } from './panels/DebugToolsPanel';
 import { HostToolsPanel } from './panels/HostToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { EclairManagerPanel } from './panels/EclairManagerPanel';
+import { ZephyrDashboardViewProvider } from './panels/ZephyrDashboardViewProvider';
 import { changeToolchainQuickStep } from "./quicksteps/changeToolchainQuickStep";
 import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
@@ -161,12 +162,27 @@ export function activate(context: vscode.ExtensionContext) {
 
 	const zephyrAppProvider = new ZephyrApplicationDataProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-app-explorer', zephyrAppProvider);
+	const dashboardViewProvider = new ZephyrDashboardViewProvider();
+	context.subscriptions.push(
+		dashboardViewProvider,
+		vscode.window.registerWebviewViewProvider(
+			ZephyrDashboardViewProvider.viewId,
+			dashboardViewProvider,
+			{
+				webviewOptions: {
+					retainContextWhenHidden: true,
+				},
+			},
+		),
+	);
+	void dashboardViewProvider.refresh();
 	let appRefreshSuspendCount = 0;
 	let appRefreshPending = false;
 
 	const flushAppRefresh = () => {
 		appRefreshPending = false;
 		zephyrAppProvider.refresh();
+		void dashboardViewProvider.refresh();
 	};
 
 	const requestAppRefresh = () => {
@@ -205,7 +221,11 @@ export function activate(context: vscode.ExtensionContext) {
 	// TODO: Could be refactored / Optimized
 	vscode.commands.registerCommand('zephyr-workbench-sdk-explorer.refresh', () => zephyrSdkProvider.refresh());
 	vscode.commands.registerCommand('zephyr-workbench-west-workspace.refresh', () => westWorkspaceProvider.refresh());
-	vscode.commands.registerCommand('zephyr-workbench-app-explorer.refresh', () => zephyrAppProvider.refresh());
+	vscode.commands.registerCommand('zephyr-workbench-app-explorer.refresh', () => {
+		zephyrAppProvider.refresh();
+		void dashboardViewProvider.refresh();
+	});
+	vscode.commands.registerCommand('zephyr-workbench.dashboard.refresh', () => dashboardViewProvider.refresh());
 
 	vscode.commands.registerCommand('zephyr-workbench.build-app', async () => {
 		let currentProject = getCurrentWorkspaceFolder();
@@ -248,6 +268,12 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.env.openExternal(url);
 		}
 	});
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench.dashboard.open', async (node?: any) => {
+			await dashboardViewProvider.reveal(node);
+		})
+	);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench.eclair-manager.open', async (node?: any) => {
@@ -2297,7 +2323,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	/* Listeners on active editor */
 	context.subscriptions.push(
-		vscode.window.onDidChangeActiveTextEditor(updateStatusBar)
+		vscode.window.onDidChangeActiveTextEditor(() => {
+			updateStatusBar();
+			void dashboardViewProvider.refresh();
+		})
 	);
 
 	/* Listeners on workspace changes */
@@ -2310,7 +2339,10 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.workspace.onDidChangeWorkspaceFolders(updateStatusBar)
+		vscode.workspace.onDidChangeWorkspaceFolders(() => {
+			updateStatusBar();
+			void dashboardViewProvider.refresh();
+		})
 	);
 
 	/* Listeners on setttings changes */
@@ -2334,6 +2366,8 @@ export function activate(context: vscode.ExtensionContext) {
 				event.affectsConfiguration(`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.build.configurations`)) {
 				requestAppRefresh();
 			}
+
+			void dashboardViewProvider.refresh();
 		})
 	);
 

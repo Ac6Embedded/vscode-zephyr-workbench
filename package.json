@@ -360,6 +360,18 @@
         "category": "Zephyr Workbench"
       },
       {
+        "command": "zephyr-workbench.dashboard.open",
+        "title": "Dashboard",
+        "icon": "$(output)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.dashboard.refresh",
+        "title": "Refresh Dashboard",
+        "icon": "$(refresh)",
+        "category": "Zephyr Workbench"
+      },
+      {
         "command": "zephyr-workbench.build-app",
         "title": "Build Application",
         "icon": "$(gear)",
@@ -733,6 +745,13 @@
           "title": "Workbench for Zephyr",
           "icon": "res/zephyr-workbench.svg"
         }
+      ],
+      "panel": [
+        {
+          "id": "zephyr-workbench-dashboard-panel",
+          "title": "Dashboard",
+          "icon": "res/icons/zephyr.svg"
+        }
       ]
     },
     "views": {
@@ -778,6 +797,15 @@
           "contextualTitle": "Other resources",
           "icon": "$(extensions-view-icon)",
           "type": "tree"
+        }
+      ],
+      "zephyr-workbench-dashboard-panel": [
+        {
+          "id": "zephyr-workbench-dashboard",
+          "name": "Dashboard",
+          "contextualTitle": "Zephyr Dashboard",
+          "icon": "$(output)",
+          "type": "webview"
         }
       ]
     },
@@ -892,6 +920,11 @@
           "command": "zephyr-workbench-sdk-explorer.refresh",
           "group": "navigation",
           "when": "view == zephyr-workbench-sdk-explorer"
+        },
+        {
+          "command": "zephyr-workbench.dashboard.refresh",
+          "group": "navigation",
+          "when": "view == zephyr-workbench-dashboard"
         }
       ],
       "explorer/context": [
@@ -1347,35 +1380,45 @@
       ],
       "zephyr-workbench-app-explorer.analysis": [
         {
-          "submenu": "zephyr-workbench-app-explorer.memory-analysis",
+          "command": "zephyr-workbench.dashboard.open",
           "group": "0@view/item/context@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "submenu": "zephyr-workbench-app-explorer.static-code-analysis",
+          "submenu": "zephyr-workbench-app-explorer.memory-analysis",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "submenu": "zephyr-workbench-app-explorer.spdx",
+          "submenu": "zephyr-workbench-app-explorer.static-code-analysis",
           "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.spdx",
+          "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ],
       "zephyr-workbench-app-explorer.config.analysis": [
         {
-          "submenu": "zephyr-workbench-app-explorer.config.memory-analysis",
+          "command": "zephyr-workbench.dashboard.open",
           "group": "0@view/item/context@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
-          "submenu": "zephyr-workbench-app-explorer.config.static-code-analysis",
+          "submenu": "zephyr-workbench-app-explorer.config.memory-analysis",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
-          "submenu": "zephyr-workbench-app-explorer.config.spdx",
+          "submenu": "zephyr-workbench-app-explorer.config.static-code-analysis",
           "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.config.spdx",
+          "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         }
       ],
