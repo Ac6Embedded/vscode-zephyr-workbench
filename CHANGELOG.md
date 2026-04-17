@@ -4,6 +4,27 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.7.5]
+
+### Applications
+- Improved the Add Application flow with better loading and error handling
+- Added clearer errors when the selected west workspace is missing `boards/` or `samples/`
+- Added test templates to the application creation picker
+- Fixed git revision ordering when listing available revisions for app creation
+
+### Toolchain
+- Added support for storing real `ZEPHYR_TOOLCHAIN_VARIANT` values in the project toolchain setting, with automatic migration from the legacy `zephyr_sdk` value
+- Added optional LLVM/Clang toolchain download for Zephyr SDK `1.x+` minimal installs
+- Added LLVM selection when creating applications and when changing the project toolchain
+- Improved the SDK import panel by loading toolchain data asynchronously for faster opening
+- Grouped Xtensa minimal toolchains in a collapsed section to make SDK toolchain selection easier to scan
+
+### Debug Manager
+- Fixed the browse spinner so it stops correctly when the action is cancelled
+
+### West Workspace
+- Added an Analog Devices `hal_adi` west workspace template
+
 ## [2.7.0]
 
 ### Debug Manager
@@ -635,9 +656,5 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [0.0.2]
 
 - Support features on Windows
-
-## [Unreleased]
-
-- Initial release
 
 [2.0.0]: https://github.com/Ac6Embedded/vscode-zephyr-workbench/compare/v1.3.38...version-2
