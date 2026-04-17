@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ZephyrAppProject } from '../models/ZephyrAppProject';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { getNonce } from '../utilities/getNonce';
+import { readZephyrBuildSummary, type ZephyrBuildSummary } from '../utils/zephyr/buildSummaryParser';
 import { readZephyrSysInitReport, type ZephyrSysInitReport } from '../utils/zephyr/sysInitParser';
 
 interface DashboardTarget {
@@ -10,12 +11,14 @@ interface DashboardTarget {
 	selectedConfig?: ZephyrProjectBuildConfiguration;
 	buildDir?: string;
 	elfPath?: string;
+	summary?: ZephyrBuildSummary;
 	report?: ZephyrSysInitReport;
 	error?: string;
 }
 
 interface DashboardViewModel {
 	hasProjects: boolean;
+	hasContent: boolean;
 	hasReport: boolean;
 	projectLabel: string;
 	configLabel: string;
@@ -24,6 +27,7 @@ interface DashboardViewModel {
 	elfPath: string;
 	message: string;
 	hint: string;
+	summary?: ZephyrBuildSummary;
 	report?: ZephyrSysInitReport;
 }
 
@@ -179,6 +183,11 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 
 		const buildDir = selectedConfig.getBuildDir(selectedProject);
 		const elfPath = selectedConfig.getBuildArtifactPath(selectedProject, 'zephyr', 'zephyr.elf');
+		const binPath = selectedConfig.getBuildArtifactPath(selectedProject, 'zephyr', 'zephyr.bin');
+		const hexPath = selectedConfig.getBuildArtifactPath(selectedProject, 'zephyr', 'zephyr.hex');
+		const mapPath = selectedConfig.getBuildArtifactPath(selectedProject, 'zephyr', 'zephyr.map');
+		const dotConfigPath = selectedConfig.getBuildArtifactPath(selectedProject, 'zephyr', '.config');
+		const cmakeCachePath = selectedConfig.getBuildArtifactPath(selectedProject, 'CMakeCache.txt');
 		const devicetreeHeaderPath = selectedConfig.getBuildArtifactPath(
 			selectedProject,
 			'zephyr',
@@ -187,6 +196,15 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			'zephyr',
 			'devicetree_generated.h',
 		);
+		const summary = readZephyrBuildSummary({
+			buildDir,
+			elfPath,
+			binPath,
+			hexPath,
+			mapPath,
+			dotConfigPath,
+			cmakeCachePath,
+		});
 
 		if (!elfPath) {
 			return {
@@ -194,6 +212,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				selectedProject,
 				selectedConfig,
 				buildDir,
+				summary,
 				error: 'No zephyr.elf was found for the selected build configuration.',
 			};
 		}
@@ -211,6 +230,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				selectedConfig,
 				buildDir,
 				elfPath,
+				summary,
 				report,
 			};
 		} catch (error) {
@@ -220,6 +240,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				selectedConfig,
 				buildDir,
 				elfPath,
+				summary,
 				error: error instanceof Error ? error.message : String(error),
 			};
 		}
@@ -303,6 +324,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 
 		return {
 			hasProjects: target.projects.length > 0,
+			hasContent: !!target.summary || !!target.report,
 			hasReport: !!target.report,
 			projectLabel: target.selectedProject?.folderName ?? '',
 			configLabel: target.selectedConfig?.name ?? '',
@@ -311,6 +333,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			elfPath: target.elfPath ?? '',
 			message,
 			hint,
+			summary: target.summary,
 			report: target.report,
 		};
 	}
@@ -547,6 +570,90 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			align-content: start;
 		}
 
+		.summary-grid {
+			display: grid;
+			gap: 6px;
+			grid-template-columns: minmax(0, 1fr);
+		}
+
+		.summary-card {
+			display: grid;
+			grid-template-columns: 140px minmax(0, 1fr);
+			gap: 12px;
+			align-items: start;
+			padding: 10px;
+		}
+
+		.summary-card-title {
+			font-size: 11px;
+			font-weight: 700;
+			text-transform: uppercase;
+			letter-spacing: 0.06em;
+			color: var(--shell-muted);
+			margin-top: 2px;
+		}
+
+		.summary-list {
+			display: grid;
+			gap: 6px;
+		}
+
+		.summary-item {
+			display: flex;
+			align-items: flex-start;
+			justify-content: space-between;
+			gap: 10px;
+			font-size: 11px;
+		}
+
+		.summary-item-label {
+			color: var(--shell-muted);
+		}
+
+		.summary-item-value {
+			text-align: right;
+			word-break: break-word;
+		}
+
+		.summary-item-value code {
+			font-size: 10px;
+		}
+
+		.summary-artifact {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 10px;
+			font-size: 11px;
+		}
+
+		.summary-artifact-main {
+			display: grid;
+			gap: 2px;
+			min-width: 0;
+		}
+
+		.summary-artifact-path {
+			font-size: 10px;
+			color: var(--shell-muted);
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			max-width: 100%;
+		}
+
+		.summary-features {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 6px;
+		}
+
+		.chip-off {
+			background: color-mix(in srgb, var(--shell-border) 35%, transparent);
+			border-color: color-mix(in srgb, var(--shell-border) 80%, transparent);
+			color: var(--shell-muted);
+		}
+
 		.level-card {
 			overflow: hidden;
 		}
@@ -706,6 +813,11 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				grid-template-columns: 1fr;
 			}
 
+			.summary-card {
+				grid-template-columns: 1fr;
+				gap: 8px;
+			}
+
 			.status-row {
 				flex-direction: column;
 				align-items: stretch;
@@ -812,6 +924,77 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			element.classList.toggle('hidden', !visible);
 		}
 
+		function formatBytes(bytes) {
+			if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) {
+				return '0 B';
+			}
+
+			const units = ['B', 'KB', 'MB', 'GB'];
+			let value = bytes;
+			let unitIndex = 0;
+			while (value >= 1024 && unitIndex < units.length - 1) {
+				value /= 1024;
+				unitIndex += 1;
+			}
+
+			const precision = value >= 100 || unitIndex === 0 ? 0 : value >= 10 ? 1 : 2;
+			return value.toFixed(precision) + ' ' + units[unitIndex];
+		}
+
+		function formatDateTime(timestamp) {
+			if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) {
+				return 'Unknown';
+			}
+
+			return new Date(timestamp).toLocaleString();
+		}
+
+		function getRegion(summaryData, candidates) {
+			if (!summaryData?.memoryRegions) {
+				return undefined;
+			}
+
+			const names = candidates.map(name => name.toUpperCase());
+			return summaryData.memoryRegions.find(region => names.includes(String(region.name).toUpperCase()));
+		}
+
+		function renderMetrics() {
+			const activeTab = getActiveTab();
+			const summaryData = currentModel?.summary;
+			const report = currentModel?.report;
+
+			if (activeTab === 'sys-init' && report) {
+				setMetric(entriesMetric, 'Calls', report.totalEntries, true);
+				setMetric(devicesMetric, 'Devices', report.totalDeviceEntries, true);
+				setMetric(mappedMetric, 'Mapped', report.mappedDevicePaths, true);
+				return;
+			}
+
+			const romRegion = getRegion(summaryData, ['FLASH', 'ROM']);
+			const ramRegion = getRegion(summaryData, ['RAM', 'SRAM']);
+			const artifactLabel = summaryData
+				? summaryData.presentArtifactCount + '/' + summaryData.artifacts.length
+				: 0;
+
+			if (activeTab === 'ram') {
+				setMetric(entriesMetric, 'RAM', ramRegion ? formatBytes(ramRegion.usedBytes) : 'N/A', !!ramRegion);
+				setMetric(devicesMetric, 'Total', ramRegion ? formatBytes(ramRegion.totalBytes) : 'N/A', !!ramRegion);
+				setMetric(mappedMetric, 'Artifacts', artifactLabel, !!summaryData);
+				return;
+			}
+
+			if (activeTab === 'rom') {
+				setMetric(entriesMetric, 'ROM', romRegion ? formatBytes(romRegion.usedBytes) : 'N/A', !!romRegion);
+				setMetric(devicesMetric, 'Total', romRegion ? formatBytes(romRegion.totalBytes) : 'N/A', !!romRegion);
+				setMetric(mappedMetric, 'Artifacts', artifactLabel, !!summaryData);
+				return;
+			}
+
+			setMetric(entriesMetric, 'ROM', romRegion ? formatBytes(romRegion.usedBytes) : 'N/A', !!romRegion);
+			setMetric(devicesMetric, 'RAM', ramRegion ? formatBytes(ramRegion.usedBytes) : 'N/A', !!ramRegion);
+			setMetric(mappedMetric, 'Artifacts', artifactLabel, !!summaryData);
+		}
+
 		function getActiveTab() {
 			const tab = typeof currentState.activeTab === 'string' ? currentState.activeTab : 'summary';
 			return ['summary', 'sys-init', 'ram', 'rom'].includes(tab) ? tab : 'summary';
@@ -853,6 +1036,84 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				'</section>';
 		}
 
+		function renderSummary() {
+			const summaryData = currentModel?.summary;
+			if (!summaryData) {
+				renderPlaceholderTab('Summary', 'Build the active configuration to populate the summary.');
+				return;
+			}
+
+			const artifactRows = summaryData.artifacts.map(artifact => {
+				const statusClass = artifact.present ? 'chip-system' : 'chip-off';
+				const statusLabel = artifact.present ? 'present' : 'missing';
+				const sizeLabel = artifact.present && typeof artifact.sizeBytes === 'number'
+					? formatBytes(artifact.sizeBytes)
+					: '';
+				return '<div class="summary-artifact">' +
+					'<div class="summary-artifact-main">' +
+						'<div><strong>' + escapeHtml(artifact.label) + '</strong></div>' +
+						(artifact.path ? '<div class="summary-artifact-path"><code>' + escapeHtml(artifact.path) + '</code></div>' : '') +
+					'</div>' +
+					'<div class="summary-artifact-main">' +
+						'<span class="chip ' + statusClass + '">' + statusLabel + '</span>' +
+						(sizeLabel ? '<div class="summary-artifact-path">' + escapeHtml(sizeLabel) + '</div>' : '') +
+					'</div>' +
+				'</div>';
+			}).join('');
+
+			const memoryRows = summaryData.memoryRegions.length > 0
+				? summaryData.memoryRegions.map(region =>
+					'<div class="summary-item">' +
+						'<span class="summary-item-label">' + escapeHtml(region.name) + '</span>' +
+						'<span class="summary-item-value">' +
+							escapeHtml(formatBytes(region.usedBytes)) + ' / ' + escapeHtml(formatBytes(region.totalBytes)) +
+							' (' + escapeHtml(region.usedPercent.toFixed(1)) + '%)' +
+						'</span>' +
+					'</div>'
+				).join('')
+				: '<div class="dim">No memory regions found in zephyr.map.</div>';
+
+			const featureRows = summaryData.features.map(feature =>
+				'<span class="chip ' + (feature.enabled ? 'chip-system' : 'chip-off') + '">' +
+					escapeHtml(feature.label) +
+				'</span>'
+			).join('');
+
+			reportPanel.innerHTML =
+				'<div class="summary-grid">' +
+					'<section class="panel summary-card">' +
+						'<div class="summary-card-title">Build</div>' +
+						'<div class="summary-list">' +
+							'<div class="summary-item"><span class="summary-item-label">Directory</span><span class="summary-item-value"><code>' + escapeHtml(summaryData.buildDir) + '</code></span></div>' +
+							'<div class="summary-item"><span class="summary-item-label">Last build</span><span class="summary-item-value">' + escapeHtml(formatDateTime(summaryData.lastBuildTimeMs)) + '</span></div>' +
+							'<div class="summary-item"><span class="summary-item-label">Toolchain</span><span class="summary-item-value">' + escapeHtml(summaryData.toolchain || 'Unknown') + '</span></div>' +
+							'<div class="summary-item"><span class="summary-item-label">Generator</span><span class="summary-item-value">' + escapeHtml(summaryData.generator || 'Unknown') + '</span></div>' +
+						'</div>' +
+					'</section>' +
+					'<section class="panel summary-card">' +
+						'<div class="summary-card-title">Platform</div>' +
+						'<div class="summary-list">' +
+							'<div class="summary-item"><span class="summary-item-label">Architecture</span><span class="summary-item-value">' + escapeHtml(summaryData.arch || 'Unknown') + '</span></div>' +
+							'<div class="summary-item"><span class="summary-item-label">SoC</span><span class="summary-item-value">' + escapeHtml(summaryData.soc || 'Unknown') + '</span></div>' +
+							'<div class="summary-item"><span class="summary-item-label">Board</span><span class="summary-item-value">' + escapeHtml(currentModel?.boardLabel || 'Unknown') + '</span></div>' +
+							'<div class="summary-item"><span class="summary-item-label">Config</span><span class="summary-item-value">' + escapeHtml(currentModel?.configLabel || 'Unknown') + '</span></div>' +
+						'</div>' +
+					'</section>' +
+					'<section class="panel summary-card">' +
+						'<div class="summary-card-title">Artifacts</div>' +
+						'<div class="summary-list">' + artifactRows + '</div>' +
+					'</section>' +
+					'<section class="panel summary-card">' +
+						'<div class="summary-card-title">Memory</div>' +
+						'<div class="summary-list">' + memoryRows + '</div>' +
+					'</section>' +
+					'<section class="panel summary-card">' +
+						'<div class="summary-card-title">Features</div>' +
+						'<div class="summary-features">' + featureRows + '</div>' +
+					'</section>' +
+				'</div>';
+		}
+
 		function entryMatches(entry, query) {
 			if (!query) {
 				return true;
@@ -877,7 +1138,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		function renderReport() {
 			const report = currentModel?.report;
 			if (!report) {
-				reportPanel.innerHTML = '';
+				renderPlaceholderTab('Sys Init', currentModel?.hint || 'No sys-init data available for this build.');
 				summary.textContent = '';
 				return;
 			}
@@ -973,7 +1234,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			}
 
 			if (activeTab === 'summary') {
-				renderPlaceholderTab('Summary', 'Summary widgets will be added here.');
+				renderSummary();
 				return;
 			}
 
@@ -991,18 +1252,14 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			setTag(configTag, configValue, model.configLabel);
 			setTag(boardTag, boardValue, model.boardLabel);
 
-			const hasReport = !!model.hasReport && !!model.report;
-			setMetric(entriesMetric, 'Calls', model.report ? model.report.totalEntries : 0, hasReport);
-			setMetric(devicesMetric, 'Devices', model.report ? model.report.totalDeviceEntries : 0, hasReport);
-			setMetric(mappedMetric, 'Mapped', model.report ? model.report.mappedDevicePaths : 0, hasReport);
-
 			syncTabs();
-			searchInput.disabled = !hasReport || getActiveTab() !== 'sys-init';
+			renderMetrics();
+			searchInput.disabled = !model.hasReport || getActiveTab() !== 'sys-init';
 
-			emptyPanel.classList.toggle('hidden', hasReport);
-			reportPanel.classList.toggle('hidden', !hasReport);
+			emptyPanel.classList.toggle('hidden', model.hasContent);
+			reportPanel.classList.toggle('hidden', !model.hasContent);
 
-			if (!hasReport) {
+			if (!model.hasContent) {
 				summary.textContent = '';
 				emptyTitle.textContent = model.message || 'No data';
 				emptyHint.textContent = model.hint || '';
@@ -1036,9 +1293,10 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 
 			updateState({ activeTab });
 			syncTabs();
+			renderMetrics();
 
-			if (currentModel?.hasReport && currentModel?.report) {
-				searchInput.disabled = getActiveTab() !== 'sys-init';
+			if (currentModel?.hasContent) {
+				searchInput.disabled = !currentModel?.hasReport || getActiveTab() !== 'sys-init';
 				renderActiveTab();
 			}
 		});
