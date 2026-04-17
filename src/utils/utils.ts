@@ -1,7 +1,6 @@
 import fs from 'fs';
 import os from 'os';
 import path from "path";
-import yaml from 'yaml';
 import * as vscode from "vscode";
 import { WestWorkspace } from "../models/WestWorkspace";
 import { ZephyrAppProject } from "../models/ZephyrAppProject";
