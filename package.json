@@ -788,7 +788,7 @@
       },
       {
         "view": "zephyr-workbench-west-workspace",
-        "contents": "Import the Zephyr sources from [Github](https://github.com/zephyrproject-rtos/zephyr) or enter your local sources and initialize your workspace\n[Initialize workspace](command:zephyr-workbench-west-workspace.open-wizard)\n"
+        "contents": "[Initialize workspace](command:zephyr-workbench-west-workspace.open-wizard)\n"
       },
       {
         "view": "zephyr-workbench-tools-explorer",
