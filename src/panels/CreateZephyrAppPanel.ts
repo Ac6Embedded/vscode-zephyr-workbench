@@ -6,7 +6,7 @@ import { WestWorkspace } from "../models/WestWorkspace";
 import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
 import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
-import { fileExists, getBase64, getBoard, getListIARs, getListSamples, getListZephyrSDKs, getIarToolchainForSdk, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils/utils";
+import { fileExists, getArmGnuToolchainForPath, getBase64, getBoard, getListArmGnuToolchains, getListIARs, getListSamples, getListZephyrSDKs, getIarToolchainForSdk, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils/utils";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 
@@ -99,6 +99,10 @@ export class CreateZephyrAppPanel {
     for (const iar of await getListIARs()) {
       const label = path.basename(iar.iarPath);
       sdkHTML += `<div class="dropdown-item" data-type="iar" data-value="${iar.iarPath}" data-label="${label}">IAR (${label})<span class="description">${iar.iarPath}</span></div>`;
+    }
+
+    for (const armGnuToolchain of await getListArmGnuToolchains()) {
+      sdkHTML += `<div class="dropdown-item" data-type="gnuarmemb" data-value="${armGnuToolchain.toolchainPath}" data-label="${armGnuToolchain.name}">${armGnuToolchain.name}<span class="description">${armGnuToolchain.toolchainPath}</span></div>`;
     }
 
     return /*html*/ `
@@ -482,7 +486,8 @@ async function handleCreateMessage(message: any) {
     const board = getBoard(message.boardYamlPath, message.boardIdentifier);
     const sample = await getSample(message.samplePath);
     const toolchain =
-      getIarToolchainForSdk(message.zephyrSdkPath)
+      getArmGnuToolchainForPath(message.zephyrSdkPath)
+      ?? getIarToolchainForSdk(message.zephyrSdkPath)
       ?? getZephyrSDK(vscode.Uri.parse(message.zephyrSdkPath, true).fsPath);
 
     vscode.commands.executeCommand(
@@ -545,7 +550,8 @@ async function handleCreateMessage(message: any) {
   const board = hasBoard ? getBoard(message.boardYamlPath, message.boardIdentifier) : undefined;
   const toolchain = hasSdk
     ? (
-        getIarToolchainForSdk(message.zephyrSdkPath)
+        getArmGnuToolchainForPath(message.zephyrSdkPath)
+        ?? getIarToolchainForSdk(message.zephyrSdkPath)
         ?? getZephyrSDK(vscode.Uri.parse(message.zephyrSdkPath, true).fsPath)
       )
     : undefined;

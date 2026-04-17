@@ -93,6 +93,12 @@
             "description": "List of registered IAR ARM Toolchain entries.\nEach entry is an object { \"zephyrSdkPath\": \"...\", \"iarPath\": \"...\", \"token\": \"...\" }",
             "scope": "machine"
           },
+          "zephyr-workbench.listArmGnuToolchains": {
+            "type": "array",
+            "default": [],
+            "description": "List of registered Arm GNU Toolchain entries.\nEach entry is an object { \"toolchainPath\": \"...\", \"targetTriple\": \"arm-none-eabi|aarch64-none-elf\", \"version\": \"...\" }",
+            "scope": "machine"
+          },
           "zephyr-workbench.westWorkspace": {
             "type": "string",
             "default": "",
@@ -111,6 +117,7 @@
               "zephyr",
               "zephyr/gnu",
               "zephyr/llvm",
+              "gnuarmemb",
               "iar",
               "zephyr_sdk"
             ],
@@ -118,11 +125,18 @@
               "Zephyr SDK: GNU/GCC toolchain (alias for 'zephyr/gnu' SDK >= 1.x)",
               "Zephyr SDK: GNU/GCC toolchain",
               "Zephyr SDK: LLVM/Clang toolchain",
+              "Arm GNU Toolchain",
               "IAR ARM toolchain",
               "Deprecated: use 'zephyr' instead"
             ],
             "default": "zephyr",
             "markdownDescription": "ZEPHYR_TOOLCHAIN_VARIANT to use for this project. The legacy value `zephyr_sdk` is automatically migrated to `zephyr` on first use.",
+            "scope": "resource"
+          },
+          "zephyr-workbench.gnuarmemb": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Selected Arm GNU Toolchain path for this workspace.\nIt is used in GNUARMEMB_TOOLCHAIN_PATH.\nThe value must match a registered entry from `zephyr-workbench.listArmGnuToolchains`.",
             "scope": "resource"
           },
           "zephyr-workbench.iar": {
@@ -688,8 +702,20 @@
         "category": "Zephyr Workbench"
       },
       {
+        "command": "zephyr-workbench-sdk-explorer.remove-arm-gnu",
+        "title": "Remove ARM GNU Toolchain",
+        "icon": "$(remove)",
+        "category": "Zephyr Workbench"
+      },
+      {
         "command": "zephyr-workbench-sdk-explorer.delete-iar",
         "title": "Delete IAR Toolchain",
+        "category": "Zephyr Workbench",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "zephyr-workbench-sdk-explorer.delete-arm-gnu",
+        "title": "Delete ARM GNU Toolchain",
         "category": "Zephyr Workbench",
         "icon": "$(trash)"
       },
@@ -1223,6 +1249,11 @@
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == iar-toolchain"
         },
         {
+          "command": "zephyr-workbench-sdk-explorer.remove-arm-gnu",
+          "group": "0@view/item/context@1",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == arm-gnu-toolchain"
+        },
+        {
           "command": "zephyr-workbench-sdk-explorer.delete",
           "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
@@ -1233,6 +1264,11 @@
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == iar-toolchain"
         },
         {
+          "command": "zephyr-workbench-sdk-explorer.delete-arm-gnu",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == arm-gnu-toolchain"
+        },
+        {
           "command": "zephyr-workbench-sdk-explorer.remove-sdk",
           "group": "inline@0",
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
@@ -1241,6 +1277,11 @@
           "command": "zephyr-workbench-sdk-explorer.remove-iar",
           "group": "inline@0",
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == iar-toolchain"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.remove-arm-gnu",
+          "group": "inline@0",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == arm-gnu-toolchain"
         }
       ],
       "zephyr-workbench-app-explorer.clean": [

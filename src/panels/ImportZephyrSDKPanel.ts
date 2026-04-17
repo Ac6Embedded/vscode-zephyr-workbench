@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getMinimalToolchainsForVersion, getSdkVersion } from "../utils/zephyr/sdkUtils";
+import { fetchArmGnuDownloadCatalog, filterArmGnuCatalogForHost, getArmGnuHostTarget } from "../utils/zephyr/armGnuToolchainUtils";
 import { getListZephyrSDKs } from "../utils/utils";
 
 export class ImportZephyrSDKPanel {
@@ -138,6 +139,7 @@ export class ImportZephyrSDKPanel {
       <vscode-radio-group id="sourceCategory" orientation="vertical">
         <label slot="label">Toolchain family:</label>
         <vscode-radio value="zephyr" checked>Zephyr SDK</vscode-radio>
+        <vscode-radio value="arm-gnu">ARM GNU Toolchain</vscode-radio>
         <vscode-radio value="iar">IAR ARM Toolchain</vscode-radio>
       </vscode-radio-group>
     </div>
@@ -218,6 +220,52 @@ export class ImportZephyrSDKPanel {
           </div>
         </div>
       </fieldset>
+    </div>
+  </form>
+
+  <form id="arm-gnu-form" style="display:none">
+    <div class="grid-group-div">
+      <div class="grid-header-div">
+        <label for="armGnuVersionInput">Version:</label>
+      </div>
+
+      <div class="combo-with-spinner">
+        <div id="listArmGnuVersions" class="combo-dropdown grid-value-div">
+          <input type="text"
+                 id="armGnuVersionInput"
+                 class="combo-dropdown-control"
+                 placeholder="Looking online for Arm GNU releases..."
+                 data-value="">
+          <div aria-hidden="true" class="indicator" part="indicator">
+            <slot name="indicator">
+              <svg class="select-indicator" width="16" height="16"
+                   viewBox="0 0 16 16" fill="currentColor">
+                <path fill-rule="evenodd" clip-rule="evenodd"
+                      d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"/>
+              </svg>
+            </slot>
+          </div>
+
+          <div id="armGnuVersionsDropdown" class="dropdown-content" style="display:none;">
+            <div class="dropdown-placeholder">Looking online for Arm GNU releases...</div>
+          </div>
+        </div>
+        <div id="armGnuSpinner" class="spinner version-spinner" aria-label="Loading Arm GNU releases" style="display:none"></div>
+      </div>
+    </div>
+
+    <div class="grid-group-div">
+      <vscode-radio-group id="armGnuTargetGroup" orientation="vertical">
+        <label slot="label">Target:</label>
+        <vscode-radio value="arm-none-eabi" checked>AArch32 bare-metal (arm-none-eabi)</vscode-radio>
+        <vscode-radio value="aarch64-none-elf">AArch64 bare-metal (aarch64-none-elf)</vscode-radio>
+      </vscode-radio-group>
+    </div>
+
+    <div class="grid-group-div">
+      <vscode-text-field id="armGnuFolderName" size="50">
+        Install subfolder:
+      </vscode-text-field>
     </div>
   </form>
 
@@ -324,6 +372,17 @@ export class ImportZephyrSDKPanel {
                 );
                 break;
 
+              case "arm-gnu":
+                vscode.commands.executeCommand(
+                  "zephyr-workbench-sdk-explorer.import-arm-gnu-toolchain",
+                  msg.armGnuVersion,
+                  msg.armGnuTarget,
+                  msg.armGnuUrl,
+                  msg.armGnuFolderName,
+                  workspacePath,
+                );
+                break;
+
               case "iar":
                 vscode.commands.executeCommand(
                   "zephyr-workbench-sdk-explorer.import-iar-sdk",
@@ -363,9 +422,10 @@ export class ImportZephyrSDKPanel {
           }
 
           case "fetchImportSdkData": {
-            const [versionsResult, sdkResult] = await Promise.allSettled([
+            const [versionsResult, sdkResult, armGnuResult] = await Promise.allSettled([
               getSdkVersion(),
               getListZephyrSDKs(),
+              getArmGnuImportData(),
             ]);
 
             webview.postMessage({
@@ -384,6 +444,13 @@ export class ImportZephyrSDKPanel {
               sdkError: sdkResult.status === "rejected"
                 ? getErrorMessage(sdkResult.reason)
                 : undefined,
+              armGnu: armGnuResult.status === "fulfilled"
+                ? armGnuResult.value
+                : {
+                    releases: [],
+                    assets: [],
+                    error: getErrorMessage(armGnuResult.reason),
+                  },
             });
             return;
           }
@@ -400,6 +467,23 @@ function getErrorMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+async function getArmGnuImportData() {
+  const host = getArmGnuHostTarget();
+  if (!host) {
+    throw new Error("Arm GNU Toolchain import is not supported on this platform.");
+  }
+
+  const catalog = filterArmGnuCatalogForHost(
+    await fetchArmGnuDownloadCatalog(),
+    host.id,
+  );
+
+  return {
+    releases: catalog.releases,
+    assets: catalog.assets,
+  };
 }
 
 export async function checkParameters(msg: any): Promise<boolean> {
@@ -424,6 +508,15 @@ export async function checkParameters(msg: any): Promise<boolean> {
       "Missing SDK remote URL, please enter SDK repository URL.",
     );
     return false;
+  }
+
+  if (srcType === "arm-gnu") {
+    if (!msg.armGnuVersion || !msg.armGnuTarget || !msg.armGnuUrl || !msg.armGnuFolderName) {
+      vscode.window.showErrorMessage(
+        "Missing Arm GNU selection, please choose a version, bare-metal target, and install subfolder.",
+      );
+      return false;
+    }
   }
 
   if (srcType === "iar") {

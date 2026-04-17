@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
-import { getInternalZephyrSDK, getListZephyrSDKs, getListIARs} from '../utils/utils';
+import { ArmGnuToolchain, ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
+import { getInternalZephyrSDK, getListArmGnuToolchains, getListZephyrSDKs, getListIARs} from '../utils/utils';
 
 export class ZephyrSdkDataProvider implements vscode.TreeDataProvider<ZephyrSdkTreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<ZephyrSdkTreeItem | undefined | void> = new vscode.EventEmitter<ZephyrSdkTreeItem | undefined | void>();
@@ -19,6 +19,7 @@ export class ZephyrSdkDataProvider implements vscode.TreeDataProvider<ZephyrSdkT
   
 	const zephyrSDKs = await getListZephyrSDKs();
 	const iars = await getListIARs();
+	const armGnuToolchains = await getListArmGnuToolchains();
 	const internal = await getInternalZephyrSDK();
   
 	if (!element) {
@@ -31,6 +32,10 @@ export class ZephyrSdkDataProvider implements vscode.TreeDataProvider<ZephyrSdkT
 	  // Top-level IARs
 	  for (const iar of iars) {
 		items.push(new ZephyrSdkTreeItem(iar, false, vscode.TreeItemCollapsibleState.Collapsed));
+	  }
+
+	  for (const armGnuToolchain of armGnuToolchains) {
+		items.push(new ZephyrSdkTreeItem(armGnuToolchain, false, vscode.TreeItemCollapsibleState.None));
 	  }
   
 	  return items;
@@ -68,7 +73,7 @@ export class ZephyrSdkDataProvider implements vscode.TreeDataProvider<ZephyrSdkT
 }
 export class ZephyrSdkTreeItem extends vscode.TreeItem {
 	constructor(
-	  public readonly sdk: ZephyrSDK | IARToolchain,
+	  public readonly sdk: ZephyrSDK | IARToolchain | ArmGnuToolchain,
 	  public readonly isInternal: boolean,
 	  public readonly collapsibleState: vscode.TreeItemCollapsibleState
 	) {
@@ -80,6 +85,14 @@ export class ZephyrSdkTreeItem extends vscode.TreeItem {
 		this.tooltip = `IAR Toolchain @ ${sdk.iarPath}`;
 		this.contextValue = "iar-toolchain";
 		this.iconPath = path.join(__filename, '..', '..', 'res', 'icons', 'iar-logo.jpg');
+	  } else if (sdk instanceof ArmGnuToolchain) {
+		this.label = sdk.name;
+		this.tooltip = `Arm GNU Toolchain @ ${sdk.toolchainPath}`;
+		this.contextValue = 'arm-gnu-toolchain';
+		this.iconPath = {
+		  light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'arm_gnu_icon_light.svg'),
+		  dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'arm_gnu_icon_dark.svg')
+		};
 	  } else {
 		this.label = `Zephyr SDK ${sdk.version}`;
 		//this.description = sdk.rootUri.fsPath + (isInternal ? " [Internal]" : "");

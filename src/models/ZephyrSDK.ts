@@ -4,6 +4,7 @@ import path from "path";
 import { fileExists } from '../utils/utils';
 
 export type ZephyrToolchainVariant = 'zephyr' | 'zephyr/llvm';
+export type ArmGnuBareMetalTargetTriple = 'arm-none-eabi' | 'aarch64-none-elf';
 
 export function normalizeZephyrToolchainVariant(
   variant: string | undefined,
@@ -210,4 +211,75 @@ export class IARToolchain {
     return lookup.find(fs.existsSync) || lookup[0];
   }
   
+}
+
+export function normalizeArmGnuTargetTriple(
+  targetTriple: string | undefined,
+  toolchainPath?: string,
+): ArmGnuBareMetalTargetTriple {
+  const detectedTargets = toolchainPath
+    ? ArmGnuToolchain.detectTargetTriples(toolchainPath)
+    : ArmGnuToolchain.supportedTargetTriples;
+
+  if (targetTriple === 'aarch64-none-elf' && detectedTargets.includes(targetTriple)) {
+    return 'aarch64-none-elf';
+  }
+
+  if (detectedTargets.includes('arm-none-eabi')) {
+    return 'arm-none-eabi';
+  }
+
+  return detectedTargets[0] ?? 'arm-none-eabi';
+}
+
+export class ArmGnuToolchain {
+  static readonly supportedTargetTriples: ArmGnuBareMetalTargetTriple[] = [
+    'arm-none-eabi',
+    'aarch64-none-elf',
+  ];
+
+  constructor(
+    public readonly toolchainPath: string,
+    public readonly targetTriple: ArmGnuBareMetalTargetTriple,
+    public readonly version: string = '',
+  ) {}
+
+  get name(): string {
+    const displayVersion = this.version
+      ? this.version.replace(/\.rel(\d+)$/i, '.Rel$1')
+      : '';
+    const versionLabel = displayVersion ? ` ${displayVersion}` : '';
+    return `Arm GNU${versionLabel} (${this.targetTriple})`;
+  }
+
+  get buildEnv(): Record<string, string> {
+    return {
+      GNUARMEMB_TOOLCHAIN_PATH: this.toolchainPath,
+    };
+  }
+
+  get compilerPath(): string {
+    const exe = process.platform === 'win32' ? '.exe' : '';
+    return path.join(this.toolchainPath, 'bin', `${this.targetTriple}-gcc${exe}`);
+  }
+
+  get debuggerPath(): string {
+    const exe = process.platform === 'win32' ? '.exe' : '';
+    return path.join(this.toolchainPath, 'bin', `${this.targetTriple}-gdb${exe}`);
+  }
+
+  static detectTargetTriples(toolchainPath: string): ArmGnuBareMetalTargetTriple[] {
+    const exe = process.platform === 'win32' ? '.exe' : '';
+    return ArmGnuToolchain.supportedTargetTriples.filter(targetTriple =>
+      fs.existsSync(path.join(toolchainPath, 'bin', `${targetTriple}-gcc${exe}`))
+    );
+  }
+
+  static isArmGnuPath(toolchainPath: string): boolean {
+    if (!toolchainPath) {
+      return false;
+    }
+
+    return ArmGnuToolchain.detectTargetTriples(toolchainPath).length > 0;
+  }
 }

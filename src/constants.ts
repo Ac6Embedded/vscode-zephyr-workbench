@@ -9,6 +9,7 @@ export const ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY = 'venv.activatePat
 export const ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY = 'venv.path';
 export const ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY = 'listSDKs';
 export const ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY = "listIARs";
+export const ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY = 'listArmGnuToolchains';
 export const ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY = 'openocd.searchDir';
 export const ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY = 'openocd.execPath';
 export const ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY = 'build.pristine';
@@ -18,6 +19,7 @@ export const ZEPHYR_PROJECT_BOARD_SETTING_KEY = 'board';
 export const ZEPHYR_PROJECT_SDK_SETTING_KEY = 'sdk';
 export const ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY = "toolchain";
 export const ZEPHYR_PROJECT_IAR_SETTING_KEY = "iar"; 
+export const ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY = 'gnuarmemb';
 export const ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY = 'build.west-args';
 
 export const ZEPHYR_ENV_SETTING_PREFIX_KEY = 'env';

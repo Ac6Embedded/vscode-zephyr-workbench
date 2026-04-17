@@ -1,13 +1,20 @@
 import * as vscode from 'vscode';
 import fs from 'fs';
 import path from "path";
-import { fileExists, findTask, getWestWorkspace, getZephyrSDK, findIarEntry, migrateToolchainVariant } from '../utils/utils';
-import { ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
+import { fileExists, findTask, getConfiguredToolchainEnv, getWestWorkspace, getZephyrSDK, tryGetZephyrSDK, findArmGnuEntry, findIarEntry, migrateToolchainVariant } from '../utils/utils';
+import {
+  ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
+  ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY,
+  ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY,
+  ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
+  ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
+  ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
+} from '../constants';
 import { ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { concatCommands, getShellClearCommand, getShellEchoCommand, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
 import { loadEnv } from '../utils/env/zephyrEnvUtils';
 import { ZephyrProjectBuildConfiguration } from './ZephyrProjectBuildConfiguration';
-import { IARToolchain } from './ZephyrSDK';
+import { ArmGnuToolchain, IARToolchain } from './ZephyrSDK';
 export class ZephyrProject {
   private static zephyrProjectWorkspaceCache = new Map<string, boolean>();
 
@@ -17,6 +24,7 @@ export class ZephyrProject {
   sdkPath!: string;
   sdkVersion?: string;
   iarToolchain!: IARToolchain;
+  armGnuToolchain!: ArmGnuToolchain;
   configs: ZephyrProjectBuildConfiguration[] = [];
 
   envVars: { [key: string]: any } = {
@@ -59,6 +67,21 @@ export class ZephyrProject {
           `IAR toolchain ${selectedIarPath} not found in listIARs; falling back to SDK setting`
         );
         this.sdkPath = cfg.get<string>("sdk", "");
+      }
+    } else if (toolchainSel === 'gnuarmemb') {
+      const selectedArmGnuPath = cfg.get<string>(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, '');
+      const armGnuEntry = findArmGnuEntry(selectedArmGnuPath);
+
+      if (armGnuEntry) {
+        this.sdkPath = '';
+        this.armGnuToolchain = armGnuEntry;
+      } else if (selectedArmGnuPath) {
+        vscode.window.showWarningMessage(
+          `Arm GNU toolchain ${selectedArmGnuPath} not found in listArmGnuToolchains`
+        );
+        this.sdkPath = '';
+      } else {
+        this.sdkPath = '';
       }
     } else {
       this.sdkPath = cfg.get<string>("sdk", "");
@@ -184,7 +207,7 @@ export class ZephyrProject {
   private static openTerminal(zephyrProject: ZephyrProject): vscode.Terminal {
     const { path: shellPath, args: shellArgs } = getResolvedShell();
     const shellType = classifyShell(shellPath);
-    const zephyrSdk = getZephyrSDK(zephyrProject.sdkPath);
+    const zephyrSdk = tryGetZephyrSDK(zephyrProject.sdkPath);
     const westWorkspace = getWestWorkspace(zephyrProject.westWorkspacePath);
     const isWinPosix = process.platform === 'win32' &&
                    (shellType === 'bash' || shellType === 'zsh' ||
@@ -198,7 +221,14 @@ export class ZephyrProject {
       name: zephyrProject.folderName + ' Terminal',
       shellPath: `${shellPath}`,
       shellArgs: shellArgs,
-      env: { ...(isWinPosix ? { CHERE_INVOKING: '1' } : {}), ...westWorkspace.buildEnv, ...zephyrSdk.buildEnv },
+      env: {
+        ...(isWinPosix ? { CHERE_INVOKING: '1' } : {}),
+        ...westWorkspace.buildEnv,
+        ...(zephyrSdk?.buildEnv ?? {}),
+        ...getConfiguredToolchainEnv(
+          vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.workspaceFolder),
+        ),
+      },
       cwd: zephyrProject.folderPath
     };
 

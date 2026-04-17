@@ -1021,7 +1021,8 @@ export async function download(url: string, destDir: string, context: vscode.Ext
 	increment?: number | undefined;
 }>, token: vscode.CancellationToken): Promise<vscode.Uri> {
   const fileDownloader: FileDownloader = await getApi();
-  const fileName = path.basename(url);
+  const parsedUrl = new URL(url);
+  const fileName = path.basename(parsedUrl.pathname);
 
   const progressCallback = (downloadedBytes: number, totalBytes: number | undefined) => {
     if(totalBytes) {
@@ -1140,7 +1141,7 @@ export async function extract(filePath: string, destPath: string, progress: vsco
   message?: string | undefined;
   increment?: number | undefined;
 }>, token: vscode.CancellationToken) {
-  if(filePath.includes(".7z")) {
+  if(filePath.includes(".7z") || filePath.includes(".zip")) {
     await extract7z(filePath, destPath, progress, token);
   } else if(filePath.includes(".tar")) {
     await extractTar(filePath, destPath, progress, token);

@@ -35,6 +35,24 @@ type IarSdkEntry = {
   version: string;
 };
 
+type ArmGnuReleaseEntry = {
+  version: string;
+  displayVersion: string;
+  releasedAt?: string;
+};
+
+type ArmGnuAssetEntry = {
+  version: string;
+  displayVersion: string;
+  releasedAt?: string;
+  hostId: string;
+  hostLabel: string;
+  targetTriple: string;
+  targetLabel: string;
+  filename: string;
+  url: string;
+};
+
 function getEl<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) { throw new Error(`Missing #${id} in Webview DOM`); }
@@ -48,11 +66,15 @@ let pendingToolchainVersion = "";
 let versionsLoading = false;
 let versionsLoaded = false;
 let versionLoadError = "";
+let armGnuAssets: ArmGnuAssetEntry[] = [];
+let armGnuReleases: ArmGnuReleaseEntry[] = [];
+let lastSuggestedArmGnuFolderName = "";
 
 window.addEventListener("load", () => {
   setVSCodeMessageListener();
   initVersionsDropdown();
-  initIarSdkDropdown();
+  initSdkAssociationDropdown("sdkInput", "sdkDropdown");
+  initArmGnuVersionDropdown();
   requestImportSdkData();
 
   const sourceCat = getEl<RadioGroup>("sourceCategory");
@@ -65,6 +87,10 @@ window.addEventListener("load", () => {
   zephyrSub.addEventListener("select", modifySrcTypeHandler);
   getEl<RadioGroup>("srcTypeIar")
     .addEventListener("select", modifySrcTypeHandler);
+  const armGnuTargetGroup = getEl<RadioGroup>("armGnuTargetGroup");
+  armGnuTargetGroup.addEventListener("click", updateArmGnuRecommendation);
+  armGnuTargetGroup.addEventListener("select", updateArmGnuRecommendation);
+  getEl<TextField>("armGnuFolderName").addEventListener("input", handleArmGnuFolderNameInput);
 
   sdkTypeSub.addEventListener("click", modifySdkTypeHandler);
   sdkTypeSub.addEventListener("select", modifySdkTypeHandler);
@@ -109,6 +135,7 @@ function setVSCodeMessageListener(): void {
       case "importSdkData":
         applyVersionList(event.data.versions ?? [], event.data.versionError);
         applyIarSdkList(event.data.sdks ?? [], event.data.sdkError);
+        applyArmGnuImportData(event.data.armGnu);
         break;
 
       case "toolchainList":
@@ -131,6 +158,7 @@ function requestImportSdkData(): void {
   versionLoadError = "";
   renderVersionLoading();
   renderIarSdkLoading();
+  renderArmGnuVersionLoading();
   vscode.postMessage({ command: "fetchImportSdkData" });
 }
 
@@ -148,6 +176,7 @@ function modifySrcTypeHandler(): void {
 
   const officialForm = getEl("official-form");
   const remotePath = getEl<TextField>("remotePath");
+  const armGnuForm = getEl("arm-gnu-form");
   const iarForm = getEl("iar-form");
 
   if (catRadio.value === "zephyr") {
@@ -155,22 +184,32 @@ function modifySrcTypeHandler(): void {
       officialForm.style.display = "block";
       remotePath.setAttribute("disabled", "");
       remotePath.style.display = "none";
+      armGnuForm.style.display = "none";
       iarForm.style.display = "none";
     } else if (zephyrGroup.value === "remote") {
       officialForm.style.display = "none";
       remotePath.removeAttribute("disabled");
       remotePath.style.display = "block";
+      armGnuForm.style.display = "none";
       iarForm.style.display = "none";
     } else {
       officialForm.style.display = "none";
       remotePath.setAttribute("disabled", "");
       remotePath.style.display = "none";
+      armGnuForm.style.display = "none";
       iarForm.style.display = "none";
     }
+  } else if (catRadio.value === "arm-gnu") {
+    officialForm.style.display = "none";
+    remotePath.setAttribute("disabled", "");
+    remotePath.style.display = "none";
+    armGnuForm.style.display = "block";
+    iarForm.style.display = "none";
   } else {
     officialForm.style.display = "none";
     remotePath.setAttribute("disabled", "");
     remotePath.style.display = "none";
+    armGnuForm.style.display = "none";
     iarForm.style.display = "block";
   }
 }
@@ -406,9 +445,9 @@ function toggleVersionSpinner(show: boolean): void {
   sp.style.display = show ? "inline-block" : "none";
 }
 
-function initIarSdkDropdown(): void {
-  const sdkInput = getEl<HTMLInputElement>("sdkInput");
-  const sdkDropdown = getEl("sdkDropdown");
+function initSdkAssociationDropdown(inputId: string, dropdownId: string): void {
+  const sdkInput = getEl<HTMLInputElement>(inputId);
+  const sdkDropdown = getEl(dropdownId);
 
   ["focusin", "click"].forEach(evt => {
     sdkInput.addEventListener(evt, () => {
@@ -466,11 +505,133 @@ function applyIarSdkList(sdks: IarSdkEntry[], error?: string): void {
   `).join("");
 }
 
+function initArmGnuVersionDropdown(): void {
+  const versionInput = getEl<HTMLInputElement>("armGnuVersionInput");
+  const versionsDropdown = getEl("armGnuVersionsDropdown");
+
+  ["focusin", "click"].forEach(evt => {
+    versionInput.addEventListener(evt, () => {
+      versionsDropdown.style.display = "block";
+    });
+  });
+  versionInput.addEventListener("focusout", () => {
+    setTimeout(() => { versionsDropdown.style.display = "none"; }, 80);
+  });
+
+  addDropdownItemListeners(versionsDropdown, versionInput, updateArmGnuRecommendation);
+}
+
+function renderArmGnuVersionLoading(): void {
+  const versionInput = getEl<HTMLInputElement>("armGnuVersionInput");
+  const versionsDropdown = getEl("armGnuVersionsDropdown");
+  const folderField = getArmGnuFolderField();
+
+  versionInput.value = "";
+  versionInput.setAttribute("data-value", "");
+  versionInput.placeholder = "Looking online for Arm GNU releases...";
+  versionInput.setAttribute("disabled", "");
+  versionsDropdown.innerHTML = `<div class="dropdown-placeholder">Looking online for Arm GNU releases...</div>`;
+  folderField.value = "";
+  setArmGnuFolderNameState("", false);
+  toggleArmGnuSpinner(true);
+}
+
+function applyArmGnuImportData(data: {
+  releases?: ArmGnuReleaseEntry[];
+  assets?: ArmGnuAssetEntry[];
+  error?: string;
+} | undefined): void {
+  armGnuAssets = data?.assets ?? [];
+  armGnuReleases = data?.releases ?? [];
+
+  const versionInput = getEl<HTMLInputElement>("armGnuVersionInput");
+  const versionsDropdown = getEl("armGnuVersionsDropdown");
+  toggleArmGnuSpinner(false);
+
+  if (data?.error) {
+    versionInput.value = "";
+    versionInput.setAttribute("data-value", "");
+    versionInput.placeholder = "Unable to load Arm GNU versions";
+    versionInput.setAttribute("disabled", "");
+    versionsDropdown.innerHTML = `<div class="dropdown-placeholder">${escapeHtml(data.error)}</div>`;
+    setArmGnuTargetEnabled(false);
+    setArmGnuFolderNameState("", false);
+    return;
+  }
+
+  if (!armGnuReleases.length) {
+    versionInput.value = "";
+    versionInput.setAttribute("data-value", "");
+    versionInput.placeholder = "No Arm GNU releases available";
+    versionInput.setAttribute("disabled", "");
+    versionsDropdown.innerHTML = `<div class="dropdown-placeholder">No Arm GNU releases available.</div>`;
+    setArmGnuTargetEnabled(false);
+    setArmGnuFolderNameState("", false);
+    return;
+  }
+
+  versionInput.removeAttribute("disabled");
+  versionInput.placeholder = "Choose the Arm GNU release...";
+  versionsDropdown.innerHTML = armGnuReleases.map(release => {
+    const description = release.releasedAt ? ` (${release.releasedAt})` : "";
+    return `<div class="dropdown-item"
+                 data-value="${escapeHtml(release.version)}"
+                 data-label="${escapeHtml(`${release.displayVersion}${description}`)}">${escapeHtml(`${release.displayVersion}${description}`)}</div>`;
+  }).join("");
+
+  versionInput.value = "";
+  versionInput.setAttribute("data-value", "");
+  setArmGnuTargetEnabled(true);
+  setArmGnuFolderNameState("", true);
+}
+
+function toggleArmGnuSpinner(show: boolean): void {
+  const spinner = document.getElementById("armGnuSpinner") as HTMLElement | null;
+  if (!spinner) { return; }
+  spinner.style.display = show ? "inline-block" : "none";
+}
+
+function setArmGnuTargetEnabled(enabled: boolean): void {
+  const targetGroup = getEl<RadioGroup>("armGnuTargetGroup");
+  if (enabled) {
+    targetGroup.removeAttribute("disabled");
+  } else {
+    targetGroup.setAttribute("disabled", "");
+  }
+}
+
+function updateArmGnuRecommendation(): void {
+  const version = getEl<HTMLInputElement>("armGnuVersionInput").getAttribute("data-value") ?? "";
+  const targetTriple = (getEl<RadioGroup>("armGnuTargetGroup") as unknown as { value: string }).value;
+  const folderField = getArmGnuFolderField();
+
+  const selectedAsset = armGnuAssets.find(asset =>
+    asset.version === version && asset.targetTriple === targetTriple
+  );
+
+  if (!selectedAsset) {
+    updateArmGnuFolderName("", folderField.value);
+    return;
+  }
+
+  updateArmGnuFolderName(getSuggestedArmGnuFolderName(selectedAsset.filename), folderField.value);
+}
+
 function importHandler(): void {
-  const isZephyr = (getEl<RadioGroup>("sourceCategory") as unknown as { value: string }).value === "zephyr";
-  const srcType = isZephyr
-    ? (getEl<RadioGroup>("srcTypeZephyr") as unknown as { value: string }).value
-    : "iar";
+  const sourceCategory = (getEl<RadioGroup>("sourceCategory") as unknown as { value: string }).value;
+  let srcType = "iar";
+  if (sourceCategory === "zephyr") {
+    srcType = (getEl<RadioGroup>("srcTypeZephyr") as unknown as { value: string }).value;
+  } else if (sourceCategory === "arm-gnu") {
+    srcType = "arm-gnu";
+  }
+
+  const armGnuVersion = getEl<HTMLInputElement>("armGnuVersionInput").getAttribute("data-value") || "";
+  const armGnuTarget = (getEl<RadioGroup>("armGnuTargetGroup") as unknown as { value: string }).value;
+  const armGnuFolderName = (getArmGnuFolderField().value || "").trim();
+  const armGnuSelection = armGnuAssets.find(asset =>
+    asset.version === armGnuVersion && asset.targetTriple === armGnuTarget
+  );
 
   vscode.postMessage({
     command: "import",
@@ -483,7 +644,56 @@ function importHandler(): void {
     includeLlvm: isLlvmSelected(),
     iarZephyrSdkPath: getEl<HTMLInputElement>("sdkInput").getAttribute("data-value") || "",
     iarToken: (getEl<TextField>("iarToken") as unknown as { value: string }).value,
+    armGnuVersion,
+    armGnuTarget,
+    armGnuUrl: armGnuSelection?.url ?? "",
+    armGnuFolderName,
   });
+}
+
+function getSuggestedArmGnuFolderName(filename: string): string {
+  return filename.replace(/(\.tar\.xz|\.zip)$/i, "");
+}
+
+function handleArmGnuFolderNameInput(): void {
+  const folderField = getArmGnuFolderField();
+  const trimmed = folderField.value.trim();
+  const suggested = folderFieldValueSuggestion();
+  folderField.value = trimmed;
+  folderField.setAttribute("data-dirty", trimmed !== "" && trimmed !== suggested ? "true" : "false");
+}
+
+function updateArmGnuFolderName(suggestedName: string, currentValue: string): void {
+  const folderField = getArmGnuFolderField();
+  const isDirty = folderField.getAttribute("data-dirty") === "true";
+  const trimmedCurrentValue = currentValue.trim();
+
+  if (!isDirty || trimmedCurrentValue === "" || trimmedCurrentValue === lastSuggestedArmGnuFolderName) {
+    folderField.value = suggestedName;
+    folderField.setAttribute("data-dirty", "false");
+  }
+
+  lastSuggestedArmGnuFolderName = suggestedName;
+}
+
+function setArmGnuFolderNameState(value: string, enabled: boolean): void {
+  const folderField = getArmGnuFolderField();
+  folderField.value = value;
+  folderField.setAttribute("data-dirty", "false");
+  lastSuggestedArmGnuFolderName = value;
+  if (enabled) {
+    folderField.removeAttribute("disabled");
+  } else {
+    folderField.setAttribute("disabled", "");
+  }
+}
+
+function folderFieldValueSuggestion(): string {
+  return lastSuggestedArmGnuFolderName;
+}
+
+function getArmGnuFolderField(): HTMLElement & { value: string } {
+  return getEl<TextField>("armGnuFolderName") as unknown as HTMLElement & { value: string };
 }
 
 function isLlvmSelected(): boolean {

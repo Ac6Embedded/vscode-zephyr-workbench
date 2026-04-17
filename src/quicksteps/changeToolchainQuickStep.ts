@@ -1,12 +1,13 @@
 import vscode, { ExtensionContext, QuickPickItem } from "vscode";
 import { ZephyrProject } from "../models/ZephyrProject";
 import { ZephyrToolchainVariant } from "../models/ZephyrSDK";
-import { getListZephyrSDKs, getListIARs } from "../utils/utils";
+import { getListArmGnuToolchains, getListZephyrSDKs, getListIARs } from "../utils/utils";
 
 export interface ToolchainPick {
-    tcKind: "zephyr" | "iar";
+    tcKind: "zephyr" | "iar" | "gnuarmemb";
     sdkPath?: string;
     iarPath?: string;
+    armGnuPath?: string;
     toolchainVariant?: ZephyrToolchainVariant;
 }
 
@@ -35,6 +36,15 @@ export async function changeToolchainQuickStep(
             description: iar.iarPath,
             tcKind: "iar",
             iarPath: iar.iarPath
+        });
+    }
+
+    for (const armGnuToolchain of await getListArmGnuToolchains()) {
+        items.push({
+            label: armGnuToolchain.name,
+            description: armGnuToolchain.toolchainPath,
+            tcKind: "gnuarmemb",
+            armGnuPath: armGnuToolchain.toolchainPath,
         });
     }
 

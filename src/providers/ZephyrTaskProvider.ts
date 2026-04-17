@@ -8,10 +8,20 @@ import * as vscode from 'vscode';
 import { WestWorkspace } from '../models/WestWorkspace';
 import { ZephyrAppProject } from '../models/ZephyrAppProject';
 import { ZephyrBoard } from '../models/ZephyrBoard';
-import { normalizeZephyrToolchainVariant, ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
-import { ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
+import { ArmGnuToolchain, normalizeZephyrToolchainVariant, ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
+import {
+  ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
+  ZEPHYR_PROJECT_SDK_SETTING_KEY,
+  ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY,
+  ZEPHYR_PROJECT_IAR_SETTING_KEY,
+  ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY,
+  ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY,
+  ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
+  ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
+  ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
+} from '../constants';
 import { concatCommands, getEnvVarFormat, getShell, getShellArgs } from '../utils/execUtils';
-import { getWestWorkspace, getZephyrSDK, findIarEntry, migrateToolchainVariant, msleep } from '../utils/utils';
+import { getConfiguredToolchainEnv, getWestWorkspace, migrateToolchainVariant, msleep, tryGetZephyrSDK } from '../utils/utils';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
 
@@ -405,11 +415,14 @@ function upsertPrimaryBuildConfig(existingConfigs: unknown, boardIdentifier: str
 }
 
 function resolveStoredToolchainVariant(
-  toolchain: ZephyrSDK | IARToolchain,
+  toolchain: ZephyrSDK | IARToolchain | ArmGnuToolchain,
   requestedVariant?: string,
 ): string {
   if (toolchain instanceof ZephyrSDK) {
     return normalizeZephyrToolchainVariant(requestedVariant, toolchain);
+  }
+  if (toolchain instanceof ArmGnuToolchain) {
+    return 'gnuarmemb';
   }
   return 'iar';
 }
@@ -418,7 +431,7 @@ async function tryWriteDefaultProjectSettingsFile(
   workspaceFolder: vscode.WorkspaceFolder,
   westWorkspace: WestWorkspace,
   zephyrBoard: ZephyrBoard,
-  toolchain: ZephyrSDK | IARToolchain,
+  toolchain: ZephyrSDK | IARToolchain | ArmGnuToolchain,
   options: DefaultProjectSettingsOptions
 ): Promise<boolean> {
   const { config, settingsJsonPath, serialized, directWriteSupported } = await ensureSettingsFile(workspaceFolder);
@@ -449,10 +462,17 @@ async function tryWriteDefaultProjectSettingsFile(
     config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY}`] = toolchainVariant;
     config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_SDK_SETTING_KEY}`] = toolchain.rootUri.fsPath;
     delete config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_IAR_SETTING_KEY}`];
-  } else {
+    delete config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY}`];
+  } else if (toolchain instanceof IARToolchain) {
     config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY}`] = 'iar';
     config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_IAR_SETTING_KEY}`] = toolchain.iarPath;
     config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_SDK_SETTING_KEY}`] = toolchain.zephyrSdkPath;
+    delete config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY}`];
+  } else {
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY}`] = 'gnuarmemb';
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY}`] = toolchain.toolchainPath;
+    delete config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_SDK_SETTING_KEY}`];
+    delete config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_IAR_SETTING_KEY}`];
   }
 
   if (options.venvPath) {
@@ -472,7 +492,7 @@ async function applyDefaultProjectSettingsViaConfigurationApi(
   workspaceFolder: vscode.WorkspaceFolder,
   westWorkspace: WestWorkspace,
   zephyrBoard: ZephyrBoard,
-  toolchain: ZephyrSDK | IARToolchain,
+  toolchain: ZephyrSDK | IARToolchain | ArmGnuToolchain,
   options: DefaultProjectSettingsOptions
 ): Promise<void> {
   const boardIdentifier = zephyrBoard.identifier ? zephyrBoard.identifier : '';
@@ -487,13 +507,26 @@ async function applyDefaultProjectSettingsViaConfigurationApi(
       .update(ZEPHYR_PROJECT_SDK_SETTING_KEY, toolchain.rootUri.fsPath, vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
       .update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
-  } else {
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+      .update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+  } else if (toolchain instanceof IARToolchain) {
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
       .update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, 'iar', vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
       .update(ZEPHYR_PROJECT_IAR_SETTING_KEY, toolchain.iarPath, vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
       .update(ZEPHYR_PROJECT_SDK_SETTING_KEY, toolchain.zephyrSdkPath, vscode.ConfigurationTarget.WorkspaceFolder);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+      .update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+  } else {
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+      .update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, 'gnuarmemb', vscode.ConfigurationTarget.WorkspaceFolder);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+      .update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, toolchain.toolchainPath, vscode.ConfigurationTarget.WorkspaceFolder);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+      .update(ZEPHYR_PROJECT_SDK_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+      .update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
   }
   await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
 
@@ -544,7 +577,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
   static resolve(_task: vscode.Task): vscode.Task {
     const folder = _task.scope as vscode.WorkspaceFolder;
     const project = new ZephyrAppProject(folder, folder.uri.fsPath);
-    const activeSdk = getZephyrSDK(project.sdkPath);
+    const activeSdk = tryGetZephyrSDK(project.sdkPath);
     const westWorkspace = getWestWorkspace(project.westWorkspacePath);
     const shell: string = getShell();
     const shellArgs: string[] = getShellArgs(shell);
@@ -629,7 +662,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       executable: shell,
       shellArgs: shellArgs,
       env: {
-        ...activeSdk.buildEnvWithVar,
+        ...(activeSdk?.buildEnvWithVar ?? {}),
         ...westWorkspace.buildEnvWithVar
       },
     };
@@ -637,30 +670,19 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     const cfg = vscode.workspace.getConfiguration(
       ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder);
     const toolchainKind = migrateToolchainVariant(cfg, cfg.get<string>("toolchain") ?? "zephyr");
+    const toolchainEnv = getConfiguredToolchainEnv(cfg);
 
-    if (toolchainKind === "iar") {
-      const selectedIarPath = cfg.get<string>("iar", "");
-      const iarEntry = findIarEntry(selectedIarPath);
-
-      if (iarEntry) {
-        const armSubdir = process.platform === "win32"
-          ? path.join(iarEntry.iarPath, "arm")
-          : path.posix.join(iarEntry.iarPath, "arm");
-
-        options.env = {
-          ...options.env,
-          IAR_TOOLCHAIN_PATH: armSubdir,
-          ZEPHYR_TOOLCHAIN_VARIANT: "iar",
-          IAR_LMS_BEARER_TOKEN: iarEntry.token
-        };
-      } else {
-        vscode.window.showWarningMessage(
-          `IAR toolchain "${selectedIarPath}" not found in listIARs; ` +
-          `tasks will run with the default Zephyr SDK.`);
-      }
-    } else {
-      options.env = { ...options.env, ZEPHYR_TOOLCHAIN_VARIANT: toolchainKind };
+    if ((toolchainKind === 'iar' || toolchainKind === 'gnuarmemb') && Object.keys(toolchainEnv).length === 0) {
+      const missingPath = toolchainKind === 'iar'
+        ? cfg.get<string>(ZEPHYR_PROJECT_IAR_SETTING_KEY, '')
+        : cfg.get<string>(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, '');
+      const label = toolchainKind === 'iar' ? 'IAR' : 'Arm GNU';
+      vscode.window.showWarningMessage(
+        `${label} toolchain "${missingPath}" not found; tasks will run with the default Zephyr SDK.`,
+      );
     }
+
+    options.env = { ...options.env, ...toolchainEnv };
 
     if (config) {
       options.env = { ...options.env, ...config.getBuildEnvWithVar(project) };
@@ -707,9 +729,8 @@ export async function checkAndCreateTasksJson(workspaceFolder: vscode.WorkspaceF
 export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder, options?: CreateTasksJsonOptions): Promise<void> {
   const project = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
   const westWorkspace = options?.westWorkspace ?? getWestWorkspace(project.westWorkspacePath);
-  const activeSdk = getZephyrSDK(options?.sdkPath ?? project.sdkPath);
 
-  if (!westWorkspace || !activeSdk) {
+  if (!westWorkspace) {
     return;
   }
 
@@ -850,7 +871,7 @@ export async function setDefaultProjectSettings(
   workspaceFolder: vscode.WorkspaceFolder,
   westWorkspace: WestWorkspace,
   zephyrBoard: ZephyrBoard,
-  toolchain: ZephyrSDK | IARToolchain,
+  toolchain: ZephyrSDK | IARToolchain | ArmGnuToolchain,
   options: DefaultProjectSettingsOptions = {}
 ): Promise<void> {
   const directWriteApplied = await tryWriteDefaultProjectSettingsFile(workspaceFolder, westWorkspace, zephyrBoard, toolchain, options);

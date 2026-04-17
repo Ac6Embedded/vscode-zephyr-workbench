@@ -5,7 +5,7 @@ import { ZephyrProject } from "./ZephyrProject";
 import { getBuildEnv, loadConfigEnv } from "../utils/env/zephyrEnvUtils";
 import { concatCommands, getShellClearCommand, getShellEchoCommand, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
 import { getBoardFromIdentifier } from '../utils/zephyr/boardDiscovery';
-import { fileExists, getConfigValue, getWestWorkspace, getZephyrSDK } from '../utils/utils';
+import { fileExists, getConfigValue, getConfiguredToolchainEnv, getWestWorkspace, tryGetZephyrSDK } from '../utils/utils';
 import { ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { composeWestBuildArgs, normalizeWestFlagDValue } from '../utils/zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
@@ -184,7 +184,7 @@ export class ZephyrProjectBuildConfiguration {
   private static openTerminal(zephyrProject: ZephyrProject, buildConfig: ZephyrProjectBuildConfiguration): vscode.Terminal {
     const { path: shellPath, args: shellArgs } = getResolvedShell();
     const shellType = classifyShell(shellPath);
-    const zephyrSdk = getZephyrSDK(zephyrProject.sdkPath);
+    const zephyrSdk = tryGetZephyrSDK(zephyrProject.sdkPath);
     const westWorkspace = getWestWorkspace(zephyrProject.westWorkspacePath);
 
     const isWinPosix = process.platform === 'win32' &&
@@ -200,7 +200,15 @@ export class ZephyrProjectBuildConfiguration {
       name: `${zephyrProject.folderName} (${buildConfig.name}) Terminal`,
       shellPath: `${shellPath}`,
       shellArgs: shellArgs,
-      env: { ...(isWinPosix ? { CHERE_INVOKING: '1' } : {}), ...zephyrSdk.buildEnv, ...westWorkspace.buildEnv, ...buildConfig.getBuildEnv(zephyrProject) },
+      env: {
+        ...(isWinPosix ? { CHERE_INVOKING: '1' } : {}),
+        ...(zephyrSdk?.buildEnv ?? {}),
+        ...westWorkspace.buildEnv,
+        ...getConfiguredToolchainEnv(
+          vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.workspaceFolder),
+        ),
+        ...buildConfig.getBuildEnv(zephyrProject),
+      },
       cwd: fs.existsSync(buildConfig.getBuildDir(zephyrProject)) ? buildConfig.getBuildDir(zephyrProject) : zephyrProject.folderPath
     };
 

@@ -343,7 +343,7 @@ export async function extractSDK(filePath: string, destPath: string, progress: v
   message?: string | undefined;
   increment?: number | undefined;
 }>, token: vscode.CancellationToken): Promise<string> {
-  if(filePath.includes(".7z")) {
+  if(filePath.includes(".7z") || filePath.includes(".zip")) {
     return await extractSDK7z(filePath, destPath, progress, token);
   } else if(filePath.includes(".tar")) {
     return await extractSDKTar(filePath, destPath, progress, token);
