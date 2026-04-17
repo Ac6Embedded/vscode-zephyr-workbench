@@ -5,6 +5,7 @@ import { fileExists } from "../utils";
 import path from "path";
 
 export const listHals: any[] = [
+  { label: "Analog Devices", name: "hal_adi" },
   { label: "Altera", name: "hal_altera" },
   { label: "Ambiq", name: "hal_ambiq" },
   { label: "Atmel", name: "hal_atmel" },
