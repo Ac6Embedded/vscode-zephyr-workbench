@@ -9,7 +9,7 @@ import { ZephyrAppProject } from './models/ZephyrAppProject';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
 import { ZephyrProject } from './models/ZephyrProject';
 import { ZephyrProjectBuildConfiguration } from './models/ZephyrProjectBuildConfiguration';
-import { ZephyrSDK, IARToolchain } from './models/ZephyrSDK';
+import { normalizeZephyrToolchainVariant, ZephyrSDK, IARToolchain } from './models/ZephyrSDK';
 import { checkAndCreateTasksJson, createTasksJson, setDefaultProjectSettings, updateTasks, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVarQuickStep';
@@ -38,7 +38,7 @@ import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommand
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain } from './utils/zephyr/sdkUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
 import { showPristineQuickPick } from './quicksteps/setupBuildPristineQuickStep';
-import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfigTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
+import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfigTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, migrateToolchainVariant, msleep, normalizePath, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
@@ -1019,10 +1019,34 @@ export function activate(context: vscode.ExtensionContext) {
 					node.project.workspaceFolder
 				);
 
-				if (pick.tcKind === "zephyr_sdk") {
-					await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "zephyr_sdk", vscode.ConfigurationTarget.WorkspaceFolder);
+				if (pick.tcKind === "zephyr") {
+					await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, pick.toolchainVariant ?? "zephyr", vscode.ConfigurationTarget.WorkspaceFolder);
 					await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY, pick.sdkPath, vscode.ConfigurationTarget.WorkspaceFolder);
 					await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+
+					if (pick.sdkPath) {
+						const activeConfig = node.project.configs.find(config => config.active) ?? node.project.configs[0];
+						if (activeConfig?.boardIdentifier) {
+							try {
+								const sdk = getZephyrSDK(pick.sdkPath);
+								const westWorkspace = getWestWorkspace(node.project.westWorkspacePath);
+								const board = await getBoardFromIdentifier(
+									activeConfig.boardIdentifier,
+									westWorkspace,
+									node.project,
+									activeConfig
+								);
+								const socToolchainName = activeConfig.getKConfigValue(node.project, 'SOC_TOOLCHAIN_NAME');
+								await vscode.workspace.getConfiguration('C_Cpp', node.project.workspaceFolder).update(
+									'default.compilerPath',
+									sdk.getCompilerPath(board.arch, socToolchainName, pick.toolchainVariant),
+									vscode.ConfigurationTarget.WorkspaceFolder
+								);
+							} catch {
+								// Keep the variant change even if the compiler path cannot be refreshed yet.
+							}
+						}
+					}
 				} else {
 					await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "iar", vscode.ConfigurationTarget.WorkspaceFolder);
 					await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, pick.iarPath, vscode.ConfigurationTarget.WorkspaceFolder);
@@ -2060,7 +2084,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchain, pristineValue = 'auto', venvMode = 'global', debugPreset = false) => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchain, pristineValue = 'auto', venvMode = 'global', debugPreset = false, toolchainVariant = 'zephyr') => {
 			if (!westWorkspace) {
 				vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
 				return;
@@ -2123,6 +2147,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 						await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchain, {
 							pristine: pristineValue,
+							toolchainVariant,
 							venvPath
 						});
 						await createTasksJson(workspaceFolder, {
@@ -2140,7 +2165,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-app", async (projectLoc, westWorkspace, zephyrBoard, zephyrSDK, venvMode = 'global') => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-app", async (projectLoc, westWorkspace, zephyrBoard, zephyrSDK, venvMode = 'global', toolchainVariant = 'zephyr') => {
 			if (!fileExists(projectLoc)) {
 				vscode.window.showInformationMessage(`Project '${projectLoc}' not found !`);
 				return;
@@ -2157,6 +2182,7 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 
 					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, zephyrSDK, {
+						toolchainVariant,
 						venvPath
 					});
 					await createTasksJson(workspaceFolder, {
@@ -2389,11 +2415,16 @@ async function updateCompileSetting(project: ZephyrAppProject, configName: strin
 	const zephyrSDK = getZephyrSDK(project.sdkPath);
 	const westWorkspace = getWestWorkspace(project.westWorkspacePath);
 	const board = await getBoardFromIdentifier(boardIdentifier, westWorkspace);
+	const cfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.workspaceFolder);
+	const toolchainVariant = normalizeZephyrToolchainVariant(
+		migrateToolchainVariant(cfg, cfg.get<string>(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY) ?? 'zephyr'),
+		zephyrSDK,
+	);
 
 	if (buildConfig) {
 		let socToolchainName = buildConfig.getKConfigValue(project, 'SOC_TOOLCHAIN_NAME');
 		if (socToolchainName) {
-			await vscode.workspace.getConfiguration('C_Cpp', project.workspaceFolder).update('default.compilerPath', zephyrSDK.getCompilerPath(board.arch, socToolchainName), vscode.ConfigurationTarget.WorkspaceFolder);
+			await vscode.workspace.getConfiguration('C_Cpp', project.workspaceFolder).update('default.compilerPath', zephyrSDK.getCompilerPath(board.arch, socToolchainName, toolchainVariant), vscode.ConfigurationTarget.WorkspaceFolder);
 		}
 	}
 }

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import path from "path";
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from "../constants";
+import { normalizeZephyrToolchainVariant, ZephyrToolchainVariant } from "../models/ZephyrSDK";
 import { WestWorkspace } from "../models/WestWorkspace";
 import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
@@ -91,7 +92,7 @@ export class CreateZephyrAppPanel {
 
     let sdkHTML = '';
     for (const sdk of await getListZephyrSDKs()) {
-      sdkHTML += `<div class="dropdown-item" data-value="${sdk.rootUri}" data-label="${sdk.name}">${sdk.name}<span class="description">${sdk.rootUri.fsPath}</span></div>`;
+      sdkHTML += `<div class="dropdown-item" data-value="${sdk.rootUri}" data-label="${sdk.name}" data-has-llvm="${sdk.hasLlvmToolchain() ? 'true' : 'false'}">${sdk.name}<span class="description">${sdk.rootUri.fsPath}</span></div>`;
     }
 
     for (const iar of await getListIARs()) {
@@ -152,6 +153,14 @@ export class CreateZephyrAppPanel {
                       ${sdkHTML}
                     </div>
                   </div>
+                </div>
+
+                <div class="grid-group-div" id="toolchainVariantRow" style="display:none;">
+                  <vscode-radio-group id="toolchainVariantGroup" orientation="horizontal">
+                    <label slot="label">SDK Variant:</label>
+                    <vscode-radio value="zephyr" checked>GNU GCC</vscode-radio>
+                    <vscode-radio value="zephyr/llvm">LLVM CLANG</vscode-radio>
+                  </vscode-radio-group>
                 </div>
 
                 <div class="grid-group-div">
@@ -459,6 +468,7 @@ async function updateBoardImage(webview: vscode.Webview, boardYamlPath: string) 
 async function handleCreateMessage(message: any) {
   const projectLoc = message.projectParentPath;
   const isCreate = message.appFrom === "create";
+  const toolchainVariant = getRequestedToolchainVariant(message.toolchainVariant);
 
   if (isCreate) {
     if (!checkCreateParameters(message)) {
@@ -484,7 +494,8 @@ async function handleCreateMessage(message: any) {
       toolchain,
       message.pristine,
       message.venv,
-      message.debugPreset
+      message.debugPreset,
+      toolchainVariant,
     );
     return;
   }
@@ -544,9 +555,14 @@ async function handleCreateMessage(message: any) {
     westWorkspace,
     board,
     toolchain,
-    message.venv
+    message.venv,
+    toolchainVariant,
   );
   CreateZephyrAppPanel.currentPanel?.dispose();
+}
+
+function getRequestedToolchainVariant(rawVariant: unknown): ZephyrToolchainVariant {
+  return normalizeZephyrToolchainVariant(typeof rawVariant === 'string' ? rawVariant : undefined);
 }
 
 function resolveSelectedWorkspace(workspaceUri: string): WestWorkspace {

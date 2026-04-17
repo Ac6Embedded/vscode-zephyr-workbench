@@ -116,6 +116,7 @@ function main() {
 
   sdkInput.addEventListener('input', () => {
     clearSelectedValueIfEdited(sdkInput);
+    updateToolchainVariantVisibility();
   });
 
   sdkDropdown.addEventListener('mousedown', function (event) {
@@ -127,6 +128,7 @@ function main() {
   });
 
   addDropdownItemEventListeners(sdkDropdown, sdkInput);
+  updateToolchainVariantVisibility();
 
 
   boardInput.addEventListener('focusin', function () {
@@ -280,6 +282,12 @@ function addDropdownItemEventListeners(dropdown: HTMLElement,
         input.value = label;
         input.setAttribute("data-value", value);
         input.setAttribute("data-selected-label", label);
+        const hasLlvm = item.dataset.hasLlvm ?? "";
+        if (hasLlvm) {
+          input.setAttribute("data-has-llvm", hasLlvm);
+        } else {
+          input.removeAttribute("data-has-llvm");
+        }
         input.dispatchEvent(new Event("input"));
         dropdown.style.display = "none";
       });
@@ -291,6 +299,7 @@ function clearSelectedValueIfEdited(input: HTMLInputElement) {
   if (selectedLabel.length > 0 && input.value !== selectedLabel) {
     input.setAttribute('data-value', '');
     input.setAttribute('data-selected-label', '');
+    input.removeAttribute('data-has-llvm');
   }
 }
 
@@ -298,6 +307,22 @@ function resetComboInput(input: HTMLInputElement) {
   input.value = '';
   input.setAttribute('data-value', '');
   input.setAttribute('data-selected-label', '');
+  input.removeAttribute('data-has-llvm');
+}
+
+function updateToolchainVariantVisibility() {
+  const sdkInput = document.getElementById('sdkInput') as HTMLInputElement;
+  const toolchainVariantRow = document.getElementById('toolchainVariantRow') as HTMLElement | null;
+  const toolchainVariantGroup = document.getElementById('toolchainVariantGroup') as RadioGroup | null;
+  if (!toolchainVariantRow || !toolchainVariantGroup) {
+    return;
+  }
+
+  const hasLlvm = sdkInput.getAttribute('data-has-llvm') === 'true';
+  toolchainVariantRow.style.display = hasLlvm ? '' : 'none';
+  if (!hasLlvm) {
+    toolchainVariantGroup.value = 'zephyr';
+  }
 }
 
 function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
@@ -499,6 +524,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const pristineRadioGroup = document.getElementById("pristineMode") as RadioGroup;
   const appFromGroup = document.getElementById('appFromGroup') as RadioGroup;
   const venvRadioGroup = document.getElementById('venvMode') as RadioGroup;
+  const toolchainVariantGroup = document.getElementById('toolchainVariantGroup') as RadioGroup;
   const debugPresetCheckbox = document.getElementById('debugPresetCheckbox') as HTMLInputElement | null;
 
   webviewApi.postMessage(
@@ -507,6 +533,9 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       appFrom:            appFromGroup.value,
       westWorkspacePath:  workspaceInput.getAttribute("data-value") ?? '',
       zephyrSdkPath:      sdkInput.getAttribute("data-value") ?? '',
+      toolchainVariant:   sdkInput.getAttribute("data-has-llvm") === 'true'
+        ? toolchainVariantGroup.value
+        : 'zephyr',
       boardYamlPath: boardInput.getAttribute('data-value') ?? '',
       samplePath: sampleInput.getAttribute('data-value') ?? '',
       projectName: projectNameText.value,

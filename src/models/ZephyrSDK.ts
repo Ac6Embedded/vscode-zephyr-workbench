@@ -3,6 +3,18 @@ import fs from "fs";
 import path from "path";
 import { fileExists } from '../utils/utils';
 
+export type ZephyrToolchainVariant = 'zephyr' | 'zephyr/llvm';
+
+export function normalizeZephyrToolchainVariant(
+  variant: string | undefined,
+  sdk?: ZephyrSDK,
+): ZephyrToolchainVariant {
+  if (variant === 'zephyr/llvm' && (!sdk || sdk.hasLlvmToolchain())) {
+    return 'zephyr/llvm';
+  }
+  return 'zephyr';
+}
+
 export class ZephyrSDK {
   version!: string;
   toolchains!: string[];
@@ -61,6 +73,16 @@ export class ZephyrSDK {
     };
   }
 
+  public hasLlvmToolchain(): boolean {
+    return fileExists(this.getLlvmCompilerPath());
+  }
+
+  public getSupportedVariants(): ZephyrToolchainVariant[] {
+    return this.hasLlvmToolchain()
+      ? ['zephyr', 'zephyr/llvm']
+      : ['zephyr'];
+  }
+
   public static getToolchainPrefix(toolchainId: string, socToolchainName: string | undefined = undefined) {
     if (!toolchainId) { return toolchainId; }
 
@@ -94,7 +116,20 @@ export class ZephyrSDK {
     }
   }
 
-  public getCompilerPath(arch: string, socToolchain: string | undefined = undefined): string {
+  public getLlvmCompilerPath(): string {
+    const exe = process.platform === 'win32' ? 'clang.exe' : 'clang';
+    return path.join(this.rootUri.fsPath, 'llvm', 'bin', exe);
+  }
+
+  public getCompilerPath(
+    arch: string,
+    socToolchain: string | undefined = undefined,
+    variant: string = 'zephyr',
+  ): string {
+    if (normalizeZephyrToolchainVariant(variant, this) === 'zephyr/llvm') {
+      return this.getLlvmCompilerPath();
+    }
+
     let compilerPrefix = '';
     if(arch === 'xtensa' && socToolchain) {
       compilerPrefix = ZephyrSDK.getToolchainPrefix(arch, socToolchain);
