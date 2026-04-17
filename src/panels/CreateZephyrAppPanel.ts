@@ -5,7 +5,8 @@ import { normalizeZephyrToolchainVariant, ZephyrToolchainVariant } from "../mode
 import { WestWorkspace } from "../models/WestWorkspace";
 import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
-import { fileExists, getBase64, getBoard, getListIARs, getListSamples, getListZephyrSDKs, getIarToolchainForSdk, getSample, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils/utils";
+import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
+import { fileExists, getBase64, getBoard, getListIARs, getListSamples, getListZephyrSDKs, getIarToolchainForSdk, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils/utils";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 
@@ -478,7 +479,7 @@ async function handleCreateMessage(message: any) {
     const westWorkspace = getWestWorkspace(
       vscode.Uri.parse(message.westWorkspacePath, true).fsPath
     );
-    const board = getBoard(message.boardYamlPath);
+    const board = getBoard(message.boardYamlPath, message.boardIdentifier);
     const sample = await getSample(message.samplePath);
     const toolchain =
       getIarToolchainForSdk(message.zephyrSdkPath)
@@ -541,7 +542,7 @@ async function handleCreateMessage(message: any) {
   const westWorkspace = hasWorkspace
     ? getWestWorkspace(vscode.Uri.parse(message.westWorkspacePath, true).fsPath)
     : undefined;
-  const board = hasBoard ? getBoard(message.boardYamlPath) : undefined;
+  const board = hasBoard ? getBoard(message.boardYamlPath, message.boardIdentifier) : undefined;
   const toolchain = hasSdk
     ? (
         getIarToolchainForSdk(message.zephyrSdkPath)
@@ -590,7 +591,7 @@ async function buildBoardsDiscoveryState(westWorkspace: WestWorkspace): Promise<
 
   let html = '';
   for (const board of boards) {
-    html += `<div class="dropdown-item" data-value="${board.yamlFileUri.fsPath}" data-label="${board.name}">${board.name}<span class="description">(${board.identifier})</span></div>`;
+    html += `<div class="dropdown-item" data-value="${board.yamlFileUri.fsPath}" data-board-identifier="${board.identifier}" data-label="${board.name}">${board.name}<span class="description">(${board.identifier})</span></div>`;
   }
 
   return {

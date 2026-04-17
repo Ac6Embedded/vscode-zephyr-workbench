@@ -288,6 +288,12 @@ function addDropdownItemEventListeners(dropdown: HTMLElement,
         } else {
           input.removeAttribute("data-has-llvm");
         }
+        const boardIdentifier = item.dataset.boardIdentifier ?? "";
+        if (boardIdentifier) {
+          input.setAttribute("data-board-identifier", boardIdentifier);
+        } else {
+          input.removeAttribute("data-board-identifier");
+        }
         input.dispatchEvent(new Event("input"));
         dropdown.style.display = "none";
       });
@@ -300,6 +306,7 @@ function clearSelectedValueIfEdited(input: HTMLInputElement) {
     input.setAttribute('data-value', '');
     input.setAttribute('data-selected-label', '');
     input.removeAttribute('data-has-llvm');
+    input.removeAttribute('data-board-identifier');
   }
 }
 
@@ -308,6 +315,7 @@ function resetComboInput(input: HTMLInputElement) {
   input.setAttribute('data-value', '');
   input.setAttribute('data-selected-label', '');
   input.removeAttribute('data-has-llvm');
+  input.removeAttribute('data-board-identifier');
 }
 
 function updateToolchainVariantVisibility() {
@@ -536,13 +544,14 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       toolchainVariant:   sdkInput.getAttribute("data-has-llvm") === 'true'
         ? toolchainVariantGroup.value
         : 'zephyr',
-      boardYamlPath: boardInput.getAttribute('data-value') ?? '',
-      samplePath: sampleInput.getAttribute('data-value') ?? '',
-      projectName: projectNameText.value,
-      projectParentPath: projectParentPathText.value,
-      pristine: pristineRadioGroup.value,
-      venv: venvRadioGroup?.value ?? 'global',
-      debugPreset: !!debugPresetCheckbox?.checked,
+      boardYamlPath:      boardInput.getAttribute('data-value') ?? '',
+      boardIdentifier:    boardInput.getAttribute('data-board-identifier') ?? '',
+      samplePath:         sampleInput.getAttribute('data-value') ?? '',
+      projectName:        projectNameText.value,
+      projectParentPath:  projectParentPathText.value,
+      pristine:           pristineRadioGroup.value,
+      venv:               venvRadioGroup?.value ?? 'global',
+      debugPreset:        !!debugPresetCheckbox?.checked,
     }
   );
 }

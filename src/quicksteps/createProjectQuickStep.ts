@@ -5,7 +5,8 @@ import { WestWorkspace } from "../models/WestWorkspace";
 import { ZephyrBoard } from "../models/ZephyrBoard";
 import { ZephyrSample } from "../models/ZephyrSample";
 import { MultiStepInput } from "../utilities/MultiStepQuickPick";
-import { fileExists, getListSamples, getListZephyrSDKs, getSupportedBoards, getWestWorkspace, getWestWorkspaces, getZephyrSDK } from "../utils/utils";
+import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
+import { fileExists, getListSamples, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getZephyrSDK } from "../utils/utils";
 import { ZephyrSDK } from "../models/ZephyrSDK";
 
 export async function createProjectQuickStep(context: ExtensionContext) {

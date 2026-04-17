@@ -12,9 +12,7 @@ import { getEnvVarFormat, getOutputChannel, getShell } from "./execUtils";
 import { checkHostTools, checkEnvFile } from "./installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY, ZINSTALLER_MINIMUM_VERSION } from '../constants';
 import { ZephyrProject } from '../models/ZephyrProject';
-import { getBoardsDirectories, westTmpBuildCmakeOnlyCommand } from '../commands/WestCommands';
 import { checkOrCreateTask, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
-import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { readInstalledZinstallerVersion, versionAtLeast } from './env/zinstallerVersionUtils';
 
 let zephyrTasksFetchPromise: Promise<vscode.Task[]> | undefined;
@@ -275,31 +273,8 @@ export function removeWorkspaceFolder(workspaceFolder: vscode.WorkspaceFolder) {
 }
 
 
-export function findBoardByHierarchicalIdentifier(boardIdentifier: string, boards: ZephyrBoard[]): ZephyrBoard | undefined {
-  // Try exact match first
-  let candidate = String(boardIdentifier);
-  let found = boards.find(b => b.identifier === candidate);
-  if (found) {return found;}
-  // boardIdentifier may be hierarchical like X/Y/Z; fallback to X/Y then X
-  while (candidate.length > 0) {
-    const lastSlash = candidate.lastIndexOf('/');
-    if (lastSlash === -1) {break;}
-    candidate = candidate.substring(0, lastSlash);
-    found = boards.find(b => b.identifier === candidate);
-    if (found) {return found;}
-  }
-  return undefined;
-}
-
-export async function getBoardFromIdentifier(boardIdentifier: string, westWorkspace: WestWorkspace, resource?: ZephyrProject | string, buildConfig?: ZephyrProjectBuildConfiguration | undefined): Promise<ZephyrBoard> {
-  const boards = await getSupportedBoards(westWorkspace, resource, buildConfig);
-  const board = findBoardByHierarchicalIdentifier(boardIdentifier, boards);
-  if (board) {return board;}
-  throw new Error(`No board named ${boardIdentifier} found`);
-}
-
-export function getBoard(boardYamlPath: string): ZephyrBoard {
-  return new ZephyrBoard(vscode.Uri.file(boardYamlPath));
+export function getBoard(boardYamlPath: string, identifierOverride?: string): ZephyrBoard {
+  return new ZephyrBoard(vscode.Uri.file(boardYamlPath), identifierOverride);
 }
 
 export function copySampleSync(sampleDir: string, destDir: string): string {
@@ -670,94 +645,6 @@ export async function getSupportedBoards2(westWorkspace: WestWorkspace): Promise
   return listBoards;
 }
 
-/**
- * Find all supported boards by looking in known board folders
- * and reading each board .yaml file.
- *
- * If a project and a build config are provided, we also try to detect
- * extra board folders from the project's build settings (BOARD_ROOT).
- * To do this we look for a zephyr_settings.txt file:
- * - If the normal build directory exists, we read it from there.
- * - Otherwise we run a quick dummy build in a temporary .tmp folder.
- *   This dummy build is expected to fail; that is fine. The goal is only
- *   to make the build system generate zephyr_settings.txt so we can read
- *   BOARD_ROOT. After that, the temporary folder is removed.
- */
-export async function getSupportedBoards(
-  westWorkspace: WestWorkspace,
-  resource?: ZephyrProject | string,
-  buildConfig?: ZephyrProjectBuildConfiguration | undefined,
-  generatedBuildDir?: string,
-): Promise<ZephyrBoard[]> {
-  const listBoards: ZephyrBoard[] = [];
-  const boardRoots: string[] = [westWorkspace.rootUri.fsPath];
-
-  if (westWorkspace.envVars['BOARD_ROOT']) {
-    for (const boardDir of westWorkspace.envVars['BOARD_ROOT']) {
-      boardRoots.push(boardDir);
-    }
-  }
-
-  if (resource) {
-    if (resource instanceof ZephyrProject) {
-      if (buildConfig) {
-        const buildDir = buildConfig.getBuildDir(resource);
-        let envVars: Record<string, string> | undefined;
-        const settingsPath = buildConfig.getBuildArtifactPath(resource, 'zephyr_settings.txt');
-        if (settingsPath) {
-          envVars = readZephyrSettings(path.dirname(settingsPath));
-        } else if (fileExists(buildDir)) {
-          envVars = readZephyrSettings(buildDir);
-        } else if (generatedBuildDir && fileExists(generatedBuildDir)) {
-          envVars = readZephyrSettings(generatedBuildDir);
-        } else {
-          const tmpBuildDir = await westTmpBuildCmakeOnlyCommand(resource, westWorkspace, buildConfig);
-          if (tmpBuildDir) {
-            envVars = readZephyrSettings(tmpBuildDir);
-            deleteFolder(tmpBuildDir);
-          }
-        }
-        if (envVars) {
-          for (const key of Object.keys(envVars)) {
-            if (key === 'BOARD_ROOT') {
-              boardRoots.push(envVars[key]);
-            }
-          }
-        }
-      }
-    } else {
-      boardRoots.push(resource);
-    }
-  }
-
-  const boardDirs = await getBoardsDirectories(westWorkspace, boardRoots);
-
-  const dirPromises = boardDirs.map(async (dir) => {
-    const dirUri = vscode.Uri.file(dir);
-    try {
-      const files = await vscode.workspace.fs.readDirectory(dirUri);
-      const boardPromises = files
-        .filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.yaml'))
-        .map(([name]) => {
-          const boardDescUri = vscode.Uri.joinPath(dirUri, name);
-          const boardFile = fs.readFileSync(boardDescUri.fsPath, 'utf8');
-          const data = yaml.parse(boardFile);
-          if (data.identifier) {
-            return new ZephyrBoard(boardDescUri);
-          }
-          return undefined;
-        });
-      const boards = await Promise.all(boardPromises);
-      listBoards.push(...boards.filter(board => board !== undefined) as ZephyrBoard[]);
-    } catch (error) {
-      console.error(`Error reading directory: ${dirUri.fsPath}`, error);
-    }
-  });
-
-  await Promise.all(dirPromises);
-  return listBoards;
-}
-
 export async function parseSupportedBoards(westWorkspace: WestWorkspace, directory: vscode.Uri, listBoards: ZephyrBoard[], rootPath: string, relativePath = ''): Promise<void> {
   try {
     const files = await vscode.workspace.fs.readDirectory(directory);
@@ -918,30 +805,6 @@ export async function readDirectoryRecursive(dirUri: vscode.Uri): Promise<vscode
   }
 
   return files;
-}
-
-export function readZephyrSettings(buildDir: string): Record<string, string> {
-  const settings: Record<string, string> = {};
-  const filePath = path.join(buildDir, 'zephyr_settings.txt');
-  try {
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
-    const lines = fileContent.split(/\r?\n/);
-
-    lines.forEach(line => {
-      if (line.startsWith('#') || line.trim() === '') {
-        return;
-      }
-      const match = line.match(/^"([^"]+)":"([^"]+)"$/);
-      if (match) {
-        const key = match[1];
-        const value = match[2];
-        settings[key] = value;
-      }
-    });
-  } catch (e) {
-    console.log(`Cannot read ${filePath}`);
-  }
-  return settings;
 }
 
 export async function validateProjectLocation(location: string) {

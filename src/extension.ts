@@ -28,6 +28,7 @@ import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { EclairManagerPanel } from './panels/EclairManagerPanel';
 import { ZephyrDashboardViewProvider } from './panels/ZephyrDashboardViewProvider';
 import { changeToolchainQuickStep } from "./quicksteps/changeToolchainQuickStep";
+import { getBoardFromIdentifier } from './utils/zephyr/boardDiscovery';
 import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
 import { WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
@@ -39,7 +40,7 @@ import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommand
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain } from './utils/zephyr/sdkUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
 import { showPristineQuickPick } from './quicksteps/setupBuildPristineQuickStep';
-import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfigTask, getBoardFromIdentifier, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, migrateToolchainVariant, msleep, normalizePath, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
+import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findConfigTask, getInternalToolsDirRealPath, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrProject, getZephyrSDK, isWorkspaceFolder, migrateToolchainVariant, msleep, normalizePath, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
@@ -1150,13 +1151,15 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 				if (workspaceFolder && !isWestWorkspace) {
 					project = await getZephyrProject(workspaceFolder.uri.fsPath);
-					if (project.configs && project.configs.length === 1) {
-						let terminal: vscode.Terminal = ZephyrProjectBuildConfiguration.getTerminal(project, project.configs[0]);
-						terminal.show();
-					}
-					else {
-						let terminal: vscode.Terminal = ZephyrProject.getTerminal(project);
-						terminal.show();
+					if (project) {
+						if (project.configs && project.configs.length === 1) {
+							let terminal: vscode.Terminal = ZephyrProjectBuildConfiguration.getTerminal(project, project.configs[0]);
+							terminal.show();
+						}
+						else {
+							let terminal: vscode.Terminal = ZephyrProject.getTerminal(project);
+							terminal.show();
+						}
 					}
 				}
 			}
