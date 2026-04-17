@@ -94,19 +94,24 @@ export class DebugManagerPanel {
     options?: { canSelectFiles?: boolean; canSelectFolders?: boolean }
   ) {
     if (this._panel) {
-      vscode.window.showOpenDialog({
-        canSelectFiles: options?.canSelectFiles ?? true,
-        canSelectFolders: options?.canSelectFolders ?? false,
-        canSelectMany: false,
-        openLabel: 'Select',
-        filters: filters,
-      }).then(uri => {
-        if (uri && uri.length > 0) {
-          const selectedFileUri = uri[0];
-          // Send the selected file URI back to the webview
-          this._panel?.webview.postMessage({ command: 'fileSelected', id: elementId, fileUri: selectedFileUri.fsPath });
+      void (async () => {
+        try {
+          const uri = await vscode.window.showOpenDialog({
+            canSelectFiles: options?.canSelectFiles ?? true,
+            canSelectFolders: options?.canSelectFolders ?? false,
+            canSelectMany: false,
+            openLabel: 'Select',
+            filters: filters,
+          });
+          if (uri && uri.length > 0) {
+            const selectedFileUri = uri[0];
+            // Send the selected file URI back to the webview
+            this._panel?.webview.postMessage({ command: 'fileSelected', id: elementId, fileUri: selectedFileUri.fsPath });
+          }
+        } finally {
+          this._panel?.webview.postMessage({ command: 'fileDialogClosed', id: elementId });
         }
-      });
+      })();
     }
   }
 

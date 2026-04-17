@@ -128,15 +128,33 @@ function hideSpinner(spinnerId: string) {
   if (spinner) {spinner.style.display = 'none';}
 }
 
+function getBrowseSpinnerId(fieldId: string): string | undefined {
+  switch (fieldId) {
+    case 'programPath':
+      return 'programPathSpinner';
+    case 'gdbPath':
+      return 'gdbPathSpinner';
+    case 'runnerPath':
+      return 'runnerPathSpinner';
+    default:
+      return undefined;
+  }
+}
+
+function hideBrowseSpinnerForField(fieldId: string) {
+  const spinnerId = getBrowseSpinnerId(fieldId);
+  if (spinnerId) {
+    hideSpinner(spinnerId);
+  }
+}
+
 function setLocalPath(id: string, path: string) {
   const localPath = document.getElementById(id) as TextField;
   if (path) {
     localPath.value = path;
     localPath.dispatchEvent(new Event('input'));
   }
-  if (id === 'programPath') {hideSpinner('programPathSpinner');}
-  if (id === 'gdbPath') {hideSpinner('gdbPathSpinner');}
-  if (id === 'runnerPath') {hideSpinner('runnerPathSpinner');}
+  hideBrowseSpinnerForField(id);
 }
 
 function setVSCodeMessageListener() {
@@ -209,6 +227,9 @@ function setVSCodeMessageListener() {
       }
       case 'fileSelected':
         setLocalPath(event.data.id, event.data.fileUri);
+        break;
+      case 'fileDialogClosed':
+        hideBrowseSpinnerForField(event.data.id);
         break;
       default:
         break;
