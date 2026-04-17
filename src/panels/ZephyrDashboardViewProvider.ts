@@ -377,7 +377,17 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			gap: 6px;
 		}
 
-		.toolbar-top {
+		.toolbar-stack {
+			display: grid;
+			gap: 8px;
+		}
+
+		.toolbar-info {
+			display: grid;
+			gap: 6px;
+		}
+
+		.toolbar-info-row {
 			display: grid;
 			grid-template-columns: minmax(0, 1fr) auto;
 			align-items: center;
@@ -452,6 +462,53 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			gap: 8px;
 			align-items: center;
 			min-width: 0;
+		}
+
+		.tab-row {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			flex-wrap: wrap;
+			padding-bottom: 2px;
+			border-bottom: 1px solid color-mix(in srgb, var(--shell-border) 70%, transparent);
+		}
+
+		.tab {
+			position: relative;
+			border: 1px solid transparent;
+			background: transparent;
+			color: var(--shell-muted);
+			border-radius: 6px 6px 0 0;
+			padding: 0 12px;
+			height: 28px;
+			font: inherit;
+			font-size: 10px;
+			font-weight: 700;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+			cursor: pointer;
+			margin-bottom: -3px;
+		}
+
+		.tab.active {
+			color: var(--vscode-foreground);
+			border-color: color-mix(in srgb, var(--shell-accent) 32%, var(--shell-border));
+			border-bottom-color: var(--shell-surface);
+			background: color-mix(in srgb, var(--shell-accent) 10%, var(--shell-surface));
+		}
+
+		.tab.active::after {
+			content: "";
+			position: absolute;
+			left: 0;
+			right: 0;
+			bottom: -1px;
+			height: 1px;
+			background: var(--shell-surface);
+		}
+
+		.tab:hover {
+			color: var(--vscode-foreground);
 		}
 
 		.search {
@@ -644,7 +701,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		}
 
 		@media (max-width: 800px) {
-			.toolbar-top,
+			.toolbar-info-row,
 			.toolbar-bottom {
 				grid-template-columns: 1fr;
 			}
@@ -665,25 +722,35 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 <body>
 	<div class="shell">
 		<section class="panel toolbar">
-			<div class="toolbar-top">
-				<div class="title-row">
-					<div class="title">Sys Init</div>
-					<div class="meta-row">
-						<span id="projectTag" class="tag hidden"><span class="tag-label">App</span><span id="projectValue"></span></span>
-						<span id="configTag" class="tag hidden"><span class="tag-label">Cfg</span><span id="configValue"></span></span>
-						<span id="boardTag" class="tag hidden"><span class="tag-label">Board</span><span id="boardValue"></span></span>
+			<div class="toolbar-stack">
+				<div id="tabRow" class="tab-row">
+					<button class="tab" type="button" data-tab="summary">Summary</button>
+					<button class="tab" type="button" data-tab="sys-init">Sys Init</button>
+					<button class="tab" type="button" data-tab="ram">RAM</button>
+					<button class="tab" type="button" data-tab="rom">ROM</button>
+				</div>
+				<div class="toolbar-info">
+					<div class="toolbar-info-row">
+						<div class="title-row">
+							<div id="tabTitle" class="title">Summary</div>
+							<div class="meta-row">
+								<span id="projectTag" class="tag hidden"><span class="tag-label">App</span><span id="projectValue"></span></span>
+								<span id="configTag" class="tag hidden"><span class="tag-label">Cfg</span><span id="configValue"></span></span>
+								<span id="boardTag" class="tag hidden"><span class="tag-label">Board</span><span id="boardValue"></span></span>
+							</div>
+						</div>
+						<div class="metric-row">
+							<span id="entriesMetric" class="metric hidden"></span>
+							<span id="devicesMetric" class="metric hidden"></span>
+							<span id="mappedMetric" class="metric hidden"></span>
+						</div>
 					</div>
-				</div>
-				<div class="metric-row">
-					<span id="entriesMetric" class="metric hidden"></span>
-					<span id="devicesMetric" class="metric hidden"></span>
-					<span id="mappedMetric" class="metric hidden"></span>
-				</div>
-			</div>
-			<div class="toolbar-bottom">
-				<div class="status-row">
-					<input id="searchInput" class="search" type="text" placeholder="Search function, symbol, device path, ordinal">
-					<div id="summary" class="summary"></div>
+					<div class="toolbar-bottom">
+						<div class="status-row">
+							<input id="searchInput" class="search" type="text" placeholder="Search function, symbol, device path, ordinal">
+							<div id="summary" class="summary"></div>
+						</div>
+					</div>
 				</div>
 			</div>
 		</section>
@@ -710,12 +777,16 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		const entriesMetric = document.getElementById('entriesMetric');
 		const devicesMetric = document.getElementById('devicesMetric');
 		const mappedMetric = document.getElementById('mappedMetric');
+		const tabRow = document.getElementById('tabRow');
+		const tabTitle = document.getElementById('tabTitle');
 		const summary = document.getElementById('summary');
 		const searchInput = document.getElementById('searchInput');
+		const toolbarBottom = document.querySelector('.toolbar-bottom');
 		const emptyPanel = document.getElementById('emptyPanel');
 		const emptyTitle = document.getElementById('emptyTitle');
 		const emptyHint = document.getElementById('emptyHint');
 		const reportPanel = document.getElementById('reportPanel');
+		const tabs = Array.from(document.querySelectorAll('[data-tab]'));
 
 		function updateState(patch) {
 			currentState = { ...currentState, ...patch };
@@ -739,6 +810,47 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		function setMetric(element, label, value, visible) {
 			element.textContent = visible ? label + ': ' + value : '';
 			element.classList.toggle('hidden', !visible);
+		}
+
+		function getActiveTab() {
+			const tab = typeof currentState.activeTab === 'string' ? currentState.activeTab : 'summary';
+			return ['summary', 'sys-init', 'ram', 'rom'].includes(tab) ? tab : 'summary';
+		}
+
+		function getActiveTabLabel() {
+			switch (getActiveTab()) {
+				case 'sys-init':
+					return 'Sys Init';
+				case 'ram':
+					return 'RAM';
+				case 'rom':
+					return 'ROM';
+				default:
+					return 'Summary';
+			}
+		}
+
+		function syncTabs() {
+			const activeTab = getActiveTab();
+			for (const tab of tabs) {
+				tab.classList.toggle('active', tab.getAttribute('data-tab') === activeTab);
+			}
+
+			tabTitle.textContent = getActiveTabLabel();
+			const showSearch = activeTab === 'sys-init';
+			toolbarBottom.classList.toggle('hidden', !showSearch);
+			if (!showSearch) {
+				summary.textContent = '';
+			}
+		}
+
+		function renderPlaceholderTab(title, body) {
+			summary.textContent = '';
+			reportPanel.innerHTML =
+				'<section class="panel empty">' +
+					'<div class="empty-title">' + escapeHtml(title) + '</div>' +
+					'<div class="dim">' + escapeHtml(body) + '</div>' +
+				'</section>';
 		}
 
 		function entryMatches(entry, query) {
@@ -852,6 +964,27 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			reportPanel.innerHTML = html;
 		}
 
+		function renderActiveTab() {
+			const activeTab = getActiveTab();
+
+			if (activeTab === 'sys-init') {
+				renderReport();
+				return;
+			}
+
+			if (activeTab === 'summary') {
+				renderPlaceholderTab('Summary', 'Summary widgets will be added here.');
+				return;
+			}
+
+			if (activeTab === 'ram') {
+				renderPlaceholderTab('RAM', 'RAM analysis will be added here.');
+				return;
+			}
+
+			renderPlaceholderTab('ROM', 'ROM analysis will be added here.');
+		}
+
 		function renderModel(model) {
 			currentModel = model;
 			setTag(projectTag, projectValue, model.projectLabel);
@@ -863,7 +996,8 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			setMetric(devicesMetric, 'Devices', model.report ? model.report.totalDeviceEntries : 0, hasReport);
 			setMetric(mappedMetric, 'Mapped', model.report ? model.report.mappedDevicePaths : 0, hasReport);
 
-			searchInput.disabled = !hasReport;
+			syncTabs();
+			searchInput.disabled = !hasReport || getActiveTab() !== 'sys-init';
 
 			emptyPanel.classList.toggle('hidden', hasReport);
 			reportPanel.classList.toggle('hidden', !hasReport);
@@ -881,12 +1015,32 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				searchInput.value = savedSearch;
 			}
 
-			renderReport();
+			renderActiveTab();
 		}
 
 		searchInput.addEventListener('input', () => {
 			updateState({ searchText: searchInput.value });
 			renderReport();
+		});
+
+		tabRow.addEventListener('click', (event) => {
+			const target = event.target;
+			if (!target || !target.matches('[data-tab]')) {
+				return;
+			}
+
+			const activeTab = target.getAttribute('data-tab');
+			if (!activeTab || activeTab === getActiveTab()) {
+				return;
+			}
+
+			updateState({ activeTab });
+			syncTabs();
+
+			if (currentModel?.hasReport && currentModel?.report) {
+				searchInput.disabled = getActiveTab() !== 'sys-init';
+				renderActiveTab();
+			}
 		});
 
 		reportPanel.addEventListener('toggle', (event) => {
