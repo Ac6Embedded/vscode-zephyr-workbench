@@ -6,7 +6,7 @@ import { ZephyrBoard } from "../models/ZephyrBoard";
 import { ZephyrSample } from "../models/ZephyrSample";
 import { MultiStepInput } from "../utilities/MultiStepQuickPick";
 import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
-import { fileExists, getListSamples, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getZephyrSDK } from "../utils/utils";
+import { fileExists, getAppTemplateDisplayPath, getListSamples, getListZephyrSDKs, getWestWorkspace, getWestWorkspaces, getZephyrSDK } from "../utils/utils";
 import { ZephyrSDK } from "../models/ZephyrSDK";
 
 export async function createProjectQuickStep(context: ExtensionContext) {
@@ -127,7 +127,7 @@ export async function createProjectQuickStep(context: ExtensionContext) {
 
   async function pickSample(input: MultiStepInput, state: Partial<ProjectConfig>) {
 
-    const sampleItems: QuickPickItem[] = [];
+    const sampleItems: (QuickPickItem & { sample?: ZephyrSample })[] = [];
 
     const samples = await getListSamples(state.westWorkspace as WestWorkspace);
     const groupedSamples = samples.filter(sample => sample.kind === 'sample');
@@ -140,7 +140,11 @@ export async function createProjectQuickStep(context: ExtensionContext) {
       });
     }
     for(let sample of groupedSamples) {
-      sampleItems.push({ label: sample.name, description: sample.rootDir.fsPath });
+      sampleItems.push({
+        label: sample.name,
+        description: getAppTemplateDisplayPath(sample.rootDir.fsPath, state.westWorkspace as WestWorkspace),
+        sample,
+      });
     }
 
     if (groupedTests.length > 0) {
@@ -150,7 +154,11 @@ export async function createProjectQuickStep(context: ExtensionContext) {
       });
     }
     for(let sample of groupedTests) {
-      sampleItems.push({ label: sample.name, description: sample.rootDir.fsPath });
+      sampleItems.push({
+        label: sample.name,
+        description: getAppTemplateDisplayPath(sample.rootDir.fsPath, state.westWorkspace as WestWorkspace),
+        sample,
+      });
     }
 
 
@@ -161,17 +169,12 @@ export async function createProjectQuickStep(context: ExtensionContext) {
 			placeholder: 'Select sample or test',
 			items: sampleItems,
 			shouldResume: shouldResume
-		});
+		}) as QuickPickItem & { sample?: ZephyrSample };
 
     if(pick) {
-      if(pick.description) {
-        for(let sample of samples) {
-          if(sample.rootDir.fsPath === pick.description) {
-            state.sample = sample;
-            state.projectName = pick.label;
-            break;
-          }
-        }
+      if (pick.sample) {
+        state.sample = pick.sample;
+        state.projectName = pick.label;
       }
     }
 

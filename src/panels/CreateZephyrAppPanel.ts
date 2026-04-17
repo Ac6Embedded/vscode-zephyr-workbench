@@ -6,7 +6,7 @@ import { WestWorkspace } from "../models/WestWorkspace";
 import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
 import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
-import { fileExists, getArmGnuToolchainForPath, getBase64, getBoard, getListArmGnuToolchains, getListIARs, getListSamples, getListZephyrSDKs, getIarToolchainForSdk, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils/utils";
+import { fileExists, getAppTemplateDisplayPath, getArmGnuToolchainForPath, getBase64, getBoard, getListArmGnuToolchains, getListIARs, getListSamples, getListZephyrSDKs, getIarToolchainForSdk, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils/utils";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 
@@ -641,14 +641,14 @@ async function buildSamplesDiscoveryState(westWorkspace: WestWorkspace): Promise
   if (samples.length > 0) {
     html += '<div class="dropdown-header">SAMPLES</div>';
     for (const sample of samples) {
-      html += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${sample.rootDir.fsPath}</span></div>`;
+      html += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${getAppTemplateDisplayPath(sample.rootDir.fsPath, westWorkspace)}</span></div>`;
     }
   }
 
   if (tests.length > 0) {
     html += '<div class="dropdown-header">TESTS</div>';
     for (const sample of tests) {
-      html += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${sample.rootDir.fsPath}</span></div>`;
+      html += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${getAppTemplateDisplayPath(sample.rootDir.fsPath, westWorkspace)}</span></div>`;
     }
   }
 

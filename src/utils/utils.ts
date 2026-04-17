@@ -319,6 +319,42 @@ export async function getListSamples(westWorkspace: WestWorkspace): Promise<Zeph
   });
 }
 
+function isPathWithin(parentPath: string, childPath: string): boolean {
+  const normalizedParentPath = path.normalize(parentPath);
+  const normalizedChildPath = path.normalize(childPath);
+
+  const comparableParentPath = process.platform === 'win32'
+    ? normalizedParentPath.toLowerCase()
+    : normalizedParentPath;
+  const comparableChildPath = process.platform === 'win32'
+    ? normalizedChildPath.toLowerCase()
+    : normalizedChildPath;
+
+  return comparableChildPath === comparableParentPath
+    || comparableChildPath.startsWith(`${comparableParentPath}${path.sep}`);
+}
+
+function toDisplayPath(pathValue: string): string {
+  return pathValue.replace(/\\/g, '/');
+}
+
+export function getAppTemplateDisplayPath(
+  templatePath: string,
+  westWorkspace: Pick<WestWorkspace, 'rootUri' | 'kernelUri' | 'zephyrBase'>
+): string {
+  if (isPathWithin(westWorkspace.kernelUri.fsPath, templatePath)) {
+    const kernelRelativePath = path.relative(westWorkspace.kernelUri.fsPath, templatePath);
+    return toDisplayPath(path.join(westWorkspace.zephyrBase, kernelRelativePath));
+  }
+
+  if (isPathWithin(westWorkspace.rootUri.fsPath, templatePath)) {
+    const workspaceRelativePath = path.relative(westWorkspace.rootUri.fsPath, templatePath);
+    return toDisplayPath(workspaceRelativePath);
+  }
+
+  return toDisplayPath(path.normalize(templatePath));
+}
+
 async function findAppTemplateKind(directory: vscode.Uri): Promise<ZephyrAppTemplateKind | undefined> {
   for (const [metadataFile, kind] of Object.entries(APP_TEMPLATE_METADATA_FILES)) {
     const metadataPath = vscode.Uri.joinPath(directory, metadataFile);
