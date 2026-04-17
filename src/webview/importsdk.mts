@@ -264,14 +264,22 @@ function renderToolchainList(toolchains: string[], enabled: boolean): void {
     return;
   }
 
-  container.innerHTML = ordered.map(t => `
-    <div>
-      <vscode-checkbox class="toolchain-checkbox"
-                       value="${t}"
-                       current-value="${t}"
-                       ${enabled ? "" : "disabled"}>${t}</vscode-checkbox>
-    </div>
-  `).join("");
+  const primaryToolchains = ordered.filter(toolchain => !isXtensaToolchain(toolchain));
+  const xtensaToolchains = ordered.filter(isXtensaToolchain);
+
+  const primaryMarkup = renderToolchainItems(primaryToolchains, enabled);
+  const xtensaMarkup = xtensaToolchains.length
+    ? `
+      <details class="toolchain-collapse">
+        <summary>Xtensa toolchains (${xtensaToolchains.length})</summary>
+        <div class="toolchain-collapse-content">
+          ${renderToolchainItems(xtensaToolchains, enabled)}
+        </div>
+      </details>
+    `
+    : "";
+
+  container.innerHTML = `${primaryMarkup}${xtensaMarkup}`;
 
   setToolchainsEnabled(enabled);
 }
@@ -330,6 +338,30 @@ function orderToolchains(toolchains: string[]): string[] {
     // Stable fallback: preserve original order
     return toolchains.indexOf(a) - toolchains.indexOf(b);
   });
+}
+
+function renderToolchainItems(toolchains: string[], enabled: boolean): string {
+  return toolchains.map(toolchain => `
+    <div>
+      <vscode-checkbox class="toolchain-checkbox"
+                       value="${escapeHtml(toolchain)}"
+                       current-value="${escapeHtml(toolchain)}"
+                       ${enabled ? "" : "disabled"}>${escapeHtml(toolchain)}</vscode-checkbox>
+    </div>
+  `).join("");
+}
+
+function isXtensaToolchain(toolchain: string): boolean {
+  return toolchain.startsWith("xtensa-");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function toggleVersionSpinner(show: boolean): void {

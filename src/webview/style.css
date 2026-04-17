@@ -209,6 +209,27 @@ fieldset.no-border  {
   color: var(--vscode-descriptionForeground);
 }
 
+.toolchain-collapse {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  border-top: 1px solid var(--vscode-tab-border);
+  padding-top: 8px;
+}
+
+.toolchain-collapse > summary {
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  user-select: none;
+  list-style-position: outside;
+}
+
+.toolchain-collapse-content {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 8px;
+}
+
 .hidden { display: none !important; }
 
 #boardImg {
