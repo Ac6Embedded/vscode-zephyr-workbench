@@ -16,16 +16,14 @@ export class ImportZephyrSDKPanel {
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
   }
 
-  /*────────────────────────────── PUBLIC API ──────────────────────────────*/
-  public async createContent() {
-    this._panel.webview.html = await this._getWebviewContent(
+  public createContent() {
+    this._setWebviewMessageListener(this._panel.webview);
+    this._panel.webview.html = this._getWebviewContent(
       this._panel.webview,
       this._extensionUri,
     );
-    this._setWebviewMessageListener(this._panel.webview);
   }
 
-  /** common folder‑picker (Location / SDK browse) */
   public openLocationDialog(targetId = "workspacePath") {
     vscode.window
       .showOpenDialog({
@@ -88,33 +86,17 @@ export class ImportZephyrSDKPanel {
   public dispose() {
     ImportZephyrSDKPanel.currentPanel = undefined;
     this._panel.dispose();
-    while (this._disposables.length) {this._disposables.pop()?.dispose();}
+    while (this._disposables.length) { this._disposables.pop()?.dispose(); }
   }
 
-  /*──────────────────────── PRIVATE: HTML ────────────────────────────────*/
-  private async _getWebviewContent(
+  private _getWebviewContent(
     webview: vscode.Webview,
     extensionUri: vscode.Uri,
   ) {
-    /* dynamic URIs & nonce */
     const webviewUri = getUri(webview, extensionUri, ["out", "importsdk.js"]);
     const styleUri = getUri(webview, extensionUri, ["out", "style.css"]);
     const nonce = getNonce();
 
-    /* ── SDK versions for the dropdown ─────────────────────────────── */
-    const versions = await getSdkVersion();
-    let versionItems = "", defaultVersion = "";
-    if (versions.length) {
-      defaultVersion = versions[0].replace(/^v/, "");
-      for (const v of versions) {
-        const clean = v.replace(/^v/, "");
-        versionItems += `<div class="dropdown-item"
-                             data-value="${clean}"
-                             data-label="${v}">${v}</div>`;
-      }
-    }
-
-    /* default SDK URL matching current platform */
     let defaultSDKUrl = "";
     if (process.platform === "linux" && process.arch === "x64") {
       defaultSDKUrl =
@@ -133,19 +115,6 @@ export class ImportZephyrSDKPanel {
         "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.17.4/zephyr-sdk-0.17.4_macos-aarch64.tar.xz";
     }
 
-    /* ── Zephyr SDK list for the IAR dropdown ──────────────────────── */
-    let sdkHTML = "";
-    for (const sdk of await getListZephyrSDKs()) {
-      sdkHTML += `
-        <div class="dropdown-item"
-             data-value="${sdk.rootUri.fsPath}"
-             data-label="${sdk.name}">
-          ${sdk.name}
-          <span class="description">${sdk.version}</span>
-        </div>`;
-    }
-
-    /* ── full HTML ─────────────────────────────────────────────────── */
     return /*html*/ `
 <!DOCTYPE html>
 <html lang="en">
@@ -164,7 +133,6 @@ export class ImportZephyrSDKPanel {
   <a class="help-link"
      href="https://zephyr-workbench.com/docs/documentation/sdk">Read Docs</a>
 
-  <!-- ── CATEGORY + SOURCE LOCATION ───────────────────────────────── -->
   <form>
     <div class="grid-group-div">
       <vscode-radio-group id="sourceCategory" orientation="vertical">
@@ -174,7 +142,6 @@ export class ImportZephyrSDKPanel {
       </vscode-radio-group>
     </div>
 
-    <!-- Zephyr sub-options -->
     <div id="zephyrOptions" class="sub-option-group">
       <vscode-radio-group id="srcTypeZephyr" orientation="vertical">
         <label slot="label">Source:</label>
@@ -184,23 +151,20 @@ export class ImportZephyrSDKPanel {
       </vscode-radio-group>
     </div>
 
-<!-- IAR sub-options - always “Local” -->
-<div id="iarOptions" class="sub-option-group iar-row" style="display:none">
-  <!-- right-hand download link -->
-  <a  class="iar-download-link"
-      href="https://github.com/iarsystems/zephyr-iar/releases"
-      title="Open the IAR Zephyr Toolchain releases page"
-      target="_blank" rel="noopener">
-    Download binaries&nbsp;
-  </a>
-  <vscode-radio-group id="srcTypeIar" orientation="vertical">
-    <label slot="label">Source:</label>
-    <vscode-radio value="iar-local" checked>Local</vscode-radio>
-  </vscode-radio-group>
-</div>
+    <div id="iarOptions" class="sub-option-group iar-row" style="display:none">
+      <a class="iar-download-link"
+         href="https://github.com/iarsystems/zephyr-iar/releases"
+         title="Open the IAR Zephyr Toolchain releases page"
+         target="_blank" rel="noopener">
+        Download binaries&nbsp;
+      </a>
+      <vscode-radio-group id="srcTypeIar" orientation="vertical">
+        <label slot="label">Source:</label>
+        <vscode-radio value="iar-local" checked>Local</vscode-radio>
+      </vscode-radio-group>
+    </div>
   </form>
 
-  <!-- ── OFFICIAL SDK FORM ────────────────────────────────────────── -->
   <form id="official-form">
     <div class="grid-group-div">
       <vscode-radio-group id="sdkType" orientation="horizontal">
@@ -220,24 +184,24 @@ export class ImportZephyrSDKPanel {
       </div>
 
       <div class="combo-with-spinner">
-      <div id="listVersion" class="combo-dropdown grid-value-div">
-        <input  id="versionInput"
-                class="combo-dropdown-control"
-                placeholder="Choose the SDK version…"
-                data-value="${defaultVersion}" />
-        <div aria-hidden="true" class="indicator" part="indicator">
-          <svg class="select-indicator" width="16" height="16"
-               viewBox="0 0 16 16" fill="currentColor">
-            <path fill-rule="evenodd" clip-rule="evenodd"
-              d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"/>
-          </svg>
-        </div>
+        <div id="listVersion" class="combo-dropdown grid-value-div">
+          <input id="versionInput"
+                 class="combo-dropdown-control"
+                 placeholder="Choose the SDK version..."
+                 data-value="" />
+          <div aria-hidden="true" class="indicator" part="indicator">
+            <svg class="select-indicator" width="16" height="16"
+                 viewBox="0 0 16 16" fill="currentColor">
+              <path fill-rule="evenodd" clip-rule="evenodd"
+                d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"/>
+            </svg>
+          </div>
 
-        <div id="versionsDropdown" class="dropdown-content">
-          ${versionItems}
+          <div id="versionsDropdown" class="dropdown-content">
+            <div class="dropdown-placeholder">Loading SDK versions...</div>
+          </div>
         </div>
-      </div>
-      <div id="toolchainSpinner" class="spinner version-spinner" aria-label="Loading toolchains" style="display:none"></div>
+        <div id="toolchainSpinner" class="spinner version-spinner" aria-label="Loading toolchains" style="display:none"></div>
       </div>
     </div>
 
@@ -257,20 +221,18 @@ export class ImportZephyrSDKPanel {
     </div>
   </form>
 
-  <!-- ── IAR LOCAL FORM (path + SDK dropdown) ─────────────────────── -->
   <form id="iar-form" style="display:none">
-    <!-- new Zephyr SDK dropdown -->
     <div class="grid-group-div">
       <div class="grid-header-div">
         <label for="listSDKs">Select Zephyr SDK:</label>
       </div>
 
       <div id="listSdks" class="combo-dropdown grid-value-div">
-        <input  type="text"
-                id="sdkInput"
-                class="combo-dropdown-control"
-                placeholder="Choose your SDK…"
-                data-value="">
+        <input type="text"
+               id="sdkInput"
+               class="combo-dropdown-control"
+               placeholder="Choose your SDK..."
+               data-value="">
         <div aria-hidden="true" class="indicator" part="indicator">
           <slot name="indicator">
             <svg class="select-indicator" width="16" height="16"
@@ -282,7 +244,7 @@ export class ImportZephyrSDKPanel {
         </div>
 
         <div id="sdkDropdown" class="dropdown-content" style="display:none;">
-          ${sdkHTML}
+          <div class="dropdown-placeholder">Loading SDKs...</div>
         </div>
       </div>
     </div>
@@ -294,11 +256,10 @@ export class ImportZephyrSDKPanel {
     </div>
   </form>
 
-  <!-- ── REMOTE / LOCAL SHARED FIELDS ─────────────────────────────── -->
   <form>
     <div class="grid-group-div">
-      <vscode-text-field  id="remotePath" size="50" type="url"
-                          value="${defaultSDKUrl}">
+      <vscode-text-field id="remotePath" size="50" type="url"
+                         value="${defaultSDKUrl}">
         Path:
       </vscode-text-field>
     </div>
@@ -306,11 +267,10 @@ export class ImportZephyrSDKPanel {
     <div class="grid-group-div">
       <vscode-text-field id="workspacePath" size="50">Location:</vscode-text-field>
       <vscode-button id="browseLocationButton"
-                     class="browse-input-button">Browse…</vscode-button>
+                     class="browse-input-button">Browse...</vscode-button>
     </div>
   </form>
 
-  <!-- ── IMPORT BUTTON ─────────────────────────────────────────────── -->
   <div class="grid-group-div">
     <vscode-button id="importButton"
                    class="finish-input-button">Import</vscode-button>
@@ -322,7 +282,6 @@ export class ImportZephyrSDKPanel {
 `;
   }
 
-  /*────────────────── PRIVATE: Webview → Extension ──────────────────*/
   private _setWebviewMessageListener(webview: vscode.Webview) {
     webview.onDidReceiveMessage(
       async (msg) => {
@@ -402,6 +361,32 @@ export class ImportZephyrSDKPanel {
             }
             return;
           }
+
+          case "fetchImportSdkData": {
+            const [versionsResult, sdkResult] = await Promise.allSettled([
+              getSdkVersion(),
+              getListZephyrSDKs(),
+            ]);
+
+            webview.postMessage({
+              command: "importSdkData",
+              versions: versionsResult.status === "fulfilled" ? versionsResult.value : [],
+              versionError: versionsResult.status === "rejected"
+                ? getErrorMessage(versionsResult.reason)
+                : undefined,
+              sdks: sdkResult.status === "fulfilled"
+                ? sdkResult.value.map((sdk) => ({
+                    path: sdk.rootUri.fsPath,
+                    name: sdk.name,
+                    version: sdk.version,
+                  }))
+                : [],
+              sdkError: sdkResult.status === "rejected"
+                ? getErrorMessage(sdkResult.reason)
+                : undefined,
+            });
+            return;
+          }
         }
       },
       undefined,
@@ -410,7 +395,13 @@ export class ImportZephyrSDKPanel {
   }
 }
 
-/*────────────────────────── helpers ──────────────────────────*/
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return String(error);
+}
+
 export async function checkParameters(msg: any): Promise<boolean> {
   const { srcType, workspacePath } = msg;
 
@@ -444,14 +435,13 @@ export async function checkParameters(msg: any): Promise<boolean> {
     }
     if (!msg.iarToken) {
       const response = await vscode.window.showWarningMessage(
-      "No IAR LMS BEARER TOKEN was supplied.\n\n" +
-      "Zephyr Workbench will use the IAR toolchain under its perpetual licence.\n\n" +
-      "Do you want to proceed?",
+        "No IAR LMS BEARER TOKEN was supplied.\n\n" +
+        "Zephyr Workbench will use the IAR toolchain under its perpetual licence.\n\n" +
+        "Do you want to proceed?",
         { modal: true },
-        "Continue"
+        "Continue",
       );
       if (response !== "Continue") {
-        // User clicked Cancel or closed the dialog
         return false;
       }
     }

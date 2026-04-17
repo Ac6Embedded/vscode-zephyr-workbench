@@ -519,6 +519,13 @@ vscode-button {
   background-color: var(--vscode-inputOption-hoverBackground);
 }
 
+.dropdown-placeholder {
+  color: var(--vscode-descriptionForeground);
+  font-family: inherit;
+  font-size: var(--type-ramp-base-font-size);
+  padding: 6px 8px;
+}
+
 .description {
   color: var(--vscode-editorInlayHint-foreground);
   font-size: calc(var(--type-ramp-base-font-size) - 2px);

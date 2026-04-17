@@ -1,5 +1,5 @@
 /******************************************************************
- *  vscode‑zephyr‑workbench  ·  importsdk.mts  (Web‑view side)
+ *  vscode-zephyr-workbench · importsdk.mts  (Webview side)
  ******************************************************************/
 
 import {
@@ -29,42 +29,46 @@ provideVSCodeDesignSystem().register(
   vsCodePanelView(),
 );
 
-/*──────────────────────── helpers ────────────────────────*/
+type IarSdkEntry = {
+  path: string;
+  name: string;
+  version: string;
+};
+
 function getEl<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
-  if (!el) {throw new Error(`Missing #${id} in Webview DOM`);}
+  if (!el) { throw new Error(`Missing #${id} in Webview DOM`); }
   return el as T;
 }
 
-/* VS Code bridge */
 const vscode = acquireVsCodeApi();
 let cachedToolchains: string[] = [];
 let lastToolchainVersion = "";
 let pendingToolchainVersion = "";
+let versionsLoading = false;
+let versionsLoaded = false;
+let versionLoadError = "";
 
-/*──────────────────────── entry point ─────────────────────*/
 window.addEventListener("load", () => {
   setVSCodeMessageListener();
   initVersionsDropdown();
   initIarSdkDropdown();
+  requestImportSdkData();
 
-
-  /* category / sub‑choice listeners */
-  const sourceCat  = getEl<RadioGroup>("sourceCategory");
-  const zephyrSub  = getEl<RadioGroup>("srcTypeZephyr");
+  const sourceCat = getEl<RadioGroup>("sourceCategory");
+  const zephyrSub = getEl<RadioGroup>("srcTypeZephyr");
   const sdkTypeSub = getEl<RadioGroup>("sdkType");
 
-  sourceCat.addEventListener("click",  modifyCategoryHandler);
+  sourceCat.addEventListener("click", modifyCategoryHandler);
   sourceCat.addEventListener("select", modifyCategoryHandler);
-  zephyrSub.addEventListener("click",  modifySrcTypeHandler);
+  zephyrSub.addEventListener("click", modifySrcTypeHandler);
   zephyrSub.addEventListener("select", modifySrcTypeHandler);
   getEl<RadioGroup>("srcTypeIar")
     .addEventListener("select", modifySrcTypeHandler);
 
-  sdkTypeSub.addEventListener("click",  modifySdkTypeHandler);
+  sdkTypeSub.addEventListener("click", modifySdkTypeHandler);
   sdkTypeSub.addEventListener("select", modifySdkTypeHandler);
 
-  /* browse + import */
   getEl<Button>("browseLocationButton")
     .addEventListener("click", () => {
       vscode.postMessage({ command: "openLocationDialog", id: "workspacePath" });
@@ -73,12 +77,10 @@ window.addEventListener("load", () => {
   getEl<Button>("importButton")
     .addEventListener("click", importHandler);
 
-  /* first layout refresh */
   sourceCat.dispatchEvent(new Event("select"));
   modifySdkTypeHandler();
 });
 
-/*────────────────── VS Code → Web‑view messages ──────────*/
 function setVSCodeMessageListener(): void {
   window.addEventListener("message", (event) => {
     const { command } = event.data;
@@ -104,6 +106,11 @@ function setVSCodeMessageListener(): void {
         }
         break;
 
+      case "importSdkData":
+        applyVersionList(event.data.versions ?? [], event.data.versionError);
+        applyIarSdkList(event.data.sdks ?? [], event.data.sdkError);
+        break;
+
       case "toolchainList":
         applyToolchainList(event.data.toolchains ?? [], event.data.version);
         break;
@@ -118,22 +125,30 @@ function setVSCodeMessageListener(): void {
   });
 }
 
-/*──────────────────── visibility helpers ─────────────────*/
+function requestImportSdkData(): void {
+  versionsLoading = true;
+  versionsLoaded = false;
+  versionLoadError = "";
+  renderVersionLoading();
+  renderIarSdkLoading();
+  vscode.postMessage({ command: "fetchImportSdkData" });
+}
+
 function modifyCategoryHandler(): void {
   const cat = (getEl<RadioGroup>("sourceCategory") as unknown as { value: string }).value;
   getEl("zephyrOptions").style.display = cat === "zephyr" ? "block" : "none";
-  getEl("iarOptions").style.display    = cat === "iar"    ? "block" : "none";
+  getEl("iarOptions").style.display = cat === "iar" ? "block" : "none";
 
   modifySrcTypeHandler();
 }
 
 function modifySrcTypeHandler(): void {
-  const catRadio     = getEl<RadioGroup>("sourceCategory") as unknown as { value: string };
-  const zephyrGroup  = getEl<RadioGroup>("srcTypeZephyr")  as unknown as { value: string };
+  const catRadio = getEl<RadioGroup>("sourceCategory") as unknown as { value: string };
+  const zephyrGroup = getEl<RadioGroup>("srcTypeZephyr") as unknown as { value: string };
 
   const officialForm = getEl("official-form");
-  const remotePath   = getEl<TextField>("remotePath");
-  const iarForm      = getEl("iar-form");
+  const remotePath = getEl<TextField>("remotePath");
+  const iarForm = getEl("iar-form");
 
   if (catRadio.value === "zephyr") {
     if (zephyrGroup.value === "official") {
@@ -146,13 +161,13 @@ function modifySrcTypeHandler(): void {
       remotePath.removeAttribute("disabled");
       remotePath.style.display = "block";
       iarForm.style.display = "none";
-    } else { /* local */ 
+    } else {
       officialForm.style.display = "none";
       remotePath.setAttribute("disabled", "");
       remotePath.style.display = "none";
       iarForm.style.display = "none";
     }
-  } else { /* IAR branch */
+  } else {
     officialForm.style.display = "none";
     remotePath.setAttribute("disabled", "");
     remotePath.style.display = "none";
@@ -168,7 +183,9 @@ function modifySdkTypeHandler(): void {
     loadMinimalToolchains();
   } else {
     clearToolchainContainer();
-    toggleVersionSpinner(false);
+    if (!versionsLoading) {
+      toggleVersionSpinner(false);
+    }
   }
   updateLlvmRowVisibility();
 }
@@ -206,9 +223,28 @@ function getSelectedVersionTag(): string {
 
 function loadMinimalToolchains(): void {
   updateLlvmRowVisibility();
+  toggleToolchainContainer(true);
+
+  if (versionsLoading) {
+    renderToolchainPlaceholder("Loading SDK versions...");
+    setToolchainsEnabled(false);
+    return;
+  }
+
+  if (versionLoadError) {
+    renderToolchainPlaceholder(`Failed to load SDK versions: ${versionLoadError}`);
+    setToolchainsEnabled(false);
+    return;
+  }
+
   const version = getSelectedVersionTag();
   if (!version) {
-    renderToolchainError("Select a version to load toolchains.", version);
+    renderToolchainPlaceholder(
+      versionsLoaded
+        ? "Select a version to load toolchains."
+        : "No SDK versions available.",
+    );
+    setToolchainsEnabled(false);
     return;
   }
 
@@ -280,13 +316,12 @@ function renderToolchainList(toolchains: string[], enabled: boolean): void {
     : "";
 
   container.innerHTML = `${primaryMarkup}${xtensaMarkup}`;
-
   setToolchainsEnabled(enabled);
 }
 
 function renderToolchainPlaceholder(message: string): void {
   const container = getToolchainContainer();
-  container.innerHTML = `<div class="toolchain-placeholder">${message}</div>`;
+  container.innerHTML = `<div class="toolchain-placeholder">${escapeHtml(message)}</div>`;
 }
 
 function setToolchainsEnabled(enabled: boolean): void {
@@ -315,7 +350,9 @@ function clearToolchainContainer(): void {
   container.innerHTML = "";
   pendingToolchainVersion = "";
   setToolchainsEnabled(false);
-  toggleVersionSpinner(false);
+  if (!versionsLoading) {
+    toggleVersionSpinner(false);
+  }
 }
 
 function orderToolchains(toolchains: string[]): string[] {
@@ -335,7 +372,6 @@ function orderToolchains(toolchains: string[]): string[] {
       return aPrio - bPrio;
     }
 
-    // Stable fallback: preserve original order
     return toolchains.indexOf(a) - toolchains.indexOf(b);
   });
 }
@@ -370,12 +406,10 @@ function toggleVersionSpinner(show: boolean): void {
   sp.style.display = show ? "inline-block" : "none";
 }
 
-/*──────────────────── IAR‑SDK dropdown ───────────────────*/
 function initIarSdkDropdown(): void {
-  const sdkInput    = getEl<HTMLInputElement>("sdkInput");
+  const sdkInput = getEl<HTMLInputElement>("sdkInput");
   const sdkDropdown = getEl("sdkDropdown");
 
-  /* show / hide */
   ["focusin", "click"].forEach(evt => {
     sdkInput.addEventListener(evt, () => {
       sdkDropdown.style.display = "block";
@@ -388,24 +422,67 @@ function initIarSdkDropdown(): void {
   addDropdownItemListeners(sdkDropdown, sdkInput);
 }
 
-/*──────────── IMPORT payload to extension ────────────────*/
+function renderIarSdkLoading(): void {
+  const sdkInput = getEl<HTMLInputElement>("sdkInput");
+  const sdkDropdown = getEl("sdkDropdown");
+  sdkInput.value = "";
+  sdkInput.setAttribute("data-value", "");
+  sdkInput.placeholder = "Loading SDKs...";
+  sdkInput.setAttribute("disabled", "");
+  sdkDropdown.innerHTML = `<div class="dropdown-placeholder">Loading SDKs...</div>`;
+}
+
+function applyIarSdkList(sdks: IarSdkEntry[], error?: string): void {
+  const sdkInput = getEl<HTMLInputElement>("sdkInput");
+  const sdkDropdown = getEl("sdkDropdown");
+
+  if (error) {
+    sdkInput.value = "";
+    sdkInput.setAttribute("data-value", "");
+    sdkInput.placeholder = "Unable to load SDKs";
+    sdkInput.setAttribute("disabled", "");
+    sdkDropdown.innerHTML = `<div class="dropdown-placeholder">${escapeHtml(error)}</div>`;
+    return;
+  }
+
+  if (!sdks.length) {
+    sdkInput.value = "";
+    sdkInput.setAttribute("data-value", "");
+    sdkInput.placeholder = "No registered SDKs";
+    sdkInput.setAttribute("disabled", "");
+    sdkDropdown.innerHTML = `<div class="dropdown-placeholder">No registered SDKs found.</div>`;
+    return;
+  }
+
+  sdkInput.removeAttribute("disabled");
+  sdkInput.placeholder = "Choose your SDK...";
+  sdkDropdown.innerHTML = sdks.map((sdk) => `
+    <div class="dropdown-item"
+         data-value="${escapeHtml(sdk.path)}"
+         data-label="${escapeHtml(sdk.name)}">
+      ${escapeHtml(sdk.name)}
+      <span class="description">${escapeHtml(sdk.version)}</span>
+    </div>
+  `).join("");
+}
+
 function importHandler(): void {
   const isZephyr = (getEl<RadioGroup>("sourceCategory") as unknown as { value: string }).value === "zephyr";
-  const srcType  = isZephyr
-      ? (getEl<RadioGroup>("srcTypeZephyr") as unknown as { value: string }).value
-      : "iar";
+  const srcType = isZephyr
+    ? (getEl<RadioGroup>("srcTypeZephyr") as unknown as { value: string }).value
+    : "iar";
 
   vscode.postMessage({
-    command:        "import",
+    command: "import",
     srcType,
-    remotePath:     (getEl<TextField>("remotePath") as unknown as { value: string }).value,
-    workspacePath:  (getEl<TextField>("workspacePath") as unknown as { value: string }).value,
-    sdkType:        (getEl<RadioGroup>("sdkType") as unknown as { value: string }).value,
-    sdkVersion:     getEl<HTMLInputElement>("versionInput").getAttribute("data-value"),
+    remotePath: (getEl<TextField>("remotePath") as unknown as { value: string }).value,
+    workspacePath: (getEl<TextField>("workspacePath") as unknown as { value: string }).value,
+    sdkType: (getEl<RadioGroup>("sdkType") as unknown as { value: string }).value,
+    sdkVersion: getEl<HTMLInputElement>("versionInput").getAttribute("data-value"),
     listToolchains: getListSelectedToolchains(),
-    includeLlvm:    isLlvmSelected(),
-    iarZephyrSdkPath:     getEl<HTMLInputElement>("sdkInput").getAttribute("data-value") || "",
-    iarToken:       (getEl<TextField>("iarToken") as unknown as { value: string }).value,
+    includeLlvm: isLlvmSelected(),
+    iarZephyrSdkPath: getEl<HTMLInputElement>("sdkInput").getAttribute("data-value") || "",
+    iarToken: (getEl<TextField>("iarToken") as unknown as { value: string }).value,
   });
 }
 
@@ -414,9 +491,8 @@ function isLlvmSelected(): boolean {
   return !!cb?.checked;
 }
 
-/*──────────────── dropdown helpers (Version) ─────────────*/
 function initVersionsDropdown(): void {
-  const versionInput    = getEl<HTMLInputElement>("versionInput");
+  const versionInput = getEl<HTMLInputElement>("versionInput");
   const versionsDropdown = getEl("versionsDropdown");
 
   ["focusin", "click"].forEach(evt => {
@@ -432,29 +508,109 @@ function initVersionsDropdown(): void {
     if (isMinimalSelected()) {
       loadMinimalToolchains();
     }
+    updateLlvmRowVisibility();
   });
-
-  /* pre‑select first version if any */
-  const firstItem = versionsDropdown.querySelector<HTMLElement>(".dropdown-item");
-  firstItem?.dispatchEvent(new PointerEvent("pointerdown"));
 }
 
-/* generic item‑picker binding */
-function addDropdownItemListeners(dropdown: HTMLElement, input: HTMLInputElement, onSelect?: () => void) {
-  dropdown.querySelectorAll<HTMLElement>(".dropdown-item")
-    .forEach(item => {
-      item.addEventListener("pointerdown", () => {
-        if (item.dataset.value === "browse") return;   // handled elsewhere
-        input.value = item.dataset.label ?? "";
-        input.setAttribute("data-value", item.dataset.value ?? "");
-        input.dispatchEvent(new Event("input"));
-        dropdown.style.display = "none";
-        onSelect?.();
-      });
-    });
+function renderVersionLoading(): void {
+  const versionInput = getEl<HTMLInputElement>("versionInput");
+  const versionsDropdown = getEl("versionsDropdown");
+
+  versionInput.value = "";
+  versionInput.setAttribute("data-value", "");
+  versionInput.placeholder = "Loading SDK versions...";
+  versionInput.setAttribute("disabled", "");
+  versionsDropdown.innerHTML = `<div class="dropdown-placeholder">Loading SDK versions...</div>`;
+  toggleVersionSpinner(true);
 }
 
-/*──────────── util for “minimal” toolchains ──────────────*/
+function applyVersionList(versions: string[], error?: string): void {
+  const versionInput = getEl<HTMLInputElement>("versionInput");
+  const versionsDropdown = getEl("versionsDropdown");
+  const currentValue = versionInput.getAttribute("data-value") ?? "";
+
+  versionsLoading = false;
+  versionLoadError = error ?? "";
+  toggleVersionSpinner(false);
+
+  if (error) {
+    versionsLoaded = false;
+    versionInput.value = "";
+    versionInput.setAttribute("data-value", "");
+    versionInput.placeholder = "Unable to load SDK versions";
+    versionInput.setAttribute("disabled", "");
+    versionsDropdown.innerHTML = `<div class="dropdown-placeholder">${escapeHtml(error)}</div>`;
+    if (isMinimalSelected()) {
+      loadMinimalToolchains();
+    }
+    updateLlvmRowVisibility();
+    return;
+  }
+
+  versionsLoaded = versions.length > 0;
+  if (!versions.length) {
+    versionInput.value = "";
+    versionInput.setAttribute("data-value", "");
+    versionInput.placeholder = "No SDK versions available";
+    versionInput.setAttribute("disabled", "");
+    versionsDropdown.innerHTML = `<div class="dropdown-placeholder">No SDK versions available.</div>`;
+    if (isMinimalSelected()) {
+      loadMinimalToolchains();
+    }
+    updateLlvmRowVisibility();
+    return;
+  }
+
+  versionInput.removeAttribute("disabled");
+  versionInput.placeholder = "Choose the SDK version...";
+  versionsDropdown.innerHTML = versions.map((version) => {
+    const clean = version.replace(/^v/, "");
+    return `<div class="dropdown-item"
+                 data-value="${escapeHtml(clean)}"
+                 data-label="${escapeHtml(version)}">${escapeHtml(version)}</div>`;
+  }).join("");
+
+  const preferredValue = currentValue && versions.some((version) => version.replace(/^v/, "") === currentValue)
+    ? currentValue
+    : versions[0].replace(/^v/, "");
+  const preferredLabel = versions.find((version) => version.replace(/^v/, "") === preferredValue) ?? versions[0];
+
+  versionInput.value = preferredLabel;
+  versionInput.setAttribute("data-value", preferredValue);
+
+  if (isMinimalSelected()) {
+    loadMinimalToolchains();
+  }
+  updateLlvmRowVisibility();
+}
+
+function addDropdownItemListeners(
+  dropdown: HTMLElement,
+  input: HTMLInputElement,
+  onSelect?: () => void,
+): void {
+  if (dropdown.dataset.bound === "true") {
+    return;
+  }
+  dropdown.dataset.bound = "true";
+
+  dropdown.addEventListener("pointerdown", (event) => {
+    const target = event.target as HTMLElement | null;
+    const item = target?.closest<HTMLElement>(".dropdown-item");
+    if (!item || !dropdown.contains(item)) {
+      return;
+    }
+    if (item.dataset.value === "browse") {
+      return;
+    }
+    input.value = item.dataset.label ?? "";
+    input.setAttribute("data-value", item.dataset.value ?? "");
+    input.dispatchEvent(new Event("input"));
+    dropdown.style.display = "none";
+    onSelect?.();
+  });
+}
+
 function getListSelectedToolchains(): string {
   const cbs = document.getElementsByClassName("toolchain-checkbox") as HTMLCollectionOf<Checkbox>;
   return Array.from(cbs)
