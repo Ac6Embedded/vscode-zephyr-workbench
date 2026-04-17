@@ -3,6 +3,7 @@ import { ZephyrAppProject } from '../models/ZephyrAppProject';
 import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
 import { getNonce } from '../utilities/getNonce';
 import { readZephyrBuildSummary, type ZephyrBuildSummary } from '../utils/zephyr/buildSummaryParser';
+import { readZephyrMemoryReport, type ZephyrMemoryReport } from '../utils/zephyr/memoryReportParser';
 import { readZephyrSysInitReport, type ZephyrSysInitReport } from '../utils/zephyr/sysInitParser';
 
 interface DashboardTarget {
@@ -13,6 +14,8 @@ interface DashboardTarget {
 	elfPath?: string;
 	summary?: ZephyrBuildSummary;
 	report?: ZephyrSysInitReport;
+	memoryReport?: ZephyrMemoryReport;
+	memoryError?: string;
 	error?: string;
 }
 
@@ -20,6 +23,7 @@ interface DashboardViewModel {
 	hasProjects: boolean;
 	hasContent: boolean;
 	hasReport: boolean;
+	hasMemoryReport: boolean;
 	projectLabel: string;
 	configLabel: string;
 	boardLabel: string;
@@ -29,6 +33,8 @@ interface DashboardViewModel {
 	hint: string;
 	summary?: ZephyrBuildSummary;
 	report?: ZephyrSysInitReport;
+	memoryReport?: ZephyrMemoryReport;
+	memoryError?: string;
 }
 
 export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -217,6 +223,14 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			};
 		}
 
+		let memoryReport: ZephyrMemoryReport | undefined;
+		let memoryError: string | undefined;
+		try {
+			memoryReport = readZephyrMemoryReport(elfPath);
+		} catch (error) {
+			memoryError = error instanceof Error ? error.message : String(error);
+		}
+
 		try {
 			const report = readZephyrSysInitReport({
 				buildDir,
@@ -232,6 +246,8 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				elfPath,
 				summary,
 				report,
+				memoryReport,
+				memoryError,
 			};
 		} catch (error) {
 			return {
@@ -241,6 +257,8 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				buildDir,
 				elfPath,
 				summary,
+				memoryReport,
+				memoryError,
 				error: error instanceof Error ? error.message : String(error),
 			};
 		}
@@ -324,8 +342,9 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 
 		return {
 			hasProjects: target.projects.length > 0,
-			hasContent: !!target.summary || !!target.report,
+			hasContent: !!target.summary || !!target.report || !!target.memoryReport,
 			hasReport: !!target.report,
+			hasMemoryReport: !!target.memoryReport,
 			projectLabel: target.selectedProject?.folderName ?? '',
 			configLabel: target.selectedConfig?.name ?? '',
 			boardLabel: target.selectedConfig?.boardIdentifier ?? '',
@@ -335,6 +354,8 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			hint,
 			summary: target.summary,
 			report: target.report,
+			memoryReport: target.memoryReport,
+			memoryError: target.memoryError,
 		};
 	}
 
@@ -1020,11 +1041,25 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			}
 
 			tabTitle.textContent = getActiveTabLabel();
-			const showSearch = activeTab === 'sys-init';
+			const showSearch = activeTab === 'sys-init' || activeTab === 'ram' || activeTab === 'rom';
 			toolbarBottom.classList.toggle('hidden', !showSearch);
 			if (!showSearch) {
 				summary.textContent = '';
 			}
+		}
+
+		function isSearchableTab(tab) {
+			return tab === 'sys-init' || tab === 'ram' || tab === 'rom';
+		}
+
+		function hasDataForTab(tab, model) {
+			if (tab === 'sys-init') {
+				return !!model?.hasReport;
+			}
+			if (tab === 'ram' || tab === 'rom') {
+				return !!model?.hasMemoryReport;
+			}
+			return true;
 		}
 
 		function renderPlaceholderTab(title, body) {
@@ -1225,6 +1260,118 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			reportPanel.innerHTML = html;
 		}
 
+		function renderMemory(bucketKey) {
+			const memoryReport = currentModel?.memoryReport;
+			const bucketLabel = bucketKey === 'rom' ? 'ROM' : 'RAM';
+
+			if (currentModel?.memoryError) {
+				summary.textContent = '';
+				renderPlaceholderTab(bucketLabel, currentModel.memoryError);
+				return;
+			}
+
+			if (!memoryReport) {
+				summary.textContent = '';
+				renderPlaceholderTab(bucketLabel, currentModel?.hint || 'Build the active configuration to populate memory data.');
+				return;
+			}
+
+			const bucket = memoryReport[bucketKey];
+			if (!bucket || bucket.sections.length === 0) {
+				summary.textContent = '';
+				renderPlaceholderTab(bucketLabel, 'No ' + bucketLabel + ' sections found in the ELF.');
+				return;
+			}
+
+			const query = (searchInput.value || '').trim().toLowerCase();
+			const openSections = (currentState.openMemorySections && currentState.openMemorySections[bucketKey]) || {};
+			let visibleSymbols = 0;
+			let totalSymbols = 0;
+			let html = '';
+
+			for (const section of bucket.sections) {
+				totalSymbols += section.symbols.length;
+
+				const sectionMatches = !query
+					|| section.name.toLowerCase().includes(query)
+					|| String(section.category).toLowerCase().includes(query);
+
+				const filteredSymbols = sectionMatches
+					? section.symbols
+					: section.symbols.filter(sym =>
+						sym.name.toLowerCase().includes(query)
+						|| sym.sectionName.toLowerCase().includes(query)
+						|| sym.addressHex.toLowerCase().includes(query)
+					);
+
+				if (!sectionMatches && filteredSymbols.length === 0) {
+					continue;
+				}
+
+				visibleSymbols += filteredSymbols.length;
+
+				const percent = bucket.totalBytes > 0 ? (section.size * 100 / bucket.totalBytes) : 0;
+				const unknownBytes = Math.max(0, section.size - section.symbolsBytes);
+
+				const rows = filteredSymbols.map(sym => {
+					const symPercent = section.size > 0 ? (sym.size * 100 / section.size) : 0;
+					return '<tr class="data-row">' +
+						'<td class="call-cell">' +
+							'<div class="call-main"><code>' + escapeHtml(sym.name) + '</code></div>' +
+							(sym.sectionName !== section.name ? '<div class="call-sub"><code>' + escapeHtml(sym.sectionName) + '</code></div>' : '') +
+						'</td>' +
+						'<td><code>' + escapeHtml(sym.addressHex) + '</code></td>' +
+						'<td>' + escapeHtml(formatBytes(sym.size)) + '</td>' +
+						'<td class="dim">' + symPercent.toFixed(2) + '%</td>' +
+					'</tr>';
+				}).join('');
+
+				const unknownRow = (unknownBytes > 0 && !query)
+					? '<tr class="data-row">' +
+						'<td class="call-cell dim"><em>(unattributed / padding)</em></td>' +
+						'<td class="dim">-</td>' +
+						'<td>' + escapeHtml(formatBytes(unknownBytes)) + '</td>' +
+						'<td class="dim">' + (section.size > 0 ? (unknownBytes * 100 / section.size).toFixed(2) : '0.00') + '%</td>' +
+					'</tr>'
+					: '';
+
+				const isOpen = query ? true : openSections[section.name] !== false;
+				html += '<details class="panel level-card" data-memory-bucket="' + escapeHtml(bucketKey) + '" data-memory-section="' + escapeHtml(section.name) + '"' + (isOpen ? ' open' : '') + '>' +
+					'<summary class="level-summary">' +
+						'<span class="level-heading">' +
+							'<span class="level-chevron">&#9656;</span>' +
+							'<span><code>' + escapeHtml(section.name) + '</code></span>' +
+							'<span class="chip chip-level">' + escapeHtml(section.category) + '</span>' +
+						'</span>' +
+						'<span class="group-count">' +
+							escapeHtml(formatBytes(section.size)) + ' &middot; ' + percent.toFixed(1) + '% &middot; ' +
+							(query ? filteredSymbols.length + '/' + section.symbols.length : section.symbols.length) + ' sym' +
+						'</span>' +
+					'</summary>' +
+					'<div class="table-wrap">' +
+						'<table>' +
+							'<thead><tr><th>Symbol</th><th>Addr</th><th>Size</th><th>%</th></tr></thead>' +
+							'<tbody>' + rows + unknownRow + '</tbody>' +
+						'</table>' +
+					'</div>' +
+				'</details>';
+			}
+
+			if (html === '') {
+				reportPanel.innerHTML = '<section class="panel empty">' +
+					'<div class="empty-title">No matching symbols</div>' +
+					'<div class="dim">Adjust the search text.</div>' +
+				'</section>';
+				summary.textContent = '0 shown';
+				return;
+			}
+
+			summary.textContent = query
+				? visibleSymbols + ' of ' + totalSymbols + ' symbols \u00b7 ' + formatBytes(bucket.totalBytes)
+				: totalSymbols + ' symbols \u00b7 ' + formatBytes(bucket.totalBytes);
+			reportPanel.innerHTML = html;
+		}
+
 		function renderActiveTab() {
 			const activeTab = getActiveTab();
 
@@ -1238,12 +1385,12 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				return;
 			}
 
-			if (activeTab === 'ram') {
-				renderPlaceholderTab('RAM', 'RAM analysis will be added here.');
+			if (activeTab === 'ram' || activeTab === 'rom') {
+				renderMemory(activeTab);
 				return;
 			}
 
-			renderPlaceholderTab('ROM', 'ROM analysis will be added here.');
+			renderPlaceholderTab(getActiveTabLabel(), '');
 		}
 
 		function renderModel(model) {
@@ -1254,7 +1401,8 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 
 			syncTabs();
 			renderMetrics();
-			searchInput.disabled = !model.hasReport || getActiveTab() !== 'sys-init';
+			const activeTab = getActiveTab();
+			searchInput.disabled = !isSearchableTab(activeTab) || !hasDataForTab(activeTab, model);
 
 			emptyPanel.classList.toggle('hidden', model.hasContent);
 			reportPanel.classList.toggle('hidden', !model.hasContent);
@@ -1277,7 +1425,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 
 		searchInput.addEventListener('input', () => {
 			updateState({ searchText: searchInput.value });
-			renderReport();
+			renderActiveTab();
 		});
 
 		tabRow.addEventListener('click', (event) => {
@@ -1296,7 +1444,8 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			renderMetrics();
 
 			if (currentModel?.hasContent) {
-				searchInput.disabled = !currentModel?.hasReport || getActiveTab() !== 'sys-init';
+				const nextTab = getActiveTab();
+				searchInput.disabled = !isSearchableTab(nextTab) || !hasDataForTab(nextTab, currentModel);
 				renderActiveTab();
 			}
 		});
@@ -1308,15 +1457,28 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			}
 
 			const level = target.getAttribute('data-level');
-			if (!level) {
+			if (level) {
+				const openLevels = currentState.openLevels && typeof currentState.openLevels === 'object'
+					? { ...currentState.openLevels }
+					: {};
+				openLevels[level] = target.hasAttribute('open');
+				updateState({ openLevels });
 				return;
 			}
 
-			const openLevels = currentState.openLevels && typeof currentState.openLevels === 'object'
-				? { ...currentState.openLevels }
-				: {};
-			openLevels[level] = target.hasAttribute('open');
-			updateState({ openLevels });
+			const memoryBucket = target.getAttribute('data-memory-bucket');
+			const memorySection = target.getAttribute('data-memory-section');
+			if (memoryBucket && memorySection) {
+				const openMemorySections = currentState.openMemorySections && typeof currentState.openMemorySections === 'object'
+					? { ...currentState.openMemorySections }
+					: {};
+				const bucketMap = openMemorySections[memoryBucket] && typeof openMemorySections[memoryBucket] === 'object'
+					? { ...openMemorySections[memoryBucket] }
+					: {};
+				bucketMap[memorySection] = target.hasAttribute('open');
+				openMemorySections[memoryBucket] = bucketMap;
+				updateState({ openMemorySections });
+			}
 		}, true);
 
 		window.addEventListener('message', (event) => {
