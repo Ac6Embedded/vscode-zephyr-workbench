@@ -83,22 +83,6 @@ const webviewHostToolsConfig = {
   outfile: "./out/hosttools.js",
 };
 
-const webviewSdkManagerConfig = {
-  ...baseConfig,
-  target: "es2020",
-  format: "esm",
-  entryPoints: ["./src/webview/sdkmanager.mts"],
-  outfile: "./out/sdkmanager.js",
-};
-
-const webviewNewModuleConfig = {
-  ...baseConfig,
-  target: "es2020",
-  format: "esm",
-  entryPoints: ["./src/webview/newmodule.mts"],
-  outfile: "./out/newmodule.js",
-};
-
 const webviewEclairManagerConfig = {
   ...baseConfig,
   target: "es2020",
@@ -112,11 +96,9 @@ const buildConfigs = [
   webviewCreateWestWorkspaceConfig,
   webviewImportSDKConfig,
   webviewCreateZephyrAppConfig,
-  webviewNewModuleConfig,
   webviewDebugToolsConfig,
   webviewDebugManagerConfig,
   webviewHostToolsConfig,
-  webviewSdkManagerConfig,
   webviewEclairManagerConfig,
 ];
 

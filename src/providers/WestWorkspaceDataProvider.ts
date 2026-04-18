@@ -2,19 +2,15 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { WestWorkspace } from '../models/WestWorkspace';
 
-export class WestWorkspaceDataProvider implements vscode.TreeDataProvider<WestWorkspaceTreeItem | WestWorkspaceMiscTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem> {
-	private _onDidChangeTreeData: vscode.EventEmitter<WestWorkspaceTreeItem | WestWorkspaceMiscTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem | undefined | void> = new vscode.EventEmitter<WestWorkspaceTreeItem | WestWorkspaceMiscTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem | undefined | void>();
-	readonly onDidChangeTreeData: vscode.Event<WestWorkspaceTreeItem | WestWorkspaceMiscTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem | undefined | void> = this._onDidChangeTreeData.event;
+export class WestWorkspaceDataProvider implements vscode.TreeDataProvider<WestWorkspaceTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem> {
+	private _onDidChangeTreeData: vscode.EventEmitter<WestWorkspaceTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem | undefined | void> = new vscode.EventEmitter<WestWorkspaceTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem | undefined | void>();
+	readonly onDidChangeTreeData: vscode.Event<WestWorkspaceTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem | undefined | void> = this._onDidChangeTreeData.event;
 
-  constructor() {
-
-  }
-
-  getTreeItem(element: WestWorkspaceTreeItem | WestWorkspaceMiscTreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
+  getTreeItem(element: WestWorkspaceTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
 		return element;
   }
 
-  getChildren(element?: WestWorkspaceTreeItem | WestWorkspaceMiscTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem | undefined): vscode.ProviderResult<WestWorkspaceTreeItem[] | WestWorkspaceMiscTreeItem[] | WestWorkspaceEnvTreeItem[] | WestWorkspaceEnvValueTreeItem[]> {
+  getChildren(element?: WestWorkspaceTreeItem | WestWorkspaceEnvTreeItem | WestWorkspaceEnvValueTreeItem | undefined): vscode.ProviderResult<WestWorkspaceTreeItem[] | WestWorkspaceEnvTreeItem[] | WestWorkspaceEnvValueTreeItem[]> {
     if(element === undefined) {
       if(vscode.workspace.workspaceFolders) {
         const items: WestWorkspaceTreeItem[] = [];
@@ -28,10 +24,6 @@ export class WestWorkspaceDataProvider implements vscode.TreeDataProvider<WestWo
         return Promise.resolve(items);
       }
     }
-
-    if(element instanceof WestWorkspaceMiscTreeItem) {
-      return Promise.resolve([]);
-    } 
     
     if(element instanceof WestWorkspaceTreeItem) {
       // Get Zephyr environment variables
@@ -82,23 +74,8 @@ export class WestWorkspaceTreeItem extends vscode.TreeItem {
   iconPath = {
     light: path.join(__filename, '..', '..', 'res', 'icons','zephyr.svg'),
     dark: path.join(__filename, '..', '..', 'res', 'icons','zephyr.svg')
-  };
+	};
 	contextValue = 'west-workspace';
-}
-
-export class WestWorkspaceMiscTreeItem extends vscode.TreeItem {
-  constructor(
-		public readonly label: string,
-		private readonly version: string,
-		public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-	) {
-		super(version, collapsibleState);
-
-		this.tooltip = `${this.version}`;
-		this.description = "";
-	}
-
-	contextValue = 'west-workspace-misc';
 }
 
 export class WestWorkspaceEnvTreeItem extends vscode.TreeItem {
