@@ -21,17 +21,6 @@ export class Openocd extends WestRunner {
   }
 
   /**
-   * Loads user-provided arguments (if any).
-   * No searching for installation paths.
-   */
-  loadArgs(args: string | undefined) {
-    super.loadArgs(args);
-    if (args) {
-      this.loadUserArgs(args);
-    }
-  }
-
-  /**
    * Automatically builds command-line arguments.
    * You can adjust default config file arguments here as needed.
    */
@@ -40,6 +29,17 @@ export class Openocd extends WestRunner {
     cmdArgs += ' --config openocd.cfg';
     cmdArgs += ' --config ${workspaceFolder}/build/.debug/gdb.cfg';
     return cmdArgs;
+  }
+
+  /**
+   * Tell the base parser about the two `--config` lines we add in `autoArgs`, so
+   * they are stripped on read instead of being mistaken for user-provided args.
+   */
+  protected getExtraAutoTokens() {
+    return [
+      { flag: '--config', value: 'openocd.cfg' },
+      { flag: '--config', value: '${workspaceFolder}/build/.debug/gdb.cfg' },
+    ];
   }
 
   /**

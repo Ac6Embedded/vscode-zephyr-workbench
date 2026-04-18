@@ -13,36 +13,6 @@ export class PyOCD extends WestRunner {
     }
   }
 
-  loadArgs(args: string | undefined) {
-    super.loadArgs(args);
-
-    if(args) {
-      const pathRegex = /--pyocd\s+("[^"]+"|\S+)/;
-      const pathMatch = args.match(pathRegex);
-
-      if(pathMatch) {
-        this.serverPath = pathMatch[1];
-      } else {
-        let pathExecSetting = this.getSetting('pathExec');
-        if(pathExecSetting) {
-          this.serverPath = pathExecSetting;
-        }
-      }
-    }
-    
-    // Search if serverPath is set in settings
-    if(!this.serverPath || this.serverPath.length === 0 ) {
-      let pathExecSetting = this.getSetting('pathExec');
-      if(pathExecSetting) {
-        this.serverPath = pathExecSetting;
-      }
-    }
-
-    if(args) {
-      this.loadUserArgs(args);
-    }
-  }
-
   get autoArgs(): string {
     let cmdArgs = super.autoArgs;
     if(this.serverPath) {

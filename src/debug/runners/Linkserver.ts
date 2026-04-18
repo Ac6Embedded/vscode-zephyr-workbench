@@ -4,6 +4,11 @@ import { RunnerType, WestRunner } from "./WestRunner";
  * Runner for NXP LinkServer.
  * Simplified version - assumes the LinkServer CLI tool is available in the system PATH.
  * Used for flashing and debugging NXP MCUs.
+ *
+ * Argument parsing is fully handled by the base class: `--linkserver <path>` is
+ * recognized as the server path via the default `getServerPathFlags()` (which
+ * returns `['--<runner-name>']`), and `--gdb-port` / `--runner` / `--build-dir`
+ * are stripped automatically. Anything else round-trips as `userArgs`.
  */
 export class Linkserver extends WestRunner {
   name = 'linkserver';
@@ -18,24 +23,5 @@ export class Linkserver extends WestRunner {
    */
   get executable(): string {
     return process.platform === 'win32' ? 'LinkServer.exe' : 'LinkServer';
-  }
-
-  /**
-   * Load user-provided arguments (if any).
-   * No path discovery or system searching.
-   */
-  loadArgs(args: string | undefined) {
-    super.loadArgs(args);
-    if (args) {
-      this.loadUserArgs(args);
-    }
-  }
-
-  /**
-   * Auto arguments for the LinkServer runner.
-   * In this simplified version, just inherits the base arguments.
-   */
-  get autoArgs(): string {
-    return super.autoArgs;
   }
 }

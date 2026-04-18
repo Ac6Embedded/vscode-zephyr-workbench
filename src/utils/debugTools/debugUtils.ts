@@ -1,5 +1,5 @@
 import fs from 'fs';
-import path, { resolve } from 'path';
+import path from 'path';
 import * as vscode from 'vscode';
 import yaml from 'yaml';
 import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
@@ -773,9 +773,20 @@ export async function createLaunchJson(
   return launchJson;
 }
 
-export async function readLaunchJson(project: ZephyrProject): Promise<any> {
-  let launchJson = JSON.parse(await fs.promises.readFile(path.join(project.sourceDir, '.vscode', 'launch.json'), 'utf8'));
-  return launchJson;
+export async function readLaunchJson(project: ZephyrProject): Promise<any | undefined> {
+  // launch.json may exist as an empty placeholder (created by VS Code when the
+  // user opens the Run/Debug view) or contain malformed JSON. Treat both as
+  // "no usable config" so callers can fall back to creating a fresh one,
+  // instead of crashing with "Unexpected end of JSON input".
+  const raw = await fs.promises.readFile(path.join(project.sourceDir, '.vscode', 'launch.json'), 'utf8');
+  if (raw.trim().length === 0) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
 }
 
 export function writeLaunchJson(launchJson: any, project: ZephyrProject) {
@@ -878,8 +889,10 @@ export async function getLaunchConfiguration(
 
   if (fs.existsSync(launchPath)) {
     launchJson = await readLaunchJson(project);
-  } else {
-    // Create new launch.json if requested
+  }
+  // Fall back to a fresh in-memory launch.json when the file is missing,
+  // empty, or unparseable — `readLaunchJson` returns undefined in those cases.
+  if (!launchJson) {
     launchJson = await createLaunchJson(project, buildConfigName, artifacts);
     // skip writing to avoid creating launch.json on selection too debug
   }

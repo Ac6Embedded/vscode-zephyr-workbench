@@ -50,24 +50,22 @@ function main() {
   webviewApi.postMessage({ command: 'webviewReady' });
 }
 
+/**
+ * Hide the Runner Path row when ST-LINK GDB Server is selected.
+ *
+ * The stlink executable is launched indirectly (via west / the STM32CubeCLT
+ * bundle) and does not accept a path flag, so exposing a path field here is
+ * misleading. Version/install information for stlink is surfaced by the
+ * dedicated Install Runners panel, so we do not duplicate it here.
+ */
 function stlinkPathDisabled() {
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement | null;
   const runnerName = (runnerInput?.getAttribute('data-value') ?? '').toLowerCase();
-  const disabledFields = runnerName === 'stlink_gdbserver';
+  const hideRow = runnerName === 'stlink_gdbserver';
 
-  const runnerPathText = document.getElementById('runnerPath') as (TextField & { disabled?: boolean; readOnly?: boolean }) | null;
-  const browseRunnerButton = document.getElementById('browseRunnerButton') as (Button & { disabled?: boolean }) | null;
-
-  if (runnerPathText) {
-    runnerPathText.disabled = disabledFields;
-    runnerPathText.readOnly = disabledFields;
-    runnerPathText.toggleAttribute('disabled', disabledFields);
-    runnerPathText.toggleAttribute('readonly', disabledFields);
-  }
-
-  if (browseRunnerButton) {
-    browseRunnerButton.disabled = disabledFields;
-    browseRunnerButton.toggleAttribute('disabled', disabledFields);
+  const runnerPathRow = document.getElementById('runnerPathRow') as HTMLElement | null;
+  if (runnerPathRow) {
+    runnerPathRow.style.display = hideRow ? 'none' : '';
   }
 }
 
@@ -214,7 +212,13 @@ function setVSCodeMessageListener() {
       case 'updateRunnerDetect': {
         const runnerDetect = event.data.runnerDetect;
         const runnerName = event.data.runnerName;
-        updateRunnerDetect(runnerDetect === 'true' ? true : false, runnerName, event.data.runnerDefaultInfo, event.data.runnerDefaultPathInfo);
+        updateRunnerDetect(
+          runnerDetect === 'true' ? true : false,
+          runnerName,
+          event.data.runnerDefaultInfo,
+          event.data.runnerDefaultPathInfo,
+          event.data.runnerVersion,
+        );
         break;
       }
       case 'resetStarted': {
@@ -554,8 +558,10 @@ function updateConfig(data: any) {
   gdbPortText.value = gdbPort ?? '';
   gdbModeRadioGroup.value = gdbMode ?? 'program';
 
-  if (runnersHTML && runnersHTML.length > 0) {
-    runnersDropdown.innerHTML = runnersHTML;
+  // Always replace the dropdown contents — assigning an empty string clears it
+  // so a previous application's runners don't leak into the new selection.
+  runnersDropdown.innerHTML = runnersHTML ?? '';
+  if ((runnersHTML ?? '').length > 0) {
     addDropdownItemEventListeners(runnersDropdown, runnerInput);
   }
 
@@ -570,6 +576,11 @@ function updateConfig(data: any) {
   if (selectedRunner) {
     runnerInput.value = selectedRunner.getAttribute('data-label') || '';
     runnerInput.setAttribute('data-value', selectedRunner.getAttribute('data-value') || '');
+  } else {
+    // No matching runner in the new dropdown — clear the input so we don't
+    // show a stale runner name with cleared path/args underneath.
+    runnerInput.value = '';
+    runnerInput.setAttribute('data-value', '');
   }
 
   runnerPathText.value = runnerPath ?? '';
@@ -616,7 +627,13 @@ function updateRunnerDefaultInfo(runnerDefaultInfo: string, runnerDefaultPathInf
   runnerDefaultInfoRow.style.display = resolvedDefaultInfo.length > 0 ? '' : 'none';
 }
 
-function updateRunnerDetect(runnerDetect: boolean, runnerName: string, runnerDefaultInfo?: string, runnerDefaultPathInfo?: string ) {
+function updateRunnerDetect(
+  runnerDetect: boolean,
+  runnerName: string,
+  runnerDefaultInfo?: string,
+  runnerDefaultPathInfo?: string,
+  runnerVersion?: string,
+) {
   const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
   const resolvedRunnerName = (runnerName ?? '').trim();
   updateRunnerDefaultInfo(runnerDefaultInfo ?? '', runnerDefaultPathInfo ?? '');
@@ -628,7 +645,10 @@ function updateRunnerDetect(runnerDetect: boolean, runnerName: string, runnerDef
     return;
   }
   if (runnerDetect === true) {
-    runnerDetectSpan.textContent = `${resolvedRunnerName} is installed`;
+    const resolvedVersion = (runnerVersion ?? '').trim();
+    runnerDetectSpan.textContent = resolvedVersion.length > 0
+      ? `${resolvedRunnerName} is installed (version ${resolvedVersion})`
+      : `${resolvedRunnerName} is installed`;
     runnerDetectSpan.style.color = "#00aa00";
   } else if (runnerDetect === false) {
     runnerDetectSpan.textContent = `${resolvedRunnerName} is NOT installed`;

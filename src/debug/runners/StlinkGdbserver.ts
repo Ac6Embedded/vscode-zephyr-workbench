@@ -4,7 +4,23 @@ import { RunnerType, WestRunner } from "./WestRunner";
 
 /**
  * Runner for ST-LINK GDB Server.
- * Prefer the latest STM32CubeCLT installation and fall back to PATH.
+ *
+ * The server is launched indirectly (via west / the STM32CubeCLT bundle) and does
+ * not accept an executable-path flag on the command line. Accordingly:
+ *   - `serverPath` is kept as an internal detail for `detect()` / `detectVersion()`
+ *     only — it is never injected into `debugServerArgs` (the Debug Manager writer
+ *     skips `--stlink_gdbserver <path>`) and the UI hides the runner path field.
+ *   - The install/version surface lives in the Install Runners panel; we deliberately
+ *     do not duplicate that here.
+ *
+ * Argument parsing is delegated to the base class with two small overrides:
+ *   - `getGdbPortFlag()`     — this runner uses `--port-number`, not `--gdb-port`
+ *   - `getServerPathFlags()` — default is kept so legacy launch.json entries that
+ *     contain `--stlink_gdbserver <path>` are consumed and silently dropped on the
+ *     next save, rather than leaking into `userArgs`.
+ *
+ * Auto-detection of the CubeCLT-bundled binary happens in `loadInternalArgs` and
+ * only runs when no usable path is already set.
  */
 export class StlinkGdbserver extends WestRunner {
   name = 'stlink_gdbserver';
@@ -30,23 +46,9 @@ export class StlinkGdbserver extends WestRunner {
     return /ST-LINK GDB Server version: ([\d.]+)/;
   }
 
-  /**
-   * Load user arguments and auto-resolve the server path when possible.
-   */
-  override loadArgs(args: string | undefined) {
-    this.refreshDetectedServerPath();
-    super.loadArgs(args);
-    if (!args) {
-      return;
-    }
-
-    // stlink_gdbserver uses --port-number (not --gdb-port)
-    const portMatch = args.match(/--port-number(?:\s+|=)(\d+)/i);
-    if (portMatch?.[1]) {
-      this.serverPort = portMatch[1];
-    }
-
-    this.loadUserArgs(args);
+  /** ST-LINK uses `--port-number` instead of the standard `--gdb-port`. */
+  protected getGdbPortFlag(): string {
+    return '--port-number';
   }
 
   /**
@@ -61,6 +63,10 @@ export class StlinkGdbserver extends WestRunner {
     return args;
   }
 
+  /**
+   * Called after `loadArgs` has parsed any saved path. Only fall back to
+   * auto-detection when no usable path is set, so the user's saved choice wins.
+   */
   override async loadInternalArgs() {
     this.refreshDetectedServerPath();
   }
@@ -124,6 +130,11 @@ export class StlinkGdbserver extends WestRunner {
     return this.findCubeCltFile('STLink-gdb-server', 'bin', this.executable);
   }
 
+  /**
+   * Fill `serverPath` from the latest STM32CubeCLT install — but only when no
+   * usable path is already set. A saved path that exists on disk is preserved
+   * exactly as-is.
+   */
   private refreshDetectedServerPath() {
     if (this.serverPath && fs.existsSync(this.serverPath)) {
       return;
@@ -155,6 +166,17 @@ export class StlinkGdbserver extends WestRunner {
   override async detect(): Promise<boolean> {
     this.refreshDetectedServerPath();
     return super.detect();
+  }
+
+  /**
+   * The runner name `stlink_gdbserver` is not a tool in `debug-tools.yml`
+   * (the package is registered there as `stm32cubeclt`), so the default
+   * `detectRunnerVersion(this.name, ...)` probe returns nothing. Short-circuit
+   * to the already-parsed CubeCLT directory version instead — same source the
+   * Install Runners panel uses for `stm32cubeclt`.
+   */
+  override async detectVersion(): Promise<string | undefined> {
+    return this.getVersionCubeCLT() ?? undefined;
   }
 }
 

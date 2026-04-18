@@ -259,7 +259,7 @@ export class DebugManagerPanel {
                 </vscode-button>
               </div>
 
-              <div class="grid-group-div">
+              <div id="runnerPathRow" class="grid-group-div">
                 <vscode-text-field class="browse-field" size="50" type="text" id="runnerPath" value="">Runner Path:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Enter to debug server's location if not found automatically in PATH">?</span>&nbsp;&nbsp;&nbsp;<span id="runnerDetect"></span></vscode-text-field>
                 <vscode-button id="browseRunnerButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
                 <span class="browse-spinner-inline"><span id="runnerPathSpinner" class="spinner" aria-label="Loading runner path" style="display:none;"></span></span>
@@ -358,11 +358,15 @@ export class DebugManagerPanel {
 
       if (debugServerArgs) {
         runner.loadArgs(debugServerArgs);
-        try {
-          await runner.loadInternalArgs();
-        } catch {
-          // Keep the configuration responsive even if runner probing fails.
-        }
+      }
+      // Always run auto-detection: when creating a fresh launch.json the saved
+      // debugServerArgs is empty, but runners like stlink still need to resolve
+      // their path (e.g. from the STM32CubeCLT bundle). `loadInternalArgs` is a
+      // no-op for runners that don't define auto-detection.
+      try {
+        await runner.loadInternalArgs();
+      } catch {
+        // Keep the configuration responsive even if runner probing fails.
       }
 
       return {
@@ -412,6 +416,13 @@ export class DebugManagerPanel {
                 this.project = appProject;
                 this.buildConfig = undefined;
                 currentOpenocdInfoText = { defaultInfo: '', pathInfo: '' };
+                // Do NOT post a "clear" updateConfig here. On panel open,
+                // `_setDefaultSelection` fires both `projectChanged` and
+                // `buildConfigChanged` back-to-back, and their async handlers
+                // race — a clear from this handler can arrive *after* the
+                // fill from `buildConfigChanged`, wiping freshly-loaded data.
+                // The subsequent `buildConfigChanged` is responsible for
+                // overwriting form fields with the new configuration.
                 if(appProject.configs.length > 0) {
                   updateBuildConfigs(appProject);
                 }
@@ -626,11 +637,22 @@ export class DebugManagerPanel {
       } catch (error) {
         console.error('Debug Manager: cannot detect runner', error);
       }
-      webview.postMessage({ 
-        command: 'updateRunnerDetect', 
+      // Only probe the version when the runner is actually present, so we don't
+      // block the UI waiting on a probe that we know will fail.
+      let runnerVersion: string | undefined;
+      if (found) {
+        try {
+          runnerVersion = await runner.detectVersion();
+        } catch (error) {
+          console.error('Debug Manager: cannot detect runner version', error);
+        }
+      }
+      webview.postMessage({
+        command: 'updateRunnerDetect',
         runnerDetect: found?'true':'false',
         runnerName: runner.label ? runner.label : (runner.name ? runner.name : ''),
         runnerPath: runner.serverPath? runner.serverPath:'',
+        runnerVersion: runnerVersion ?? '',
         runnerDefaultInfo: `${runnerDefaultInfo}`,
         runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
       });
@@ -714,6 +736,14 @@ export class DebugManagerPanel {
       const args = debugServerArgs?.trim() ?? '';
 
       if (!path || !runner) {
+        return args;
+      }
+
+      // ST-LINK GDB Server is launched indirectly (via west / the CubeCLT bundle)
+      // and does not accept an executable-path flag on the command line. The path
+      // is only used internally for detection, so we must not inject it into
+      // `debugServerArgs` — doing so would put an invalid flag in launch.json.
+      if (runner === 'stlink_gdbserver') {
         return args;
       }
 
