@@ -146,16 +146,16 @@ export class WestRunner {
     const tokens: string[] = [];
     let i = 0;
     while (i < input.length) {
-      while (i < input.length && /\s/.test(input[i])) i++;
-      if (i >= input.length) break;
+      while (i < input.length && /\s/.test(input[i])) {i++;}
+      if (i >= input.length) {break;}
 
       let token = '';
       if (input[i] === '"') {
         token += input[i++];
-        while (i < input.length && input[i] !== '"') token += input[i++];
-        if (i < input.length) token += input[i++]; // consume closing quote
+        while (i < input.length && input[i] !== '"') {token += input[i++];}
+        if (i < input.length) {token += input[i++];} // consume closing quote
       } else {
-        while (i < input.length && !/\s/.test(input[i])) token += input[i++];
+        while (i < input.length && !/\s/.test(input[i])) {token += input[i++];}
       }
       tokens.push(token);
     }
