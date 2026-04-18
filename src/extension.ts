@@ -2400,15 +2400,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-module-explorer.create-module", async () => {
-			// if(workspacePath) {
-			// 	CreateZephyrModulePanel.render(context.extensionUri);
-			// }
-			//await installZephyrSdk(context);
-		})
-	);
-
-	context.subscriptions.push(vscode.window.registerTerminalProfileProvider('zephyr-workbench.terminal', {
+		vscode.window.registerTerminalProfileProvider('zephyr-workbench.terminal', {
 		provideTerminalProfile(token: vscode.CancellationToken): vscode.ProviderResult<vscode.TerminalProfile> {
 			let opts: vscode.TerminalOptions = {
 				name: "Zephyr BuildSystem Terminal",
@@ -2417,7 +2409,8 @@ export function activate(context: vscode.ExtensionContext) {
 			};
 			return new vscode.TerminalProfile(opts);
 		}
-	}));
+	})
+	);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("west.init", async (srcUrl, srcRev, workspaceDestPath, manifestPath) => {
