@@ -1,65 +1,64 @@
 import vscode, { ExtensionContext, QuickPickItem } from "vscode";
 import { ZephyrApplication } from "../models/ZephyrApplication";
-import { ZephyrToolchainVariant } from "../models/ZephyrSDK";
-import { getListArmGnuToolchains, getListZephyrSDKs, getListIARs } from "../utils/utils";
+import { ToolchainVariantId, ZephyrSdkVariantId } from "../models/ToolchainInstallations";
+import { getRegisteredArmGnuToolchainInstallations, getRegisteredZephyrSdkInstallations, getRegisteredIarToolchainInstallations } from "../utils/utils";
 
-export interface ToolchainPick {
-    tcKind: "zephyr" | "iar" | "gnuarmemb";
+export interface ToolchainVariantPick {
+    selectedVariant: ToolchainVariantId;
     zephyrSdkPath?: string;
-    iarPath?: string;
-    armGnuPath?: string;
-    toolchainVariant?: ZephyrToolchainVariant;
+    iarToolchainPath?: string;
+    armGnuToolchainPath?: string;
 }
 
-type TcItem = QuickPickItem & ToolchainPick;
+type ToolchainVariantQuickPickItem = QuickPickItem & ToolchainVariantPick;
 
 export async function changeToolchainQuickStep(
     _ctx: ExtensionContext,
     _project: ZephyrApplication
-): Promise<ToolchainPick | undefined> {
+): Promise<ToolchainVariantPick | undefined> {
 
-    const items: TcItem[] = [];
-    const sdks = await getListZephyrSDKs();
+    const items: ToolchainVariantQuickPickItem[] = [];
+    const sdks = await getRegisteredZephyrSdkInstallations();
 
     for (const sdk of sdks) {
         items.push({
             label: `Zephyr SDK ${sdk.version.trim()}`,
             description: sdk.rootUri.fsPath,
-            tcKind: "zephyr",
+            selectedVariant: "zephyr",
             zephyrSdkPath: sdk.rootUri.fsPath,
         });
     }
 
-    for (const iar of await getListIARs()) {
+    for (const iar of await getRegisteredIarToolchainInstallations()) {
         items.push({
             label: iar.name,
             description: iar.iarPath,
-            tcKind: "iar",
-            iarPath: iar.iarPath
+            selectedVariant: "iar",
+            iarToolchainPath: iar.iarPath
         });
     }
 
-    for (const armGnuToolchain of await getListArmGnuToolchains()) {
+    for (const armGnuToolchain of await getRegisteredArmGnuToolchainInstallations()) {
         items.push({
             label: armGnuToolchain.name,
             description: armGnuToolchain.toolchainPath,
-            tcKind: "gnuarmemb",
-            armGnuPath: armGnuToolchain.toolchainPath,
+            selectedVariant: "gnuarmemb",
+            armGnuToolchainPath: armGnuToolchain.toolchainPath,
         });
     }
 
-    const selection = await vscode.window.showQuickPick<TcItem>(items, {
-        title: "Change Toolchain",
-        placeHolder: "Select a toolchain"
+    const selection = await vscode.window.showQuickPick<ToolchainVariantQuickPickItem>(items, {
+        title: "Change Toolchain Variant",
+        placeHolder: "Select a toolchain installation"
     });
 
-    if (!selection || selection.tcKind !== "zephyr" || !selection.zephyrSdkPath) {
+    if (!selection || selection.selectedVariant !== "zephyr" || !selection.zephyrSdkPath) {
         return selection;
     }
 
     const selectedSdk = sdks.find(sdk => sdk.rootUri.fsPath === selection.zephyrSdkPath);
     if (!selectedSdk?.hasLlvmToolchain()) {
-        return { ...selection, toolchainVariant: "zephyr" };
+        return { ...selection, selectedVariant: "zephyr" };
     }
 
     const variant = await pickZephyrSdkVariant();
@@ -67,20 +66,20 @@ export async function changeToolchainQuickStep(
         return undefined;
     }
 
-    return { ...selection, toolchainVariant: variant };
+    return { ...selection, selectedVariant: variant };
 }
 
-async function pickZephyrSdkVariant(): Promise<ZephyrToolchainVariant | undefined> {
+async function pickZephyrSdkVariant(): Promise<ZephyrSdkVariantId | undefined> {
     const pick = await vscode.window.showQuickPick([
         {
             label: "GNU GCC",
             detail: "Sets ZEPHYR_TOOLCHAIN_VARIANT=zephyr",
-            variant: "zephyr" as ZephyrToolchainVariant,
+            variant: "zephyr" as ZephyrSdkVariantId,
         },
         {
             label: "LLVM CLANG",
             detail: "Sets ZEPHYR_TOOLCHAIN_VARIANT=zephyr/llvm",
-            variant: "zephyr/llvm" as ZephyrToolchainVariant,
+            variant: "zephyr/llvm" as ZephyrSdkVariantId,
         },
     ], {
         title: "SDK Variant",

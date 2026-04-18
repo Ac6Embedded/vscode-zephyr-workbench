@@ -3,46 +3,47 @@ import fs from "fs";
 import path from "path";
 import { fileExists } from '../utils/utils';
 
-export type ZephyrToolchainVariant = 'zephyr' | 'zephyr/llvm';
+export type ToolchainVariantId = 'zephyr' | 'zephyr/llvm' | 'gnuarmemb' | 'iar';
+export type ZephyrSdkVariantId = Extract<ToolchainVariantId, 'zephyr' | 'zephyr/llvm'>;
 export type ArmGnuBareMetalTargetTriple = 'arm-none-eabi' | 'aarch64-none-elf';
 
-export function normalizeZephyrToolchainVariant(
+export function normalizeZephyrSdkVariant(
   variant: string | undefined,
-  sdk?: ZephyrSDK,
-): ZephyrToolchainVariant {
-  if (variant === 'zephyr/llvm' && (!sdk || sdk.hasLlvmToolchain())) {
+  zephyrSdkInstallation?: ZephyrSdkInstallation,
+): ZephyrSdkVariantId {
+  if (variant === 'zephyr/llvm' && (!zephyrSdkInstallation || zephyrSdkInstallation.hasLlvmToolchain())) {
     return 'zephyr/llvm';
   }
   return 'zephyr';
 }
 
-export class ZephyrSDK {
+export class ZephyrSdkInstallation {
   version!: string;
-  toolchains!: string[];
+  gnuToolchainIds!: string[];
 
   constructor(
     public rootUri: vscode.Uri
   ) {
     this.parseVersion();
-    this.parseToolchains();
+    this.parseGnuToolchains();
   }
 
   private parseVersion() {
-    let filePath = this.versionFile.fsPath;
+    const filePath = this.versionFile.fsPath;
     this.version = fs.readFileSync(filePath, 'utf-8');
   }
 
-  private parseToolchains() {
-    let filePath = this.toolchainsFile.fsPath;
-    let content = fs.readFileSync(filePath, 'utf-8');
-    this.toolchains = content.split(/\r?\n/).filter(line => line.trim() !== '');
+  private parseGnuToolchains() {
+    const filePath = this.gnuToolchainsFile.fsPath;
+    const content = fs.readFileSync(filePath, 'utf-8');
+    this.gnuToolchainIds = content.split(/\r?\n/).filter(line => line.trim() !== '');
   }
 
   private get versionFile() {
     return vscode.Uri.joinPath(this.rootUri, 'sdk_version');
   }
 
-  private get toolchainsFile() {
+  private get gnuToolchainsFile() {
     const legacyFile = vscode.Uri.joinPath(this.rootUri, 'sdk_toolchains');
     if (fileExists(legacyFile.fsPath)) {
       return legacyFile;
@@ -50,9 +51,9 @@ export class ZephyrSDK {
     return vscode.Uri.joinPath(this.rootUri, 'sdk_gnu_toolchains');
   }
 
-  private get toolchainsRootPath(): string {
+  private get gnuToolchainsRootPath(): string {
     const gnuPath = path.join(this.rootUri.fsPath, 'gnu');
-    if (fileExists(this.toolchainsFile.fsPath) && path.basename(this.toolchainsFile.fsPath) === 'sdk_gnu_toolchains' && fileExists(gnuPath)) {
+    if (fileExists(this.gnuToolchainsFile.fsPath) && path.basename(this.gnuToolchainsFile.fsPath) === 'sdk_gnu_toolchains' && fileExists(gnuPath)) {
       return gnuPath;
     }
     return this.rootUri.fsPath;
@@ -78,16 +79,15 @@ export class ZephyrSDK {
     return fileExists(this.getLlvmCompilerPath());
   }
 
-  public getSupportedVariants(): ZephyrToolchainVariant[] {
+  public getSupportedVariants(): ZephyrSdkVariantId[] {
     return this.hasLlvmToolchain()
       ? ['zephyr', 'zephyr/llvm']
       : ['zephyr'];
   }
 
-  public static getToolchainPrefix(toolchainId: string, socToolchainName: string | undefined = undefined) {
+  public static getCompilerPrefix(toolchainId: string, socToolchainName: string | undefined = undefined) {
     if (!toolchainId) { return toolchainId; }
 
-    // Already a full identifier
     if (toolchainId.includes('zephyr-elf') || toolchainId.includes('zephyr-eabi')) {
       return toolchainId;
     }
@@ -127,49 +127,43 @@ export class ZephyrSDK {
     socToolchain: string | undefined = undefined,
     variant: string = 'zephyr',
   ): string {
-    if (normalizeZephyrToolchainVariant(variant, this) === 'zephyr/llvm') {
+    if (normalizeZephyrSdkVariant(variant, this) === 'zephyr/llvm') {
       return this.getLlvmCompilerPath();
     }
 
-    let compilerPrefix = '';
-    if(arch === 'xtensa' && socToolchain) {
-      compilerPrefix = ZephyrSDK.getToolchainPrefix(arch, socToolchain);
-    } else {
-      compilerPrefix = ZephyrSDK.getToolchainPrefix(arch);
-    }
-    return path.join(this.toolchainsRootPath, compilerPrefix, 'bin', `${compilerPrefix}-gcc`);
+    const compilerPrefix = arch === 'xtensa' && socToolchain
+      ? ZephyrSdkInstallation.getCompilerPrefix(arch, socToolchain)
+      : ZephyrSdkInstallation.getCompilerPrefix(arch);
+    return path.join(this.gnuToolchainsRootPath, compilerPrefix, 'bin', `${compilerPrefix}-gcc`);
   }
 
   public getDebuggerPath(arch: string, socToolchain: string | undefined = undefined): string {
-    let compilerPrefix = '';
-    if(arch === 'xtensa' && socToolchain) {
-      compilerPrefix = ZephyrSDK.getToolchainPrefix(arch, socToolchain);
-    } else {
-      compilerPrefix = ZephyrSDK.getToolchainPrefix(arch);
-    }
-    
+    const compilerPrefix = arch === 'xtensa' && socToolchain
+      ? ZephyrSdkInstallation.getCompilerPrefix(arch, socToolchain)
+      : ZephyrSdkInstallation.getCompilerPrefix(arch);
+
     let ext = '';
-    if(process.platform === 'win32') {
+    if (process.platform === 'win32') {
       ext = '.exe';
     }
-    const sdkBasePath = this.toolchainsRootPath === this.rootUri.fsPath
+    const sdkBasePath = this.gnuToolchainsRootPath === this.rootUri.fsPath
       ? '${config:zephyr-workbench.sdk}'
       : path.join('${config:zephyr-workbench.sdk}', 'gnu');
     return path.join(sdkBasePath, compilerPrefix, 'bin', `${compilerPrefix}-gdb${ext}`);
   }
 
-  static isSDKFolder(folder: vscode.WorkspaceFolder) {
+  static isSdkFolder(folder: vscode.WorkspaceFolder) {
     const sdkVersionFile = vscode.Uri.joinPath(folder.uri, 'sdk_version');
     return fileExists(sdkVersionFile.fsPath);
   }
 
-  static isSDKPath(folderPath: string) {
+  static isSdkPath(folderPath: string) {
     const sdkVersionPath = path.join(folderPath, 'sdk_version');
     return fileExists(sdkVersionPath);
   }
 }
 
-export class IARToolchain {
+export class IarToolchainInstallation {
   constructor(
     public readonly zephyrSdkPath: string,
     public readonly iarPath: string,
@@ -187,17 +181,16 @@ export class IARToolchain {
     };
   }
 
-
   static isIarPath(p: string): boolean {
     if (!p) {return false;}
-  
+
     const exe = process.platform === "win32" ? "iccarm.exe" : "iccarm";
     const candidates = [
       path.join(p, "bin", exe),
       path.join(p, "arm", "bin", exe),
       path.join(p, "common", "bin", exe),
     ];
-  
+
     return candidates.some(fs.existsSync);
   }
 
@@ -210,7 +203,6 @@ export class IARToolchain {
     ];
     return lookup.find(fs.existsSync) || lookup[0];
   }
-  
 }
 
 export function normalizeArmGnuTargetTriple(
@@ -218,8 +210,8 @@ export function normalizeArmGnuTargetTriple(
   toolchainPath?: string,
 ): ArmGnuBareMetalTargetTriple {
   const detectedTargets = toolchainPath
-    ? ArmGnuToolchain.detectTargetTriples(toolchainPath)
-    : ArmGnuToolchain.supportedTargetTriples;
+    ? ArmGnuToolchainInstallation.detectTargetTriples(toolchainPath)
+    : ArmGnuToolchainInstallation.supportedTargetTriples;
 
   if (targetTriple === 'aarch64-none-elf' && detectedTargets.includes(targetTriple)) {
     return 'aarch64-none-elf';
@@ -232,7 +224,7 @@ export function normalizeArmGnuTargetTriple(
   return detectedTargets[0] ?? 'arm-none-eabi';
 }
 
-export class ArmGnuToolchain {
+export class ArmGnuToolchainInstallation {
   static readonly supportedTargetTriples: ArmGnuBareMetalTargetTriple[] = [
     'arm-none-eabi',
     'aarch64-none-elf',
@@ -270,7 +262,7 @@ export class ArmGnuToolchain {
 
   static detectTargetTriples(toolchainPath: string): ArmGnuBareMetalTargetTriple[] {
     const exe = process.platform === 'win32' ? '.exe' : '';
-    return ArmGnuToolchain.supportedTargetTriples.filter(targetTriple =>
+    return ArmGnuToolchainInstallation.supportedTargetTriples.filter(targetTriple =>
       fs.existsSync(path.join(toolchainPath, 'bin', `${targetTriple}-gcc${exe}`))
     );
   }
@@ -280,6 +272,11 @@ export class ArmGnuToolchain {
       return false;
     }
 
-    return ArmGnuToolchain.detectTargetTriples(toolchainPath).length > 0;
+    return ArmGnuToolchainInstallation.detectTargetTriples(toolchainPath).length > 0;
   }
 }
+
+export type ToolchainInstallation =
+  | ZephyrSdkInstallation
+  | IarToolchainInstallation
+  | ArmGnuToolchainInstallation;

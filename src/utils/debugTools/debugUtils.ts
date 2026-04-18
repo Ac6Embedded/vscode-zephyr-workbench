@@ -9,7 +9,7 @@ import { WestRunner } from "../../debug/runners/WestRunner";
 import { checkPyOCDTarget, concatCommands, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from '../execUtils';
 import { ZephyrApplication } from "../../models/ZephyrApplication";
 import { findBoardByHierarchicalIdentifier, getSupportedBoards } from '../zephyr/boardDiscovery';
-import { findArmGnuEntry, getWestWorkspace, deleteFolder, fileExists, migrateToolchainVariant, tryGetZephyrSDK } from '../utils';
+import { findArmGnuToolchainInstallation, getWestWorkspace, deleteFolder, fileExists, tryGetZephyrSdkInstallation } from '../utils';
 import { STM32CubeProgrammer } from '../../debug/runners/STM32CubeProgrammer';
 import { StlinkGdbserver } from '../../debug/runners/StlinkGdbserver';
 import { Nrfutil } from '../../debug/runners/Nrfutil';
@@ -23,6 +23,7 @@ import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeO
 import { ParsedRunnersYaml, findRunnersYamlForProject, getRunnerPathFromRunnersYaml, readRunnersYamlFile, readRunnersYamlForBuildDir, readRunnersYamlForProject } from '../zephyr/runnersYamlUtils';
 import { composeWestBuildArgs } from '../zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from './debugToolSelectionUtils';
+import { normalizeStoredToolchainVariant } from '../toolchainSelection';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 
@@ -606,10 +607,10 @@ export async function createLaunchConfiguration(
 ): Promise<any> {
   const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
   const cfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.appWorkspaceFolder);
-  const toolchainKind = migrateToolchainVariant(cfg, cfg.get<string>(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY) ?? 'zephyr');
-  const zephyrSDK = tryGetZephyrSDK(project.zephyrSdkPath);
-  const armGnuToolchain = toolchainKind === 'gnuarmemb'
-    ? findArmGnuEntry(cfg.get<string>(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ''))
+  const toolchainVariant = normalizeStoredToolchainVariant(cfg, cfg.get<string>(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY) ?? 'zephyr');
+  const zephyrSdkInstallation = tryGetZephyrSdkInstallation(project.zephyrSdkPath);
+  const armGnuToolchainInstallation = toolchainVariant === 'gnuarmemb'
+    ? findArmGnuToolchainInstallation(cfg.get<string>(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ''))
     : undefined;
   let buildConfig: ZephyrBuildConfig | undefined = undefined;
   let targetBoard: ZephyrBoard | undefined;
@@ -697,7 +698,7 @@ export async function createLaunchConfiguration(
     filterStdout: true,
     serverStarted: "",
     MIMode: "gdb",
-    miDebuggerPath: `${armGnuToolchain?.debuggerPath ?? zephyrSDK?.getDebuggerPath(targetArch, socToolchainName) ?? ''}`,
+    miDebuggerPath: `${armGnuToolchainInstallation?.debuggerPath ?? zephyrSdkInstallation?.getDebuggerPath(targetArch, socToolchainName) ?? ''}`,
     debugServerPath: `${wrapper}`,
     debugServerArgs: "",
     setupCommands: [
@@ -736,7 +737,7 @@ export async function createLaunchConfiguration(
 
   launchJson.miDebuggerPath = generatedGdbPath
     ? (project.zephyrSdkPath ? normalizeSdkRelativeDetectedPath(generatedGdbPath, project.zephyrSdkPath) : generatedGdbPath)
-    : `${armGnuToolchain?.debuggerPath ?? zephyrSDK?.getDebuggerPath(targetArch, socToolchainName) ?? ''}`;
+    : `${armGnuToolchainInstallation?.debuggerPath ?? zephyrSdkInstallation?.getDebuggerPath(targetArch, socToolchainName) ?? ''}`;
 
   return launchJson;
 }

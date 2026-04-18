@@ -16,9 +16,9 @@ import { getBoardFromIdentifier } from '../utils/zephyr/boardDiscovery';
 import {
   fileExists,
   getConfigValue,
-  getConfiguredToolchainEnv,
+  getSelectedToolchainVariantEnv,
   getWestWorkspace,
-  tryGetZephyrSDK,
+  tryGetZephyrSdkInstallation,
 } from '../utils/utils';
 import {
   ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY,
@@ -202,7 +202,7 @@ export class ZephyrBuildConfig {
   private static openTerminal(application: ZephyrApplication, buildConfig: ZephyrBuildConfig): vscode.Terminal {
     const { path: shellPath, args: shellArgs } = getResolvedShell();
     const shellType = classifyShell(shellPath);
-    const zephyrSdk = tryGetZephyrSDK(application.zephyrSdkPath);
+    const zephyrSdk = tryGetZephyrSdkInstallation(application.zephyrSdkPath);
     const westWorkspace = getWestWorkspace(application.westWorkspaceRootPath);
 
     const isWinPosix = process.platform === 'win32' &&
@@ -226,7 +226,7 @@ export class ZephyrBuildConfig {
         ...(isWinPosix ? { CHERE_INVOKING: '1' } : {}),
         ...(zephyrSdk?.buildEnv ?? {}),
         ...westWorkspace.buildEnv,
-        ...getConfiguredToolchainEnv(
+        ...getSelectedToolchainVariantEnv(
           vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, application.appWorkspaceFolder),
         ),
         ...buildConfig.getBuildEnv(application),

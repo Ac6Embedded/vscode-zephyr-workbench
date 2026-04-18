@@ -1,0 +1,75 @@
+import * as vscode from 'vscode';
+import {
+  ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
+  ZEPHYR_PROJECT_IAR_SETTING_KEY,
+  ZEPHYR_PROJECT_SDK_SETTING_KEY,
+  ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY,
+} from '../constants';
+import { ToolchainVariantId } from '../models/ToolchainInstallations';
+
+export interface ToolchainSelection {
+  variant: ToolchainVariantId;
+  zephyrSdkPath?: string;
+  iarToolchainPath?: string;
+  armGnuToolchainPath?: string;
+}
+
+export function normalizeStoredToolchainVariant(
+  cfg: vscode.WorkspaceConfiguration,
+  rawVariant: string | undefined,
+): ToolchainVariantId {
+  if (rawVariant === 'zephyr_sdk') {
+    cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, 'zephyr', vscode.ConfigurationTarget.WorkspaceFolder);
+    return 'zephyr';
+  }
+
+  if (
+    rawVariant === 'zephyr'
+    || rawVariant === 'zephyr/llvm'
+    || rawVariant === 'gnuarmemb'
+    || rawVariant === 'iar'
+  ) {
+    return rawVariant;
+  }
+
+  return 'zephyr';
+}
+
+export function readToolchainSelection(cfg: vscode.WorkspaceConfiguration): ToolchainSelection {
+  const variant = normalizeStoredToolchainVariant(
+    cfg,
+    cfg.get<string>(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY),
+  );
+
+  return {
+    variant,
+    zephyrSdkPath: cfg.get<string>(ZEPHYR_PROJECT_SDK_SETTING_KEY, ''),
+    iarToolchainPath: cfg.get<string>(ZEPHYR_PROJECT_IAR_SETTING_KEY, ''),
+    armGnuToolchainPath: cfg.get<string>(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ''),
+  };
+}
+
+export async function writeToolchainSelection(
+  cfg: vscode.WorkspaceConfiguration,
+  selection: ToolchainSelection,
+): Promise<void> {
+  await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, selection.variant, vscode.ConfigurationTarget.WorkspaceFolder);
+
+  if (selection.variant === 'iar') {
+    await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, selection.iarToolchainPath, vscode.ConfigurationTarget.WorkspaceFolder);
+    await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY, selection.zephyrSdkPath, vscode.ConfigurationTarget.WorkspaceFolder);
+    await cfg.update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+    return;
+  }
+
+  if (selection.variant === 'gnuarmemb') {
+    await cfg.update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, selection.armGnuToolchainPath, vscode.ConfigurationTarget.WorkspaceFolder);
+    await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+    await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+    return;
+  }
+
+  await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY, selection.zephyrSdkPath, vscode.ConfigurationTarget.WorkspaceFolder);
+  await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+  await cfg.update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+}

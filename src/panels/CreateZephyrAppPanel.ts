@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 import path from "path";
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from "../constants";
-import { normalizeZephyrToolchainVariant, ZephyrToolchainVariant } from "../models/ZephyrSDK";
+import { normalizeZephyrSdkVariant, ZephyrSdkVariantId } from "../models/ToolchainInstallations";
 import { WestWorkspace } from "../models/WestWorkspace";
 import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
 import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
-import { fileExists, getAppTemplateDisplayPath, getArmGnuToolchainForPath, getBase64, getBoard, getListArmGnuToolchains, getListIARs, getListSamples, getListZephyrSDKs, getIarToolchainForSdk, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSDK, validateProjectLocation } from "../utils/utils";
+import { fileExists, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getListSamples, getRegisteredZephyrSdkInstallations, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 
@@ -92,16 +92,16 @@ export class CreateZephyrAppPanel {
     }
 
     let sdkHTML = '';
-    for (const sdk of await getListZephyrSDKs()) {
+    for (const sdk of await getRegisteredZephyrSdkInstallations()) {
       sdkHTML += `<div class="dropdown-item" data-value="${sdk.rootUri}" data-label="${sdk.name}" data-has-llvm="${sdk.hasLlvmToolchain() ? 'true' : 'false'}">${sdk.name}<span class="description">${sdk.rootUri.fsPath}</span></div>`;
     }
 
-    for (const iar of await getListIARs()) {
+    for (const iar of await getRegisteredIarToolchainInstallations()) {
       const label = path.basename(iar.iarPath);
       sdkHTML += `<div class="dropdown-item" data-type="iar" data-value="${iar.iarPath}" data-label="${label}">IAR (${label})<span class="description">${iar.iarPath}</span></div>`;
     }
 
-    for (const armGnuToolchain of await getListArmGnuToolchains()) {
+    for (const armGnuToolchain of await getRegisteredArmGnuToolchainInstallations()) {
       sdkHTML += `<div class="dropdown-item" data-type="gnuarmemb" data-value="${armGnuToolchain.toolchainPath}" data-label="${armGnuToolchain.name}">${armGnuToolchain.name}<span class="description">${armGnuToolchain.toolchainPath}</span></div>`;
     }
 
@@ -475,7 +475,7 @@ async function handleCreateMessage(message: any) {
   const isCreate = message.appFrom === "create";
   const toolchainVariant = getRequestedToolchainVariant(message.toolchainVariant);
   const westWorkspaceRootPath = getStringValue(message.westWorkspaceRootPath);
-  const zephyrSdkPath = getStringValue(message.zephyrSdkPath);
+  const toolchainInstallationPath = getStringValue(message.toolchainInstallationPath);
 
   if (isCreate) {
     if (!checkCreateParameters(message)) {
@@ -487,10 +487,10 @@ async function handleCreateMessage(message: any) {
     );
     const board = getBoard(message.boardYamlPath, message.boardIdentifier);
     const sample = await getSample(message.samplePath);
-    const toolchain =
-      getArmGnuToolchainForPath(zephyrSdkPath)
-      ?? getIarToolchainForSdk(zephyrSdkPath)
-      ?? getZephyrSDK(vscode.Uri.parse(zephyrSdkPath, true).fsPath);
+    const toolchainInstallation =
+      getArmGnuToolchainInstallationByPath(toolchainInstallationPath)
+      ?? getIarToolchainInstallationByPath(toolchainInstallationPath)
+      ?? getZephyrSdkInstallation(vscode.Uri.parse(toolchainInstallationPath, true).fsPath);
 
     vscode.commands.executeCommand(
       "zephyr-workbench-app-explorer.create-app",
@@ -499,7 +499,7 @@ async function handleCreateMessage(message: any) {
       board,
       projectLoc,
       message.projectName,
-      toolchain,
+      toolchainInstallation,
       message.pristine,
       message.venv,
       message.debugPreset,
@@ -515,10 +515,10 @@ async function handleCreateMessage(message: any) {
   }
 
   const hasBoard = !!message.boardYamlPath?.length;
-  const hasSdk = zephyrSdkPath.length > 0;
+  const hasToolchainInstallation = toolchainInstallationPath.length > 0;
   const hasWorkspace = westWorkspaceRootPath.length > 0;
 
-  if (!hasBoard && !hasSdk && !hasWorkspace) {
+  if (!hasBoard && !hasToolchainInstallation && !hasWorkspace) {
     vscode.commands.executeCommand(
       "zephyr-workbench-app-explorer.import-local",
       projectLoc,
@@ -536,7 +536,7 @@ async function handleCreateMessage(message: any) {
   if (!hasBoard) {
     missing.push("board");
   }
-  if (!hasSdk) {
+  if (!hasToolchainInstallation) {
     missing.push("toolchain");
   }
 
@@ -550,11 +550,11 @@ async function handleCreateMessage(message: any) {
     ? getWestWorkspace(vscode.Uri.parse(westWorkspaceRootPath, true).fsPath)
     : undefined;
   const board = hasBoard ? getBoard(message.boardYamlPath, message.boardIdentifier) : undefined;
-  const toolchain = hasSdk
+  const toolchainInstallation = hasToolchainInstallation
     ? (
-        getArmGnuToolchainForPath(zephyrSdkPath)
-        ?? getIarToolchainForSdk(zephyrSdkPath)
-        ?? getZephyrSDK(vscode.Uri.parse(zephyrSdkPath, true).fsPath)
+        getArmGnuToolchainInstallationByPath(toolchainInstallationPath)
+        ?? getIarToolchainInstallationByPath(toolchainInstallationPath)
+        ?? getZephyrSdkInstallation(vscode.Uri.parse(toolchainInstallationPath, true).fsPath)
       )
     : undefined;
 
@@ -563,15 +563,15 @@ async function handleCreateMessage(message: any) {
     projectLoc,
     westWorkspace,
     board,
-    toolchain,
+    toolchainInstallation,
     message.venv,
     toolchainVariant,
   );
   CreateZephyrAppPanel.currentPanel?.dispose();
 }
 
-function getRequestedToolchainVariant(rawVariant: unknown): ZephyrToolchainVariant {
-  return normalizeZephyrToolchainVariant(typeof rawVariant === 'string' ? rawVariant : undefined);
+function getRequestedToolchainVariant(rawVariant: unknown): ZephyrSdkVariantId {
+  return normalizeZephyrSdkVariant(typeof rawVariant === 'string' ? rawVariant : undefined);
 }
 
 function resolveSelectedWorkspace(workspaceUri: string): WestWorkspace {
@@ -950,7 +950,7 @@ function checkCreateParameters(message: any) {
     return false;
   }
 
-  if (isMissingValue(message.zephyrSdkPath)) {
+  if (isMissingValue(message.toolchainInstallationPath)) {
     vscode.window.showErrorMessage('Missing Zephyr SDK, a SDK is required to provide toolchain to your project');
     return false;
   }

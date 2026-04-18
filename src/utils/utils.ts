@@ -5,14 +5,11 @@ import * as vscode from "vscode";
 import { WestWorkspace } from "../models/WestWorkspace";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { ZephyrBoard } from "../models/ZephyrBoard";
-import { ArmGnuToolchain, normalizeArmGnuTargetTriple, ZephyrSDK, IARToolchain } from "../models/ZephyrSDK";
+import { ArmGnuToolchainInstallation, normalizeArmGnuTargetTriple, ZephyrSdkInstallation, IarToolchainInstallation } from "../models/ToolchainInstallations";
 import { ZephyrAppTemplateKind, ZephyrSample } from "../models/ZephyrSample";
 import { getEnvVarFormat, getOutputChannel, getShell } from "./execUtils";
 import { checkHostTools, checkEnvFile } from "./installUtils";
 import {
-  ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
-  ZEPHYR_PROJECT_IAR_SETTING_KEY,
-  ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY,
   ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY,
   ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
@@ -21,6 +18,7 @@ import {
 } from '../constants';
 import { checkOrCreateTask, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { readInstalledZinstallerVersion, versionAtLeast } from './env/zinstallerVersionUtils';
+import { readToolchainSelection } from './toolchainSelection';
 
 let zephyrTasksFetchPromise: Promise<vscode.Task[]> | undefined;
 const APP_TEMPLATE_METADATA_FILES: Record<string, ZephyrAppTemplateKind> = {
@@ -466,51 +464,41 @@ export function getWestWorkspace(workspacePath: string): WestWorkspace {
   throw new Error('The selected folder is not a valid west workspace');
 }
 
-export function getZephyrSDK(sdkPath: string): ZephyrSDK {
-  if (fileExists(sdkPath)) {
-    return new ZephyrSDK(vscode.Uri.file(sdkPath));
+export function getZephyrSdkInstallation(zephyrSdkPath: string): ZephyrSdkInstallation {
+  if (fileExists(zephyrSdkPath)) {
+    return new ZephyrSdkInstallation(vscode.Uri.file(zephyrSdkPath));
   }
   throw new Error('Cannot parse the Zephyr SDK');
 }
 
-export function tryGetZephyrSDK(sdkPath: string | undefined): ZephyrSDK | undefined {
-  if (!sdkPath) {
+export function tryGetZephyrSdkInstallation(zephyrSdkPath: string | undefined): ZephyrSdkInstallation | undefined {
+  if (!zephyrSdkPath) {
     return undefined;
   }
-  if (fileExists(sdkPath)) {
-    return new ZephyrSDK(vscode.Uri.file(sdkPath));
+  if (fileExists(zephyrSdkPath)) {
+    return new ZephyrSdkInstallation(vscode.Uri.file(zephyrSdkPath));
   }
   return undefined;
 }
 
-// TEMPORARY retrocompat — remove a few months after 2026-04.
-// Projects that stored "zephyr_sdk" are migrated on first read to the new variant value "zephyr".
-export function migrateToolchainVariant(cfg: vscode.WorkspaceConfiguration, raw: string): string {
-  if (raw === 'zephyr_sdk') {
-    cfg.update('toolchain', 'zephyr', vscode.ConfigurationTarget.WorkspaceFolder);
-    return 'zephyr';
-  }
-  return raw;
-}
-
-export function findIarEntry(iarPath: string): IARToolchain | undefined {
+export function findIarToolchainInstallation(iarPath: string): IarToolchainInstallation | undefined {
   const list: any[] = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get(ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY, []);
   const hit = list.find(e => e.iarPath === iarPath);
   if (!hit) { return; }
-  if (!IARToolchain.isIarPath(hit.iarPath)) { return; }
-  return new IARToolchain(hit.zephyrSdkPath, hit.iarPath, hit.token);
+  if (!IarToolchainInstallation.isIarPath(hit.iarPath)) { return; }
+  return new IarToolchainInstallation(hit.zephyrSdkPath, hit.iarPath, hit.token);
 }
 
-export function findArmGnuEntry(toolchainPath: string): ArmGnuToolchain | undefined {
+export function findArmGnuToolchainInstallation(toolchainPath: string): ArmGnuToolchainInstallation | undefined {
   const list: any[] = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get(ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY, []);
   const hit = list.find(entry => entry.toolchainPath === toolchainPath);
   if (!hit) { return; }
-  if (!ArmGnuToolchain.isArmGnuPath(hit.toolchainPath)) { return; }
-  return new ArmGnuToolchain(
+  if (!ArmGnuToolchainInstallation.isArmGnuPath(hit.toolchainPath)) { return; }
+  return new ArmGnuToolchainInstallation(
     hit.toolchainPath,
     normalizeArmGnuTargetTriple(hit.targetTriple, hit.toolchainPath),
     hit.version,
@@ -529,7 +517,7 @@ export async function getZephyrApplication(projectPath: string): Promise<ZephyrA
   throw new Error(`Cannot find project ${projectPath}`);
 }
 
-export async function getListZephyrSDKs(): Promise<ZephyrSDK[]> {
+export async function getRegisteredZephyrSdkInstallations(): Promise<ZephyrSdkInstallation[]> {
   const zephyrSDKPaths: string[] | undefined = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY);
@@ -538,62 +526,62 @@ export async function getListZephyrSDKs(): Promise<ZephyrSDK[]> {
     throw new Error('No SDK definition found');
   }
 
-  const sdks: ZephyrSDK[] = [];
+  const zephyrSdkInstallations: ZephyrSdkInstallation[] = [];
   for (const path of zephyrSDKPaths) {
-    if (ZephyrSDK.isSDKPath(path)) {
+    if (ZephyrSdkInstallation.isSdkPath(path)) {
       const uri = vscode.Uri.file(path);
-      sdks.push(new ZephyrSDK(uri));
+      zephyrSdkInstallations.push(new ZephyrSdkInstallation(uri));
     }
   }
 
-  return sdks;
+  return zephyrSdkInstallations;
 }
 
-export async function getListIARs(): Promise<IARToolchain[]> {
+export async function getRegisteredIarToolchainInstallations(): Promise<IarToolchainInstallation[]> {
   return new Promise((resolve) => {
     const iars: any[] = vscode.workspace
       .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
       .get(ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY) ?? [];
 
-    const valid = iars.filter(i => IARToolchain.isIarPath(i.iarPath));
-    const toolchains = valid.map(i => new IARToolchain(i.zephyrSdkPath, i.iarPath, i.token));
-    resolve(toolchains);
+    const valid = iars.filter(i => IarToolchainInstallation.isIarPath(i.iarPath));
+    const toolchainInstallations = valid.map(i => new IarToolchainInstallation(i.zephyrSdkPath, i.iarPath, i.token));
+    resolve(toolchainInstallations);
   });
 }
 
-export async function getListArmGnuToolchains(): Promise<ArmGnuToolchain[]> {
+export async function getRegisteredArmGnuToolchainInstallations(): Promise<ArmGnuToolchainInstallation[]> {
   return new Promise((resolve) => {
     const armGnuToolchains: any[] = vscode.workspace
       .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
       .get(ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY) ?? [];
 
-    const valid = armGnuToolchains.filter(toolchain => ArmGnuToolchain.isArmGnuPath(toolchain.toolchainPath));
-    const toolchains = valid.map(toolchain => new ArmGnuToolchain(
+    const valid = armGnuToolchains.filter(toolchain => ArmGnuToolchainInstallation.isArmGnuPath(toolchain.toolchainPath));
+    const toolchainInstallations = valid.map(toolchain => new ArmGnuToolchainInstallation(
       toolchain.toolchainPath,
       normalizeArmGnuTargetTriple(toolchain.targetTriple, toolchain.toolchainPath),
       toolchain.version,
     ));
-    resolve(toolchains);
+    resolve(toolchainInstallations);
   });
 }
 
-export function getIarToolchainForSdk(sdkPath: string): IARToolchain | undefined {
+export function getIarToolchainInstallationByPath(iarPath: string): IarToolchainInstallation | undefined {
   const raw = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<any[]>(ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY) ?? [];
 
-  const hit = raw.find(i => i.iarPath === sdkPath);
+  const hit = raw.find(i => i.iarPath === iarPath);
   if (!hit) { return; }
 
-  if (!IARToolchain.isIarPath(hit.iarPath)) {
+  if (!IarToolchainInstallation.isIarPath(hit.iarPath)) {
     vscode.window.showWarningMessage(`IAR toolchain at ${hit.iarPath} is no longer valid`);
     return;
   }
 
-  return new IARToolchain(hit.zephyrSdkPath, hit.iarPath, hit.token);
+  return new IarToolchainInstallation(hit.zephyrSdkPath, hit.iarPath, hit.token);
 }
 
-export function getArmGnuToolchainForPath(toolchainPath: string): ArmGnuToolchain | undefined {
+export function getArmGnuToolchainInstallationByPath(toolchainPath: string): ArmGnuToolchainInstallation | undefined {
   const raw = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
     .get<any[]>(ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY) ?? [];
@@ -601,67 +589,63 @@ export function getArmGnuToolchainForPath(toolchainPath: string): ArmGnuToolchai
   const hit = raw.find(entry => entry.toolchainPath === toolchainPath);
   if (!hit) { return; }
 
-  if (!ArmGnuToolchain.isArmGnuPath(hit.toolchainPath)) {
+  if (!ArmGnuToolchainInstallation.isArmGnuPath(hit.toolchainPath)) {
     vscode.window.showWarningMessage(`Arm GNU toolchain at ${hit.toolchainPath} is no longer valid`);
     return;
   }
 
-  return new ArmGnuToolchain(
+  return new ArmGnuToolchainInstallation(
     hit.toolchainPath,
     normalizeArmGnuTargetTriple(hit.targetTriple, hit.toolchainPath),
     hit.version,
   );
 }
 
-export function getConfiguredToolchainEnv(cfg: vscode.WorkspaceConfiguration): Record<string, string> {
-  const toolchainKind = migrateToolchainVariant(
-    cfg,
-    cfg.get<string>(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY) ?? 'zephyr',
-  );
+export function getSelectedToolchainVariantEnv(cfg: vscode.WorkspaceConfiguration): Record<string, string> {
+  const toolchainSelection = readToolchainSelection(cfg);
+  const toolchainVariant = toolchainSelection.variant;
 
-  if (toolchainKind === 'iar') {
-    const selectedIarPath = cfg.get<string>(ZEPHYR_PROJECT_IAR_SETTING_KEY, '');
-    const iarEntry = findIarEntry(selectedIarPath);
-    if (!iarEntry) {
+  if (toolchainVariant === 'iar') {
+    const iarToolchainInstallation = findIarToolchainInstallation(toolchainSelection.iarToolchainPath ?? '');
+    if (!iarToolchainInstallation) {
       return {};
     }
 
     const armSubdir =
       process.platform === 'win32'
-        ? path.join(iarEntry.iarPath, 'arm')
-        : path.posix.join(iarEntry.iarPath, 'arm');
+        ? path.join(iarToolchainInstallation.iarPath, 'arm')
+        : path.posix.join(iarToolchainInstallation.iarPath, 'arm');
 
     return {
       IAR_TOOLCHAIN_PATH: armSubdir,
       ZEPHYR_TOOLCHAIN_VARIANT: 'iar',
-      IAR_LMS_BEARER_TOKEN: iarEntry.token ?? '',
+      IAR_LMS_BEARER_TOKEN: iarToolchainInstallation.token ?? '',
     };
   }
 
-  if (toolchainKind === 'gnuarmemb') {
-    const selectedArmGnuPath = cfg.get<string>(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, '');
-    const armGnuEntry = findArmGnuEntry(selectedArmGnuPath);
-    if (!armGnuEntry) {
+  if (toolchainVariant === 'gnuarmemb') {
+    const armGnuToolchainInstallation = findArmGnuToolchainInstallation(toolchainSelection.armGnuToolchainPath ?? '');
+    if (!armGnuToolchainInstallation) {
       return {};
     }
 
     return {
-      GNUARMEMB_TOOLCHAIN_PATH: armGnuEntry.toolchainPath,
+      GNUARMEMB_TOOLCHAIN_PATH: armGnuToolchainInstallation.toolchainPath,
       ZEPHYR_TOOLCHAIN_VARIANT: 'gnuarmemb',
     };
   }
 
-  return { ZEPHYR_TOOLCHAIN_VARIANT: toolchainKind };
+  return { ZEPHYR_TOOLCHAIN_VARIANT: toolchainVariant };
 }
 
-export async function getInternalZephyrSDK(): Promise<ZephyrSDK | undefined> {
+export async function getInternalZephyrSdkInstallation(): Promise<ZephyrSdkInstallation | undefined> {
   if (await checkHostTools()) {
     const files = fs.readdirSync(getInternalDirRealPath(), { withFileTypes: true, recursive: false });
     for (const file of files) {
       const filePath = path.join(file.path, file.name);
-      if (file.isDirectory() && ZephyrSDK.isSDKPath(filePath)) {
+      if (file.isDirectory() && ZephyrSdkInstallation.isSdkPath(filePath)) {
         const uri = vscode.Uri.file(filePath);
-        return new ZephyrSDK(uri);
+        return new ZephyrSdkInstallation(uri);
       }
     }
   }

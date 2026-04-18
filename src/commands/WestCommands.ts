@@ -7,7 +7,7 @@ import { ZephyrApplication } from '../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, execShellCommandWithEnv, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
-import { fileExists, getConfiguredToolchainEnv, getWestWorkspace, normalizePath, tryGetZephyrSDK } from '../utils/utils';
+import { fileExists, getSelectedToolchainVariantEnv, getWestWorkspace, normalizePath, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { composeWestBuildArgs } from '../utils/zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
 
@@ -113,7 +113,7 @@ export async function westTmpBuildCmakeOnlyCommand(
     return undefined;
   }
 
-  const activeSdk = tryGetZephyrSDK(zephyrProject.zephyrSdkPath);
+  const activeZephyrSdkInstallation = tryGetZephyrSdkInstallation(zephyrProject.zephyrSdkPath);
 
   const shellKind = classifyShell(getShellExe());
 
@@ -141,7 +141,7 @@ export async function westTmpBuildCmakeOnlyCommand(
     cwd        : zephyrProject.appRootPath,
     env        : {
       ...buildConfig.envVars,
-      ...(activeSdk?.buildEnv ?? {}),
+      ...(activeZephyrSdkInstallation?.buildEnv ?? {}),
       ...westWorkspace.buildEnv
     },
     executable : getShellExe(),
@@ -175,7 +175,7 @@ export async function westBuildCommand(zephyrProject: ZephyrApplication, westWor
     return;
   }
 
-  const activeSdk = tryGetZephyrSDK(zephyrProject.zephyrSdkPath);
+  const activeZephyrSdkInstallation = tryGetZephyrSdkInstallation(zephyrProject.zephyrSdkPath);
   let buildDir = normalizePathForShell(shellKind, path.join(zephyrProject.appRootPath, 'build', buildConfig.name));
   const rawWestArgs = extraWestArgs.length > 0 ? extraWestArgs : buildConfig.westArgs;
   const westArgs = makeWestArgs(zephyrProject, rawWestArgs, buildConfig.westFlagsD);
@@ -202,7 +202,7 @@ export async function westBuildCommand(zephyrProject: ZephyrApplication, westWor
     folder ?? undefined
   );
 
-  const toolchainEnv = getConfiguredToolchainEnv(cfg);
+  const toolchainEnv = getSelectedToolchainVariantEnv(cfg);
 
   // Add the venv Python to PATH so MCUBoot can find dependencies
   const venvPath = cfg.get<string>('venv.path') ?? '';
@@ -214,7 +214,7 @@ export async function westBuildCommand(zephyrProject: ZephyrApplication, westWor
   ` "${zephyrProject.appRootPath}"` +
   (westArgs ? ` ${westArgs}` : '');
 
-    const baseEnv = { ...normEnvVars, ...(activeSdk?.buildEnv ?? {}), ...westWorkspace.buildEnv, ...toolchainEnv };
+    const baseEnv = { ...normEnvVars, ...(activeZephyrSdkInstallation?.buildEnv ?? {}), ...westWorkspace.buildEnv, ...toolchainEnv };
 
     // If sysbuild, prepend venv Python to PATH so MCUBoot can find pykwalify and other deps
     const env = venvPath && sysbuildEnabled
@@ -271,7 +271,7 @@ export async function westConfigCommand(
     return;                                        
   }
 
-  const activeSdk = tryGetZephyrSDK(zephyrProject.zephyrSdkPath);
+  const activeZephyrSdkInstallation = tryGetZephyrSdkInstallation(zephyrProject.zephyrSdkPath);
 
   const shellKind = classifyShell(getShellExe());
   const buildDir = normalizePathForShell(shellKind,
@@ -294,7 +294,7 @@ export async function westConfigCommand(
   }
 
   const options: vscode.ShellExecutionOptions = {
-    env: { ...(activeSdk?.buildEnv ?? {}), ...westWorkspace.buildEnv, ...getConfiguredToolchainEnv(vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.appWorkspaceFolder)) },
+    env: { ...(activeZephyrSdkInstallation?.buildEnv ?? {}), ...westWorkspace.buildEnv, ...getSelectedToolchainVariantEnv(vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.appWorkspaceFolder)) },
     cwd: westWorkspace.kernelUri.fsPath,
     executable: getShellExe(),
     shellArgs : getShellArgs(classifyShell(getShellExe()))
@@ -322,10 +322,10 @@ export async function westFlashCommand(zephyrProject: ZephyrApplication, westWor
   let buildDir = normalizePath(path.join(zephyrProject.appRootPath, 'build', buildConfig.boardIdentifier));
 
   let command = `west flash --build-dir ${buildDir}`;
-  const activeSdk = tryGetZephyrSDK(zephyrProject.zephyrSdkPath);
+  const activeZephyrSdkInstallation = tryGetZephyrSdkInstallation(zephyrProject.zephyrSdkPath);
 
   let options: vscode.ShellExecutionOptions = {
-    env: { ...(activeSdk?.buildEnv ?? {}), ...westWorkspace.buildEnv, ...getConfiguredToolchainEnv(vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.appWorkspaceFolder)) },
+    env: { ...(activeZephyrSdkInstallation?.buildEnv ?? {}), ...westWorkspace.buildEnv, ...getSelectedToolchainVariantEnv(vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.appWorkspaceFolder)) },
     cwd: westWorkspace.kernelUri.fsPath
   };
 
@@ -520,14 +520,14 @@ export function execWestCommandWithEnv(
   // build cwd + env
   const options: any = { env: { ...process.env }, cwd: '' };
   if (parent instanceof ZephyrApplication) {
-    const sdk = tryGetZephyrSDK(parent.zephyrSdkPath);
+    const zephyrSdkInstallation = tryGetZephyrSdkInstallation(parent.zephyrSdkPath);
     const ws = getWestWorkspace(parent.westWorkspaceRootPath);
     options.cwd = parent.appRootPath;
     options.env = {
       ...options.env,
-      ...(sdk?.buildEnv ?? {}),
+      ...(zephyrSdkInstallation?.buildEnv ?? {}),
       ...ws.buildEnv,
-      ...getConfiguredToolchainEnv(vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, parent.appWorkspaceFolder)),
+      ...getSelectedToolchainVariantEnv(vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, parent.appWorkspaceFolder)),
       ...parent.getBuildConfiguration,
     };
   } else {
@@ -606,16 +606,16 @@ export function execWestCommandWithEnvAsync(
 
   if (parent instanceof ZephyrApplication) {
     const project = parent;
-    const activeSdk = tryGetZephyrSDK(project.zephyrSdkPath);
+    const activeZephyrSdkInstallation = tryGetZephyrSdkInstallation(project.zephyrSdkPath);
     const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
     const buildEnv = project.getBuildConfiguration;
 
     options.cwd = project.appRootPath;
     options.env = {
       ...options.env,
-      ...(activeSdk?.buildEnv ?? {}),
+      ...(activeZephyrSdkInstallation?.buildEnv ?? {}),
       ...westWorkspace.buildEnv,
-      ...getConfiguredToolchainEnv(vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.appWorkspaceFolder)),
+      ...getSelectedToolchainVariantEnv(vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.appWorkspaceFolder)),
       ...buildEnv
     };
   } else {

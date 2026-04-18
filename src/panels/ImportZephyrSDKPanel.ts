@@ -3,7 +3,7 @@ import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getMinimalToolchainsForVersion, getSdkVersion } from "../utils/zephyr/sdkUtils";
 import { fetchArmGnuDownloadCatalog, filterArmGnuCatalogForHost, getArmGnuHostTarget } from "../utils/zephyr/armGnuToolchainUtils";
-import { getListZephyrSDKs } from "../utils/utils";
+import { getRegisteredZephyrSdkInstallations } from "../utils/utils";
 
 export class ImportZephyrSDKPanel {
   public static currentPanel: ImportZephyrSDKPanel | undefined;
@@ -424,7 +424,7 @@ export class ImportZephyrSDKPanel {
           case "fetchImportSdkData": {
             const [versionsResult, sdkResult, armGnuResult] = await Promise.allSettled([
               getSdkVersion(),
-              getListZephyrSDKs(),
+              getRegisteredZephyrSdkInstallations(),
               getArmGnuImportData(),
             ]);
 

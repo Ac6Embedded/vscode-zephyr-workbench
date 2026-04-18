@@ -3,7 +3,7 @@ import {
   ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
 } from '../../constants';
-import { ArmGnuBareMetalTargetTriple } from '../../models/ZephyrSDK';
+import { ArmGnuBareMetalTargetTriple } from '../../models/ToolchainInstallations';
 
 export type ArmGnuDownloadHostId = 'mingw-w64-x86_64' | 'x86_64' | 'darwin-arm64';
 

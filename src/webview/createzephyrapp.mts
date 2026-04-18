@@ -540,7 +540,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       command:            "create",
       appFrom:            appFromGroup.value,
       westWorkspaceRootPath: workspaceInput.getAttribute("data-value") ?? '',
-      zephyrSdkPath:      sdkInput.getAttribute("data-value") ?? '',
+      toolchainInstallationPath: sdkInput.getAttribute("data-value") ?? '',
       toolchainVariant:   sdkInput.getAttribute("data-has-llvm") === 'true'
         ? toolchainVariantGroup.value
         : 'zephyr',

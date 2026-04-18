@@ -11,7 +11,7 @@ import yaml from 'yaml';
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
 import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs, getShellExe, classifyShell, normalizePathForShell, execCommandWithEnv } from "./execUtils";
 import { syncAutoDetectEnv } from "./debugTools/autoDetectSyncUtils";
-import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSDK, getWestWorkspace } from "./utils";
+import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSdkInstallation, getWestWorkspace } from "./utils";
 import { getRunner } from "./debugTools/debugUtils";
 import { getZephyrTerminal } from "./zephyr/zephyrTerminalUtils";
 import { ensurePowershellExecutionPolicy } from "./powershellUtils";
@@ -109,7 +109,7 @@ export async function autoSetHostToolsSettings(): Promise<void> {
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, envPath, vscode.ConfigurationTarget.Global);
 
     // Set default internal Zephyr SDK
-    let sdk = await getInternalZephyrSDK();
+    let sdk = await getInternalZephyrSdkInstallation();
     if(sdk) {
       let zephyrSDKPaths: string[] | undefined = await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY);
       if(!zephyrSDKPaths || zephyrSDKPaths.length === 0) {
@@ -141,7 +141,7 @@ export async function setDefaultSettings(): Promise<void> {
     }
 
     // Set default internal Zephyr SDK
-    let sdk = await getInternalZephyrSDK();
+    let sdk = await getInternalZephyrSdkInstallation();
     if(sdk) {
       let zephyrSDKPaths: string[] | undefined = await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY);
       if(!zephyrSDKPaths || zephyrSDKPaths.length === 0) {
