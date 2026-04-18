@@ -633,7 +633,7 @@ export async function createLaunchConfiguration(
   if(buildConfigName) {
     buildConfig = project.getBuildConfiguration(buildConfigName);
     if(!buildConfig) {
-      resolve('Cannot find build configuration');
+      throw new Error(`Cannot find build configuration: ${buildConfigName}`);
     }
   }
 

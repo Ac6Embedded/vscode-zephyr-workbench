@@ -590,7 +590,7 @@ export class DebugManagerPanel {
         }
 
         const newRunnersHTML = getRunnersHtml(compatibleRunners);
-        const runnerName = buildConfig ? (defaultDebugRunner ?? getDefaultDebugRunner(project, buildConfig) ?? WestRunner.extractRunner(config.debugServerArgs)) : WestRunner.extractRunner(config.debugServerArgs);
+        const runnerName = WestRunner.extractRunner(config.debugServerArgs) ?? (buildConfig ? defaultDebugRunner : undefined);
         const { runnerLabel, runnerValue, runnerPath, runnerArgs, runnerDefaultInfo, runnerDefaultPathInfo } = await getRunnerWebviewState(
           project,
           runnerName,
