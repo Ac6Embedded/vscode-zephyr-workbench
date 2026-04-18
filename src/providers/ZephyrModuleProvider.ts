@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ZephyrModuleProject } from '../models/ZephyrModuleProject';
+import { ZephyrModule } from '../models/ZephyrModule';
 
 export class ZephyrModuleDataProvider implements vscode.TreeDataProvider<ZephyrModuleTreeItem> {
   private wsRoot: string | undefined;
@@ -25,11 +25,11 @@ export class ZephyrModuleDataProvider implements vscode.TreeDataProvider<ZephyrM
 		// 	let treeItems : ZephyrModuleTreeItem[] = [];
     //   if(fs.existsSync(this.workspaceRoot)) {
 		// 		let modulesDir = path.join(this.workspaceRoot, "modules");
-    //     const listModProjects = await getListProject(modulesDir);
+    //     const modules = await getListApplications(modulesDir);
 
-    //     for(let i=0; i<listModProjects.length; i++) {
-    //       let project = listModProjects[i];
-    //       const treeItem = new ZephyrModuleTreeItem(project, true, vscode.TreeItemCollapsibleState.None);
+    //     for(let i=0; i<modules.length; i++) {
+    //       const module = modules[i];
+    //       const treeItem = new ZephyrModuleTreeItem(module, true, vscode.TreeItemCollapsibleState.None);
     //       treeItems.push(treeItem);
     //     }
         
@@ -55,7 +55,7 @@ export class ZephyrModuleDataProvider implements vscode.TreeDataProvider<ZephyrM
 
 export class ZephyrModuleTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly project: ZephyrModuleProject,
+		public readonly project: ZephyrModule,
 		private isActive: boolean,
 		public readonly collapsibleState: vscode.TreeItemCollapsibleState,
 	) {

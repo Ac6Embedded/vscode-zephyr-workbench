@@ -62,7 +62,7 @@ export class ZephyrBuildConfig {
     this.boardIdentifier = value;
   }
 
-  parseSettings(buildConfig: any, workspaceContext: vscode.WorkspaceFolder) {
+  parseSettings(buildConfig: any, workspaceFolder: vscode.WorkspaceFolder) {
     this.active = buildConfig['active'] === "true" ? true : false;
     this.boardIdentifier = buildConfig['board'];
     if (typeof buildConfig['default-runner'] === 'string' && buildConfig['default-runner'].length > 0) {
@@ -82,7 +82,7 @@ export class ZephyrBuildConfig {
         .filter((value: string) => value.length > 0)
       : [];
     for (const key in this.envVars) {
-      const values = loadConfigEnv(workspaceContext, this.name, key);
+      const values = loadConfigEnv(workspaceFolder, this.name, key);
       if (values) {
         this.envVars[key] = values;
       }

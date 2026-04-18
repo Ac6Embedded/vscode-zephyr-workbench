@@ -318,9 +318,9 @@ export class CreateZephyrAppPanel {
             await updateBoardImage(webview, message.boardYamlPath);
             break;
           case 'openLocationDialog': {
-            const westWorkspacePath = getWestWorkspaceMessagePath(message);
-            if (westWorkspacePath && westWorkspacePath.length > 0) {
-              this.openLocationDialog(vscode.Uri.parse(westWorkspacePath, false));
+            const westWorkspaceRootPath = getStringValue(message.westWorkspaceRootPath);
+            if (westWorkspaceRootPath.length > 0) {
+              this.openLocationDialog(vscode.Uri.parse(westWorkspaceRootPath, false));
             } else {
               this.openLocationDialog(undefined);
             }
@@ -474,8 +474,8 @@ async function handleCreateMessage(message: any) {
   const projectLoc = message.projectParentPath;
   const isCreate = message.appFrom === "create";
   const toolchainVariant = getRequestedToolchainVariant(message.toolchainVariant);
-  const westWorkspacePath = getWestWorkspaceMessagePath(message);
-  const sdkPath = getSdkMessagePath(message);
+  const westWorkspaceRootPath = getStringValue(message.westWorkspaceRootPath);
+  const zephyrSdkPath = getStringValue(message.zephyrSdkPath);
 
   if (isCreate) {
     if (!checkCreateParameters(message)) {
@@ -483,14 +483,14 @@ async function handleCreateMessage(message: any) {
     }
 
     const westWorkspace = getWestWorkspace(
-      vscode.Uri.parse(westWorkspacePath, true).fsPath
+      vscode.Uri.parse(westWorkspaceRootPath, true).fsPath
     );
     const board = getBoard(message.boardYamlPath, message.boardIdentifier);
     const sample = await getSample(message.samplePath);
     const toolchain =
-      getArmGnuToolchainForPath(sdkPath)
-      ?? getIarToolchainForSdk(sdkPath)
-      ?? getZephyrSDK(vscode.Uri.parse(sdkPath, true).fsPath);
+      getArmGnuToolchainForPath(zephyrSdkPath)
+      ?? getIarToolchainForSdk(zephyrSdkPath)
+      ?? getZephyrSDK(vscode.Uri.parse(zephyrSdkPath, true).fsPath);
 
     vscode.commands.executeCommand(
       "zephyr-workbench-app-explorer.create-app",
@@ -515,8 +515,8 @@ async function handleCreateMessage(message: any) {
   }
 
   const hasBoard = !!message.boardYamlPath?.length;
-  const hasSdk = sdkPath.length > 0;
-  const hasWorkspace = westWorkspacePath.length > 0;
+  const hasSdk = zephyrSdkPath.length > 0;
+  const hasWorkspace = westWorkspaceRootPath.length > 0;
 
   if (!hasBoard && !hasSdk && !hasWorkspace) {
     vscode.commands.executeCommand(
@@ -547,14 +547,14 @@ async function handleCreateMessage(message: any) {
   }
 
   const westWorkspace = hasWorkspace
-    ? getWestWorkspace(vscode.Uri.parse(westWorkspacePath, true).fsPath)
+    ? getWestWorkspace(vscode.Uri.parse(westWorkspaceRootPath, true).fsPath)
     : undefined;
   const board = hasBoard ? getBoard(message.boardYamlPath, message.boardIdentifier) : undefined;
   const toolchain = hasSdk
     ? (
-        getArmGnuToolchainForPath(sdkPath)
-        ?? getIarToolchainForSdk(sdkPath)
-        ?? getZephyrSDK(vscode.Uri.parse(sdkPath, true).fsPath)
+        getArmGnuToolchainForPath(zephyrSdkPath)
+        ?? getIarToolchainForSdk(zephyrSdkPath)
+        ?? getZephyrSDK(vscode.Uri.parse(zephyrSdkPath, true).fsPath)
       )
     : undefined;
 
@@ -940,25 +940,17 @@ function getStringValue(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-function getWestWorkspaceMessagePath(message: any): string {
-  return getStringValue(message.westWorkspaceRootPath) || getStringValue(message.westWorkspacePath);
-}
-
-function getSdkMessagePath(message: any): string {
-  return getStringValue(message.zephyrSdkPath) || getStringValue(message.sdkPath);
-}
-
 function isMissingValue(value: unknown): boolean {
   return getStringValue(value).length === 0;
 }
 
 function checkCreateParameters(message: any) {
-  if (isMissingValue(getWestWorkspaceMessagePath(message))) {
+  if (isMissingValue(message.westWorkspaceRootPath)) {
     vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
     return false;
   }
 
-  if (isMissingValue(getSdkMessagePath(message))) {
+  if (isMissingValue(message.zephyrSdkPath)) {
     vscode.window.showErrorMessage('Missing Zephyr SDK, a SDK is required to provide toolchain to your project');
     return false;
   }

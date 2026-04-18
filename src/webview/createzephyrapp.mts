@@ -539,7 +539,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
     {
       command:            "create",
       appFrom:            appFromGroup.value,
-      westWorkspacePath:  workspaceInput.getAttribute("data-value") ?? '',
+      westWorkspaceRootPath: workspaceInput.getAttribute("data-value") ?? '',
       zephyrSdkPath:      sdkInput.getAttribute("data-value") ?? '',
       toolchainVariant:   sdkInput.getAttribute("data-has-llvm") === 'true'
         ? toolchainVariantGroup.value
@@ -561,7 +561,7 @@ function browseParentHandler(this: HTMLElement, ev: MouseEvent) {
   webviewApi.postMessage(
     {
       command: 'openLocationDialog',
-      westWorkspacePath: workspaceInput.getAttribute('data-value') ?? ''
+      westWorkspaceRootPath: workspaceInput.getAttribute('data-value') ?? ''
     }
   );
 }

@@ -412,10 +412,10 @@ export async function parseWorkspaceAppTemplates(directory: vscode.Uri, projectL
   }
 }
 
-export async function getListProject(appsPath: string | undefined): Promise<ZephyrApplication[]> {
-  let listProjects: ZephyrApplication[] = [];
+export async function getListApplications(appsPath: string | undefined): Promise<ZephyrApplication[]> {
+  const applications: ZephyrApplication[] = [];
   if (appsPath) {
-    let appsUri = vscode.Uri.file(appsPath);
+    const appsUri = vscode.Uri.file(appsPath);
     const files = await vscode.workspace.fs.readDirectory(appsUri);
     for (const [name, type] of files) {
       const filePath = vscode.Uri.joinPath(appsUri, name);
@@ -424,16 +424,16 @@ export async function getListProject(appsPath: string | undefined): Promise<Zeph
         const projConfPath = vscode.Uri.joinPath(filePath, "prj.conf");
         try {
           await vscode.workspace.fs.stat(projConfPath);
-          let project: ZephyrApplication = new ZephyrApplication(vscode.workspace.getWorkspaceFolder(filePath), filePath.fsPath);
-          listProjects.push(project);
+          const application = new ZephyrApplication(vscode.workspace.getWorkspaceFolder(filePath), filePath.fsPath);
+          applications.push(application);
         } catch (error) {
-          // Not a project folder
+          // Not an application folder
         }
       }
     }
   }
-  return new Promise((resolve, reject) => {
-    resolve(listProjects);
+  return new Promise((resolve) => {
+    resolve(applications);
   });
 }
 
