@@ -42,7 +42,7 @@ const newAppMenuItem = new MenuItem(
 );
 
 const newWestWorkspaceMenuItem = new MenuItem(
-  'New West Workspace',
+  'Add West Workspace',
   vscode.TreeItemCollapsibleState.None,
   {
     light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'zephyr_icon_plus_light.svg'),
@@ -50,12 +50,12 @@ const newWestWorkspaceMenuItem = new MenuItem(
   },
   {
     command: 'zephyr-workbench-west-workspace.open-wizard',
-    title: 'New West Workspace',
+    title: 'Add West Workspace',
   }
 );
 
 const newSDKMenuItem = new MenuItem(
-  'New Toolchain',
+  'Add Toolchain',
   vscode.TreeItemCollapsibleState.None,
    {
     light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'toolchain_icon_plus_light.svg'),
@@ -63,7 +63,7 @@ const newSDKMenuItem = new MenuItem(
   },
   {
     command: 'zephyr-workbench-sdk-explorer.open-wizard',
-    title: 'New Toolchain',
+    title: 'Add Toolchain',
   }
 );
 

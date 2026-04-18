@@ -644,7 +644,7 @@
       },
       {
         "command": "zephyr-workbench-west-workspace.open-wizard",
-        "title": "Initialize new west workspace",
+        "title": "Add West Workspace",
         "icon": "$(add)",
         "category": "Zephyr Workbench"
       },

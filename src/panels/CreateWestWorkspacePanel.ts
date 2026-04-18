@@ -77,7 +77,7 @@ export class CreateWestWorkspacePanel {
     if (CreateWestWorkspacePanel.currentPanel) {
       CreateWestWorkspacePanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
     } else {
-      const panel = vscode.window.createWebviewPanel("create-west-workspace-panel", "Create west workspace", vscode.ViewColumn.One, {
+      const panel = vscode.window.createWebviewPanel("create-west-workspace-panel", "Add West Workspace", vscode.ViewColumn.One, {
         // Enable javascript in the webview
         enableScripts: true,
         // Restrict the webview to only load resources from the `out` directory
@@ -126,11 +126,11 @@ export class CreateWestWorkspacePanel {
           <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
           <link rel="stylesheet" href="${styleUri}">
           <link rel="stylesheet" href="${codiconUri}">
-          <title>Create west workspace</title>
+          <title>Add West Workspace</title>
         </head>
         
         <body>
-          <h1>Create west workspace</h1>
+          <h1>Add West Workspace</h1>
           <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/west-workspace">Read Docs</a>
           <form>
             <div class="grid-group-div">
