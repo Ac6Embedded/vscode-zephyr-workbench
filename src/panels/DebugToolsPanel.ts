@@ -16,7 +16,6 @@ import {
 import { getInternalDirRealPath } from "../utils/utils";
 import { getEnvYamlPath, loadEnvYamlState, readEnvYamlObject as readEnvYamlObjectFile, writeEnvYamlObject as writeEnvYamlObjectFile } from "../utils/env/envYamlFileUtils";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/env/envYamlUtils";
-import { Aliases } from "../interface/interfaceDebugTools";
 import { setDebugToolAliasDefault } from "../utils/debugTools/debugToolEnvUtils";
 
 export class DebugToolsPanel {
@@ -285,13 +284,13 @@ export class DebugToolsPanel {
     // Load information about tools with alias, e.g : [alias = openocd, tools = [openocd-stm32, openocd-zephyr]]  
     for (const [alias, tools] of aliases) {
       
-      // "info" try to acess the object Aliases and try to find the same alias to Aliases and Tool, e.g: a.alias === alias
-      const info = this.data.aliases?.find((a:Aliases) => a.alias === alias) || {};
-      const parentToolName = info.name || '-';
-      const parentTooltip = this.renderTooltip(info.tooltip);
+      // Alias metadata lives in the manifest and drives the parent row for grouped tools.
+      const info = this.data.aliases?.find((a: DebugToolAliasEntry) => a.alias === alias);
+      const parentToolName = info?.name || '-';
+      const parentTooltip = this.renderTooltip(info?.tooltip);
 
       // Get default tool from env.yml, fallback to debug-tools.yml default
-      const defaultDebugToolsYml = this.data.aliases?.find((a:Aliases) => a.alias === alias)?.default;
+      const defaultDebugToolsYml = this.data.aliases?.find((a: DebugToolAliasEntry) => a.alias === alias)?.default;
       const defaultEnvYml = this.envData?.runners?.[alias]?.default || defaultDebugToolsYml || tools[0].tool;
 
       // Parent row is populated asynchronously once the selected default tool is probed.
@@ -864,7 +863,7 @@ export class DebugToolsPanel {
   }
 
   private getDefaultToolForAlias(alias: string): string | undefined {
-    const defaultDebugToolsYml = this.data.aliases?.find((a: Aliases) => a.alias === alias)?.default;
+    const defaultDebugToolsYml = this.data.aliases?.find((a: DebugToolAliasEntry) => a.alias === alias)?.default;
     const firstAliasTool = this.data.debug_tools.find((t: any) => t.alias === alias)?.tool;
     return this.envData?.runners?.[alias]?.default || defaultDebugToolsYml || firstAliasTool;
   }
