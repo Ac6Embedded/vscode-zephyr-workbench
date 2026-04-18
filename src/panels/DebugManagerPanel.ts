@@ -260,9 +260,16 @@ export class DebugManagerPanel {
               </div>
 
               <div id="runnerPathRow" class="grid-group-div">
-                <vscode-text-field class="browse-field" size="50" type="text" id="runnerPath" value="">Runner Path:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Enter to debug server's location if not found automatically in PATH">?</span>&nbsp;&nbsp;&nbsp;<span id="runnerDetect"></span></vscode-text-field>
+                <vscode-text-field class="browse-field" size="50" type="text" id="runnerPath" value="">Runner Path:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Enter to debug server's location if not found automatically in PATH">?</span></vscode-text-field>
                 <vscode-button id="browseRunnerButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
                 <span class="browse-spinner-inline"><span id="runnerPathSpinner" class="spinner" aria-label="Loading runner path" style="display:none;"></span></span>
+              </div>
+
+              <div id="runnerDetectRow" class="grid-group-div" style="display: none;">
+                <div style="display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px;">
+                  <span id="runnerDetect"></span>
+                  <vscode-button id="runnerDetectInstallButton" class="browse-input-button" style="display: none;" hidden>Install Runners</vscode-button>
+                </div>
               </div>
 
               <div id="runnerDefaultInfoRow" class="grid-group-div" style="display: none;">
@@ -323,6 +330,13 @@ export class DebugManagerPanel {
 
     const getRunnerInfo = (runnerName: string | undefined): { defaultInfo: string; pathInfo: string } => {
       return runnerName === 'openocd' ? currentOpenocdInfoText : { defaultInfo: '', pathInfo: '' };
+    };
+
+    const getRunnerDetectionName = (runnerName: string | undefined, runnerLabel?: string): string => {
+      if (runnerName === 'stlink_gdbserver') {
+        return 'STM32CubeCLT';
+      }
+      return runnerLabel ?? runnerName ?? '';
     };
 
     function getRunnersHtml(compatibleRunners: string[]): string {
@@ -389,7 +403,7 @@ export class DebugManagerPanel {
       webview.postMessage({
         command: 'updateRunnerDetect',
         runnerDetect: runnerDetect ? 'true' : 'false',
-        runnerName: `${runnerName ?? ''}`,
+        runnerName: `${getRunnerDetectionName(runnerName)}`,
         runnerPath: `${runnerPath ?? ''}`,
         runnerDefaultInfo: `${runnerDefaultInfo}`,
         runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
@@ -650,7 +664,7 @@ export class DebugManagerPanel {
       webview.postMessage({
         command: 'updateRunnerDetect',
         runnerDetect: found?'true':'false',
-        runnerName: runner.label ? runner.label : (runner.name ? runner.name : ''),
+        runnerName: getRunnerDetectionName(runner.name, runner.label),
         runnerPath: runner.serverPath? runner.serverPath:'',
         runnerVersion: runnerVersion ?? '',
         runnerDefaultInfo: `${runnerDefaultInfo}`,

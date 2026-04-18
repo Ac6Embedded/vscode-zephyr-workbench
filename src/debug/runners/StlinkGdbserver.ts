@@ -7,9 +7,12 @@ import { RunnerType, WestRunner } from "./WestRunner";
  *
  * The server is launched indirectly (via west / the STM32CubeCLT bundle) and does
  * not accept an executable-path flag on the command line. Accordingly:
- *   - `serverPath` is kept as an internal detail for `detect()` / `detectVersion()`
- *     only — it is never injected into `debugServerArgs` (the Debug Manager writer
- *     skips `--stlink_gdbserver <path>`) and the UI hides the runner path field.
+ *   - install/version detection comes from the STM32CubeCLT folder name
+ *     (`STM32CubeCLT_<version>`), not from invoking `ST-LINK_gdbserver --version`
+ *   - `serverPath` is kept only as an internal compatibility detail so older
+ *     saved configs can still round-trip cleanly; it is never injected into
+ *     `debugServerArgs` (the Debug Manager writer skips `--stlink_gdbserver <path>`)
+ *     and the UI hides the runner path field.
  *   - The install/version surface lives in the Install Runners panel; we deliberately
  *     do not duplicate that here.
  *
@@ -19,8 +22,8 @@ import { RunnerType, WestRunner } from "./WestRunner";
  *     contain `--stlink_gdbserver <path>` are consumed and silently dropped on the
  *     next save, rather than leaking into `userArgs`.
  *
- * Auto-detection of the CubeCLT-bundled binary happens in `loadInternalArgs` and
- * only runs when no usable path is already set.
+ * Auto-detection of the CubeCLT-bundled binary happens in `loadInternalArgs` only
+ * as a best-effort compatibility detail when no usable path is already set.
  */
 export class StlinkGdbserver extends WestRunner {
   name = 'stlink_gdbserver';
@@ -37,13 +40,6 @@ export class StlinkGdbserver extends WestRunner {
     return process.platform === 'win32'
       ? 'ST-LINK_gdbserver.exe'
       : 'ST-LINK_gdbserver';
-  }
-
-  /**
-   * Regex to capture the version number from CLI output.
-   */
-  get versionRegex(): RegExp {
-    return /ST-LINK GDB Server version: ([\d.]+)/;
   }
 
   /** ST-LINK uses `--port-number` instead of the standard `--gdb-port`. */
@@ -115,6 +111,28 @@ export class StlinkGdbserver extends WestRunner {
     return this.getCubeCltDirectories()[0];
   }
 
+  private getCubeCltVersionFromDirectory(cubeCltDir: string): string | undefined {
+    // CubeCLT version detection is defined by the install folder name itself:
+    // `STM32CubeCLT_<version>`. The installed version shown in the UI must come
+    // from that folder name, not from invoking the bundled ST-LINK executable.
+    const version = path.basename(cubeCltDir).replace(/^stm32cubeclt_/i, '').trim();
+    return version.length > 0 ? version : undefined;
+  }
+
+  private getLatestCubeCltInstall(): { directory: string; version: string } | undefined {
+    const directory = this.getLatestCubeCLTDirectory();
+    if (!directory) {
+      return undefined;
+    }
+
+    const version = this.getCubeCltVersionFromDirectory(directory);
+    if (!version) {
+      return undefined;
+    }
+
+    return { directory, version };
+  }
+
   public findCubeCltFile(...relativePathSegments: string[]): string | undefined {
     for (const cubeCltDir of this.getCubeCltDirectories()) {
       const candidate = path.join(cubeCltDir, ...relativePathSegments);
@@ -147,11 +165,15 @@ export class StlinkGdbserver extends WestRunner {
   }
 
   /**
-   * Detect the latest installed STM32CubeCLT version.
+   * Detect the latest installed STM32CubeCLT version from the folder name.
+   *
+   * This is the canonical installed-version source for CubeCLT in the runner
+   * layer, so callers always get the version from `STM32CubeCLT_<version>`.
    */
   public getVersionCubeCLT(showList = false): string | null {
     const versions = this.getCubeCltDirectories()
-      .map(dir => path.basename(dir).replace(/^stm32cubeclt_/i, ''));
+      .map(dir => this.getCubeCltVersionFromDirectory(dir))
+      .filter((version): version is string => typeof version === 'string' && version.length > 0);
 
     if (showList) {
       console.log('STM32CubeCLTs found:', versions);
@@ -161,11 +183,15 @@ export class StlinkGdbserver extends WestRunner {
   }
 
   /**
-   * Detect ST-LINK GDB Server from STM32CubeCLT first, then fall back to PATH.
+   * Detect installation from the STM32CubeCLT folder name only.
+   *
+   * We intentionally do not invoke `ST-LINK_gdbserver(.exe) --version` here:
+   * the executable is not the supported user-facing integration point and west
+   * launches it indirectly from the bundle.
    */
   override async detect(): Promise<boolean> {
     this.refreshDetectedServerPath();
-    return super.detect();
+    return this.getLatestCubeCltInstall() !== undefined;
   }
 
   /**
@@ -176,7 +202,7 @@ export class StlinkGdbserver extends WestRunner {
    * Install Runners panel uses for `stm32cubeclt`.
    */
   override async detectVersion(): Promise<string | undefined> {
-    return this.getVersionCubeCLT() ?? undefined;
+    return this.getLatestCubeCltInstall()?.version;
   }
 }
 

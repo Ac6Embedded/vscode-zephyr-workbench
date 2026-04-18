@@ -10,6 +10,7 @@ function main() {
   setVSCodeMessageListener();
 
   hideBrowseSpinners();
+  setRunnerDetectMessage('');
   updateRunnerDefaultInfo('', '');
   initApplicationsDropdown();
   initBuildConfigsDropdown();
@@ -22,6 +23,7 @@ function main() {
   const browseGdbButton = document.getElementById("browseGdbButton") as Button;
   const browseRunnerButton = document.getElementById("browseRunnerButton") as Button;
   const installButton = document.getElementById("installRunnerButton") as Button;
+  const runnerDetectInstallButton = document.getElementById("runnerDetectInstallButton") as Button;
   const changeRunnerDefaultButton = document.getElementById("changeRunnerDefaultButton") as Button;
   const resetButton = document.getElementById("resetButton") as Button;
   const applyButton = document.getElementById("applyButton") as Button;
@@ -42,6 +44,7 @@ function main() {
   browseRunnerButton?.addEventListener("click", browseRunnerHandler);
 
   installButton.addEventListener("click", installHandler);
+  runnerDetectInstallButton?.addEventListener("click", installHandler);
   changeRunnerDefaultButton?.addEventListener("click", installHandler);
   resetButton.addEventListener("click", resetHandler);
   applyButton.addEventListener("click", applyHandler);
@@ -51,17 +54,17 @@ function main() {
 }
 
 /**
- * Hide the Runner Path row when ST-LINK GDB Server is selected.
+ * Hide the Runner Path row for runners that should not expose an executable
+ * path override in this view.
  *
- * The stlink executable is launched indirectly (via west / the STM32CubeCLT
- * bundle) and does not accept a path flag, so exposing a path field here is
- * misleading. Version/install information for stlink is surfaced by the
- * dedicated Install Runners panel, so we do not duplicate it here.
+ * - `stlink_gdbserver` is launched indirectly via the STM32CubeCLT bundle.
+ * - `pyocd` is expected to resolve from the active environment rather than
+ *   from a per-config path field here.
  */
-function stlinkPathDisabled() {
+function runnerPathHiddenForSelectedRunner() {
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement | null;
   const runnerName = (runnerInput?.getAttribute('data-value') ?? '').toLowerCase();
-  const hideRow = runnerName === 'stlink_gdbserver';
+  const hideRow = runnerName === 'stlink_gdbserver' || runnerName === 'pyocd';
 
   const runnerPathRow = document.getElementById('runnerPathRow') as HTMLElement | null;
   if (runnerPathRow) {
@@ -89,11 +92,7 @@ function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputEl
 
       if (input.id === 'runnerInput') {
         // Clear previous detection text and start spinner before re-checking
-        const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
-        if (runnerDetectSpan) {
-          runnerDetectSpan.innerHTML = '';
-          runnerDetectSpan.style.color = '';
-        }
+        setRunnerDetectMessage('');
         updateRunnerDefaultInfo('', '');
         showSpinner('runnerPathSpinner');
       }
@@ -153,6 +152,22 @@ function setLocalPath(id: string, path: string) {
     localPath.dispatchEvent(new Event('input'));
   }
   hideBrowseSpinnerForField(id);
+}
+
+function setRunnerDetectMessage(text: string, color: string = '', showInstallButton: boolean = false) {
+  const runnerDetectRow = document.getElementById('runnerDetectRow') as HTMLElement | null;
+  const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement | null;
+  const runnerDetectInstallButton = document.getElementById('runnerDetectInstallButton') as Button | null;
+  if (!runnerDetectRow || !runnerDetectSpan || !runnerDetectInstallButton) {
+    return;
+  }
+
+  const resolvedText = (text ?? '').trim();
+  runnerDetectSpan.textContent = resolvedText;
+  runnerDetectSpan.style.color = color;
+  runnerDetectInstallButton.hidden = !(resolvedText.length > 0 && showInstallButton);
+  runnerDetectInstallButton.style.display = resolvedText.length > 0 && showInstallButton ? '' : 'none';
+  runnerDetectRow.style.display = resolvedText.length > 0 ? '' : 'none';
 }
 
 function setVSCodeMessageListener() {
@@ -443,12 +458,8 @@ function initRunnersDropdown() {
 
   runnerInput.addEventListener('input', () => {
     // Clear previous detection text before triggering new detection
-    const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
     const runnerPathText = document.getElementById('runnerPath') as TextField;
-    if (runnerDetectSpan) {
-      runnerDetectSpan.innerHTML = '';
-      runnerDetectSpan.style.color = '';
-    }
+    setRunnerDetectMessage('');
     if (runnerPathText) {
       runnerPathText.value = '';
     }
@@ -457,7 +468,7 @@ function initRunnersDropdown() {
       runner: runnerInput.getAttribute('data-value'),
       runnerPath: '',
     });
-    stlinkPathDisabled();
+    runnerPathHiddenForSelectedRunner();
   });
 
   runnerInput.addEventListener('keyup', () => {
@@ -591,7 +602,7 @@ function updateConfig(data: any) {
   svdPathText.dispatchEvent(new Event('input'));
   gdbPathText.dispatchEvent(new Event('input'));
   runnerPathText.dispatchEvent(new Event('input'));
-  stlinkPathDisabled();
+  runnerPathHiddenForSelectedRunner();
 
   hideSpinner('programPathSpinner');
   hideSpinner('gdbPathSpinner');
@@ -608,7 +619,7 @@ function updateRunnerConfig(runnerPath: string, runnerArgs: string, runnerDefaul
   runnerArgsText.value = runnerArgs ?? '';
   runnerArgsText.dispatchEvent(new Event('input'));
   updateRunnerDefaultInfo(runnerDefaultInfo ?? '', runnerDefaultPathInfo ?? '');
-  stlinkPathDisabled();
+  runnerPathHiddenForSelectedRunner();
 
   if ((runnerPath ?? '').trim().length > 0) {hideSpinner('runnerPathSpinner');}
 }
@@ -634,29 +645,28 @@ function updateRunnerDetect(
   runnerDefaultPathInfo?: string,
   runnerVersion?: string,
 ) {
-  const runnerDetectSpan = document.getElementById('runnerDetect') as HTMLElement;
   const resolvedRunnerName = (runnerName ?? '').trim();
   updateRunnerDefaultInfo(runnerDefaultInfo ?? '', runnerDefaultPathInfo ?? '');
   hideSpinner('runnerPathSpinner');
   if (!resolvedRunnerName) {
-    runnerDetectSpan.textContent = 'Choose a runner';
-    runnerDetectSpan.style.color = "#aa0000";
-    stlinkPathDisabled();
+    setRunnerDetectMessage('Choose a runner', "#aa0000");
+    runnerPathHiddenForSelectedRunner();
     return;
   }
   if (runnerDetect === true) {
     const resolvedVersion = (runnerVersion ?? '').trim();
-    runnerDetectSpan.textContent = resolvedVersion.length > 0
-      ? `${resolvedRunnerName} is installed (version ${resolvedVersion})`
-      : `${resolvedRunnerName} is installed`;
-    runnerDetectSpan.style.color = "#00aa00";
+    setRunnerDetectMessage(
+      resolvedVersion.length > 0
+        ? `${resolvedRunnerName} is installed (version ${resolvedVersion})`
+        : `${resolvedRunnerName} is installed`,
+      "#00aa00",
+    );
   } else if (runnerDetect === false) {
-    runnerDetectSpan.textContent = `${resolvedRunnerName} is NOT installed`;
-    runnerDetectSpan.style.color = "#aa0000";
+    setRunnerDetectMessage(`${resolvedRunnerName} is NOT installed`, "#aa0000", true);
   } else {
     console.warn('Unexpected value for runnerDetect:', runnerDetect);
   }
-  stlinkPathDisabled();
+  runnerPathHiddenForSelectedRunner();
 }
 
 // Pending selections to be made once dropdowns are populated
