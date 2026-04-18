@@ -7,8 +7,7 @@ import { Linkserver } from "../../debug/runners/Linkserver";
 import { Openocd } from "../../debug/runners/Openocd";
 import { WestRunner } from "../../debug/runners/WestRunner";
 import { checkPyOCDTarget, concatCommands, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from '../execUtils';
-import { ZephyrProject } from "../../models/ZephyrProject";
-import { ZephyrAppProject } from "../../models/ZephyrAppProject";
+import { ZephyrApplication } from "../../models/ZephyrApplication";
 import { findBoardByHierarchicalIdentifier, getSupportedBoards } from '../zephyr/boardDiscovery';
 import { findArmGnuEntry, getWestWorkspace, deleteFolder, fileExists, migrateToolchainVariant, tryGetZephyrSDK } from '../utils';
 import { STM32CubeProgrammer } from '../../debug/runners/STM32CubeProgrammer';
@@ -19,7 +18,7 @@ import { SimplicityCommander } from '../../debug/runners/SimplicityCommander';
 import { JLink } from '../../debug/runners/JLink';
 import { PyOCD } from '../../debug/runners/PyOCD';
 import { ZephyrBoard } from '../../models/ZephyrBoard';
-import { ZephyrProjectBuildConfiguration } from '../../models/ZephyrProjectBuildConfiguration';
+import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
 import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeOnlyCommand } from '../../commands/WestCommands';
 import { ParsedRunnersYaml, findRunnersYamlForProject, getRunnerPathFromRunnersYaml, readRunnersYamlFile, readRunnersYamlForBuildDir, readRunnersYamlForProject } from '../zephyr/runnersYamlUtils';
 import { composeWestBuildArgs } from '../zephyr/westArgUtils';
@@ -150,8 +149,8 @@ export function getRunRunners(): WestRunner[] {
 }
 
 function getExistingRunnersYamlPath(
-  project: ZephyrAppProject,
-  config: ZephyrProjectBuildConfiguration
+  project: ZephyrApplication,
+  config: ZephyrBuildConfig
 ): string | undefined {
   return findRunnersYamlForProject(project, config);
 }
@@ -294,18 +293,18 @@ function resolveGeneratedArtifactsFromBuildDir(
 }
 
 export function getDefaultDebugRunner(
-  project: ZephyrProject,
-  buildConfig: ZephyrProjectBuildConfiguration
+  project: ZephyrApplication,
+  buildConfig: ZephyrBuildConfig
 ): string | undefined {
   return readRunnersYamlForProject(project, buildConfig)?.defaultDebugRunner;
 }
 
 async function collectLaunchConfigurationArtifacts(
-  project: ZephyrProject,
-  buildConfig: ZephyrProjectBuildConfiguration,
+  project: ZephyrApplication,
+  buildConfig: ZephyrBuildConfig,
   westWorkspace: ReturnType<typeof getWestWorkspace>,
 ): Promise<LaunchConfigurationArtifacts> {
-  const appFolderName = project.workspaceContext?.name;
+  const appFolderName = project.appWorkspaceFolder?.name;
   const buildDir = buildConfig.getBuildDir(project);
   const boardIdentifier = buildConfig.boardIdentifier;
   let {
@@ -362,8 +361,8 @@ async function collectLaunchConfigurationArtifacts(
  * Runs with --build-dir and --board, using a temporary build dir if the main one doesn't exist.
  */
 export async function getFlashRunners(
-  project: ZephyrAppProject,
-  config: ZephyrProjectBuildConfiguration
+  project: ZephyrApplication,
+  config: ZephyrBuildConfig
 ): Promise<{ all: string[]; available: string[]; def?: string; output: string }>
 {
   const existingRunnersYamlPath = getExistingRunnersYamlPath(project, config);
@@ -376,20 +375,20 @@ export async function getFlashRunners(
 
   return new Promise((resolve, reject) => {
     // Always use a temporary build directory for help query; avoids touching real build artifacts
-    const buildDir = path.join(project.folderPath, '.tmp', 'flash-runners', config.name);
+    const buildDir = path.join(project.appRootPath, '.tmp', 'flash-runners', config.name);
     try { fs.mkdirSync(buildDir, { recursive: true }); } catch {}
 
     // 1) Ensure runner properties are generated for this build dir
     //    Use dedicated target runners_yaml_props_target then query help
     const composedWestArgs = composeWestBuildArgs(config.westArgs, mergeOpenocdBuildFlag(project, config.westArgs, config.westFlagsD));
     const westArgs = composedWestArgs.length > 0 ? ` ${composedWestArgs}` : '';
-    const buildCmd = `west build -t runners_yaml_props_target --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.folderPath}"${westArgs}`;
-    const helpCmd  = `west flash -H --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.folderPath}"`;
+    const buildCmd = `west build -t runners_yaml_props_target --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.appRootPath}"${westArgs}`;
+    const helpCmd  = `west flash -H --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.appRootPath}"`;
 
     execWestCommandWithEnvAsync(buildCmd, project)
       .then(() => {
         execWestCommandWithEnv(helpCmd, project, (err, stdout) => {
-          if (err) { deleteFolder(buildDir); deleteFolder(path.join(project.folderPath, '.tmp')); return reject(err); }
+          if (err) { deleteFolder(buildDir); deleteFolder(path.join(project.appRootPath, '.tmp')); return reject(err); }
 
       const lines = stdout.split(/\r?\n/).map(l => l.trim());
       const pickList: string[] = [];
@@ -429,15 +428,15 @@ export async function getFlashRunners(
           const all = Array.from(new Set(pickList));
           if (all.length === 0 && available.length === 0) {
             deleteFolder(buildDir);
-            deleteFolder(path.join(project.folderPath, '.tmp'));
+            deleteFolder(path.join(project.appRootPath, '.tmp'));
             return reject(new Error('No flash runners were found for this configuration.'));
           }
           deleteFolder(buildDir);
-          deleteFolder(path.join(project.folderPath, '.tmp'));
+          deleteFolder(path.join(project.appRootPath, '.tmp'));
           resolve({ all, available, def, output: stdout });
         });
       })
-      .catch((e) => { deleteFolder(buildDir); deleteFolder(path.join(project.folderPath, '.tmp')); reject(e); });
+      .catch((e) => { deleteFolder(buildDir); deleteFolder(path.join(project.appRootPath, '.tmp')); reject(e); });
   });
 }
 
@@ -466,7 +465,7 @@ export function getRunner(runnerName: string): WestRunner | undefined {
   }
 }
 
-export function createWestWrapper(project: ZephyrProject, buildConfigName?: string) {
+export function createWestWrapper(project: ZephyrApplication, buildConfigName?: string) {
   let buildDir; 
   let buildConfig;
   if(buildConfigName) {
@@ -480,7 +479,7 @@ export function createWestWrapper(project: ZephyrProject, buildConfigName?: stri
     return;
   }
   
-  const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+  const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
   let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
   if(!envScript) {
     throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
@@ -589,11 +588,11 @@ ${debugServerCommand}
   }
 }
 
-export function createOpenocdCfg(project: ZephyrProject) {
-  Openocd.createWorkaroundCfg(project.folderPath);
+export function createOpenocdCfg(project: ZephyrApplication) {
+  Openocd.createWorkaroundCfg(project.appRootPath);
 }
 
-export async function setupPyOCDTarget(project: ZephyrProject, buildConfigName?: string) {
+export async function setupPyOCDTarget(project: ZephyrApplication, buildConfigName?: string) {
   let target;
   if(buildConfigName) {
     let buildConfig = project.getBuildConfiguration(buildConfigName);
@@ -615,18 +614,18 @@ export async function setupPyOCDTarget(project: ZephyrProject, buildConfigName?:
 }
 
 export async function createLaunchConfiguration(
-  project: ZephyrProject,
+  project: ZephyrApplication,
   buildConfigName?: string,
   artifacts?: LaunchConfigurationArtifacts,
 ): Promise<any> {
-  const westWorkspace = getWestWorkspace(project.westWorkspacePath);
-  const cfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.workspaceFolder);
+  const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
+  const cfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.appWorkspaceFolder);
   const toolchainKind = migrateToolchainVariant(cfg, cfg.get<string>(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY) ?? 'zephyr');
-  const zephyrSDK = tryGetZephyrSDK(project.sdkPath);
+  const zephyrSDK = tryGetZephyrSDK(project.zephyrSdkPath);
   const armGnuToolchain = toolchainKind === 'gnuarmemb'
     ? findArmGnuEntry(cfg.get<string>(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ''))
     : undefined;
-  let buildConfig: ZephyrProjectBuildConfiguration | undefined = undefined;
+  let buildConfig: ZephyrBuildConfig | undefined = undefined;
   let targetBoard: ZephyrBoard | undefined;
   let generatedGdbPath: string | undefined;
 
@@ -677,9 +676,9 @@ export async function createLaunchConfiguration(
     configName = `Zephyr Workbench Debug [${buildConfig.name}]`;
     socToolchainName = buildConfig.getKConfigValue(project, 'SOC_TOOLCHAIN_NAME');
 
-    const workspacePath = project.workspaceFolder.uri.fsPath;
+    const workspacePath = project.appWorkspaceFolder.uri.fsPath;
     const buildFolderPath = path.join(workspacePath, buildConfig.relativeBuildDir);
-    const appFolderName = project.workspaceContext.name;
+    const appFolderName = project.appWorkspaceFolder.name;
     const appNameDir = path.join(buildFolderPath, appFolderName);
 
     if (fs.existsSync(appNameDir)) {
@@ -750,14 +749,14 @@ export async function createLaunchConfiguration(
   };
 
   launchJson.miDebuggerPath = generatedGdbPath
-    ? (project.sdkPath ? normalizeSdkRelativeDetectedPath(generatedGdbPath, project.sdkPath) : generatedGdbPath)
+    ? (project.zephyrSdkPath ? normalizeSdkRelativeDetectedPath(generatedGdbPath, project.zephyrSdkPath) : generatedGdbPath)
     : `${armGnuToolchain?.debuggerPath ?? zephyrSDK?.getDebuggerPath(targetArch, socToolchainName) ?? ''}`;
 
   return launchJson;
 }
 
 export async function createLaunchJson(
-  project: ZephyrProject,
+  project: ZephyrApplication,
   buildConfigName?: string,
   artifacts?: LaunchConfigurationArtifacts,
 ): Promise<any> {
@@ -773,12 +772,12 @@ export async function createLaunchJson(
   return launchJson;
 }
 
-export async function readLaunchJson(project: ZephyrProject): Promise<any | undefined> {
+export async function readLaunchJson(project: ZephyrApplication): Promise<any | undefined> {
   // launch.json may exist as an empty placeholder (created by VS Code when the
   // user opens the Run/Debug view) or contain malformed JSON. Treat both as
   // "no usable config" so callers can fall back to creating a fresh one,
   // instead of crashing with "Unexpected end of JSON input".
-  const raw = await fs.promises.readFile(path.join(project.sourceDir, '.vscode', 'launch.json'), 'utf8');
+  const raw = await fs.promises.readFile(path.join(project.appRootPath, '.vscode', 'launch.json'), 'utf8');
   if (raw.trim().length === 0) {
     return undefined;
   }
@@ -789,8 +788,8 @@ export async function readLaunchJson(project: ZephyrProject): Promise<any | unde
   }
 }
 
-export function writeLaunchJson(launchJson: any, project: ZephyrProject) {
-  fs.writeFileSync(path.join(project.sourceDir, '.vscode', 'launch.json'), JSON.stringify(launchJson, null, 2));
+export function writeLaunchJson(launchJson: any, project: ZephyrApplication) {
+  fs.writeFileSync(path.join(project.appRootPath, '.vscode', 'launch.json'), JSON.stringify(launchJson, null, 2));
 }
 
 export function pyocdLaunchJson(
@@ -845,7 +844,7 @@ export function pyocdLaunchJson(
 
 export async function findLaunchConfiguration(
   launchJson: any,
-  project: ZephyrProject,
+  project: ZephyrApplication,
   buildConfigName?: string,
   artifacts?: LaunchConfigurationArtifacts,
 ): Promise<any> {
@@ -879,13 +878,13 @@ export async function findLaunchConfiguration(
 }
 
 export async function getLaunchConfiguration(
-  project: ZephyrProject,
+  project: ZephyrApplication,
   buildConfigName?: string,
   createIfMissing: boolean = false,
   artifacts?: LaunchConfigurationArtifacts,
 ): Promise<[any, any]> {
   let launchJson: any;
-  const launchPath = path.join(project.sourceDir, '.vscode', 'launch.json');
+  const launchPath = path.join(project.appRootPath, '.vscode', 'launch.json');
 
   if (fs.existsSync(launchPath)) {
     launchJson = await readLaunchJson(project);
@@ -910,10 +909,10 @@ export async function getLaunchConfiguration(
 }
 
 export async function getDebugManagerLaunchConfiguration(
-  project: ZephyrProject,
-  buildConfig: ZephyrProjectBuildConfiguration,
+  project: ZephyrApplication,
+  buildConfig: ZephyrBuildConfig,
 ): Promise<[any, any, string[], string | undefined, string | undefined]> {
-  const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+  const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
   const artifacts = await collectLaunchConfigurationArtifacts(project, buildConfig, westWorkspace);
   const [launchJson, config] = await getLaunchConfiguration(project, buildConfig.name, false, artifacts);
   return [launchJson, config, artifacts.compatibleRunners, artifacts.defaultDebugRunner, artifacts.generatedOpenocdPath];

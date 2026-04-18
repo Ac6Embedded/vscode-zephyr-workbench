@@ -1,23 +1,39 @@
 import * as vscode from 'vscode';
 import fs from "fs";
 import path from 'path';
-import { ZephyrProject } from "./ZephyrProject";
+import { ZephyrApplication } from "./ZephyrApplication";
 import { getBuildEnv, loadConfigEnv } from "../utils/env/zephyrEnvUtils";
-import { concatCommands, getShellClearCommand, getShellEchoCommand, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
+import {
+  concatCommands,
+  getShellClearCommand,
+  getShellEchoCommand,
+  getResolvedShell,
+  classifyShell,
+  normalizePathForShell,
+  winToPosixPath,
+} from '../utils/execUtils';
 import { getBoardFromIdentifier } from '../utils/zephyr/boardDiscovery';
-import { fileExists, getConfigValue, getConfiguredToolchainEnv, getWestWorkspace, tryGetZephyrSDK } from '../utils/utils';
-import { ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
+import {
+  fileExists,
+  getConfigValue,
+  getConfiguredToolchainEnv,
+  getWestWorkspace,
+  tryGetZephyrSDK,
+} from '../utils/utils';
+import {
+  ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY,
+  ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
+  ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
+  ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
+} from '../constants';
 import { composeWestBuildArgs, normalizeWestFlagDValue } from '../utils/zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
 import { getPyOcdTargetFromRunnersYaml, readRunnersYamlForProject } from '../utils/zephyr/runnersYamlUtils';
 
-export class ZephyrProjectBuildConfiguration {
+export class ZephyrBuildConfig {
   name: string;
   active: boolean = true;
   boardIdentifier!: string;
-  // Maybe not allow changing workspace nor sdk, uncomment if needed
-  // westWorkspacePath!: string;
-  // sdkPath!: string;
   envVars: { [key: string]: any } = {
     EXTRA_CONF_FILE: [],
     EXTRA_DTC_OVERLAY_FILE: [],
@@ -27,9 +43,7 @@ export class ZephyrProjectBuildConfiguration {
   };
   westArgs: string = '';
   westFlagsD: string[] = [];
-  // Preferred west runner for this configuration (used for Run/Flash)
   defaultRunner?: string;
-  // Custom arguments passed to the runner (e.g. -p /dev/ttyX, --erase)
   customArgs?: string;
 
   sysbuild: string = "false";
@@ -40,16 +54,22 @@ export class ZephyrProjectBuildConfiguration {
     this.name = name ?? '';
   }
 
+  get boardId(): string {
+    return this.boardIdentifier;
+  }
+
+  set boardId(value: string) {
+    this.boardIdentifier = value;
+  }
+
   parseSettings(buildConfig: any, workspaceContext: vscode.WorkspaceFolder) {
     this.active = buildConfig['active'] === "true" ? true : false;
     this.boardIdentifier = buildConfig['board'];
-    // Read persisted default runner if set; empty string means unset
     if (typeof buildConfig['default-runner'] === 'string' && buildConfig['default-runner'].length > 0) {
       this.defaultRunner = buildConfig['default-runner'];
     } else {
       this.defaultRunner = undefined;
     }
-    // Read persisted custom arguments if set
     if (typeof buildConfig['custom-args'] === 'string' && buildConfig['custom-args'].length > 0) {
       this.customArgs = buildConfig['custom-args'];
     } else {
@@ -58,10 +78,10 @@ export class ZephyrProjectBuildConfiguration {
     this.westArgs = buildConfig['west-args'] ?? '';
     this.westFlagsD = Array.isArray(buildConfig[ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY])
       ? buildConfig[ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY]
-          .map((value: unknown) => typeof value === 'string' ? normalizeWestFlagDValue(value) : '')
-          .filter((value: string) => value.length > 0)
+        .map((value: unknown) => typeof value === 'string' ? normalizeWestFlagDValue(value) : '')
+        .filter((value: string) => value.length > 0)
       : [];
-    for (let key in this.envVars) {
+    for (const key in this.envVars) {
       const values = loadConfigEnv(workspaceContext, this.name, key);
       if (values) {
         this.envVars[key] = values;
@@ -91,15 +111,17 @@ export class ZephyrProjectBuildConfiguration {
   }
 
   /**
-   * Build directory
+   * Build directory for this configuration under the application root.
    */
-  getBuildDir(parentProject: ZephyrProject): string {
-    return path.join(parentProject.folderPath, this.relativeBuildDir);
+  getBuildDir(application: ZephyrApplication): string {
+    return path.join(application.appRootPath, this.relativeBuildDir);
   }
 
-  private getBuildArtifactCandidates(parentProject: ZephyrProject, ...segments: string[]): string[] {
-    const buildDir = this.getBuildDir(parentProject);
-    const appFolderName = parentProject.workspaceContext?.name;
+  // Some generated layouts place artifacts under an extra application-name
+  // directory, so probe both shapes before concluding that an artifact is missing.
+  private getBuildArtifactCandidates(application: ZephyrApplication, ...segments: string[]): string[] {
+    const buildDir = this.getBuildDir(application);
+    const appFolderName = application.appWorkspaceFolder?.name;
     const candidates: string[] = [];
 
     if (appFolderName && appFolderName.length > 0) {
@@ -110,56 +132,52 @@ export class ZephyrProjectBuildConfiguration {
     return candidates;
   }
 
-  getBuildArtifactPath(parentProject: ZephyrProject, ...segments: string[]): string | undefined {
-    return this.getBuildArtifactCandidates(parentProject, ...segments).find(candidate => fileExists(candidate));
+  getBuildArtifactPath(application: ZephyrApplication, ...segments: string[]): string | undefined {
+    return this.getBuildArtifactCandidates(application, ...segments).find(candidate => fileExists(candidate));
   }
 
-  /**
-   * Under build directory, the internal debug directory is used to generate wrappers, files, etc...
-   * and is not removed after pristine rebuilt. 
-   */
-  getInternalDebugDir(parentProject: ZephyrProject): string {
-    return path.join(parentProject.folderPath, this.relativeInternalDebugDir);
+  getInternalDebugDir(application: ZephyrApplication): string {
+    return path.join(application.appRootPath, this.relativeInternalDebugDir);
   }
 
-  private composeBuildEnv(parentProject: ZephyrProject): { [key: string]: string; } {
-    const westBuildArgs = composeWestBuildArgs(this.westArgs, mergeOpenocdBuildFlag(parentProject, this.westArgs, this.westFlagsD));
+  // Centralize config-specific env assembly so tasks, terminals and debug
+  // helpers all derive the same BOARD/BUILD_DIR/WEST_ARGS view.
+  private composeBuildEnv(application: ZephyrApplication): { [key: string]: string; } {
+    const westBuildArgs = composeWestBuildArgs(this.westArgs, mergeOpenocdBuildFlag(application, this.westArgs, this.westFlagsD));
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
-      BUILD_DIR: this.getBuildDir(parentProject),
+      BUILD_DIR: this.getBuildDir(application),
       ...(westBuildArgs) ? { WEST_ARGS: westBuildArgs } : {}
     };
-    
-    // Make a copy of envVars to modify
-    let envVars = { ...this.envVars };
 
-    // If sysbuild is true, remove EXTRA_CONF_FILE from envVars
+    const envVars = { ...this.envVars };
+
     if (this.sysbuild === "true") {
       delete envVars.EXTRA_CONF_FILE;
     }
 
-    let additionalEnv = getBuildEnv(envVars);
+    const additionalEnv = getBuildEnv(envVars);
     baseEnv = { ...baseEnv, ...additionalEnv };
     return baseEnv;
   }
 
-  getBuildEnv(parentProject: ZephyrProject): { [key: string]: string; } {
-    return this.composeBuildEnv(parentProject);
+  getBuildEnv(application: ZephyrApplication): { [key: string]: string; } {
+    return this.composeBuildEnv(application);
   }
 
-  getBuildEnvWithVar(parentProject: ZephyrProject): { [key: string]: string; } {
-    return this.composeBuildEnv(parentProject);
+  getBuildEnvWithVar(application: ZephyrApplication): { [key: string]: string; } {
+    return this.composeBuildEnv(application);
   }
 
-  async getCompatibleRunners(parentProject: ZephyrProject): Promise<string[]> {
-    const runnersYaml = readRunnersYamlForProject(parentProject, this);
+  async getCompatibleRunners(application: ZephyrApplication): Promise<string[]> {
+    const runnersYaml = readRunnersYamlForProject(application, this);
     let runners = runnersYaml?.runners ?? [];
 
-    // Search in board.cmake if runners.yaml does not exists
+    // Fall back to board metadata when runners.yaml has not been generated yet.
     if (runners.length === 0) {
       try {
-        const westWorkspace = getWestWorkspace(parentProject.westWorkspacePath);
-        const board = await getBoardFromIdentifier(this.boardIdentifier, westWorkspace, parentProject, this);
+        const westWorkspace = getWestWorkspace(application.westWorkspaceRootPath);
+        const board = await getBoardFromIdentifier(this.boardIdentifier, westWorkspace, application, this);
         runners = board.getCompatibleRunners();
       } catch {
         runners = [];
@@ -169,35 +187,39 @@ export class ZephyrProjectBuildConfiguration {
     return runners;
   }
 
-  getPyOCDTarget(parentProject: ZephyrProject): string | undefined {
-    return getPyOcdTargetFromRunnersYaml(readRunnersYamlForProject(parentProject, this));
+  getPyOCDTarget(application: ZephyrApplication): string | undefined {
+    return getPyOcdTargetFromRunnersYaml(readRunnersYamlForProject(application, this));
   }
 
-  getKConfigValue(parentProject: ZephyrProject, configKey: string): string | undefined {
-    const dotConfig = this.getBuildArtifactPath(parentProject, 'zephyr', '.config');
+  getKConfigValue(application: ZephyrApplication, configKey: string): string | undefined {
+    const dotConfig = this.getBuildArtifactPath(application, 'zephyr', '.config');
     if (dotConfig && fileExists(dotConfig)) {
       return getConfigValue(dotConfig, configKey);
     }
     return undefined;
   }
 
-  private static openTerminal(zephyrProject: ZephyrProject, buildConfig: ZephyrProjectBuildConfiguration): vscode.Terminal {
+  private static openTerminal(application: ZephyrApplication, buildConfig: ZephyrBuildConfig): vscode.Terminal {
     const { path: shellPath, args: shellArgs } = getResolvedShell();
     const shellType = classifyShell(shellPath);
-    const zephyrSdk = tryGetZephyrSDK(zephyrProject.sdkPath);
-    const westWorkspace = getWestWorkspace(zephyrProject.westWorkspacePath);
+    const zephyrSdk = tryGetZephyrSDK(application.zephyrSdkPath);
+    const westWorkspace = getWestWorkspace(application.westWorkspaceRootPath);
 
     const isWinPosix = process.platform === 'win32' &&
-                   (shellType === 'bash' || shellType === 'zsh' ||
-                    shellType === 'dash' || shellType === 'fish');
+      (shellType === 'bash' || shellType === 'zsh' ||
+        shellType === 'dash' || shellType === 'fish');
 
     let venvPath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
     if (!venvPath || venvPath.length === 0) {
-      venvPath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.workspaceFolder.uri).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
+      venvPath = vscode.workspace
+        .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, application.appWorkspaceFolder.uri)
+        .get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
     }
 
+    // Config terminals inherit the application environment, then layer this
+    // build configuration on top so manual commands match automated ones.
     const opts: vscode.TerminalOptions = {
-      name: `${zephyrProject.folderName} (${buildConfig.name}) Terminal`,
+      name: `${application.appName} (${buildConfig.name}) Terminal`,
       shellPath: `${shellPath}`,
       shellArgs: shellArgs,
       env: {
@@ -205,11 +227,11 @@ export class ZephyrProjectBuildConfiguration {
         ...(zephyrSdk?.buildEnv ?? {}),
         ...westWorkspace.buildEnv,
         ...getConfiguredToolchainEnv(
-          vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.workspaceFolder),
+          vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, application.appWorkspaceFolder),
         ),
-        ...buildConfig.getBuildEnv(zephyrProject),
+        ...buildConfig.getBuildEnv(application),
       },
-      cwd: fs.existsSync(buildConfig.getBuildDir(zephyrProject)) ? buildConfig.getBuildDir(zephyrProject) : zephyrProject.folderPath
+      cwd: fs.existsSync(buildConfig.getBuildDir(application)) ? buildConfig.getBuildDir(application) : application.appRootPath
     };
 
     const envVars = opts.env || {};
@@ -242,12 +264,12 @@ export class ZephyrProjectBuildConfiguration {
     return terminal;
   }
 
-  static getTerminal(zephyrProject: ZephyrProject, buildConfig: ZephyrProjectBuildConfiguration): vscode.Terminal {
+  static getTerminal(application: ZephyrApplication, buildConfig: ZephyrBuildConfig): vscode.Terminal {
     const terminals = <vscode.Terminal[]>(<any>vscode.window).terminals;
     for (let i = 0; i < terminals.length; i++) {
-      const cTerminal = terminals[i];
-      if (cTerminal.name === `${zephyrProject.folderName} (${buildConfig.name}) Terminal`) {
-        return cTerminal;
+      const currentTerminal = terminals[i];
+      if (currentTerminal.name === `${application.appName} (${buildConfig.name}) Terminal`) {
+        return currentTerminal;
       }
     }
 
@@ -256,11 +278,11 @@ export class ZephyrProjectBuildConfiguration {
       throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Ac6 Zephyr');
     }
 
-    let terminal = ZephyrProjectBuildConfiguration.openTerminal(zephyrProject, buildConfig);
+    const terminal = ZephyrBuildConfig.openTerminal(application, buildConfig);
     const { path: shellPath } = getResolvedShell();
     const shellType = classifyShell(shellPath);
     envScript = normalizePathForShell(shellType, envScript);
-    let srcEnvCmd = `. ${envScript}`;
+    const srcEnvCmd = `. ${envScript}`;
     terminal.sendText(srcEnvCmd);
 
     return terminal;

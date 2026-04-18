@@ -2,10 +2,9 @@ import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { createLaunchConfiguration as createDefaultConfiguration, getDebugRunners, getLaunchConfiguration, getRunner, getRunRunners, writeLaunchJson } from "../utils/debugTools/debugUtils";
-import { ZephyrAppProject } from "../models/ZephyrAppProject";
-import { getZephyrProject } from '../utils/utils';
+import { ZephyrApplication } from "../models/ZephyrApplication";
+import { getZephyrApplication } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
-import { ZephyrProject } from '../models/ZephyrProject';
 
 // @unused
 // This class is unused but kept for potential future use
@@ -79,10 +78,10 @@ export class RunManagerPanel {
     let applicationsHTML: string = '';
 
     if(vscode.workspace.workspaceFolders) {
-      const projectFolders = await ZephyrAppProject.getZephyrProjectWorkspaceFolders(vscode.workspace.workspaceFolders);
+      const projectFolders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders);
       for (const workspaceFolder of projectFolders) {
-        const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-        applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.sourceDir}" data-label="${appProject.folderName}">${appProject.folderName} <span class="description">${appProject.sourceDir}</span></div>`);
+        const appProject = new ZephyrApplication(workspaceFolder, workspaceFolder.uri.fsPath);
+        applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.appRootPath}" data-label="${appProject.appName}">${appProject.appName} <span class="description">${appProject.appRootPath}</span></div>`);
       }
     }
 
@@ -192,7 +191,7 @@ export class RunManagerPanel {
         switch (command) {
           case 'projectChanged': {
             const projectPath = message.project;
-            const appProject = await getZephyrProject(projectPath);
+            const appProject = await getZephyrApplication(projectPath);
             if(appProject) {
               await updateConfiguration(appProject);
             }
@@ -234,7 +233,7 @@ export class RunManagerPanel {
       this._disposables
     );
 
-    async function updateConfiguration(project: ZephyrProject) {
+    async function updateConfiguration(project: ZephyrApplication) {
       // Extract information from configuration
       let [/* launchJson */, config] = await getLaunchConfiguration(project);
       const programPath = config.program;
@@ -291,13 +290,13 @@ export class RunManagerPanel {
 
     async function resetHandler(message: any) {
       const projectPath = message.project;
-      const appProject = await getZephyrProject(projectPath);
+      const appProject = await getZephyrApplication(projectPath);
       if(appProject) {
         await resetConfiguration(appProject);
       }
     }
     
-    async function resetConfiguration(project: ZephyrProject) {
+    async function resetConfiguration(project: ZephyrApplication) {
       let config = await createDefaultConfiguration(project);
       const programPath = config.program;
 
@@ -323,7 +322,7 @@ export class RunManagerPanel {
     async function applyHandler(message: any) {
       const projectPath = message.project;
       const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
-      const appProject = await getZephyrProject(projectPath);
+      const appProject = await getZephyrApplication(projectPath);
       const buildConfig = appProject.getBuildConfiguration(buildConfigName);
       const programPath = message.programPath;
       const runnerName = message.runner;
@@ -348,9 +347,9 @@ export class RunManagerPanel {
     
     async function runHandler(message: any) {
       const projectPath = message.project;
-      const appProject = await getZephyrProject(projectPath);
+      const appProject = await getZephyrApplication(projectPath);
       vscode.commands.executeCommand('zephyr-workbench.run-manager.rune', 
-        appProject.workspaceFolder,
+        appProject.appWorkspaceFolder,
       );
     }
   }  

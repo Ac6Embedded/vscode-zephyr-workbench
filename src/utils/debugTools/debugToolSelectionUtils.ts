@@ -203,10 +203,10 @@ function shouldShowOpenocdDefaultInfo(sdkVersion: string | undefined): boolean {
 }
 
 export function getOpenocdSelectionInfo(
-  project: { sdkVersion?: string },
+  project: { zephyrSdkVersion?: string },
   extensionUri?: vscode.Uri,
 ): OpenocdSelectionInfo {
-  const sdkVersion = project.sdkVersion?.trim();
+  const sdkVersion = project.zephyrSdkVersion?.trim();
   // "Legacy OpenOCD selection" refers to SDK 1.x behavior: the effective default OpenOCD tool
   // matters. west builds must pass that tool to CMake explicitly when it is not the
   // Zephyr-provided openocd-zephyr, and Debug Manager should surface which tool the build resolved.
@@ -234,7 +234,7 @@ export function getOpenocdSelectionInfo(
 }
 
 export function getOpenocdBuildFlag(
-  project: { sdkVersion?: string },
+  project: { zephyrSdkVersion?: string },
   extensionUri?: vscode.Uri,
 ): string | undefined {
   // Reuse the exact same decision path as Debug Manager so the displayed default tool and the
@@ -259,7 +259,7 @@ function rawWestArgsContainOpenocd(rawWestArgs: string | undefined): boolean {
 }
 
 export function mergeOpenocdBuildFlag(
-  project: { sdkVersion?: string },
+  project: { zephyrSdkVersion?: string },
   rawWestArgs: string | undefined = undefined,
   westFlagsD: string[] | undefined = [],
   extensionUri?: vscode.Uri,

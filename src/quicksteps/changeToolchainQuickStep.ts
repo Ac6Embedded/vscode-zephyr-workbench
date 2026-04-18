@@ -1,11 +1,11 @@
 import vscode, { ExtensionContext, QuickPickItem } from "vscode";
-import { ZephyrProject } from "../models/ZephyrProject";
+import { ZephyrApplication } from "../models/ZephyrApplication";
 import { ZephyrToolchainVariant } from "../models/ZephyrSDK";
 import { getListArmGnuToolchains, getListZephyrSDKs, getListIARs } from "../utils/utils";
 
 export interface ToolchainPick {
     tcKind: "zephyr" | "iar" | "gnuarmemb";
-    sdkPath?: string;
+    zephyrSdkPath?: string;
     iarPath?: string;
     armGnuPath?: string;
     toolchainVariant?: ZephyrToolchainVariant;
@@ -15,7 +15,7 @@ type TcItem = QuickPickItem & ToolchainPick;
 
 export async function changeToolchainQuickStep(
     _ctx: ExtensionContext,
-    _project: ZephyrProject
+    _project: ZephyrApplication
 ): Promise<ToolchainPick | undefined> {
 
     const items: TcItem[] = [];
@@ -26,7 +26,7 @@ export async function changeToolchainQuickStep(
             label: `Zephyr SDK ${sdk.version.trim()}`,
             description: sdk.rootUri.fsPath,
             tcKind: "zephyr",
-            sdkPath: sdk.rootUri.fsPath,
+            zephyrSdkPath: sdk.rootUri.fsPath,
         });
     }
 
@@ -53,11 +53,11 @@ export async function changeToolchainQuickStep(
         placeHolder: "Select a toolchain"
     });
 
-    if (!selection || selection.tcKind !== "zephyr" || !selection.sdkPath) {
+    if (!selection || selection.tcKind !== "zephyr" || !selection.zephyrSdkPath) {
         return selection;
     }
 
-    const selectedSdk = sdks.find(sdk => sdk.rootUri.fsPath === selection.sdkPath);
+    const selectedSdk = sdks.find(sdk => sdk.rootUri.fsPath === selection.zephyrSdkPath);
     if (!selectedSdk?.hasLlvmToolchain()) {
         return { ...selection, toolchainVariant: "zephyr" };
     }

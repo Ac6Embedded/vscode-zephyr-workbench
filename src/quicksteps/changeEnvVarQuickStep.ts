@@ -1,26 +1,26 @@
 import * as vscode from 'vscode';
 import { WestWorkspace } from "../models/WestWorkspace";
-import { ZephyrProject } from "../models/ZephyrProject";
+import { ZephyrApplication } from "../models/ZephyrApplication";
 import { saveConfigSetting } from '../utils/env/zephyrEnvUtils';
 import { getWestWorkspace } from "../utils/utils";
 import { getSupportedShields, getSupportedSnippets } from '../commands/WestCommands';
 
 export async function changeEnvVarQuickStep(
-  context: WestWorkspace | ZephyrProject | any,
+  context: WestWorkspace | ZephyrApplication | any,
   key: string,
   value?: any
 ): Promise<string | undefined> {
   const isWestFlagsD = key === 'west Flags -D';
 
   if (key === 'SHIELD') {
-    let project: ZephyrProject | undefined;
-    if (value instanceof ZephyrProject) {
+    let project: ZephyrApplication | undefined;
+    if (value instanceof ZephyrApplication) {
       project = value;
     } else if (value && (value as any).project) {
       project = (value as any).project;
     }
     if (project) {
-      const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+      const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
       if (westWorkspace) {
         const shields = await getSupportedShields(westWorkspace);
         if (shields.length > 0) {
@@ -49,12 +49,12 @@ export async function changeEnvVarQuickStep(
   }
   
   if (key === 'SNIPPETS') {
-    let project: ZephyrProject | undefined;
+    let project: ZephyrApplication | undefined;
     
-    if (context instanceof ZephyrProject) {
+    if (context instanceof ZephyrApplication) {
       project = context;
     }
-    else if (value instanceof ZephyrProject) {
+    else if (value instanceof ZephyrApplication) {
       project = value;
     } 
     else if (value && (value as any).project) {
@@ -62,7 +62,7 @@ export async function changeEnvVarQuickStep(
     }
     
     if (project) {
-      const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+      const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
       const snippets = westWorkspace ? await getSupportedSnippets(westWorkspace) : [];
       if (snippets.length > 0) {
         const snippetItems: vscode.QuickPickItem[] = snippets.map(snippetName => ({
@@ -142,20 +142,20 @@ export async function changeEnvVarQuickStep(
  * @param key The configuration key (e.g. "zephyr-workbench") under which the settings are stored.
  * @param buildConfigName (Optional) The name of the build configuration. If not provided, the active configuration is used.
  * @param enabled A boolean indicating whether to enable or disable sysbuild.
- * @param project An instance of your ZephyrProject which holds the build configurations.
+ * @param project An instance of your ZephyrApplication which holds the build configurations.
  */
 export async function toggleSysbuild(
   workspaceFolder: vscode.WorkspaceFolder,
   key: string,
   enabled: boolean,
-  project: ZephyrProject,
+  project: ZephyrApplication,
   buildConfigName?: string | undefined,
 ): Promise<void> {
   let targetConfig;
   if (buildConfigName) {
     targetConfig = project.getBuildConfiguration(buildConfigName);
   } else {
-    for (let cfg of project.configs) {
+    for (let cfg of project.buildConfigs) {
       if (cfg.active === true) {
         targetConfig = cfg;
         break;
@@ -163,8 +163,8 @@ export async function toggleSysbuild(
     }
     // Fallback: if none are marked active but there is at least one configuration,
     // pick the first one.
-    if (!targetConfig && project.configs.length > 0) {
-      targetConfig = project.configs[0];
+    if (!targetConfig && project.buildConfigs.length > 0) {
+      targetConfig = project.buildConfigs[0];
     }
   }
 

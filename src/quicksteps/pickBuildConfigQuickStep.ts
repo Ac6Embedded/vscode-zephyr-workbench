@@ -1,11 +1,11 @@
 import vscode, { QuickPickItem } from "vscode";
-import { ZephyrProject } from "../models/ZephyrProject";
+import { ZephyrApplication } from "../models/ZephyrApplication";
 
-export async function pickBuildConfigQuickStep(project: ZephyrProject): Promise<string | undefined> {
+export async function pickBuildConfigQuickStep(project: ZephyrApplication): Promise<string | undefined> {
 
   const buildItems: QuickPickItem[] = [];
   
-  for(let config of project.configs) {
+  for(let config of project.buildConfigs) {
     buildItems.push({ label: config.name, description: `${config.boardIdentifier}`});
   }
 

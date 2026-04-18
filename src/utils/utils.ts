@@ -3,7 +3,7 @@ import os from 'os';
 import path from "path";
 import * as vscode from "vscode";
 import { WestWorkspace } from "../models/WestWorkspace";
-import { ZephyrAppProject } from "../models/ZephyrAppProject";
+import { ZephyrApplication } from "../models/ZephyrApplication";
 import { ZephyrBoard } from "../models/ZephyrBoard";
 import { ArmGnuToolchain, normalizeArmGnuTargetTriple, ZephyrSDK, IARToolchain } from "../models/ZephyrSDK";
 import { ZephyrAppTemplateKind, ZephyrSample } from "../models/ZephyrSample";
@@ -19,7 +19,6 @@ import {
   ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY,
   ZINSTALLER_MINIMUM_VERSION,
 } from '../constants';
-import { ZephyrProject } from '../models/ZephyrProject';
 import { checkOrCreateTask, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { readInstalledZinstallerVersion, versionAtLeast } from './env/zinstallerVersionUtils';
 
@@ -413,8 +412,8 @@ export async function parseWorkspaceAppTemplates(directory: vscode.Uri, projectL
   }
 }
 
-export async function getListProject(appsPath: string | undefined): Promise<ZephyrAppProject[]> {
-  let listProjects: ZephyrAppProject[] = [];
+export async function getListProject(appsPath: string | undefined): Promise<ZephyrApplication[]> {
+  let listProjects: ZephyrApplication[] = [];
   if (appsPath) {
     let appsUri = vscode.Uri.file(appsPath);
     const files = await vscode.workspace.fs.readDirectory(appsUri);
@@ -425,7 +424,7 @@ export async function getListProject(appsPath: string | undefined): Promise<Zeph
         const projConfPath = vscode.Uri.joinPath(filePath, "prj.conf");
         try {
           await vscode.workspace.fs.stat(projConfPath);
-          let project: ZephyrAppProject = new ZephyrAppProject(vscode.workspace.getWorkspaceFolder(filePath), filePath.fsPath);
+          let project: ZephyrApplication = new ZephyrApplication(vscode.workspace.getWorkspaceFolder(filePath), filePath.fsPath);
           listProjects.push(project);
         } catch (error) {
           // Not a project folder
@@ -519,11 +518,11 @@ export function findArmGnuEntry(toolchainPath: string): ArmGnuToolchain | undefi
 }
 
 
-export async function getZephyrProject(projectPath: string): Promise<ZephyrProject> {
-  const projectFolders = await ZephyrAppProject.getZephyrProjectWorkspaceFolders(vscode.workspace.workspaceFolders as vscode.WorkspaceFolder[]);
+export async function getZephyrApplication(projectPath: string): Promise<ZephyrApplication> {
+  const projectFolders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders as vscode.WorkspaceFolder[]);
   for (const workspaceFolder of projectFolders) {
     if (workspaceFolder.uri.fsPath === projectPath) {
-      return new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
+      return new ZephyrApplication(workspaceFolder, workspaceFolder.uri.fsPath);
     }
   }
   vscode.window.showInformationMessage("This is not a Zephyr application " +`${projectPath}`);
@@ -713,13 +712,13 @@ export async function findOrCreateTask(taskLabel: string, workspaceFolder: vscod
  * @param configName 
  * @returns 
  */
-export async function findConfigTask(taskLabel: string, project: ZephyrProject, configName: string): Promise<vscode.Task | undefined> {
-  const taskExists = await checkOrCreateTask(project.workspaceFolder, taskLabel);
+export async function findConfigTask(taskLabel: string, project: ZephyrApplication, configName: string): Promise<vscode.Task | undefined> {
+  const taskExists = await checkOrCreateTask(project.appWorkspaceFolder, taskLabel);
   if (taskExists) {
     const tasks = await getZephyrWorkbenchTasks();
     const task = tasks.find(task => {
       const folder = task.scope as vscode.WorkspaceFolder;
-      return folder && folder.uri.toString() === project.workspaceFolder.uri.toString() && task.name === taskLabel;
+      return folder && folder.uri.toString() === project.appWorkspaceFolder.uri.toString() && task.name === taskLabel;
     });
     if (task) {
       // If task found is already set for the chosen build configuration
@@ -728,7 +727,7 @@ export async function findConfigTask(taskLabel: string, project: ZephyrProject, 
       } else {
         // Else, if the build config differs, create temporary task to
         // avoid messing with tasks.json
-        for (let config of project.configs) {
+        for (let config of project.buildConfigs) {
           if (configName === config.name) {
             const buildDirVar = getEnvVarFormat(getShell(), 'BUILD_DIR');
             let args: string[] = [];

@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { findConfigTask, getZephyrProject } from '../utils/utils';
+import { findConfigTask, getZephyrApplication } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
 import { createOpenocdCfg, createWestWrapper } from '../utils/debugTools/debugUtils';
-import { ZephyrProject } from '../models/ZephyrProject';
+import { ZephyrApplication } from '../models/ZephyrApplication';
 import { getTerminalDefaultProfile } from '../utils/execUtils';
 
 export class ZephyrDebugConfigurationProvider implements vscode.DebugConfigurationProvider {
@@ -12,7 +12,7 @@ export class ZephyrDebugConfigurationProvider implements vscode.DebugConfigurati
     // settings were changed.
     if (config.name.startsWith('Zephyr Workbench Debug')) {
       if(folder) {
-        const appProject = await getZephyrProject(folder.uri.fsPath);
+        const appProject = await getZephyrApplication(folder.uri.fsPath);
         const buildConfigName = this.extractBuildConfigName(config.name);
         const runnerName = WestRunner.extractRunner(config.debugServerArgs);
 
@@ -43,7 +43,7 @@ export class ZephyrDebugConfigurationProvider implements vscode.DebugConfigurati
     return match ? match[1] : undefined;
   }
 
-  async runPreLaunch(appProject: ZephyrProject, buildConfigName: string): Promise<void> {
+  async runPreLaunch(appProject: ZephyrApplication, buildConfigName: string): Promise<void> {
     let westBuildTask = await findConfigTask('West Build', appProject, buildConfigName);
     const profile = getTerminalDefaultProfile();
     if (!profile && westBuildTask) {

@@ -1,8 +1,8 @@
 import vscode, { ExtensionContext, QuickPickItem } from "vscode";
-import { ZephyrProject } from "../models/ZephyrProject";
+import { ZephyrApplication } from "../models/ZephyrApplication";
 import { getWestWorkspaces } from "../utils/utils";
 
-export async function changeWestWorkspaceQuickStep(context: ExtensionContext, project: ZephyrProject): Promise<string | undefined> {
+export async function changeWestWorkspaceQuickStep(context: ExtensionContext, project: ZephyrApplication): Promise<string | undefined> {
 
   const westWorkspaceItems: QuickPickItem[] = [];
 

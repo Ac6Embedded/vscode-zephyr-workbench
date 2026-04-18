@@ -1,15 +1,15 @@
 import * as vscode from 'vscode';
-import { ZephyrAppProject } from '../models/ZephyrAppProject';
-import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
+import { ZephyrApplication } from '../models/ZephyrApplication';
+import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { getNonce } from '../utilities/getNonce';
 import { readZephyrBuildSummary, type ZephyrBuildSummary } from '../utils/zephyr/buildSummaryParser';
 import { readZephyrMemoryReport, type ZephyrMemoryReport } from '../utils/zephyr/memoryReportParser';
 import { readZephyrSysInitReport, type ZephyrSysInitReport } from '../utils/zephyr/sysInitParser';
 
 interface DashboardTarget {
-	projects: ZephyrAppProject[];
-	selectedProject?: ZephyrAppProject;
-	selectedConfig?: ZephyrProjectBuildConfiguration;
+	projects: ZephyrApplication[];
+	selectedProject?: ZephyrApplication;
+	selectedConfig?: ZephyrBuildConfig;
 	buildDir?: string;
 	elfPath?: string;
 	summary?: ZephyrBuildSummary;
@@ -142,8 +142,8 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 
 		let projectPath: string | undefined;
 
-		if ((node as any)?.project?.workspaceFolder?.uri?.fsPath) {
-			projectPath = (node as any).project.workspaceFolder.uri.fsPath;
+		if ((node as any)?.project?.appWorkspaceFolder?.uri?.fsPath) {
+			projectPath = (node as any).project.appWorkspaceFolder.uri.fsPath;
 		}
 
 		if (!projectPath && (node as vscode.WorkspaceFolder)?.uri?.fsPath) {
@@ -175,13 +175,13 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		}
 	}
 
-	private async _getProjects(): Promise<ZephyrAppProject[]> {
-		const folders = await ZephyrAppProject.getZephyrProjectWorkspaceFolders(vscode.workspace.workspaceFolders ?? []);
-		const projects: ZephyrAppProject[] = [];
+	private async _getProjects(): Promise<ZephyrApplication[]> {
+		const folders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders ?? []);
+		const projects: ZephyrApplication[] = [];
 
 		for (const folder of folders) {
 			try {
-				projects.push(new ZephyrAppProject(folder, folder.uri.fsPath));
+				projects.push(new ZephyrApplication(folder, folder.uri.fsPath));
 			} catch {
 				// Skip malformed project state instead of breaking the view.
 			}
@@ -286,7 +286,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		}
 	}
 
-	private _selectProject(projects: ZephyrAppProject[]): ZephyrAppProject | undefined {
+	private _selectProject(projects: ZephyrApplication[]): ZephyrApplication | undefined {
 		if (projects.length === 0) {
 			this._revealedProjectPath = undefined;
 			return undefined;
@@ -299,7 +299,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				return undefined;
 			}
 
-			const activeProject = projects.find(project => project.workspaceFolder.uri.fsPath === activeEditorFolder.uri.fsPath);
+			const activeProject = projects.find(project => project.appWorkspaceFolder.uri.fsPath === activeEditorFolder.uri.fsPath);
 			if (activeProject) {
 				return activeProject;
 			}
@@ -308,7 +308,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		}
 
 		if (this._revealedProjectPath) {
-			const revealedProject = projects.find(project => project.workspaceFolder.uri.fsPath === this._revealedProjectPath);
+			const revealedProject = projects.find(project => project.appWorkspaceFolder.uri.fsPath === this._revealedProjectPath);
 			if (revealedProject) {
 				return revealedProject;
 			}
@@ -318,12 +318,12 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		return undefined;
 	}
 
-	private _selectConfig(project?: ZephyrAppProject): ZephyrProjectBuildConfiguration | undefined {
-		if (!project || project.configs.length === 0) {
+	private _selectConfig(project?: ZephyrApplication): ZephyrBuildConfig | undefined {
+		if (!project || project.buildConfigs.length === 0) {
 			return undefined;
 		}
 
-		return project.configs.find(config => config.active) ?? project.configs[0];
+		return project.buildConfigs.find(config => config.active) ?? project.buildConfigs[0];
 	}
 
 	private _getDescription(target: DashboardTarget): string | undefined {
@@ -332,10 +332,10 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		}
 
 		if (!target.selectedConfig) {
-			return target.selectedProject.folderName;
+			return target.selectedProject.appName;
 		}
 
-		return `${target.selectedProject.folderName} / ${target.selectedConfig.name}`;
+		return `${target.selectedProject.appName} / ${target.selectedConfig.name}`;
 	}
 
 	private _createViewModel(target: DashboardTarget): DashboardViewModel {
@@ -367,7 +367,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			hasContent: !!target.summary || !!target.report || !!target.memoryReport,
 			hasReport: !!target.report,
 			hasMemoryReport: !!target.memoryReport,
-			projectLabel: target.selectedProject?.folderName ?? '',
+			projectLabel: target.selectedProject?.appName ?? '',
 			configLabel: target.selectedConfig?.name ?? '',
 			boardLabel: target.selectedConfig?.boardIdentifier ?? '',
 			buildDir: target.buildDir ?? '',

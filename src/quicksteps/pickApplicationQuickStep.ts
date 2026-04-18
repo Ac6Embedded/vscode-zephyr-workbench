@@ -1,12 +1,12 @@
 import vscode, { ExtensionContext, QuickPickItem, WorkspaceFolder } from "vscode";
-import { ZephyrAppProject } from "../models/ZephyrAppProject";
+import { ZephyrApplication } from "../models/ZephyrApplication";
 
 export async function pickApplicationQuickStep(context: ExtensionContext): Promise<WorkspaceFolder | undefined> {
 
   const applicationItems: QuickPickItem[] = [];
   
   if(vscode.workspace.workspaceFolders) {
-    const projectFolders = await ZephyrAppProject.getZephyrProjectWorkspaceFolders(vscode.workspace.workspaceFolders);
+    const projectFolders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders);
     for (const workspaceFolder of projectFolders) {
       applicationItems.push({ label: workspaceFolder.name, description: workspaceFolder.uri.fsPath});
     }

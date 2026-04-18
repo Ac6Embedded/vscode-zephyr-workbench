@@ -28,9 +28,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import yaml from 'yaml';
 
-import { ZephyrAppProject } from '../../models/ZephyrAppProject';
-import { ZephyrProject } from '../../models/ZephyrProject';
-import { ZephyrProjectBuildConfiguration } from '../../models/ZephyrProjectBuildConfiguration';
+import { ZephyrApplication } from '../../models/ZephyrApplication';
+import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
 import { getWestWorkspaces } from '../utils';
 
 // Minimal copies of the external types we need
@@ -165,12 +164,12 @@ async function handleApplicationOverlay(filePath: string) {
   if (!wsFolder) { return; }
 
   // Check this is an application (prj.conf at root). If not, skip.
-  if (!ZephyrAppProject.isApplicationFolder(wsFolder)) {
+  if (!ZephyrApplication.isApplicationFolder(wsFolder)) {
     return; // Not an application folder
   }
 
   // Make a project instance; configs will be parsed from settings
-  const project = new ZephyrAppProject(wsFolder, wsFolder.uri.fsPath);
+  const project = new ZephyrApplication(wsFolder, wsFolder.uri.fsPath);
   const buildConfig = pickActiveOrFirstConfig(project);
   if (!buildConfig) { return; }
 
@@ -435,10 +434,10 @@ async function handleWorkspaceDts(filePath: string) {
   });
 }
 
-function pickActiveOrFirstConfig(project: ZephyrProject): ZephyrProjectBuildConfiguration | undefined {
-  if (!project.configs || project.configs.length === 0) { return undefined; }
-  const active = project.configs.find(c => c.active === true);
-  return active ?? project.configs[0];
+function pickActiveOrFirstConfig(project: ZephyrApplication): ZephyrBuildConfig | undefined {
+  if (!project.buildConfigs || project.buildConfigs.length === 0) { return undefined; }
+  const active = project.buildConfigs.find(c => c.active === true);
+  return active ?? project.buildConfigs[0];
 }
 
 function dirExists(p: string): boolean {

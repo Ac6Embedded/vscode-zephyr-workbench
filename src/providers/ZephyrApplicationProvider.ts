@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ZephyrAppProject } from '../models/ZephyrAppProject';
+import { ZephyrApplication } from '../models/ZephyrApplication';
 import { getWestWorkspace } from '../utils/utils';
-import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
+import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY } from '../constants';
 
 const EXTRA_ENV_KEYS = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES'];
@@ -25,9 +25,9 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
 		const items: vscode.TreeItem[] = [];
     if(element === undefined) {
       if(vscode.workspace.workspaceFolders) {
-        const projectFolders = await ZephyrAppProject.getZephyrProjectWorkspaceFolders(vscode.workspace.workspaceFolders);
+        const projectFolders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders);
         for (const workspaceFolder of projectFolders) {
-          const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
+          const appProject = new ZephyrApplication(workspaceFolder, workspaceFolder.uri.fsPath);
           const item =  new ZephyrApplicationTreeItem(appProject, vscode.TreeItemCollapsibleState.Collapsed);
           items.push(item);
         }
@@ -39,13 +39,13 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
       const workspaceItem = new ZephyrApplicationWestWorkspaceTreeItem(element.project);
       items.push(workspaceItem);
 
-      if(element.project.configs.length > 1) {
-        for(let config of element.project.configs) {
+      if(element.project.buildConfigs.length > 1) {
+        for(let config of element.project.buildConfigs) {
           const buildConfigItem = new ZephyrConfigTreeItem(element.project, config, vscode.TreeItemCollapsibleState.Collapsed);
           items.push(buildConfigItem);
         }
-      } else if(element.project.configs.length === 1) {
-        const config = element.project.configs[0];
+      } else if(element.project.buildConfigs.length === 1) {
+        const config = element.project.buildConfigs[0];
         const boardItem = new ZephyrConfigBoardTreeItem(element.project, config);
         const runnerItem = new ZephyrConfigDefaultRunnerTreeItem(element.project, config);
         items.push(boardItem, runnerItem);
@@ -188,7 +188,7 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
   }
 
   refresh(): void {
-    ZephyrAppProject.clearZephyrProjectWorkspaceCache();
+    ZephyrApplication.clearApplicationWorkspaceCache();
 		this._onDidChangeTreeData.fire();
 	}
 
@@ -196,38 +196,38 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
 
 export class ZephyrApplicationTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly project: ZephyrAppProject,
+		public readonly project: ZephyrApplication,
 		public readonly collapsibleState: vscode.TreeItemCollapsibleState,
 	) {
-    if(project.sourceDir) {
-      super(project.folderName, collapsibleState);
+    if(project.appRootPath) {
+      super(project.appName, collapsibleState);
       try {
-        let westWorkspace = getWestWorkspace(project.westWorkspacePath);
+        let westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
         if(westWorkspace !== null) {
-          this.description = project.configs.length > 0 ? `[with ${westWorkspace.name}]` : `[invalid]`;
+          this.description = project.buildConfigs.length > 0 ? `[with ${westWorkspace.name}]` : `[invalid]`;
           this.contextValue = 'zephyr-application';
         } else {
           this.description = `[not configured]`;
           this.contextValue = 'zephyr-application-not-config';
         }
       } catch(e) {
-        console.error(e, " path: ", project.westWorkspacePath);
+        console.error(e, " path: ", project.westWorkspaceRootPath);
       }
       this.iconPath = new vscode.ThemeIcon('folder');
-      this.tooltip = project.sourceDir;
+      this.tooltip = project.appRootPath;
     }
 	}
 }
 
 export class ZephyrConfigTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly project: ZephyrAppProject,
-    public readonly buildConfig: ZephyrProjectBuildConfiguration,
+		public readonly project: ZephyrApplication,
+    public readonly buildConfig: ZephyrBuildConfig,
 		public readonly collapsibleState: vscode.TreeItemCollapsibleState,
 	) {
     if(buildConfig) {
       super(buildConfig.name, collapsibleState);
-      this.tooltip = project.sourceDir;
+      this.tooltip = project.appRootPath;
 
       if(buildConfig.active) {
         this.iconPath = new vscode.ThemeIcon('folder-active');
@@ -244,10 +244,10 @@ export class ZephyrConfigTreeItem extends vscode.TreeItem {
 
 export class ZephyrApplicationWestWorkspaceTreeItem extends ZephyrApplicationTreeItem {
   constructor(
-		public readonly project: ZephyrAppProject,
+		public readonly project: ZephyrApplication,
 	) {
     super(project, vscode.TreeItemCollapsibleState.None);
-    let westWorkspace = getWestWorkspace(project.westWorkspacePath);
+    let westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
     if(westWorkspace) {
       this.label = westWorkspace.name;
       this.description = `[${westWorkspace.version}]`;
@@ -264,8 +264,8 @@ export class ZephyrApplicationWestWorkspaceTreeItem extends ZephyrApplicationTre
 
 export class ZephyrConfigBoardTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly project: ZephyrAppProject,
-		public readonly config: ZephyrProjectBuildConfiguration,
+    public readonly project: ZephyrApplication,
+		public readonly config: ZephyrBuildConfig,
 	) {
     super(config.boardIdentifier, vscode.TreeItemCollapsibleState.None);
     this.description = '';
@@ -278,8 +278,8 @@ export class ZephyrConfigBoardTreeItem extends vscode.TreeItem {
 
 export class ZephyrConfigDefaultRunnerTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly project: ZephyrAppProject,
-    public readonly config: ZephyrProjectBuildConfiguration,
+    public readonly project: ZephyrApplication,
+    public readonly config: ZephyrBuildConfig,
   ) {
     super('runner', vscode.TreeItemCollapsibleState.None);
     const hasDefaultRunner = !!(config.defaultRunner && config.defaultRunner.length > 0);
@@ -292,8 +292,8 @@ export class ZephyrConfigDefaultRunnerTreeItem extends vscode.TreeItem {
 
 export class ZephyrConfigCustomArgsTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly project: ZephyrAppProject,
-    public readonly config: ZephyrProjectBuildConfiguration,
+    public readonly project: ZephyrApplication,
+    public readonly config: ZephyrBuildConfig,
   ) {
     super('custom arguments for runner', vscode.TreeItemCollapsibleState.None);
     this.description = config.customArgs ?? '';
@@ -305,7 +305,7 @@ export class ZephyrConfigCustomArgsTreeItem extends vscode.TreeItem {
 
 export class ZephyrApplicationEnvTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly project: ZephyrAppProject,
+		public readonly project: ZephyrApplication,
     public readonly envKey: string
 	) {
     super(envKey, vscode.TreeItemCollapsibleState.Collapsed);
@@ -319,8 +319,8 @@ export class ZephyrApplicationEnvTreeItem extends vscode.TreeItem {
 
 export class ZephyrConfigExtraEnvTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly project: ZephyrAppProject,
-    public readonly config: ZephyrProjectBuildConfiguration,
+    public readonly project: ZephyrApplication,
+    public readonly config: ZephyrBuildConfig,
   ) {
     super('EXTRA', vscode.TreeItemCollapsibleState.Collapsed);
     const hasAnyValue = EXTRA_ENV_KEYS.some((key) => Array.isArray(config.envVars[key]) && config.envVars[key].length > 0);
@@ -333,8 +333,8 @@ export class ZephyrConfigExtraEnvTreeItem extends vscode.TreeItem {
 
 export class ZephyrConfigWestFlagsDTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly project: ZephyrAppProject,
-    public readonly config: ZephyrProjectBuildConfiguration,
+    public readonly project: ZephyrApplication,
+    public readonly config: ZephyrBuildConfig,
   ) {
     super(WEST_FLAGS_D_LABEL, vscode.TreeItemCollapsibleState.Collapsed);
     this.description = config.westFlagsD.length === 0 ? '[not set]' : '';
@@ -347,8 +347,8 @@ export class ZephyrConfigWestFlagsDTreeItem extends vscode.TreeItem {
 
 export class ZephyrConfigEnvTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly project: ZephyrAppProject,
-    public readonly config: ZephyrProjectBuildConfiguration,
+		public readonly project: ZephyrApplication,
+    public readonly config: ZephyrBuildConfig,
     public readonly envKey: string
 	) {
     super(envKey, vscode.TreeItemCollapsibleState.Collapsed);
@@ -362,7 +362,7 @@ export class ZephyrConfigEnvTreeItem extends vscode.TreeItem {
 
 export class ZephyrApplicationEnvValueTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly project: ZephyrAppProject,
+		public readonly project: ZephyrApplication,
     public readonly envKey: string,
     public readonly envValue: string
 	) {
@@ -373,8 +373,8 @@ export class ZephyrApplicationEnvValueTreeItem extends vscode.TreeItem {
 
 export class ZephyrConfigEnvValueTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly project: ZephyrAppProject,
-    public readonly config: ZephyrProjectBuildConfiguration,
+		public readonly project: ZephyrApplication,
+    public readonly config: ZephyrBuildConfig,
     public readonly envKey: string,
     public readonly envValue: string
 	) {
@@ -385,7 +385,7 @@ export class ZephyrConfigEnvValueTreeItem extends vscode.TreeItem {
 
 export class ZephyrApplicationArgTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly project: ZephyrAppProject,
+		public readonly project: ZephyrApplication,
     public readonly argName: string
 	) {
     super(argName, vscode.TreeItemCollapsibleState.Collapsed);
@@ -398,8 +398,8 @@ export class ZephyrApplicationArgTreeItem extends vscode.TreeItem {
 
 export class ZephyrConfigArgTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly project: ZephyrAppProject,
-    public readonly config: ZephyrProjectBuildConfiguration,
+		public readonly project: ZephyrApplication,
+    public readonly config: ZephyrBuildConfig,
     public readonly argName: string,
     public argValue: string,
     public readonly argSetting?: string
@@ -419,7 +419,7 @@ export class ZephyrConfigArgTreeItem extends vscode.TreeItem {
 
 export class ZephyrApplicationArgValueTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly project: ZephyrAppProject,
+		public readonly project: ZephyrApplication,
     public readonly argName: string,
     public readonly argValue: string
 	) {
@@ -430,8 +430,8 @@ export class ZephyrApplicationArgValueTreeItem extends vscode.TreeItem {
 
 export class ZephyrConfigArgValueTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly project: ZephyrAppProject,
-    public readonly config: ZephyrProjectBuildConfiguration,
+		public readonly project: ZephyrApplication,
+    public readonly config: ZephyrBuildConfig,
     public readonly argName: string,
     public readonly argValue: string
 	) {
@@ -442,8 +442,8 @@ export class ZephyrConfigArgValueTreeItem extends vscode.TreeItem {
 
 export class ZephyrConfigWestFlagsDValueTreeItem extends vscode.TreeItem {
   constructor(
-    public readonly project: ZephyrAppProject,
-    public readonly config: ZephyrProjectBuildConfiguration,
+    public readonly project: ZephyrApplication,
+    public readonly config: ZephyrBuildConfig,
     public readonly flagValue: string
   ) {
     super(flagValue, vscode.TreeItemCollapsibleState.None);

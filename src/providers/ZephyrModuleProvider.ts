@@ -59,8 +59,8 @@ export class ZephyrModuleTreeItem extends vscode.TreeItem {
 		private isActive: boolean,
 		public readonly collapsibleState: vscode.TreeItemCollapsibleState,
 	) {
-    if(project.sourceDir) {
-      super(project.folderName, collapsibleState);
+    if(project.appRootPath) {
+      super(project.appName, collapsibleState);
       this.description = this.isActive ? "[active]" : "";
     }
 	}

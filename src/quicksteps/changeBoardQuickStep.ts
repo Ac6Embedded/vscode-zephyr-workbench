@@ -1,13 +1,13 @@
 import vscode, { ExtensionContext, QuickPickItem } from "vscode";
-import { ZephyrProject } from "../models/ZephyrProject";
+import { ZephyrApplication } from "../models/ZephyrApplication";
 import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
 import { getWestWorkspace } from "../utils/utils";
 import { ZephyrBoard } from "../models/ZephyrBoard";
 
-export async function changeBoardQuickStep(context: ExtensionContext, project: ZephyrProject, buildConfigName?: string): Promise<string | undefined> {
-  const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+export async function changeBoardQuickStep(context: ExtensionContext, project: ZephyrApplication, buildConfigName?: string): Promise<string | undefined> {
+  const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
   const boardItems: QuickPickItem[] = [];
-  const configs = project.configs;
+  const configs = project.buildConfigs;
   let buildConfig;
 
   if (buildConfigName) {

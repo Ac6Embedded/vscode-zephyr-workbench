@@ -1,6 +1,6 @@
 import vscode from "vscode"; 
 import { ZEPHYR_ENV_SETTING_PREFIX_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
-import { ZephyrProjectBuildConfiguration } from "../../models/ZephyrProjectBuildConfiguration";
+import { ZephyrBuildConfig } from "../../models/ZephyrBuildConfig";
 
 export function addEnvValue(envVars: { [key: string]: any }, key: string, value: string): void {
   if (envVars[key]) {
@@ -52,7 +52,7 @@ export function loadEnv(workspaceFolder: vscode.WorkspaceFolder, key: string): s
   return vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).get(`${ZEPHYR_ENV_SETTING_PREFIX_KEY}.${key}`);
 }
 
-export async function addConfig(workspaceFolder: vscode.WorkspaceFolder, configToAdd: ZephyrProjectBuildConfiguration) {
+export async function addConfig(workspaceFolder: vscode.WorkspaceFolder, configToAdd: ZephyrBuildConfig) {
   const config: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder);
   const buildConfigs = config.get<any[]>('build.configurations') ? config.get<any[]>('build.configurations') : [];
 
@@ -71,7 +71,7 @@ export async function addConfig(workspaceFolder: vscode.WorkspaceFolder, configT
   await config.update('build.configurations', buildConfigs, vscode.ConfigurationTarget.WorkspaceFolder);
 }
 
-export async function deleteConfig(workspaceFolder: vscode.WorkspaceFolder, configToDelete: ZephyrProjectBuildConfiguration) {
+export async function deleteConfig(workspaceFolder: vscode.WorkspaceFolder, configToDelete: ZephyrBuildConfig) {
   const config: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder);
   const buildConfigs = config.get<any[]>('build.configurations');
   if(buildConfigs) {

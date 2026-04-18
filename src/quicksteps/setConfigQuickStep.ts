@@ -1,16 +1,16 @@
 import vscode, {  } from "vscode";
-import { ZephyrProjectBuildConfiguration } from "../models/ZephyrProjectBuildConfiguration";
-import { ZephyrProject } from "../models/ZephyrProject";
+import { ZephyrBuildConfig } from "../models/ZephyrBuildConfig";
+import { ZephyrApplication } from "../models/ZephyrApplication";
 
 export async function setConfigQuickStep(
-  context: ZephyrProjectBuildConfiguration,
-  project?: ZephyrProject
+  context: ZephyrBuildConfig,
+  project?: ZephyrApplication
 ): Promise<string | undefined> {
 
   let defaultName = 'primary';
   if(project) {
-    if(project.configs.length > 0) {
-      defaultName = getNewConfigName(project.configs);
+    if(project.buildConfigs.length > 0) {
+      defaultName = getNewConfigName(project.buildConfigs);
     }
   }
 
@@ -33,7 +33,7 @@ export async function setConfigQuickStep(
     }
 
     if(project) {
-      const configNames = project.configs.map(config => config.name);
+      const configNames = project.buildConfigs.map(config => config.name);
       if(configNames.includes(input)) {
         inputBox.validationMessage = `This "${input}" build configuration already exists`;
       }

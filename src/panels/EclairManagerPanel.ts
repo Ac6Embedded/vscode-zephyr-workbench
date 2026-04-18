@@ -15,7 +15,7 @@ import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, EclairScaC
 import { PresetRepositories, resolve_ref_to_rev } from "./EclairManagerPanel/repo_manage";
 import { Result, unwrap_or_throw } from "../utils/typing_utils";
 import { match } from "ts-pattern";
-import { ZephyrAppProject } from "../models/ZephyrAppProject";
+import { ZephyrApplication } from "../models/ZephyrApplication";
 import { z } from "zod";
 import { EclairTemplate } from "../utils/eclair/template";
 import { EclairManagerEnv } from "./EclairManagerPanel/env";
@@ -1174,16 +1174,16 @@ async function handle_source(
   return { ok: eclair_commands };
 }
 
-async function load_applications(): Promise<ZephyrAppProject[]> {
+async function load_applications(): Promise<ZephyrApplication[]> {
   if (!vscode.workspace.workspaceFolders) {
     return [];
   }
 
-  let applications: ZephyrAppProject[] = [];
-  const project_folders = await ZephyrAppProject.getZephyrProjectWorkspaceFolders(vscode.workspace.workspaceFolders);
+  let applications: ZephyrApplication[] = [];
+  const project_folders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders);
   for (const workspace_folder of project_folders) {
     try {
-      const app_project = new ZephyrAppProject(workspace_folder, workspace_folder.uri.fsPath);
+      const app_project = new ZephyrApplication(workspace_folder, workspace_folder.uri.fsPath);
       applications.push(app_project);
     } catch {
       // TODO consider returning Result<...>[] instead
@@ -1356,7 +1356,7 @@ async function load_all_sca_configs(): Promise<Result<Record<string, [FullEclair
         continue;
       }
       const sca_configs = sca_configs_r.ok;
-      const workspace = app.workspaceFolder.uri.toString();
+      const workspace = app.appWorkspaceFolder.uri.toString();
       const build_configs_r = load_project_build_configs(app);
       const build_configs = "err" in build_configs_r ? [] : build_configs_r.ok;
       const build_configs_info = build_configs.map(c => ({ name: c.name, board: c.board }));
@@ -1424,9 +1424,9 @@ async function preload_presets_from_configs(
   }
 }
 
-function load_project_build_configs(app: ZephyrAppProject): Result<BuildConfiguration[], string> {
+function load_project_build_configs(app: ZephyrApplication): Result<BuildConfiguration[], string> {
   try {
-    const folder_uri = app.workspaceFolder.uri;
+    const folder_uri = app.appWorkspaceFolder.uri;
     const folder_config = vscode.workspace.getConfiguration(undefined, folder_uri);
     const raw_configs = folder_config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
     const configs: BuildConfiguration[] = [];
@@ -1443,23 +1443,23 @@ function load_project_build_configs(app: ZephyrAppProject): Result<BuildConfigur
     return { ok: configs };
   } catch (err: any) {
     const msg = err?.message || String(err);
-    return { err: `Failed to load SCA config for app '${app.folderName}': ${msg}` };
+    return { err: `Failed to load SCA config for app '${app.appName}': ${msg}` };
   }
 }
 
-async function load_app_eclair_sca_config(app: ZephyrAppProject): Promise<Result<FullEclairScaConfig, string>> {
+async function load_app_eclair_sca_config(app: ZephyrApplication): Promise<Result<FullEclairScaConfig, string>> {
   try {
-    const folder_uri = app.workspaceFolder.uri;
+    const folder_uri = app.appWorkspaceFolder.uri;
     let raw_cfg = await readEclairManagerSettings(folder_uri);
     if (!raw_cfg) {
       return { ok: { configs: [], repos: default_eclair_repos() } };
     }
-    const resolved_cfg = deep_resolve_paths(raw_cfg, app.workspaceFolder.uri);
+    const resolved_cfg = deep_resolve_paths(raw_cfg, app.appWorkspaceFolder.uri);
     const parsed = FullEclairScaConfigSchema.safeParse(resolved_cfg);
     if (!parsed.success) {
       // TODO not to console but to the output channel, and ideally also surface in the UI so users know their config is not being loaded
       const out = getOutputChannel();
-      out.appendLine(`Saved ECLAIR SCA config for app '${app.folderName}' failed validation and will be reset: ${parsed.error}`);
+      out.appendLine(`Saved ECLAIR SCA config for app '${app.appName}' failed validation and will be reset: ${parsed.error}`);
       return { ok: { configs: [], repos: default_eclair_repos() } };
     }
     const data = parsed.data;
@@ -1469,7 +1469,7 @@ async function load_app_eclair_sca_config(app: ZephyrAppProject): Promise<Result
     return { ok: data };
   } catch (err: any) {
     const msg = err?.message || String(err);
-    return { err: `Failed to load ECLAIR SCA config for app '${app.folderName}': ${msg}` };
+    return { err: `Failed to load ECLAIR SCA config for app '${app.appName}': ${msg}` };
   }
 }
 

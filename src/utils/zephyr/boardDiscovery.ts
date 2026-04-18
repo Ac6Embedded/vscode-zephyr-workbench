@@ -5,8 +5,8 @@ import * as vscode from 'vscode';
 
 import { getBoardsDirectories, westTmpBuildCmakeOnlyCommand } from '../../commands/WestCommands';
 import { ZephyrBoard } from '../../models/ZephyrBoard';
-import { ZephyrProject } from '../../models/ZephyrProject';
-import { ZephyrProjectBuildConfiguration } from '../../models/ZephyrProjectBuildConfiguration';
+import { ZephyrApplication } from '../../models/ZephyrApplication';
+import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
 import { WestWorkspace } from '../../models/WestWorkspace';
 import { deleteFolder, fileExists } from '../utils';
 
@@ -35,8 +35,8 @@ export function findBoardByHierarchicalIdentifier(boardIdentifier: string, board
 export async function getBoardFromIdentifier(
   boardIdentifier: string,
   westWorkspace: WestWorkspace,
-  resource?: ZephyrProject | string,
-  buildConfig?: ZephyrProjectBuildConfiguration,
+  resource?: ZephyrApplication | string,
+  buildConfig?: ZephyrBuildConfig,
 ): Promise<ZephyrBoard> {
   const boards = await getSupportedBoards(westWorkspace, resource, buildConfig);
   const board = findBoardByHierarchicalIdentifier(boardIdentifier, boards);
@@ -48,8 +48,8 @@ export async function getBoardFromIdentifier(
 
 export async function getSupportedBoards(
   westWorkspace: WestWorkspace,
-  resource?: ZephyrProject | string,
-  buildConfig?: ZephyrProjectBuildConfiguration,
+  resource?: ZephyrApplication | string,
+  buildConfig?: ZephyrBuildConfig,
   generatedBuildDir?: string,
 ): Promise<ZephyrBoard[]> {
   const boardRoots = await collectBoardRoots(westWorkspace, resource, buildConfig, generatedBuildDir);
@@ -59,8 +59,8 @@ export async function getSupportedBoards(
 
 async function collectBoardRoots(
   westWorkspace: WestWorkspace,
-  resource?: ZephyrProject | string,
-  buildConfig?: ZephyrProjectBuildConfiguration,
+  resource?: ZephyrApplication | string,
+  buildConfig?: ZephyrBuildConfig,
   generatedBuildDir?: string,
 ): Promise<string[]> {
   const boardRoots: string[] = [westWorkspace.rootUri.fsPath];
@@ -75,7 +75,7 @@ async function collectBoardRoots(
     return boardRoots;
   }
 
-  if (resource instanceof ZephyrProject) {
+  if (resource instanceof ZephyrApplication) {
     const discoveredBoardRoots = await readProjectBoardRoots(resource, westWorkspace, buildConfig, generatedBuildDir);
     boardRoots.push(...discoveredBoardRoots);
     return boardRoots;
@@ -86,9 +86,9 @@ async function collectBoardRoots(
 }
 
 async function readProjectBoardRoots(
-  project: ZephyrProject,
+  project: ZephyrApplication,
   westWorkspace: WestWorkspace,
-  buildConfig?: ZephyrProjectBuildConfiguration,
+  buildConfig?: ZephyrBuildConfig,
   generatedBuildDir?: string,
 ): Promise<string[]> {
   if (!buildConfig) {

@@ -5,8 +5,8 @@ import yaml from 'yaml';
 import { ZEPHYR_DIRNAME } from '../../constants';
 
 type ArtifactProject = {
-  folderPath: string;
-  workspaceContext?: {
+  appRootPath: string;
+  appWorkspaceFolder?: {
     name?: string;
   };
 };

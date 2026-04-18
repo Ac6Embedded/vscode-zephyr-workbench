@@ -1,20 +1,29 @@
 import * as vscode from 'vscode';
-import { concatCommands, execShellCommand, classifyShell, getShellExe, getShellArgs, getShellSourceCommand, normalizePathForShell, normalisePathsInString } from "../utils/execUtils";
-import { ZephyrProject } from '../models/ZephyrProject';
+import {
+  concatCommands,
+  execShellCommand,
+  classifyShell,
+  getShellExe,
+  getShellArgs,
+  getShellSourceCommand,
+  normalizePathForShell,
+  normalisePathsInString,
+} from "../utils/execUtils";
+import { ZephyrApplication } from '../models/ZephyrApplication';
 import { findVenvSPDXActivateScript } from '../utils/installUtils';
 import { fileExists } from '../utils/utils';
 
-export async function execNtiaCheckerCommand(spdxFile: string, zephyrProject: ZephyrProject) {
+export async function execNtiaCheckerCommand(spdxFile: string, zephyrProject: ZephyrApplication) {
   const command = `ntia-checker --file ${spdxFile}`;
   await execSPDXCommand('ntia-checker', command, zephyrProject);
 }
 
-export async function execSBom2DocCommand(spdxFile: string, zephyrProject: ZephyrProject) {
+export async function execSBom2DocCommand(spdxFile: string, zephyrProject: ZephyrApplication) {
   const command = `sbom2doc -i ${spdxFile}`;
   await execSPDXCommand('sbom2doc', command, zephyrProject);
 }
 
-export async function execCveBinToolCommand(spdxFile: string, zephyrProject: ZephyrProject) {
+export async function execCveBinToolCommand(spdxFile: string, zephyrProject: ZephyrApplication) {
   const command = `cve-bin-tool --sbom spdx --sbom-file ${spdxFile}`;
   await execSPDXCommand('cve-bin-tool', command, zephyrProject);
 }
@@ -22,15 +31,14 @@ export async function execCveBinToolCommand(spdxFile: string, zephyrProject: Zep
 export async function execSPDXCommand(
   cmdName      : string,
   cmd          : string,
-  zephyrProject: ZephyrProject
+  zephyrProject: ZephyrApplication
 ) {
-
   if (!cmd?.length) {
     throw new Error('Missing command to execute', { cause: 'missing.command' });
   }
 
-  /* locate the venv’s activate script ------------------------------------------------ */
-  let activateScript = findVenvSPDXActivateScript(zephyrProject.workspaceFolder.uri.fsPath);
+  // SPDX helpers live in the application's Python environment.
+  let activateScript = findVenvSPDXActivateScript(zephyrProject.appWorkspaceFolder.uri.fsPath);
   if (!activateScript || !fileExists(activateScript)) {
     throw new Error(
       'Missing SPDX tools, please install the dependencies',
@@ -38,27 +46,24 @@ export async function execSPDXCommand(
     );
   }
 
-  /* detect & classify current shell -------------------------------------------------- */
   const shellExe  = getShellExe();
   const shellKind = classifyShell(shellExe);
   const shellArgs = getShellArgs(shellKind);
 
-  /* path conversions for POSIX-ish shells on Windows --------------------------------- */
+  // Normalize paths before sourcing the venv when a POSIX shell runs on Windows.
   const posixish = ['bash', 'zsh', 'dash', 'fish'].includes(shellKind);
-
   if (posixish) {
     activateScript = normalizePathForShell(shellKind, activateScript);
-    cmd            = normalisePathsInString(shellKind, cmd);
+    cmd = normalisePathsInString(shellKind, cmd);
   }
 
-  /* build ShellExecution options ----------------------------------------------------- */
   const options: vscode.ShellExecutionOptions = {
-    cwd       : zephyrProject.folderPath,
+    cwd       : zephyrProject.appRootPath,
     executable: shellExe,
     shellArgs
   };
 
-  /* prepend ‘source <activate>’ and run ---------------------------------------------- */
+  // Activate the venv for this command only instead of mutating the user's shell.
   const cmdEnv = getShellSourceCommand(shellKind, activateScript);
   await execShellCommand(
     cmdName,

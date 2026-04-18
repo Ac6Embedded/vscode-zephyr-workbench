@@ -2,11 +2,10 @@ import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugManagerLaunchConfiguration, getDebugRunners, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugTools/debugUtils";
-import { ZephyrAppProject } from "../models/ZephyrAppProject";
-import { getZephyrProject } from '../utils/utils';
+import { ZephyrApplication } from "../models/ZephyrApplication";
+import { getZephyrApplication } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
-import { ZephyrProject } from '../models/ZephyrProject';
-import { ZephyrProjectBuildConfiguration } from '../models/ZephyrProjectBuildConfiguration';
+import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { getGdbMode, getSetupCommands } from '../debug/gdbUtils';
 import { getOpenocdSelectionInfo } from '../utils/debugTools/debugToolSelectionUtils';
 
@@ -15,8 +14,8 @@ export class DebugManagerPanel {
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _disposables: vscode.Disposable[] = [];
-  public project: ZephyrProject | undefined;
-  public buildConfig: ZephyrProjectBuildConfiguration | undefined;
+  public project: ZephyrApplication | undefined;
+  public buildConfig: ZephyrBuildConfig | undefined;
   private _loadApplicationsAsync: (wv: vscode.Webview) => void = () => {};
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
@@ -25,7 +24,7 @@ export class DebugManagerPanel {
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
   }
 
-  public async createContent(project?: ZephyrProject | undefined, buildConfig?: ZephyrProjectBuildConfiguration | undefined) {
+  public async createContent(project?: ZephyrApplication | undefined, buildConfig?: ZephyrBuildConfig | undefined) {
     this.project = project;
     this.buildConfig = buildConfig;
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
@@ -37,7 +36,7 @@ export class DebugManagerPanel {
     //this._loadApplicationsAsync(this._panel.webview);
   }
 
-  public static render(extensionUri: vscode.Uri, project?: ZephyrProject | undefined, buildConfig?: ZephyrProjectBuildConfiguration | undefined) {
+  public static render(extensionUri: vscode.Uri, project?: ZephyrApplication | undefined, buildConfig?: ZephyrBuildConfig | undefined) {
     if (DebugManagerPanel.currentPanel) {
       DebugManagerPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
       // Update content
@@ -46,7 +45,7 @@ export class DebugManagerPanel {
       DebugManagerPanel.currentPanel.buildConfig = buildConfig;
       // Update selection field
       DebugManagerPanel.currentPanel._setDefaultSelection(DebugManagerPanel.currentPanel._panel.webview);
-      const projectPath = project ? project.workspaceFolder.uri.fsPath : '';
+      const projectPath = project ? project.appWorkspaceFolder.uri.fsPath : '';
       // Notify webview about project change
       if (projectPath.length > 0) {
         DebugManagerPanel.currentPanel._panel.webview.postMessage({ command: 'projectChanged', project: projectPath });
@@ -306,7 +305,7 @@ export class DebugManagerPanel {
   private _setDefaultSelection(webview: vscode.Webview) {
     webview.postMessage({ 
       command: 'updateLaunchConfig', 
-      projectPath: this.project ? this.project.workspaceFolder.uri.fsPath : '',
+      projectPath: this.project ? this.project.appWorkspaceFolder.uri.fsPath : '',
       configName: this.buildConfig ? this.buildConfig.name : '',
     });
   }
@@ -314,7 +313,7 @@ export class DebugManagerPanel {
   private _setWebviewMessageListener(webview: vscode.Webview) {
     let currentOpenocdInfoText: { defaultInfo: string; pathInfo: string } = { defaultInfo: '', pathInfo: '' };
 
-    const buildOpenocdInfoText = (project: ZephyrProject | undefined, openocdPath?: string): { defaultInfo: string; pathInfo: string } => {
+    const buildOpenocdInfoText = (project: ZephyrApplication | undefined, openocdPath?: string): { defaultInfo: string; pathInfo: string } => {
       if (!project) {
         return { defaultInfo: '', pathInfo: '' };
       }
@@ -351,7 +350,7 @@ export class DebugManagerPanel {
     }
 
     async function getRunnerWebviewState(
-      project: ZephyrProject | undefined,
+      project: ZephyrApplication | undefined,
       runnerName: string | undefined,
       debugServerArgs?: string,
     ): Promise<{ runnerLabel: string; runnerValue: string; runnerPath: string; runnerArgs: string; runnerDefaultInfo: string; runnerDefaultPathInfo: string; }> {
@@ -424,7 +423,7 @@ export class DebugManagerPanel {
             }
             case 'projectChanged': {
               const projectPath = message.project;
-              const appProject = await getZephyrProject(projectPath);
+              const appProject = await getZephyrApplication(projectPath);
 
               if(appProject) {
                 this.project = appProject;
@@ -437,7 +436,7 @@ export class DebugManagerPanel {
                 // fill from `buildConfigChanged`, wiping freshly-loaded data.
                 // The subsequent `buildConfigChanged` is responsible for
                 // overwriting form fields with the new configuration.
-                if(appProject.configs.length > 0) {
+                if(appProject.buildConfigs.length > 0) {
                   updateBuildConfigs(appProject);
                 }
               }
@@ -446,7 +445,7 @@ export class DebugManagerPanel {
             case 'buildConfigChanged': {
               const projectPath = message.project;
               const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
-              const appProject = await getZephyrProject(projectPath);
+              const appProject = await getZephyrApplication(projectPath);
               const buildConfig = appProject.getBuildConfiguration(buildConfigName);
 
               if(appProject && buildConfig) {
@@ -561,11 +560,11 @@ export class DebugManagerPanel {
     async function loadApplications(webview: vscode.Webview) {
       let applicationsHTML = '';
       if(vscode.workspace.workspaceFolders) {
-        const projectFolders = await ZephyrAppProject.getZephyrProjectWorkspaceFolders(vscode.workspace.workspaceFolders);
+        const projectFolders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders);
         for (const workspaceFolder of projectFolders) {
           try {
-            const appProject = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-            applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.sourceDir}" data-label="${appProject.folderName}">${appProject.folderName} <span class="description">${appProject.sourceDir}</span></div>`);
+            const appProject = new ZephyrApplication(workspaceFolder, workspaceFolder.uri.fsPath);
+            applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.appRootPath}" data-label="${appProject.appName}">${appProject.appName} <span class="description">${appProject.appRootPath}</span></div>`);
           } catch {}
         }
       }
@@ -574,19 +573,19 @@ export class DebugManagerPanel {
   
     // Expose as bound method wrapper
     this._loadApplicationsAsync = (wv: vscode.Webview) => { loadApplications(wv); };
-    function updateBuildConfigs(project: ZephyrProject) {
+    function updateBuildConfigs(project: ZephyrApplication) {
       let newBuildConfigsHTML = '';
-      for(let config of project.configs) {
+      for(let config of project.buildConfigs) {
         newBuildConfigsHTML = newBuildConfigsHTML.concat(`<div class="dropdown-item" data-value="${config.name}" data-label="${config.name}">${config.name}<span class="description">(${config.boardIdentifier})</span></div>`);
       }
       webview.postMessage({ 
         command: 'updateBuildConfigs', 
         buildConfigsHTML: `${newBuildConfigsHTML}`,
-        selectFirst: project.configs.length === 1 ? 'true' : 'false',
+        selectFirst: project.buildConfigs.length === 1 ? 'true' : 'false',
       });
     }
 
-    async function updateConfiguration(project: ZephyrProject, buildConfig?: ZephyrProjectBuildConfiguration) {
+    async function updateConfiguration(project: ZephyrApplication, buildConfig?: ZephyrBuildConfig) {
       try {
         // Extract information from configuration
         let config;
@@ -681,7 +680,7 @@ export class DebugManagerPanel {
         const projectPath = message.project;
         const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
 
-        const appProject = await getZephyrProject(projectPath);
+        const appProject = await getZephyrApplication(projectPath);
         const buildConfig = appProject.getBuildConfiguration(buildConfigName);
         if(appProject) {
           await resetConfiguration(appProject, buildConfig);
@@ -693,7 +692,7 @@ export class DebugManagerPanel {
       }
     }
 
-    async function resetConfiguration(project: ZephyrProject, buildConfig?: ZephyrProjectBuildConfiguration) {
+    async function resetConfiguration(project: ZephyrApplication, buildConfig?: ZephyrBuildConfig) {
       let config;
       let compatibleRunners: string[] = [];
       let defaultDebugRunner: string | undefined;
@@ -783,7 +782,7 @@ export class DebugManagerPanel {
     async function applyHandler(message: any): Promise<boolean> {
       const projectPath = message.project;
       const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
-      const appProject = await getZephyrProject(projectPath);
+      const appProject = await getZephyrApplication(projectPath);
       const buildConfig = appProject.getBuildConfiguration(buildConfigName);
       const programPath = message.programPath;
       const svdPath = message.svdPath;
@@ -858,10 +857,10 @@ export class DebugManagerPanel {
       const runnerName = message.runner;
       const runner = getRunner(runnerName);
       if(runner) {
-        const appProject = await getZephyrProject(projectPath);
+        const appProject = await getZephyrApplication(projectPath);
         if(buildConfigName) {
           vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug', 
-            appProject.workspaceFolder,
+            appProject.appWorkspaceFolder,
             `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`);
         }
       } else {

@@ -6,7 +6,7 @@ import * as path from 'path';
 import * as ts from 'typescript';
 import * as vscode from 'vscode';
 import { WestWorkspace } from '../models/WestWorkspace';
-import { ZephyrAppProject } from '../models/ZephyrAppProject';
+import { ZephyrApplication } from '../models/ZephyrApplication';
 import { ZephyrBoard } from '../models/ZephyrBoard';
 import { ArmGnuToolchain, normalizeZephyrToolchainVariant, ZephyrSDK, IARToolchain } from '../models/ZephyrSDK';
 import {
@@ -576,9 +576,9 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
   static resolve(_task: vscode.Task): vscode.Task {
     const folder = _task.scope as vscode.WorkspaceFolder;
-    const project = new ZephyrAppProject(folder, folder.uri.fsPath);
-    const activeSdk = tryGetZephyrSDK(project.sdkPath);
-    const westWorkspace = getWestWorkspace(project.westWorkspacePath);
+    const project = new ZephyrApplication(folder, folder.uri.fsPath);
+    const activeSdk = tryGetZephyrSDK(project.zephyrSdkPath);
+    const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
     const shell: string = getShell();
     const shellArgs: string[] = getShellArgs(shell);
     const westArgVar = getEnvVarFormat(shell, 'WEST_ARGS');
@@ -640,7 +640,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     const envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
     let venvPath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
     if (!venvPath || venvPath.length === 0) {
-      venvPath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.workspaceFolder.uri).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
+      venvPath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.appWorkspaceFolder.uri).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
     }
 
     if (!envScript) {
@@ -727,8 +727,8 @@ export async function checkAndCreateTasksJson(workspaceFolder: vscode.WorkspaceF
 }
 
 export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder, options?: CreateTasksJsonOptions): Promise<void> {
-  const project = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-  const westWorkspace = options?.westWorkspace ?? getWestWorkspace(project.westWorkspacePath);
+  const project = new ZephyrApplication(workspaceFolder, workspaceFolder.uri.fsPath);
+  const westWorkspace = options?.westWorkspace ?? getWestWorkspace(project.westWorkspaceRootPath);
 
   if (!westWorkspace) {
     return;
@@ -766,8 +766,8 @@ export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder,
     // Check if task is a RAM/ROM report/plot and sysbuild is enabled (not supported)
     const reportTasks = ['West ROM Report', 'West RAM Report', 'West RAM Plot', 'West ROM Plot'];
     if (reportTasks.includes(taskName)) {
-      const project = new ZephyrAppProject(workspaceFolder, workspaceFolder.uri.fsPath);
-      const activeConfig = project.configs.find(cfg => cfg.active) ?? project.configs[0];
+      const project = new ZephyrApplication(workspaceFolder, workspaceFolder.uri.fsPath);
+      const activeConfig = project.buildConfigs.find(cfg => cfg.active) ?? project.buildConfigs[0];
       const sysbuildEnabled = activeConfig && String(activeConfig.sysbuild).toLowerCase() === "true";
 
       if (sysbuildEnabled) {
