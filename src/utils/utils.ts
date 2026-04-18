@@ -774,57 +774,6 @@ export async function findConfigTask(taskLabel: string, project: ZephyrApplicati
   return undefined;
 }
 
-
-/**
- * @deprecated Use the getSupportedBoards instead.
- */
-export async function getSupportedBoards2(westWorkspace: WestWorkspace): Promise<ZephyrBoard[]> {
-  const listBoards: ZephyrBoard[] = [];
-  await parseSupportedBoards(
-    westWorkspace,
-    westWorkspace.boardsDirUri,
-    listBoards,
-    westWorkspace.rootUri.fsPath
-  );
-  return listBoards;
-}
-
-export async function parseSupportedBoards(westWorkspace: WestWorkspace, directory: vscode.Uri, listBoards: ZephyrBoard[], rootPath: string, relativePath = ''): Promise<void> {
-  try {
-    const files = await vscode.workspace.fs.readDirectory(directory);
-
-    for (const [name, type] of files) {
-      const filePath = vscode.Uri.joinPath(directory, name);
-      const fullPath = path.join(relativePath, name); // Keep track of the full path
-
-      if (type === vscode.FileType.Directory) {
-        let boardFilePath: vscode.Uri;
-        if (westWorkspace.versionArray['VERSION_MAJOR'] >= '3' &&
-          westWorkspace.versionArray['VERSION_MINOR'] >= '6' &&
-          westWorkspace.versionArray['PATCHLEVEL'] > '0'
-        ) {
-          boardFilePath = vscode.Uri.joinPath(filePath, "board.yml");
-        } else {
-          boardFilePath = vscode.Uri.joinPath(filePath, "board.cmake");
-        }
-
-        try {
-          await vscode.workspace.fs.stat(boardFilePath);
-          for (const [name, type] of await vscode.workspace.fs.readDirectory(filePath)) {
-            if (type === vscode.FileType.File && name.endsWith('.yaml')) {
-              const boardDescUri = vscode.Uri.joinPath(filePath, name);
-              listBoards.push(new ZephyrBoard(boardDescUri));
-            }
-          }
-        } catch (error) {
-          await parseSupportedBoards(westWorkspace, filePath, listBoards, rootPath, fullPath);
-        }
-      }
-    }
-  } catch (error) {
-  }
-}
-
 /**
  * Compares two version strings in semantic versioning format.
  * @param v1 - The first version string.

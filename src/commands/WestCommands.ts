@@ -15,11 +15,6 @@ function quote(p: string): string {
   return /\s/.test(p) ? `"${p}"` : p;
 }
 
-export function registerWestCommands(context: vscode.ExtensionContext): void {
-  // TODO use this function to register every west command 
-  // for better code structure
-}
-
 export async function westInitCommand(srcUrl: string, srcRev: string, workspacePath: string, manifestPath: string = ''): Promise<void> {
   let command = '';
   // If init remote repository

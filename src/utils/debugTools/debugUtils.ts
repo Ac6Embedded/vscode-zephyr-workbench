@@ -134,20 +134,6 @@ export function getStaticFlashRunnerNames(): string[] {
   ];
 }
 
-export function getRunRunners(): WestRunner[] {
-  return [ 
-    new Openocd(), 
-    new Linkserver(),
-    new STM32CubeProgrammer(),
-    new JLink(),
-    new PyOCD(),
-    new Nrfutil(),
-    new Nrfjprog(),
-    new SimplicityCommander(),
-    new StlinkGdbserver()
-  ];
-}
-
 function getExistingRunnersYamlPath(
   project: ZephyrApplication,
   config: ZephyrBuildConfig

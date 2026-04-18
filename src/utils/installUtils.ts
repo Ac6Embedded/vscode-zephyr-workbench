@@ -919,19 +919,6 @@ export async function createLocalVenv(
   return undefined;
 }
 
-export function findVenvActivateScript(destDir: string): string | undefined {
-  let venvPath;
-  if(process.platform === 'linux' || process.platform === 'darwin') {
-    venvPath = path.join(destDir, '.venv', 'bin', 'activate');
-  } else {
-    venvPath = path.join(destDir, '.venv', 'Scripts', 'activate.bat');
-  }
-  if(fileExists(venvPath)) {
-    return venvPath;
-  }
-  return undefined;
-}
-
 export async function createLocalVenvSPDX(
   context: vscode.ExtensionContext,
   workbenchFolder: vscode.WorkspaceFolder
