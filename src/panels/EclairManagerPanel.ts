@@ -7,7 +7,6 @@ import { getUri } from "../utilities/getUri";
 import { execCommandWithEnv, execShellCommandWithEnv, getOutputChannel } from "../utils/execUtils";
 import { getExtraPaths, normalizePath } from "../utils/env/envYamlUtils";
 import { readEnvYamlObject, writeEnvYamlObject } from "../utils/env/envYamlFileUtils";
-import type { IEclairExtension } from "../ext/eclair_api";
 import type { BuildConfigInfo, ExtensionMessage, RpcRequestMessage, WebviewMessage } from "../utils/eclair/eclairEvent";
 import type { EclairRpcMethods, OpenDialog, RpcHandlerMap } from "../utils/eclair/eclairRpcTypes";
 import { format_option_settings } from "../utils/eclair/template_utils";
@@ -21,6 +20,14 @@ import { EclairTemplate } from "../utils/eclair/template";
 import { EclairManagerEnv } from "./EclairManagerPanel/env";
 
 const ECLAIR_MANAGER_SETTINGS_FILENAME = "zephyr-workbench.eclair.json";
+
+// Minimal copy of the external ECLAIR extension API we use.
+// Keep this local to the ECLAIR integration instead of creating a repo-wide
+// declaration file for a single consumer.
+interface IEclairExtension {
+  enable(): void;
+  disable(): void;
+}
 
 const BuildConfigurationSchema = z.object({
   name: z.string(),
