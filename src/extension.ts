@@ -15,7 +15,7 @@ import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVar
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
 import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
 import { getRunner, getFlashRunners, getStaticFlashRunnerNames, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './utils/debugTools/debugUtils';
-import { executeTask, getTerminalDefaultProfile, normalizeSlashesIfPath, toPortableConfiguredPath } from './utils/execUtils';
+import { executeTask, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath, toPortableConfiguredPath } from './utils/execUtils';
 import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
@@ -94,6 +94,102 @@ function removeWestFlagDValue(config: ZephyrBuildConfig, value: string): boolean
 	}
 	config.westFlagsD.splice(index, 1);
 	return true;
+}
+
+function isValidVenvDirectory(venvPath: string): boolean {
+	const normalizedPath = path.normalize(venvPath);
+	const candidates = process.platform === 'win32'
+		? [
+			path.join(normalizedPath, 'Scripts', 'python.exe'),
+			path.join(normalizedPath, 'Scripts', 'Activate.ps1'),
+			path.join(normalizedPath, 'Scripts', 'activate.bat'),
+		]
+		: [
+			path.join(normalizedPath, 'bin', 'python'),
+			path.join(normalizedPath, 'bin', 'python3'),
+			path.join(normalizedPath, 'bin', 'activate'),
+		];
+
+	return candidates.some(candidate => fileExists(candidate));
+}
+
+async function showLocalVenvQuickStep(
+	workspaceFolder: vscode.WorkspaceFolder,
+	initialValue = '',
+): Promise<string | undefined> {
+	class BrowseButton implements vscode.QuickInputButton {
+		constructor(public iconPath: vscode.ThemeIcon, public tooltip: string) { }
+	}
+
+	const browseButton = new BrowseButton(vscode.ThemeIcon.Folder, 'Browse for venv folder');
+	const inputBox = vscode.window.createInputBox();
+	inputBox.title = 'Set Local Python Virtual Environment';
+	inputBox.value = resolveConfiguredPath(initialValue, workspaceFolder) ?? initialValue;
+	inputBox.prompt = 'Enter the venv root folder for this application. Leave empty to clear the local override.';
+	inputBox.placeholder = '${workspaceFolder}/.venv';
+	inputBox.buttons = [browseButton];
+	inputBox.ignoreFocusOut = true;
+
+	return new Promise((resolve) => {
+		let accepted = false;
+
+		inputBox.onDidTriggerButton(async (button) => {
+			if (button !== browseButton) {
+				return;
+			}
+
+			const selection = await vscode.window.showOpenDialog({
+				canSelectFiles: false,
+				canSelectFolders: true,
+				canSelectMany: false,
+				defaultUri: workspaceFolder.uri,
+				openLabel: 'Use this venv',
+				title: 'Select the Python virtual environment root folder',
+			});
+
+			if (selection && selection.length > 0) {
+				inputBox.value = selection[0].fsPath;
+			}
+		});
+
+		inputBox.onDidAccept(() => {
+			const trimmedValue = inputBox.value.trim();
+			if (trimmedValue.length === 0) {
+				accepted = true;
+				resolve('');
+				inputBox.hide();
+				return;
+			}
+
+			const resolvedValue = resolveConfiguredPath(trimmedValue, workspaceFolder) ?? trimmedValue;
+			if (isSpdxOnlyVenvPath(resolvedValue)) {
+				inputBox.validationMessage = 'The SPDX-only venv is ignored for normal runtime operations. Choose a normal venv such as .venv.';
+				return;
+			}
+			if (!isValidVenvDirectory(resolvedValue)) {
+				inputBox.validationMessage = 'Select the venv root folder containing Scripts/ or bin/.';
+				return;
+			}
+
+			inputBox.validationMessage = undefined;
+			accepted = true;
+			resolve(resolvedValue);
+			inputBox.hide();
+		});
+
+		inputBox.onDidChangeValue(() => {
+			inputBox.validationMessage = undefined;
+		});
+
+		inputBox.onDidHide(() => {
+			if (!accepted) {
+				resolve(undefined);
+			}
+			inputBox.dispose();
+		});
+
+		inputBox.show();
+	});
 }
 
 // This method is called when your extension is activated
@@ -949,6 +1045,26 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-app-explorer.set-venv", async (node: ZephyrApplicationTreeItem) => {
 			vscode.commands.executeCommand('workbench.action.openSettings', `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}`);
+		})
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.set-local-venv", async (node: ZephyrApplicationTreeItem) => {
+			if (!node?.project?.appWorkspaceFolder) {
+				return;
+			}
+
+			const cfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.appWorkspaceFolder);
+			const currentLocalVenvPath = cfg.inspect<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY)?.workspaceFolderValue ?? '';
+			const nextVenvPath = await showLocalVenvQuickStep(node.project.appWorkspaceFolder, currentLocalVenvPath);
+			if (typeof nextVenvPath === 'undefined') {
+				return;
+			}
+
+			await cfg.update(
+				ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
+				nextVenvPath.length > 0 ? nextVenvPath : undefined,
+				vscode.ConfigurationTarget.WorkspaceFolder,
+			);
 		})
 	);
 	context.subscriptions.push(

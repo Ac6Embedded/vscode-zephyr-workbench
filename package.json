@@ -603,7 +603,12 @@
       },
       {
         "command": "zephyr-workbench-app-explorer.set-venv",
-        "title": "Set Python virtual environment",
+        "title": "Set global Python Virtual Environment",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.set-local-venv",
+        "title": "Set local Python Virtual Environment",
         "category": "Zephyr Workbench/Application"
       },
       {
@@ -872,7 +877,7 @@
       },
       {
         "id": "zephyr-workbench-app-explorer.local-venv",
-        "label": "Local Environment"
+        "label": "Python Environment"
       },
       {
         "id": "zephyr-workbench-app-explorer.analysis",
@@ -1414,8 +1419,13 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.set-venv",
+          "command": "zephyr-workbench-app-explorer.set-local-venv",
           "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.set-venv",
+          "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ],
@@ -1700,6 +1710,10 @@
         },
         {
           "command": "zephyr-workbench-app-explorer.set-venv",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.set-local-venv",
           "when": "false"
         },
         {
