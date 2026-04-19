@@ -445,9 +445,40 @@ export async function execWestCommand(cmdName: string, cmd: string, options: vsc
   await execShellCommandWithEnv(cmdName, cmd, options);
 }
 
-export async function getBoardsDirectories(parent: ZephyrApplication | WestWorkspace, boardRoots?: string[]): Promise<string[]> {
+export interface WestBoardInfo {
+  name: string;
+  dir: string;
+  qualifiers: string[];
+  revisionDefault?: string;
+  revisions: string[];
+}
+
+function parseWestBoardList(stdout: string): WestBoardInfo[] {
+  return stdout
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => {
+      const [name = '', dir = '', qualifiersCsv = '', revisionDefault = '', revisionsRaw = ''] = line
+        .split('|')
+        .map(part => part.trim().replace(/^"+|"+$/g, ''));
+
+      return {
+        name,
+        dir,
+        qualifiers: qualifiersCsv.length > 0 ? qualifiersCsv.split(',').filter(entry => entry.length > 0) : [],
+        revisionDefault: revisionDefault && revisionDefault !== 'None' ? revisionDefault : undefined,
+        revisions: revisionsRaw && revisionsRaw !== 'None'
+          ? revisionsRaw.split(',').map(entry => entry.trim()).filter(entry => entry.length > 0)
+          : [],
+      };
+    })
+    .filter(board => board.name.length > 0 && board.dir.length > 0);
+}
+
+export async function getWestBoards(parent: ZephyrApplication | WestWorkspace, boardRoots?: string[]): Promise<WestBoardInfo[]> {
   return new Promise((resolve, reject) => {
-    let cmd = 'west boards -f "{dir}"';
+    let cmd = 'west boards -f "{name}|{dir}|{qualifiers}|{revision_default}|{revisions}"';
     if (boardRoots) {
       for (let boardRoot of boardRoots) {
         if (boardRoot.length > 0) {
@@ -463,25 +494,8 @@ export async function getBoardsDirectories(parent: ZephyrApplication | WestWorks
         return;
       }
 
-      const candidates = stdout
-        .split(/\r?\n/)
-        .map(s => s.trim().replace(/^"+|"+$/g, ''))
-        .filter(s => s.length > 0);
-
-      // Use VS Code FS stat to verify existence and directory type
-      // Filter any echoes in environment scripts that are not directories
-      const results = await Promise.all(candidates.map(async (p) => {
-        try {
-          const uri = vscode.Uri.file(p);
-          const st = await vscode.workspace.fs.stat(uri);
-          return (st.type & vscode.FileType.Directory) === vscode.FileType.Directory ? p : null;
-        } catch {
-          return null;
-        }
-      }));
-
-      const boardDirs = results.filter((p): p is string => !!p);
-      resolve(boardDirs);
+      const boards = parseWestBoardList(stdout);
+      resolve(boards);
     });
   });
 }
@@ -537,47 +551,6 @@ export async function getSupportedSnippets(
       }
     }
     reject('No snippets found. Please make sure you have generated the west workspace correctly.');
-  });
-}
-
-export async function getBoardsDirectoriesFromIdentifier(boardIdentifier: string, parent: ZephyrApplication | WestWorkspace, boardRoots?: string[]): Promise<string[]> {
-  return new Promise((resolve, reject) => {
-    let boardName = boardIdentifier;
-    if (boardIdentifier) {
-      const regex = /^([^@\/]+)(?:@([^\/]+))?(?:\/([^\/]+)(?:\/([^\/]+)(?:\/([^\/]+))?)?)?$/;
-      const match = boardIdentifier.match(regex);
-
-      if (!match) {
-        reject(`Error: Identifier format invalid for: ${boardIdentifier}`);
-      } else {
-        boardName = match[1];
-      }
-    }
-
-    let cmd = `west boards --board ${boardName} -f "{dir}"`;
-    if (boardRoots) {
-      for (let boardRoot of boardRoots) {
-        if (boardRoot.length > 0) {
-          let normalizeBoardRoot = normalizePath(boardRoot);
-          cmd += ` --board-root ${normalizeBoardRoot}`;
-        }
-      }
-    }
-    execWestCommandWithEnv(cmd, parent, (error: any, stdout: string, stderr: any) => {
-      if (error) {
-        reject(`Error: ${stderr}`);
-      }
-
-      let separator = '\n';
-      if (process.platform === 'win32') {
-        separator = '\r\n';
-      }
-
-      const boardDirs = stdout
-        .trim()
-        .split(separator);
-      resolve(boardDirs);
-    });
   });
 }
 

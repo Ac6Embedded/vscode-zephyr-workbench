@@ -1,9 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import yaml from 'yaml';
 import * as vscode from 'vscode';
 
-import { getBoardsDirectories, westTmpBuildCmakeOnlyCommand } from '../../commands/WestCommands';
+import { getWestBoards, westTmpBuildCmakeOnlyCommand, type WestBoardInfo } from '../../commands/WestCommands';
 import { ZephyrBoard } from '../../models/ZephyrBoard';
 import { ZephyrApplication } from '../../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
@@ -53,8 +52,8 @@ export async function getSupportedBoards(
   generatedBuildDir?: string,
 ): Promise<ZephyrBoard[]> {
   const boardRoots = await collectBoardRoots(westWorkspace, resource, buildConfig, generatedBuildDir);
-  const boardDirs = await getBoardsDirectories(westWorkspace, boardRoots);
-  return parseBoardsFromDirectories(boardDirs);
+  const westBoards = await getWestBoards(westWorkspace, boardRoots);
+  return westBoards.flatMap(expandWestBoardInfo);
 }
 
 async function collectBoardRoots(
@@ -120,33 +119,41 @@ async function readProjectBoardRoots(
   return [envVars.BOARD_ROOT];
 }
 
-async function parseBoardsFromDirectories(boardDirs: string[]): Promise<ZephyrBoard[]> {
-  const listBoards: ZephyrBoard[] = [];
+function expandWestBoardInfo(boardInfo: WestBoardInfo): ZephyrBoard[] {
+  const qualifierSuffixes = getSelectableQualifierSuffixes(boardInfo);
+  const revisions = boardInfo.revisions.length > 0 ? boardInfo.revisions : [undefined];
 
-  const dirPromises = boardDirs.map(async dir => {
-    const dirUri = vscode.Uri.file(dir);
-    try {
-      const files = await vscode.workspace.fs.readDirectory(dirUri);
-      const boardPromises = files
-        .filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.yaml'))
-        .map(([name]) => {
-          const boardDescUri = vscode.Uri.joinPath(dirUri, name);
-          const boardFile = fs.readFileSync(boardDescUri.fsPath, 'utf8');
-          const data = yaml.parse(boardFile);
-          if (data.identifier) {
-            return new ZephyrBoard(boardDescUri).expandTargets();
-          }
-          return [];
-        });
-      const boards = await Promise.all(boardPromises);
-      listBoards.push(...boards.flat());
-    } catch (error) {
-      console.error(`Error reading directory: ${dirUri.fsPath}`, error);
+  const boards: ZephyrBoard[] = [];
+  for (const qualifierSuffix of qualifierSuffixes) {
+    const baseIdentifier = `${boardInfo.name}${qualifierSuffix}`;
+    const baseBoard = new ZephyrBoard(vscode.Uri.file(boardInfo.dir), baseIdentifier);
+    boards.push(baseBoard);
+
+    for (const revision of revisions) {
+      if (!revision) {
+        continue;
+      }
+      boards.push(baseBoard.withIdentifier(`${boardInfo.name}@${revision}${qualifierSuffix}`));
     }
-  });
+  }
 
-  await Promise.all(dirPromises);
-  return listBoards;
+  return boards;
+}
+
+function getSelectableQualifierSuffixes(boardInfo: WestBoardInfo): string[] {
+  if (boardInfo.qualifiers.length === 0) {
+    return [''];
+  }
+
+  // Zephyr allows the plain board name when the board effectively resolves to
+  // a single SoC target. In practice that means one qualifier with no deeper
+  // cluster/variant path, so keep the picker aligned with normal `west build -b <board>`
+  // usage instead of always surfacing the raw SoC qualifier.
+  if (boardInfo.qualifiers.length === 1 && !boardInfo.qualifiers[0].includes('/')) {
+    return [''];
+  }
+
+  return boardInfo.qualifiers.map(qualifier => `/${qualifier}`);
 }
 
 function readZephyrSettings(buildDir: string): Record<string, string> {
@@ -156,7 +163,7 @@ function readZephyrSettings(buildDir: string): Record<string, string> {
     const fileContent = fs.readFileSync(filePath, 'utf-8');
     const lines = fileContent.split(/\r?\n/);
 
-    lines.forEach(line => {
+    lines.forEach((line: string) => {
       if (line.startsWith('#') || line.trim() === '') {
         return;
       }

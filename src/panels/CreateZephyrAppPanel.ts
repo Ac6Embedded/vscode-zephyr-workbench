@@ -584,7 +584,7 @@ async function buildBoardsDiscoveryState(westWorkspace: WestWorkspace): Promise<
 
   let html = '';
   for (const board of boards) {
-    html += `<div class="dropdown-item" data-value="${board.yamlFileUri.fsPath}" data-board-identifier="${board.identifier}" data-label="${board.name}">${board.name}<span class="description">(${board.identifier})</span></div>`;
+    html += `<div class="dropdown-item" data-value="${board.rootPath}" data-board-identifier="${board.identifier}" data-label="${board.name}">${board.name}<span class="description">(${board.identifier})</span></div>`;
   }
 
   return {
