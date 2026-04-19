@@ -539,11 +539,21 @@ async function applyDefaultProjectSettingsViaConfigurationApi(
 export class ZephyrTaskProvider implements vscode.TaskProvider {
   static ZephyrType: string = 'zephyr-workbench';
 
-  public provideTasks(token: vscode.CancellationToken): vscode.Task[] {
-    return [];
+  public async provideTasks(_token: vscode.CancellationToken): Promise<vscode.Task[]> {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const zephyrFolders = await ZephyrApplication.getApplicationWorkspaceFolders(folders);
+
+    const tasks: vscode.Task[] = [];
+    for (const folder of zephyrFolders) {
+      const task = buildDirectTask(folder, 'West Build');
+      if (task) {
+        tasks.push(task);
+      }
+    }
+    return tasks;
   }
 
-  public resolveTask(_task: vscode.Task, token: vscode.CancellationToken): vscode.Task | undefined {
+  public resolveTask(_task: vscode.Task, _token: vscode.CancellationToken): vscode.Task | undefined {
     return ZephyrTaskProvider.resolve(_task);
   }
 
@@ -688,6 +698,13 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       _task.problemMatchers
     );
 
+    if (_task.group) {
+      resolvedTask.group = _task.group;
+    }
+    if (_task.detail) {
+      resolvedTask.detail = _task.detail;
+    }
+
     return resolvedTask;
   }
 }
@@ -719,8 +736,8 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder, o
   changed = ensureRunnerInput(config) || changed;
   
   // Only save essential tasks to tasks.json
-  const persistentTasks = [westBuildTask, rebuildTask, flashTask];
-  
+  const persistentTasks = [flashTask];
+
   changed = ensureTasks(config, persistentTasks) || changed;
 
   if (changed) {
@@ -728,36 +745,103 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder, o
   }
 }
 
-// TODO: Enhace directTasks and reportTasks to be dynamic
-export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder, taskName: string): Promise<boolean> {
-  // Tasks that run directly without saving to tasks.json
-  const directTasks = ['DT Doctor', 'West ROM Report', 'West RAM Report', 'West RAM Plot', 'West ROM Plot', 'Menuconfig', 'Gui config', 'Harden Config'];
-  const { config, tasksJsonPath, serialized } = await ensureTasksFile(workspaceFolder);
-  const taskExists = config.tasks.some(task => task.label === taskName && task.type === ZephyrTaskProvider.ZephyrType);
+// Tasks that run directly without being persisted to tasks.json.
+const DIRECT_TASKS = new Set<string>([
+  'West Build',
+  'West Rebuild',
+  'DT Doctor',
+  'West ROM Report',
+  'West RAM Report',
+  'West RAM Plot',
+  'West ROM Plot',
+  'Menuconfig',
+  'Gui config',
+  'Harden Config',
+]);
 
-  if (directTasks.includes(taskName)) {
-    // Check if task is a RAM/ROM report/plot and sysbuild is enabled (not supported)
-    const reportTasks = ['West ROM Report', 'West RAM Report', 'West RAM Plot', 'West ROM Plot'];
-    if (reportTasks.includes(taskName)) {
-      const project = new ZephyrApplication(workspaceFolder, workspaceFolder.uri.fsPath);
-      const activeConfig = project.buildConfigs.find(cfg => cfg.active) ?? project.buildConfigs[0];
-      const sysbuildEnabled = activeConfig && String(activeConfig.sysbuild).toLowerCase() === "true";
+const SYSBUILD_UNSUPPORTED_TASKS = new Set<string>([
+  'West ROM Report',
+  'West RAM Report',
+  'West RAM Plot',
+  'West ROM Plot',
+]);
 
-      if (sysbuildEnabled) {
-        vscode.window.showWarningMessage(`Task "${taskName}" is not supported with sysbuild enabled.`);
-        return false;
+export function isDirectTask(taskName: string): boolean {
+  return DIRECT_TASKS.has(taskName);
+}
+
+/**
+ * Build and resolve an in-memory Zephyr task for a given build configuration.
+ * Returns undefined if the task is unknown or incompatible (e.g. report task with sysbuild).
+ */
+export function buildDirectTask(
+  workspaceFolder: vscode.WorkspaceFolder,
+  taskName: string,
+  configName?: string,
+): vscode.Task | undefined {
+  const taskDef = tasksMap.get(taskName);
+  if (!taskDef) {
+    return undefined;
+  }
+
+  const project = new ZephyrApplication(workspaceFolder, workspaceFolder.uri.fsPath);
+  const targetConfig = configName
+    ? project.buildConfigs.find(cfg => cfg.name === configName)
+    : (project.buildConfigs.find(cfg => cfg.active) ?? project.buildConfigs[0]);
+
+  if (SYSBUILD_UNSUPPORTED_TASKS.has(taskName)) {
+    const sysbuildEnabled = targetConfig && String(targetConfig.sysbuild).toLowerCase() === 'true';
+    if (sysbuildEnabled) {
+      vscode.window.showWarningMessage(`Task "${taskName}" is not supported with sysbuild enabled.`);
+      return undefined;
+    }
+  }
+
+  let taskLabel = taskName;
+  let definition: ZephyrTaskDefinition = { ...taskDef, args: [...taskDef.args] };
+
+  if (targetConfig) {
+    const buildDirVar = getEnvVarFormat(getShell(), 'BUILD_DIR');
+    const args: string[] = [];
+    for (const arg of taskDef.args) {
+      if (!arg.startsWith('--build-dir') && !arg.startsWith('--board')) {
+        args.push(arg);
       }
     }
-
-    const taskDef = tasksMap.get(taskName);
-    if (!taskDef) {
-      return false;
+    if (targetConfig.boardIdentifier && targetConfig.boardIdentifier.length > 0) {
+      args.push(`--board ${targetConfig.boardIdentifier}`);
     }
+    args.push(`--build-dir ${buildDirVar}`);
 
-    const task = new vscode.Task(taskDef, workspaceFolder, taskName, ZephyrTaskProvider.ZephyrType);
-    await vscode.tasks.executeTask(ZephyrTaskProvider.resolve(task));
+    definition = { ...taskDef, config: targetConfig.name, args };
+    taskLabel = `${taskName} [${targetConfig.name}]`;
+  }
+
+  const task = new vscode.Task(
+    definition,
+    workspaceFolder,
+    taskLabel,
+    ZephyrTaskProvider.ZephyrType,
+  );
+
+  const groupKind = typeof definition.group === 'object' ? definition.group?.kind : definition.group;
+  if (groupKind === 'build') {
+    task.group = vscode.TaskGroup.Build;
+  }
+  if (targetConfig) {
+    task.detail = `Build config: ${targetConfig.name}`;
+  }
+
+  return ZephyrTaskProvider.resolve(task);
+}
+
+export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder, taskName: string): Promise<boolean> {
+  if (isDirectTask(taskName)) {
     return false;
   }
+
+  const { config, tasksJsonPath, serialized } = await ensureTasksFile(workspaceFolder);
+  const taskExists = config.tasks.some(task => task.label === taskName && task.type === ZephyrTaskProvider.ZephyrType);
 
   if (taskExists) {
     return true;

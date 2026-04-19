@@ -16,7 +16,7 @@ import {
   ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY,
   ZINSTALLER_MINIMUM_VERSION,
 } from '../constants';
-import { checkOrCreateTask, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
+import { buildDirectTask, checkOrCreateTask, isDirectTask, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { readInstalledZinstallerVersion, versionAtLeast } from './env/zinstallerVersionUtils';
 import { readToolchainSelection } from './toolchainSelection';
 
@@ -689,6 +689,10 @@ export async function findOrCreateTask(taskLabel: string, workspaceFolder: vscod
  * @returns 
  */
 export async function findConfigTask(taskLabel: string, project: ZephyrApplication, configName: string): Promise<vscode.Task | undefined> {
+  if (isDirectTask(taskLabel)) {
+    return buildDirectTask(project.appWorkspaceFolder, taskLabel, configName);
+  }
+
   const taskExists = await checkOrCreateTask(project.appWorkspaceFolder, taskLabel);
   if (taskExists) {
     const tasks = await getZephyrWorkbenchTasks();

@@ -186,8 +186,8 @@ export class ZephyrApplication {
     return this.buildConfigs.find(config => config.name === name);
   }
 
-  // Application folders are still detected through the generated west task so
-  // older workspaces keep behaving exactly as before.
+  // Detect application folders via the zephyr-workbench.westWorkspace setting,
+  // with a fallback to the legacy "West Build" task for older workspaces.
   static async isApplicationWorkspaceFolder(folder: vscode.WorkspaceFolder) {
     const applicationPath = folder.uri.fsPath;
     const cachedValue = ZephyrApplication.applicationWorkspaceCache.get(applicationPath);
@@ -196,8 +196,15 @@ export class ZephyrApplication {
       return cachedValue;
     }
 
-    const hasZephyrTaskFile = ZephyrApplication.isApplicationPath(applicationPath);
-    if (hasZephyrTaskFile) {
+    const configuredWestWorkspace = vscode.workspace
+      .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder)
+      .get<string>(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY);
+    if (configuredWestWorkspace && configuredWestWorkspace.length > 0) {
+      ZephyrApplication.applicationWorkspaceCache.set(applicationPath, true);
+      return true;
+    }
+
+    if (ZephyrApplication.isApplicationPath(applicationPath)) {
       ZephyrApplication.applicationWorkspaceCache.set(applicationPath, true);
       return true;
     }
@@ -231,6 +238,20 @@ export class ZephyrApplication {
   }
 
   static isApplicationPath(applicationPath: string): boolean {
+    const settingsPath = path.join(applicationPath, '.vscode', 'settings.json');
+    if (fileExists(settingsPath)) {
+      try {
+        const fileContent = fs.readFileSync(settingsPath, 'utf-8');
+        const jsonData = JSON.parse(fileContent);
+        const key = `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY}`;
+        if (jsonData && typeof jsonData[key] === 'string' && jsonData[key].length > 0) {
+          return true;
+        }
+      } catch {
+        // fall through to legacy detection
+      }
+    }
+
     const zwFilePath = path.join(applicationPath, '.vscode', 'tasks.json');
     if (fileExists(zwFilePath)) {
       const fileContent = fs.readFileSync(zwFilePath, 'utf-8');
