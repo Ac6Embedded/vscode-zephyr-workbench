@@ -187,17 +187,6 @@
             "description": "User extra modules",
             "scope": "resource"
           },
-          "zephyr-workbench.build.pristine": {
-            "type": "string",
-            "enum": [
-              "auto",
-              "always",
-              "never"
-            ],
-            "default": "",
-            "description": "The option controls whether the build directory is made pristine before the build.",
-            "scope": "resource"
-          },
           "zephyr-workbench.build.west-args": {
             "type": "string",
             "default": "",
@@ -589,11 +578,6 @@
       {
         "command": "zephyr-workbench-app-explorer.sysbuild.disable",
         "title": "Disable",
-        "category": "Zephyr Workbench/Application"
-      },
-      {
-        "command": "zephyr-workbench-app-explorer.change-pristine",
-        "title": "Change Pristine Setting",
         "category": "Zephyr Workbench/Application"
       },
       {
@@ -1301,18 +1285,13 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.change-pristine",
+          "command": "zephyr-workbench-app-explorer.delete",
           "group": "clean@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.delete",
-          "group": "clean@3",
-          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
-        },
-        {
           "command": "zephyr-workbench-app-explorer.remove",
-          "group": "clean@4",
+          "group": "clean@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ],
@@ -1698,10 +1677,6 @@
         },
         {
           "command": "zephyr-workbench-app-explorer.sysbuild.disable",
-          "when": "false"
-        },
-        {
-          "command": "zephyr-workbench-app-explorer.change-pristine",
           "when": "false"
         },
         {

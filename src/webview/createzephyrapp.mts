@@ -529,7 +529,6 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const sampleInput = document.getElementById('sampleInput') as HTMLInputElement;
   const projectNameText = document.getElementById("projectName") as TextField;
   const projectParentPathText = document.getElementById("projectParentPath") as TextField;
-  const pristineRadioGroup = document.getElementById("pristineMode") as RadioGroup;
   const appFromGroup = document.getElementById('appFromGroup') as RadioGroup;
   const venvRadioGroup = document.getElementById('venvMode') as RadioGroup;
   const toolchainVariantGroup = document.getElementById('toolchainVariantGroup') as RadioGroup;
@@ -549,7 +548,6 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       samplePath:         sampleInput.getAttribute('data-value') ?? '',
       projectName:        projectNameText.value,
       projectParentPath:  projectParentPathText.value,
-      pristine:           pristineRadioGroup.value,
       venv:               venvRadioGroup?.value ?? 'global',
       debugPreset:        !!debugPresetCheckbox?.checked,
     }

@@ -13,7 +13,7 @@ import { checkAndCreateTasksJson, createTasksJson, setDefaultProjectSettings, up
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
-import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
+import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
 import { getRunner, getFlashRunners, getStaticFlashRunnerNames, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './utils/debugTools/debugUtils';
 import { executeTask, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath, toPortableConfiguredPath } from './utils/execUtils';
 import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
@@ -39,7 +39,6 @@ import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommand
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain } from './utils/zephyr/sdkUtils';
 import { registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zephyr/armGnuToolchainUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
-import { showPristineQuickPick } from './quicksteps/setupBuildPristineQuickStep';
 import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, getInternalToolsDirRealPath, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
@@ -1223,16 +1222,6 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.change-pristine", async (node: ZephyrApplicationTreeItem) => {
-			if (node.project) {
-				let workspaceFolder = node.project.appWorkspaceFolder;
-				let pristineValue = await showPristineQuickPick();
-				await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
-			}
-		})
-	);
-
-	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.sysbuild.enable', async (node: any) => {
 			if (node instanceof ZephyrConfigTreeItem) {
 				await toggleSysbuild(node.project.appWorkspaceFolder, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, true, node.project, node.buildConfig.name);
@@ -2404,7 +2393,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchainInstallation, pristineValue = 'auto', venvMode = 'global', debugPreset = false, toolchainVariant = 'zephyr') => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchainInstallation, venvMode = 'global', debugPreset = false, toolchainVariant = 'zephyr') => {
 			if (!westWorkspace) {
 				vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
 				return;
@@ -2466,7 +2455,6 @@ export function activate(context: vscode.ExtensionContext) {
 						}
 
 						await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, {
-							pristine: pristineValue,
 							toolchainVariant,
 							venvPath
 						});

@@ -15,7 +15,6 @@ import {
   ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY,
   ZEPHYR_PROJECT_IAR_SETTING_KEY,
   ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY,
-  ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY,
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
   ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
@@ -237,7 +236,6 @@ export interface CreateTasksJsonOptions {
 }
 
 export interface DefaultProjectSettingsOptions {
-  pristine?: string;
   toolchainVariant?: string;
   venvPath?: string;
 }
@@ -422,12 +420,10 @@ async function tryWriteDefaultProjectSettingsFile(
         resolveStoredToolchainVariant(toolchainInstallation, options.toolchainVariant),
       )
     : toolchainInstallation.compilerPath;
-  const pristineValue = options.pristine ?? 'auto';
   const toolchainVariant = resolveStoredToolchainVariant(toolchainInstallation, options.toolchainVariant);
   const portableWestWorkspacePath = toPortableConfiguredPath(westWorkspace.rootUri.fsPath, workspaceFolder);
 
   config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY}`] = portableWestWorkspacePath;
-  config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY}`] = pristineValue;
   config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.build.configurations`] = upsertPrimaryBuildConfig(
     config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.build.configurations`],
     boardIdentifier
@@ -471,7 +467,6 @@ async function applyDefaultProjectSettingsViaConfigurationApi(
   options: DefaultProjectSettingsOptions
 ): Promise<void> {
   const boardIdentifier = zephyrBoard.identifier ? zephyrBoard.identifier : '';
-  const pristineValue = options.pristine ?? 'auto';
   const toolchainVariant = resolveStoredToolchainVariant(toolchainInstallation, options.toolchainVariant);
 
   await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(
@@ -507,7 +502,6 @@ async function applyDefaultProjectSettingsViaConfigurationApi(
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
       .update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
   }
-  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, pristineValue, vscode.ConfigurationTarget.WorkspaceFolder);
 
   const config = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder);
   const buildConfigs = config.get<any[]>('build.configurations') ?? [];
