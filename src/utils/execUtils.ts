@@ -294,6 +294,41 @@ export function getShellSourceCommand(shell: string, script: string): string {
   }
 }
 
+export function getShellSetEnvCommand(shell: string, env: string, value: string): string {
+  switch (shell) {
+    case 'bash':
+    case 'zsh':
+    case 'dash':
+      return `export ${env}="${value.replace(/(["\\$`])/g, '\\$1')}"`;
+    case 'fish':
+      return `set -gx ${env} "${value.replace(/(["\\$`])/g, '\\$1')}"`;
+    case 'cmd.exe':
+      return `set "${env}=${value.replace(/"/g, '""')}"`;
+    case 'powershell.exe':
+    case 'pwsh.exe':
+      return `$env:${env} = '${value.replace(/'/g, "''")}'`;
+    default:
+      return `${env}=${value}`;
+  }
+}
+
+export function getShellCdCommand(shell: string, cwd: string): string {
+  const normalized = normalizePathForShell(shell, cwd);
+  const quoted = /^".*"$/.test(normalized) || !/\s/.test(normalized)
+    ? normalized
+    : `"${normalized}"`;
+
+  switch (shell) {
+    case 'cmd.exe':
+      return `cd /d ${quoted}`;
+    case 'powershell.exe':
+    case 'pwsh.exe':
+      return `Set-Location ${quoted}`;
+    default:
+      return `cd ${quoted}`;
+  }
+}
+
 export function getShellEchoCommand(shell: string): string {
   switch (shell) {
     case 'bash':

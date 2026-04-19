@@ -4,7 +4,7 @@ import path from 'path';
 import { fileExists, getWorkspaceFolder } from '../utils/utils';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from '../constants';
 import { getBuildEnv, loadEnv } from '../utils/env/zephyrEnvUtils';
-import { concatCommands, getShellClearCommand, getShellEchoCommand, getResolvedShell, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
+import { concatCommands, getShellCdCommand, getShellClearCommand, getShellEchoCommand, getResolvedShell, getShellSetEnvCommand, getShellSourceCommand, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
 
 export class WestWorkspace {
   versionArray!: { [key: string]: string };
@@ -186,63 +186,83 @@ export class WestWorkspace {
     return fileExists(westPath);
   }
 
-
-  private static openTerminal(westWorkspace: WestWorkspace): vscode.Terminal {
+  private static buildTerminalContext(westWorkspace: WestWorkspace) {
     const { path: shellPath, args: shellArgs } = getResolvedShell();
     const shellType = classifyShell(shellPath);
+    return {
+      shellPath,
+      shellArgs,
+      shellType,
+      env: westWorkspace.buildEnv,
+      cwd: westWorkspace.rootUri.fsPath,
+    };
+  }
+
+  private static setupTerminal(
+    terminal: vscode.Terminal,
+    westWorkspace: WestWorkspace,
+    envScript: string,
+  ): void {
+    const context = WestWorkspace.buildTerminalContext(westWorkspace);
+    const envScriptForShell = normalizePathForShell(context.shellType, envScript);
+    const echoCommand = getShellEchoCommand(context.shellType);
+    const clearCommand = getShellClearCommand(context.shellType);
+    const envSetCommands = Object.entries(context.env).map(([key, value]) =>
+      getShellSetEnvCommand(context.shellType, key, String(value)),
+    );
+    const printEnvCommands = Object.entries(context.env).map(([key, value]) => {
+      const renderedValue = (context.shellType === 'bash')
+        ? winToPosixPath(String(value))
+        : String(value);
+      return `${echoCommand} ${key}="${renderedValue}"`;
+    });
+
+    const setupCommand = concatCommands(
+      context.shellType,
+      clearCommand,
+      getShellCdCommand(context.shellType, context.cwd),
+      ...envSetCommands,
+      getShellSourceCommand(context.shellType, envScriptForShell),
+      `echo "======= Zephyr Workbench Environment ======="`,
+      ...printEnvCommands,
+      `echo "============================================"`,
+    );
+
+    terminal.sendText(setupCommand);
+  }
+
+  private static openTerminal(westWorkspace: WestWorkspace): vscode.Terminal {
+    const context = WestWorkspace.buildTerminalContext(westWorkspace);
     let opts: vscode.TerminalOptions = {
       name: westWorkspace.name + ' Terminal',
-      shellPath: `${shellPath}`,
-      shellArgs: shellArgs,
-      env: westWorkspace.buildEnv,
+      shellPath: `${context.shellPath}`,
+      shellArgs: context.shellArgs,
+      env: context.env,
       cwd: westWorkspace.rootUri
     };
 
-    const envVars = opts.env || {};
-
-    const echoCommand = getShellEchoCommand(shellType);
-    const clearCommand = getShellClearCommand(shellType);
-    const printEnvCommands = Object.entries(envVars).map(([key, value]) => {
-      const v = (shellType === 'bash')
-        ? winToPosixPath(String(value))
-        : String(value);
-      return `${echoCommand} ${key}="${v}"`;
-    });
-    const printEnvCommand = concatCommands(shellType, ...printEnvCommands);
-
-    const printHeaderCommand = concatCommands(shellType,
-      `${clearCommand}`,
-      `echo "======= Zephyr Workbench Environment ======="`,
-      `${printEnvCommand}`,
-      `echo "============================================"`
-    );
-
     const terminal = vscode.window.createTerminal(opts);
-    terminal.sendText(printHeaderCommand);
 
     return terminal;
   }
 
   static getTerminal(westWorkspace: WestWorkspace): vscode.Terminal {
-    const terminals = <vscode.Terminal[]>(<any>vscode.window).terminals;
-    for (let i = 0; i < terminals.length; i++) {
-      const cTerminal = terminals[i];
-      if (cTerminal.name === westWorkspace.name + ' Terminal') {
-        return cTerminal;
-      }
-    }
-
     let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
     if (!envScript) {
       throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Ac6 Zephyr');
     }
 
+    const terminals = <vscode.Terminal[]>(<any>vscode.window).terminals;
+    for (let i = 0; i < terminals.length; i++) {
+      const cTerminal = terminals[i];
+      if (cTerminal.name === westWorkspace.name + ' Terminal') {
+        WestWorkspace.setupTerminal(cTerminal, westWorkspace, envScript);
+        return cTerminal;
+      }
+    }
+
     let terminal = WestWorkspace.openTerminal(westWorkspace);
-    const { path: shellPath } = getResolvedShell();
-    const shellType = classifyShell(shellPath);
-    envScript = normalizePathForShell(shellType, envScript);
-    let srcEnvCmd = `. ${envScript}`;
-    terminal.sendText(srcEnvCmd);
+    WestWorkspace.setupTerminal(terminal, westWorkspace, envScript);
     return terminal;
   }
 

@@ -9,7 +9,7 @@ import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
 import yaml from 'yaml';
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
-import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs, getShellExe, classifyShell, normalizePathForShell, execCommandWithEnv } from "./execUtils";
+import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs, getShellExe, execCommandWithEnv } from "./execUtils";
 import { syncAutoDetectEnv } from "./debugTools/autoDetectSyncUtils";
 import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSdkInstallation, getWestWorkspace } from "./utils";
 import { getRunner } from "./debugTools/debugUtils";
