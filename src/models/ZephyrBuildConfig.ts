@@ -30,8 +30,7 @@ import {
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
 } from '../constants';
-import { composeWestBuildArgs, normalizeWestFlagDValue } from '../utils/zephyr/westArgUtils';
-import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
+import { normalizeWestFlagDValue } from '../utils/zephyr/westArgUtils';
 import { getPyOcdTargetFromRunnersYaml, readRunnersYamlForProject } from '../utils/zephyr/runnersYamlUtils';
 
 export class ZephyrBuildConfig {
@@ -145,13 +144,11 @@ export class ZephyrBuildConfig {
   }
 
   // Centralize config-specific env assembly so tasks, terminals and debug
-  // helpers all derive the same BOARD/BUILD_DIR/WEST_ARGS view.
+  // helpers all derive the same BOARD/BUILD_DIR view.
   private composeBuildEnv(application: ZephyrApplication): { [key: string]: string; } {
-    const westBuildArgs = composeWestBuildArgs(this.westArgs, mergeOpenocdBuildFlag(application, this.westArgs, this.westFlagsD));
     let baseEnv: { [key: string]: string; } = {
       BOARD: this.boardIdentifier,
       BUILD_DIR: this.getBuildDir(application),
-      ...(westBuildArgs) ? { WEST_ARGS: westBuildArgs } : {}
     };
 
     const envVars = { ...this.envVars };

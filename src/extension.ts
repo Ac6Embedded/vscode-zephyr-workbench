@@ -3,7 +3,7 @@
 import path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { westBoardsCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBuildCommand, westConfigCommand, westSpdxGenerateCommand, westSpdxInitCommand } from './commands/WestCommands';
+import { westBoardsCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBuildCommand, westConfigCommand, westRebuildCommand, westSpdxGenerateCommand, westSpdxInitCommand } from './commands/WestCommands';
 import { WestWorkspace } from './models/WestWorkspace';
 import { ZephyrApplication } from './models/ZephyrApplication';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
@@ -434,43 +434,30 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.build-app', async (node: ZephyrConfigTreeItem | vscode.WorkspaceFolder | vscode.Uri, configName: string) => {
-			const profile = getTerminalDefaultProfile();
-
-			if (!profile) {
-				await executeConfigTask('West Build', node, configName);
-			}
-
-			if (node instanceof ZephyrApplicationTreeItem && profile) {
-				const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
-				westBuildCommand(node.project, westWorkspace);
-			}
-
 			// After first build, parse toolchain name from .config
 			let folder: vscode.WorkspaceFolder | undefined = undefined;
 			let boardIdentifier: string = '';
 			if (node instanceof ZephyrConfigTreeItem) {
-				if (profile) {
-					const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
-					westBuildCommand(node.project, westWorkspace);
-				}
+				const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
+				await westBuildCommand(node.project, westWorkspace, '', configName ?? node.buildConfig.name);
 				if (node.project) {
 					folder = node.project.appWorkspaceFolder;
 					boardIdentifier = node.buildConfig.boardIdentifier;
 				}
+			} else if (node instanceof ZephyrApplicationTreeItem) {
+				const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
+				await westBuildCommand(node.project, westWorkspace, '', configName);
+				folder = node.project.appWorkspaceFolder;
 			} else if ((node as vscode.WorkspaceFolder).uri) {
 				// It's a WorkspaceFolder
-				if (profile) {
-					const project = await getZephyrApplication((node as vscode.WorkspaceFolder).uri.fsPath);
-					westBuildCommand(project, getWestWorkspace(project.westWorkspaceRootPath));
-				}
+				const project = await getZephyrApplication((node as vscode.WorkspaceFolder).uri.fsPath);
+				await westBuildCommand(project, getWestWorkspace(project.westWorkspaceRootPath), '', configName);
 				folder = node as vscode.WorkspaceFolder;
 			} else if ((node as vscode.Uri).fsPath) {
 				// It's a Uri from right-click in Explorer
-				if (profile) {
-					const project = await getZephyrApplication((node as vscode.Uri).fsPath);
-					const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
-					westBuildCommand(project, westWorkspace);
-				}
+				const project = await getZephyrApplication((node as vscode.Uri).fsPath);
+				const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
+				await westBuildCommand(project, westWorkspace, '', configName);
 				folder = vscode.workspace.getWorkspaceFolder(node as vscode.Uri) || undefined;
 			}
 
@@ -497,7 +484,20 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.pristine', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem | vscode.WorkspaceFolder | vscode.Uri, configName?: string) => {
-			await executeConfigTask('West Rebuild', node, configName);
+			if (node instanceof ZephyrConfigTreeItem) {
+				const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
+				await westRebuildCommand(node.project, westWorkspace, configName ?? node.buildConfig.name);
+			} else if (node instanceof ZephyrApplicationTreeItem) {
+				const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
+				await westRebuildCommand(node.project, westWorkspace, configName);
+			} else if ((node as vscode.WorkspaceFolder).uri) {
+				const project = await getZephyrApplication((node as vscode.WorkspaceFolder).uri.fsPath);
+				await westRebuildCommand(project, getWestWorkspace(project.westWorkspaceRootPath), configName);
+			} else if ((node as vscode.Uri).fsPath) {
+				const project = await getZephyrApplication((node as vscode.Uri).fsPath);
+				const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
+				await westRebuildCommand(project, westWorkspace, configName);
+			}
 		})
 	);
 	context.subscriptions.push(
@@ -994,7 +994,7 @@ export function activate(context: vscode.ExtensionContext) {
 					config.active = config.name === targetConfig.name;
 				}
 
-				await westBuildCommand(project, westWorkspace, extraArgs);
+				await westBuildCommand(project, westWorkspace, extraArgs, targetConfig.name);
 				await westSpdxGenerateCommand(project, westWorkspace, targetConfig);
 			} catch (error) {
 				vscode.window.showErrorMessage(`Error generating SPDX: ${error}`);

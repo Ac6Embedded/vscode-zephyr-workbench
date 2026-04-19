@@ -2,6 +2,27 @@ export function normalizeWestFlagDValue(value: string): string {
   return value.trim().replace(/^(--\s*)?-D/, '').trim();
 }
 
+function isWrappedInQuotes(value: string): boolean {
+  return /^".*"$/.test(value) || /^'.*'$/.test(value);
+}
+
+function quoteWestFlagDArgument(value: string): string {
+  const separatorIndex = value.indexOf('=');
+  if (separatorIndex === -1) {
+    return `-D${value}`;
+  }
+
+  const key = value.slice(0, separatorIndex);
+  const rawAssignedValue = value.slice(separatorIndex + 1);
+  const normalizedAssignedValue = rawAssignedValue.trim();
+  const formattedAssignedValue =
+    normalizedAssignedValue.length > 0 && !isWrappedInQuotes(normalizedAssignedValue)
+      ? `'${normalizedAssignedValue.replace(/'/g, "''")}'`
+      : normalizedAssignedValue;
+
+  return `-D${key}=${formattedAssignedValue}`;
+}
+
 export function formatWestFlagDValues(values: string[] | undefined): string[] {
   if (!Array.isArray(values)) {
     return [];
@@ -10,10 +31,15 @@ export function formatWestFlagDValues(values: string[] | undefined): string[] {
   return values
     .map(normalizeWestFlagDValue)
     .filter((value) => value.length > 0)
-    .map((value) => `-D${value}`);
+    .map(quoteWestFlagDArgument);
 }
 
-function splitExplicitCMakeArgs(raw: string): { westArgs: string; cmakeArgs: string } | undefined {
+export interface SplitWestBuildArgs {
+  westArgs: string;
+  cmakeArgs: string;
+}
+
+function splitExplicitCMakeArgs(raw: string): SplitWestBuildArgs | undefined {
   const directCMakeMatch = raw.match(/^--(?:\s+(.*))?$/);
   if (directCMakeMatch) {
     return {
@@ -33,34 +59,45 @@ function splitExplicitCMakeArgs(raw: string): { westArgs: string; cmakeArgs: str
   };
 }
 
-export function composeWestBuildArgs(raw: string | undefined, westFlagsD: string[] | undefined = []): string {
+export function splitWestBuildArgs(raw: string | undefined, westFlagsD: string[] | undefined = []): SplitWestBuildArgs {
   const trimmedRaw = raw?.trim() ?? '';
   const formattedFlags = formatWestFlagDValues(westFlagsD).join(' ');
 
   if (!trimmedRaw) {
-    return formattedFlags ? `-- ${formattedFlags}` : '';
+    return {
+      westArgs: '',
+      cmakeArgs: formattedFlags,
+    };
   }
 
   const explicitCMakeArgs = splitExplicitCMakeArgs(trimmedRaw);
   if (explicitCMakeArgs) {
-    const cmakeArgs = [explicitCMakeArgs.cmakeArgs, formattedFlags].filter(Boolean).join(' ');
-    if (explicitCMakeArgs.westArgs.length > 0 && cmakeArgs.length > 0) {
-      return `${explicitCMakeArgs.westArgs} -- ${cmakeArgs}`;
-    }
-    if (explicitCMakeArgs.westArgs.length > 0) {
-      return explicitCMakeArgs.westArgs;
-    }
-    return cmakeArgs ? `-- ${cmakeArgs}` : '';
+    return {
+      westArgs: explicitCMakeArgs.westArgs,
+      cmakeArgs: [explicitCMakeArgs.cmakeArgs, formattedFlags].filter(Boolean).join(' '),
+    };
   }
 
   if (trimmedRaw.startsWith('-D')) {
-    const cmakeArgs = [trimmedRaw, formattedFlags].filter(Boolean).join(' ');
-    return `-- ${cmakeArgs}`;
+    return {
+      westArgs: '',
+      cmakeArgs: [trimmedRaw, formattedFlags].filter(Boolean).join(' '),
+    };
   }
 
-  if (!formattedFlags) {
-    return trimmedRaw;
-  }
+  return {
+    westArgs: trimmedRaw,
+    cmakeArgs: formattedFlags,
+  };
+}
 
-  return `${trimmedRaw} -- ${formattedFlags}`;
+export function composeWestBuildArgs(raw: string | undefined, westFlagsD: string[] | undefined = []): string {
+  const split = splitWestBuildArgs(raw, westFlagsD);
+  if (split.westArgs.length > 0 && split.cmakeArgs.length > 0) {
+    return `${split.westArgs} -- ${split.cmakeArgs}`;
+  }
+  if (split.westArgs.length > 0) {
+    return split.westArgs;
+  }
+  return split.cmakeArgs.length > 0 ? `-- ${split.cmakeArgs}` : '';
 }

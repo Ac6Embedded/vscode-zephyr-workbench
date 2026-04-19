@@ -11,6 +11,7 @@ import {
   ChildProcess, ExecException, ExecOptions, SpawnOptions,
   exec, spawn
 } from 'child_process';
+import { writeWestBuildState, WestBuildState } from './zephyr/westBuildState';
 
 let _channel: vscode.OutputChannel;
 const pyOCDOutput = vscode.window.createOutputChannel('pyOCD');
@@ -653,6 +654,16 @@ export function getOutputChannel(): vscode.OutputChannel {
   return _channel;
 }
 
+function logShellCommand(cmdName: string, cmd: string, cwd?: string): void {
+  const output = getOutputChannel();
+  output.appendLine(`[command] ${cmdName}`);
+  if (cwd) {
+    output.appendLine(`[cwd] ${cwd}`);
+  }
+  output.appendLine(cmd);
+  output.appendLine('');
+}
+
 export function expandEnvVariables(input: string): string {
   const envVariableRegex = /\$(\w+)|\$\{(\w+)\}|@(\w+)@|%(\w+)%/g;
   return input.replace(envVariableRegex, (_, v1, v2, v3, v4) => {
@@ -667,6 +678,15 @@ export async function executeTask(task: vscode.Task): Promise<vscode.TaskExecuti
     const disp = vscode.tasks.onDidEndTask(e => {
       if (e.execution.task.name === task.name) {
         disp.dispose();
+        const buildStatePath = e.execution.task.definition.__westBuildStatePath;
+        const buildState = e.execution.task.definition.__westBuildState;
+        if (typeof buildStatePath === 'string' && typeof buildState === 'string') {
+          try {
+            writeWestBuildState(buildStatePath, JSON.parse(buildState) as WestBuildState);
+          } catch {
+            // Ignore malformed build-state metadata and just return the execution.
+          }
+        }
         resolve(e.execution);
       }
     });
@@ -696,6 +716,7 @@ export async function execShellCommandInteractive(
     iconPath: new vscode.ThemeIcon('terminal')
   };
 
+  logShellCommand(cmdName, cmd, options.cwd);
   const term = vscode.window.createTerminal(termOpts);
   term.show(true);
 
@@ -717,6 +738,7 @@ export async function execShellCommand(
     throw new Error('Missing command to execute');
   }
 
+  logShellCommand(cmdName, cmd, options.cwd);
   const shExec = new vscode.ShellExecution(cmd, options);
   const task = new vscode.Task(
     { label: cmdName, type: 'shell' },
@@ -725,7 +747,7 @@ export async function execShellCommand(
     'Zephyr Workbench',
     shExec
   );
-  task.presentationOptions.echo = false;
+  task.presentationOptions.echo = true;
   await executeTask(task);
 }
 
@@ -993,6 +1015,8 @@ export async function execShellTaskWithEnvAndWait(
   const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
   const fullCmd = concatCommands(shellKind, cmdEnv, cmd);
 
+  logShellCommand(cmdName, fullCmd, options.cwd);
+
   const shExec = new vscode.ShellExecution(fullCmd, {
     ...options,
     executable: exe,
@@ -1007,7 +1031,7 @@ export async function execShellTaskWithEnvAndWait(
     'Zephyr Workbench',
     shExec
   );
-  task.presentationOptions.echo = false;
+  task.presentationOptions.echo = true;
 
   if (hideTerminal) {
     task.presentationOptions.reveal = vscode.TaskRevealKind.Never;

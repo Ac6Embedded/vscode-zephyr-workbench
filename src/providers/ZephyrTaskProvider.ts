@@ -22,8 +22,8 @@ import {
 import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, toPortableConfiguredPath } from '../utils/execUtils';
 import { getSelectedToolchainVariantEnv, getWestWorkspace, msleep, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
-import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
 import { normalizeStoredToolchainVariant } from '../utils/toolchainSelection';
+import { prepareWestBuildExecution } from '../utils/zephyr/westBuildExecution';
 
 export interface TaskConfig {
   version: string;
@@ -51,6 +51,7 @@ const westBuildTask: ZephyrTaskDefinition = {
   config: "primary",
   args: [
     "build",
+    "--pristine never",
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
@@ -226,6 +227,51 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [puncoverTask.label, puncoverTask],
   [dtDoctorTask.label, dtDoctorTask]
 ]);
+
+interface ParsedWestBuildTaskOptions {
+  pristine: 'never' | 'always';
+  target?: string;
+  additionalCmakeArgs?: string;
+}
+
+function parseWestBuildTaskOptions(args: string[] | undefined): ParsedWestBuildTaskOptions {
+  const parsed: ParsedWestBuildTaskOptions = { pristine: 'never' };
+  const safeArgs = Array.isArray(args) ? args : [];
+
+  for (let index = 0; index < safeArgs.length; index++) {
+    const arg = safeArgs[index]?.trim();
+    if (!arg) {
+      continue;
+    }
+
+    if (arg === '-p always' || arg === '--pristine always' || arg === '-p=always' || arg === '--pristine=always') {
+      parsed.pristine = 'always';
+      continue;
+    }
+
+    if (arg.startsWith('-t ')) {
+      parsed.target = arg.slice(3).trim();
+      continue;
+    }
+
+    if (arg.startsWith('--target ')) {
+      parsed.target = arg.slice('--target '.length).trim();
+      continue;
+    }
+
+    if (arg === '--' && index + 1 < safeArgs.length) {
+      parsed.additionalCmakeArgs = safeArgs.slice(index + 1).join(' ').trim();
+      break;
+    }
+
+    if (arg.startsWith('-- ')) {
+      parsed.additionalCmakeArgs = arg.slice(3).trim();
+      break;
+    }
+  }
+
+  return parsed;
+}
 
 type TasksJsonConfig = TaskConfig & { inputs?: any[] };
 type SettingsJsonConfig = Record<string, any>;
@@ -565,7 +611,6 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
     const shell: string = getShell();
     const shellArgs: string[] = getShellArgs(shell);
-    const westArgVar = getEnvVarFormat(shell, 'WEST_ARGS');
 
     let config = undefined;
 
@@ -599,27 +644,8 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       }
     }
 
-    const sysbuildEnabled =
-      config && String(config.sysbuild).toLowerCase() === "true";
-
-    const sysbuildFlag = sysbuildEnabled ? " --sysbuild" : "";
-
-    const isBuildTask = _task.name === westBuildTask.label || _task.name === rebuildTask.label;
     const isWestBuildTask = cmd === 'west' && Array.isArray(_task.definition.args) && _task.definition.args[0] === 'build';
-    const snippets = isBuildTask && config ? config.envVars?.['SNIPPETS'] : undefined;
-    const snippetsFlag = Array.isArray(snippets) && snippets.length > 0
-      ? snippets.map((s: string) => ` -S ${s}`).join('')
-      : '';
-
-    // WEST_ARGS comes from the environment, so the dynamic OPENOCD override must be merged before
-    // we decide whether a west build task needs that variable at all.
-    const effectiveWestFlagsD = config ? mergeOpenocdBuildFlag(project, config.westArgs, config.westFlagsD) : [];
-    const westArgsFlag = isWestBuildTask && config &&
-      ((config.westArgs && config.westArgs.length > 0) || effectiveWestFlagsD.length > 0)
-      ? ` ${westArgVar}`
-      : '';
-
-    const fullCommand = `${cmd} ${args}${sysbuildFlag}${snippetsFlag}${westArgsFlag}`;
+    let fullCommand = `${cmd} ${args}`;
 
     const envScript = getConfiguredWorkbenchPath(
       ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
@@ -668,7 +694,26 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
     options.env = { ...options.env, ...toolchainEnv };
 
-    if (config) {
+    if (isWestBuildTask && config && westWorkspace) {
+      const parsedTaskOptions = parseWestBuildTaskOptions(_task.definition.args);
+      const execution = prepareWestBuildExecution(
+        project,
+        westWorkspace,
+        config,
+        {
+          pristine: parsedTaskOptions.pristine,
+          target: parsedTaskOptions.target,
+          additionalCmakeArgs: parsedTaskOptions.additionalCmakeArgs,
+        },
+      );
+
+      fullCommand = execution.command;
+      options.env = execution.env;
+      if (execution.needsConfigure) {
+        (_task.definition as Record<string, unknown>).__westBuildStatePath = execution.buildDirPath;
+        (_task.definition as Record<string, unknown>).__westBuildState = JSON.stringify(execution.buildState);
+      }
+    } else if (config) {
       options.env = { ...options.env, ...config.getBuildEnvWithVar(project) };
     }
 

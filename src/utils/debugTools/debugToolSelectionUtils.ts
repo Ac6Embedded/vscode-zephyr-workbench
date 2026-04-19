@@ -244,9 +244,7 @@ export function getOpenocdBuildFlag(
     return undefined;
   }
 
-  return openocdPath.includes(' ')
-    ? `OPENOCD="${openocdPath}"`
-    : `OPENOCD=${openocdPath}`;
+  return `OPENOCD=${openocdPath}`;
 }
 
 function isOpenocdFlagDValue(value: string): boolean {

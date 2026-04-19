@@ -9,6 +9,8 @@ import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTI
 import { concatCommands, execShellCommandWithEnv, getConfiguredVenvPath, getConfiguredWorkbenchPath, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
 import { fileExists, getSelectedToolchainVariantEnv, getWestWorkspace, normalizePath, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { composeWestBuildArgs } from '../utils/zephyr/westArgUtils';
+import { prepareWestBuildExecution } from '../utils/zephyr/westBuildExecution';
+import { writeWestBuildState } from '../utils/zephyr/westBuildState';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
 
 function quote(p: string): string {
@@ -187,86 +189,82 @@ export async function westTmpBuildCmakeOnlyCommand(
   return tmpPath;
 }
 
-export async function westBuildCommand(zephyrProject: ZephyrApplication, westWorkspace: WestWorkspace, extraWestArgs = ''): Promise<void> {
-  let buildConfig;
-  const shellKind = classifyShell(getShellExe());
-  for (let cfg of zephyrProject.buildConfigs) {
-    if (cfg.active === true) {
-      buildConfig = cfg;
-      break;
-    }
-  }
-  if (buildConfig === undefined) {
-    buildConfig = zephyrProject.buildConfigs[0];
-  }
+export async function westBuildCommand(
+  zephyrProject: ZephyrApplication,
+  westWorkspace: WestWorkspace,
+  extraWestArgs = '',
+  configName?: string,
+): Promise<void> {
+  await runWestBuildCommand(zephyrProject, westWorkspace, {
+    configName,
+    extraWestArgs,
+    pristine: 'never',
+  });
+}
 
-  if (buildConfig.boardIdentifier === undefined || zephyrProject.appRootPath === undefined) {
+export async function westRebuildCommand(
+  zephyrProject: ZephyrApplication,
+  westWorkspace: WestWorkspace,
+  configName?: string,
+): Promise<void> {
+  await runWestBuildCommand(zephyrProject, westWorkspace, {
+    configName,
+    pristine: 'always',
+  });
+}
+
+interface WestBuildRunOptions {
+  configName?: string;
+  extraWestArgs?: string;
+  pristine: 'never' | 'always';
+}
+
+async function runWestBuildCommand(
+  zephyrProject: ZephyrApplication,
+  westWorkspace: WestWorkspace,
+  runOptions: WestBuildRunOptions,
+): Promise<void> {
+  const buildConfig = resolveBuildConfig(zephyrProject, runOptions.configName);
+  if (!buildConfig?.boardIdentifier || !zephyrProject.appRootPath) {
     return;
   }
 
-  const activeZephyrSdkInstallation = tryGetZephyrSdkInstallation(zephyrProject.zephyrSdkPath);
-  let buildDir = normalizePathForShell(shellKind, path.join(zephyrProject.appRootPath, 'build', buildConfig.name));
-  const rawWestArgs = extraWestArgs.length > 0 ? extraWestArgs : buildConfig.westArgs;
-  const westArgs = makeWestArgs(zephyrProject, rawWestArgs, buildConfig.westFlagsD);
-
-  const rawEnvVars = buildConfig.envVars as RawEnvVars;
-  const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
-
-  const sysbuildEnabled =
-    typeof buildConfig.sysbuild === "string"
-      ? buildConfig.sysbuild.toLowerCase() === "true"
-      : Boolean(buildConfig.sysbuild);
-
-  const sysbuildFlag = sysbuildEnabled ? " --sysbuild" : "";
-
-  const snippets = buildConfig.envVars?.['SNIPPETS'];
-  const snippetsFlag = Array.isArray(snippets) && snippets.length > 0
-    ? snippets.map(s => ` -S ${s}`).join('')
-    : '';
-
-  const folderUri = vscode.Uri.file(zephyrProject.appRootPath);
-  const folder = vscode.workspace.getWorkspaceFolder(folderUri);
-  const cfg = vscode.workspace.getConfiguration(
-    ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
-    folder ?? undefined
+  const execution = prepareWestBuildExecution(
+    zephyrProject,
+    westWorkspace,
+    buildConfig,
+    {
+      pristine: runOptions.pristine,
+      rawWestArgsOverride: runOptions.extraWestArgs,
+    },
   );
 
-  const toolchainEnv = getSelectedToolchainVariantEnv(cfg, folder ?? zephyrProject.appWorkspaceFolder);
+  const options: vscode.ShellExecutionOptions = {
+    cwd: westWorkspace.kernelUri.fsPath,
+    env: execution.env,
+    executable: getShellExe(),
+    shellArgs: getShellArgs(classifyShell(getShellExe()))
+  };
 
-  // Add the venv Python to PATH so MCUBoot can find dependencies
-  const venvPath = getConfiguredVenvPath(folder ?? zephyrProject.appWorkspaceFolder) ?? '';
+  await execShellTaskWithEnvAndWait(
+    `West build for ${zephyrProject.appName}`,
+    execution.command,
+    options
+  );
 
-  const command =
-  `west build` +
-  ` --board ${buildConfig.boardIdentifier}` +
-  ` --build-dir "${buildDir}"${sysbuildFlag}${snippetsFlag}` +
-  ` "${zephyrProject.appRootPath}"` +
-  (westArgs ? ` ${westArgs}` : '');
+  if (execution.needsConfigure) {
+    writeWestBuildState(execution.buildDirPath, execution.buildState);
+  }
+}
 
-    const baseEnv = { ...normEnvVars, ...(activeZephyrSdkInstallation?.buildEnv ?? {}), ...westWorkspace.buildEnv, ...toolchainEnv };
-
-    // If sysbuild, prepend venv Python to PATH so MCUBoot can find pykwalify and other deps
-    const env = venvPath && sysbuildEnabled
-      ? {
-          ...baseEnv,
-          PATH: process.platform === 'win32'
-            ? `${path.join(venvPath, 'Scripts')};${baseEnv.PATH ?? ''}`
-            : `${path.join(venvPath, 'bin')}:${baseEnv.PATH ?? ''}`
-        }
-      : baseEnv;
-
-    const options: vscode.ShellExecutionOptions = {
-      cwd        : westWorkspace.kernelUri.fsPath,
-      env        : env,
-      executable : getShellExe(),
-      shellArgs  : getShellArgs(classifyShell(getShellExe()))
-    };
-
-    await execShellTaskWithEnvAndWait(
-      `West build for ${zephyrProject.appName}`,
-      command,
-      options
-    );
+function resolveBuildConfig(
+  zephyrProject: ZephyrApplication,
+  configName?: string,
+): ZephyrBuildConfig | undefined {
+  if (configName) {
+    return zephyrProject.buildConfigs.find(cfg => cfg.name === configName);
+  }
+  return zephyrProject.buildConfigs.find(cfg => cfg.active) ?? zephyrProject.buildConfigs[0];
 }
 
 async function runWestSpdxCommand(
