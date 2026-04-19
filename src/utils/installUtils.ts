@@ -825,177 +825,239 @@ export async function installOpenOcdRunnerSilently(context: vscode.ExtensionCont
   }
 }
 
+const SPDX_VENV_EXTRA_PACKAGES = [
+  'ntia-conformance-checker',
+  'cve-bin-tool',
+  'sbom2doc',
+];
+
+interface CreateLocalManagedVenvOptions {
+  venvDirName: string;
+  westWorkspacePathOverride?: string;
+  extraPackages?: string[];
+}
+
+function getManagedVenvPath(destDir: string, venvDirName: string): string {
+  return path.join(destDir, venvDirName);
+}
+
+function getManagedVenvBinPath(venvDir: string): string {
+  return process.platform === 'win32'
+    ? path.join(venvDir, 'Scripts')
+    : path.join(venvDir, 'bin');
+}
+
+function getManagedVenvPythonPath(venvDir: string): string {
+  return process.platform === 'win32'
+    ? path.join(venvDir, 'Scripts', 'python.exe')
+    : path.join(venvDir, 'bin', 'python3');
+}
+
+function prependPathEntry(currentPath: string | undefined, entry: string): string {
+  return currentPath && currentPath.length > 0
+    ? `${entry}${path.delimiter}${currentPath}`
+    : entry;
+}
+
+async function installPythonPackagesInManagedVenv(
+  venvDir: string,
+  packages: string[],
+  cwd: string,
+): Promise<void> {
+  if (packages.length === 0) {
+    return;
+  }
+
+  const pythonPath = getManagedVenvPythonPath(venvDir);
+  if (!fileExists(pythonPath)) {
+    throw new Error(`Python executable not found in virtual environment: ${pythonPath}`);
+  }
+
+  output.show(true);
+  output.appendLine(`Installing Python packages into ${venvDir}`);
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      pythonPath,
+      ['-m', 'pip', 'install', '--upgrade', 'pip', ...packages],
+      {
+        cwd,
+        env: {
+          ...process.env,
+          VIRTUAL_ENV: venvDir,
+          PATH: prependPathEntry(process.env.PATH, getManagedVenvBinPath(venvDir)),
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+
+    child.stdout?.on('data', (data: Buffer) => {
+      output.append(data.toString());
+    });
+
+    child.stderr?.on('data', (data: Buffer) => {
+      output.append(data.toString());
+    });
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        output.appendLine('Python package installation finished.');
+        resolve();
+      } else {
+        reject(new Error(`pip install exited with code ${code}`));
+      }
+    });
+  });
+}
+
+async function createLocalManagedVenv(
+  context: vscode.ExtensionContext,
+  workbenchFolder: vscode.WorkspaceFolder,
+  options: CreateLocalManagedVenvOptions,
+): Promise<string | undefined> {
+  const installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
+  let envScript: string | undefined = vscode.workspace
+    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
+    .get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+
+  if (!envScript) {
+    vscode.window.showErrorMessage("Cannot find installation script");
+    return undefined;
+  }
+
+  const destDir = workbenchFolder.uri.fsPath;
+  const venvDir = getManagedVenvPath(destDir, options.venvDirName);
+  let installScript = '';
+  let installCmd = '';
+  let installArgs = '';
+  let shell = '';
+
+  switch (process.platform) {
+    case 'linux': {
+      installScript = 'install.sh';
+      const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
+      installCmd = `bash ${scriptPath}`;
+      installArgs = ` --create-venv --venv-path "${venvDir}" ${getInstallDirRealPath()}`;
+      shell = 'bash';
+      break;
+    }
+    case 'win32': {
+      const ok = await ensurePowershellExecutionPolicy();
+      if (!ok) {
+        return undefined;
+      }
+      installScript = 'install.ps1';
+      const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
+      installCmd = `powershell -File "${scriptPath}"`;
+      installArgs = ` -CreateVenv -VenvPath "${venvDir}" "${getInstallDirRealPath()}"`;
+      shell = 'powershell.exe';
+      break;
+    }
+    case 'darwin': {
+      installScript = 'install-mac.sh';
+      const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
+      installCmd = `bash ${scriptPath}`;
+      installArgs = ` --create-venv --venv-path "${venvDir}" ${getInstallDirRealPath()}`;
+      shell = 'bash';
+      break;
+    }
+    default: {
+      vscode.window.showErrorMessage("Platform not supported !");
+      return undefined;
+    }
+  }
+
+  envScript = expandEnvVariables(envScript);
+
+  const westWorkspacePath = options.westWorkspacePathOverride ?? vscode.workspace
+    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workbenchFolder)
+    .get<string>(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, '');
+  let zephyrBase = path.join(destDir, 'zephyr');
+  try {
+    if (westWorkspacePath && fileExists(westWorkspacePath)) {
+      zephyrBase = getWestWorkspace(westWorkspacePath).kernelUri.fsPath;
+    }
+  } catch {}
+
+  const shellOpts: vscode.ShellExecutionOptions = {
+    cwd: os.homedir(),
+    env: { ENV_FILE: envScript, ZEPHYR_BASE: zephyrBase },
+    executable: shell,
+    shellArgs: getShellArgs(shell),
+  };
+
+  await execShellCommand('Creating local virtual environment', installCmd + installArgs, shellOpts);
+
+  if (!fileExists(venvDir)) {
+    return undefined;
+  }
+
+  await installPythonPackagesInManagedVenv(
+    venvDir,
+    options.extraPackages ?? [],
+    workbenchFolder.uri.fsPath,
+  );
+
+  return venvDir;
+}
+
 export async function createLocalVenv(
   context: vscode.ExtensionContext,
   workbenchFolder: vscode.WorkspaceFolder,
   westWorkspacePathOverride?: string
 ): Promise<string | undefined> {
-  // Prefer hosttools installer for Windows to create venv directly; legacy scripts on others
-  let installDirUri = vscode.Uri.joinPath(
-    context.extensionUri,
-    'scripts',
-    process.platform === 'win32' ? 'hosttools' : 'venv'
-  );
-  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  if(installDirUri && envScript) {
-    let installScript: string = "";
-    let installCmd: string = "";
-    let installArgs: string = "";
-    let destDir: string = "";
-    let shell: string = "";
-    
-    destDir = workbenchFolder.uri.fsPath;
-    switch(process.platform) {
-      case 'linux': {
-        // Use hosttools installer with create-venv and explicit venv path
-        installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
-        installScript = 'install.sh';
-        const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
-        const venvPath   = path.join(destDir, '.venv');
-        installCmd = `bash ${scriptPath}`;
-        // Pass the install base dir (zinstaller parent) as the final arg
-        installArgs = ` --create-venv --venv-path "${venvPath}" ${getInstallDirRealPath()}`;
-        shell = 'bash';
-        break; 
-      }
-      case 'win32': {
-        const ok = await ensurePowershellExecutionPolicy();
-        if (!ok) { return undefined; }
-        // Use the hosttools installer with CreateVenv mode
-        installScript = 'install.ps1';
-        const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
-        const venvPath   = path.join(destDir, '.venv');
-        installCmd = `powershell -File "${scriptPath}"`;
-        // Provide the install base dir (zinstaller parent) as positional arg
-        installArgs = ` -CreateVenv -VenvPath "${venvPath}" "${getInstallDirRealPath()}"`;
-        shell = 'powershell.exe';
-        break; 
-      }
-      case 'darwin': {
-        // Use hosttools mac installer with create-venv and explicit venv path
-        installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
-        installScript = 'install-mac.sh';
-        const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
-        const venvPath   = path.join(destDir, '.venv');
-        installCmd = `bash ${scriptPath}`;
-        // Pass the install base dir (zinstaller parent) as the final arg
-        installArgs = ` --create-venv --venv-path "${venvPath}" ${getInstallDirRealPath()}`;
-        shell = 'bash';
-        break; 
-      }
-      default: {
-        vscode.window.showErrorMessage("Platform not supported !");
-        return undefined;
-      }
-    }
-
-    envScript = expandEnvVariables(envScript);
-
-    // Add ZEPHYR_BASE so install scripts can use workspace's Zephyr tree
-    const westWorkspacePath = westWorkspacePathOverride ?? vscode.workspace
-      .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workbenchFolder)
-      .get<string>(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, '');
-    let zephyrBase = path.join(destDir, 'zephyr');
-    try {
-      if (westWorkspacePath && fileExists(westWorkspacePath)) {
-        zephyrBase = getWestWorkspace(westWorkspacePath).kernelUri.fsPath;
-      }
-    } catch {}
-
-    let shellOpts: vscode.ShellExecutionOptions = {
-      cwd: os.homedir(),
-      env: { ENV_FILE: envScript, ZEPHYR_BASE: zephyrBase },
-      executable: shell,
-      shellArgs: getShellArgs(shell),
-    };
-    
-    await execShellCommand('Creating local virtual environment', installCmd + installArgs, shellOpts);
-    const venvDir = path.join(destDir, '.venv');
-    return fileExists(venvDir) ? venvDir : undefined;
-
-  } else {
-    vscode.window.showErrorMessage("Cannot find installation script");
-  }
-  return undefined;
+  return createLocalManagedVenv(context, workbenchFolder, {
+    venvDirName: '.venv',
+    westWorkspacePathOverride,
+  });
 }
 
 export async function createLocalVenvSPDX(
   context: vscode.ExtensionContext,
   workbenchFolder: vscode.WorkspaceFolder
 ): Promise<string | undefined> {
+  return createLocalManagedVenv(context, workbenchFolder, {
+    venvDirName: '.venv-spdx',
+    extraPackages: SPDX_VENV_EXTRA_PACKAGES,
+  });
+}
 
-  const installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
-  let   envScript     = vscode.workspace
-                          .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-                          .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+export function findManagedVenvDirectory(
+  destDir: string,
+  venvDirName: string,
+): string | undefined {
+  const venvDir = getManagedVenvPath(destDir, venvDirName);
+  return fileExists(venvDir) ? venvDir : undefined;
+}
 
-  if (!envScript) {
-    vscode.window.showErrorMessage('Cannot find installation script');
+export function findManagedVenvExecutablePath(
+  destDir: string,
+  venvDirName: string,
+  executableName: string,
+): string | undefined {
+  const venvDir = findManagedVenvDirectory(destDir, venvDirName);
+  if (!venvDir) {
     return undefined;
   }
 
-  const shellExe  = getShellExe();
-  const shellKind = classifyShell(shellExe);
-
-  const destDir = workbenchFolder.uri.fsPath;
-  const hostToolsPath = getInternalDirRealPath();
-  const hostToolsDirEsc = hostToolsPath.replace(/\\/g, '\\\\');
-  let installScript: string;
-  let installCmd   : string;
-  let installArgs  = '';
-
-  if (['bash', 'zsh', 'dash', 'fish'].includes(shellKind)) {
-    installScript = 'create_venv_spdx.sh';
-    const script   = normalizePathForShell(
-      shellKind,
-      vscode.Uri.joinPath(installDirUri, installScript).fsPath);
-      const dest     = normalizePathForShell(shellKind, destDir);
-      const hostToolsPathNorm = normalizePathForShell(shellKind, hostToolsPath);
-      installCmd  = `bash ${script} ${dest} ${hostToolsPathNorm}`;
-  } else {
-    if (process.platform === 'win32') {
-      const ok = await ensurePowershellExecutionPolicy();
-      if (!ok) { return undefined; }
-    }
-    installScript = 'create_venv_spdx.ps1';
-    installCmd    = `powershell -File "${vscode.Uri.joinPath(installDirUri, installScript).fsPath}"`;
-    installArgs   = ` -InstallDir "${destDir}" -HostToolsDir "${hostToolsDirEsc}"`;
-  }
-
-  const shellOpts: vscode.ShellExecutionOptions = {
-    cwd        : os.homedir(),
-    env        : { ENV_FILE: expandEnvVariables(envScript) },
-    executable : shellExe,
-    shellArgs  : getShellArgs(shellKind)
-  };
-
-  if (!shellOpts.shellArgs?.length && ['bash','zsh','dash','fish'].includes(shellKind)) {
-    shellOpts.shellArgs = ['-c'];
-  }
-
-  await execShellCommand(
-    'Creating local virtual environment',
-    installCmd + installArgs,
-    shellOpts
+  const executablePath = path.join(
+    getManagedVenvBinPath(venvDir),
+    process.platform === 'win32' ? `${executableName}.exe` : executableName,
   );
 
-  return findVenvSPDXActivateScript(destDir, shellKind);
+  return fileExists(executablePath) ? executablePath : undefined;
 }
 
-export function findVenvSPDXActivateScript(
-  destDir   : string,
-  shellKind?: string
+export function findVenvSPDXDirectory(destDir: string): string | undefined {
+  return findManagedVenvDirectory(destDir, '.venv-spdx');
+}
+
+export function findVenvSPDXExecutablePath(
+  destDir: string,
+  executableName: string,
 ): string | undefined {
-
-  const kind = shellKind ?? classifyShell(getShellExe());
-  const usesPosixLayout =
-        ['bash', 'zsh', 'dash', 'fish'].includes(kind);
-
-  const venvPath = usesPosixLayout
-    ? path.join(destDir, '.venv-spdx', 'bin', 'activate')
-    : path.join(destDir, '.venv-spdx', 'Scripts', 'activate.bat');
-
-  return fileExists(venvPath) ? venvPath : undefined;
+  return findManagedVenvExecutablePath(destDir, '.venv-spdx', executableName);
 }
 
 export async function cleanupDownloadDir(context: vscode.ExtensionContext) {

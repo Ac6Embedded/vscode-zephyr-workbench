@@ -115,31 +115,6 @@ const hardenConfigTask: ZephyrTaskDefinition = {
   ]
 };
 
-const spdxInitTask: ZephyrTaskDefinition = {
-  label: "Init SPDX",
-  type: "zephyr-workbench",
-  problemMatcher: [],
-  command: "west",
-  config: "primary",
-  args: [
-    "spdx",
-    "--init",
-    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
-  ]
-};
-
-const spdxTask: ZephyrTaskDefinition = {
-  label: "Generate SPDX",
-  type: "zephyr-workbench",
-  problemMatcher: [],
-  command: "west",
-  config: "primary",
-  args: [
-    "spdx",
-    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
-  ]
-};
-
 const flashTask: ZephyrTaskDefinition = {
   label: "West Flash",
   type: "zephyr-workbench",
@@ -244,8 +219,6 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [guiConfigTask.label, guiConfigTask],
   [menuconfigTask.label, menuconfigTask],
   [hardenConfigTask.label, hardenConfigTask],
-  [spdxInitTask.label, spdxInitTask],
-  [spdxTask.label, spdxTask],
   [flashTask.label, flashTask],
   [ramReportTask.label, ramReportTask],
   [romReportTask.label, romReportTask],
@@ -747,7 +720,7 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder, o
   changed = ensureRunnerInput(config) || changed;
   
   // Only save essential tasks to tasks.json
-  const persistentTasks = [westBuildTask, rebuildTask, flashTask, spdxInitTask, spdxTask];
+  const persistentTasks = [westBuildTask, rebuildTask, flashTask];
   
   changed = ensureTasks(config, persistentTasks) || changed;
 

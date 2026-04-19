@@ -1,61 +1,72 @@
 import * as vscode from 'vscode';
 import {
-  concatCommands,
   execShellCommand,
   classifyShell,
   getShellExe,
   getShellArgs,
-  getShellSourceCommand,
   normalizePathForShell,
-  normalisePathsInString,
 } from "../utils/execUtils";
 import { ZephyrApplication } from '../models/ZephyrApplication';
-import { findVenvSPDXActivateScript } from '../utils/installUtils';
-import { fileExists } from '../utils/utils';
+import { findVenvSPDXExecutablePath } from '../utils/installUtils';
 
 export async function execNtiaCheckerCommand(spdxFile: string, zephyrProject: ZephyrApplication) {
-  const command = `ntia-checker --file ${spdxFile}`;
-  await execSPDXCommand('ntia-checker', command, zephyrProject);
+  await execSPDXCommand('ntia-checker', 'ntia-checker', `--file ${formatShellArgument(classifyShell(getShellExe()), spdxFile)}`, zephyrProject);
 }
 
 export async function execSBom2DocCommand(spdxFile: string, zephyrProject: ZephyrApplication) {
-  const command = `sbom2doc -i ${spdxFile}`;
-  await execSPDXCommand('sbom2doc', command, zephyrProject);
+  await execSPDXCommand('sbom2doc', 'sbom2doc', `-i ${formatShellArgument(classifyShell(getShellExe()), spdxFile)}`, zephyrProject);
 }
 
 export async function execCveBinToolCommand(spdxFile: string, zephyrProject: ZephyrApplication) {
-  const command = `cve-bin-tool --sbom spdx --sbom-file ${spdxFile}`;
-  await execSPDXCommand('cve-bin-tool', command, zephyrProject);
+  await execSPDXCommand(
+    'cve-bin-tool',
+    'cve-bin-tool',
+    `--sbom spdx --sbom-file ${formatShellArgument(classifyShell(getShellExe()), spdxFile)}`,
+    zephyrProject,
+  );
+}
+
+function formatShellArgument(shellKind: string, value: string): string {
+  const normalized = normalizePathForShell(shellKind, value);
+  if (shellKind === 'cmd.exe' || shellKind === 'powershell.exe' || shellKind === 'pwsh.exe') {
+    return /\s/.test(normalized) ? `"${normalized}"` : normalized;
+  }
+  return normalized;
+}
+
+function formatShellExecutable(shellKind: string, executablePath: string): string {
+  const formattedPath = formatShellArgument(shellKind, executablePath);
+  if (shellKind === 'powershell.exe' || shellKind === 'pwsh.exe') {
+    return `& ${formattedPath}`;
+  }
+  return formattedPath;
 }
 
 export async function execSPDXCommand(
   cmdName      : string,
-  cmd          : string,
+  executable   : string,
+  args         : string,
   zephyrProject: ZephyrApplication
 ) {
-  if (!cmd?.length) {
+  if (!executable?.length) {
     throw new Error('Missing command to execute', { cause: 'missing.command' });
   }
 
-  // SPDX helpers live in the application's Python environment.
-  let activateScript = findVenvSPDXActivateScript(zephyrProject.appWorkspaceFolder.uri.fsPath);
-  if (!activateScript || !fileExists(activateScript)) {
+  const shellExe  = getShellExe();
+  const shellKind = classifyShell(shellExe);
+  const executablePath = findVenvSPDXExecutablePath(
+    zephyrProject.appWorkspaceFolder.uri.fsPath,
+    executable,
+  );
+
+  if (!executablePath) {
     throw new Error(
       'Missing SPDX tools, please install the dependencies',
       { cause: 'missing.spdx.tools' }
     );
   }
 
-  const shellExe  = getShellExe();
-  const shellKind = classifyShell(shellExe);
   const shellArgs = getShellArgs(shellKind);
-
-  // Normalize paths before sourcing the venv when a POSIX shell runs on Windows.
-  const posixish = ['bash', 'zsh', 'dash', 'fish'].includes(shellKind);
-  if (posixish) {
-    activateScript = normalizePathForShell(shellKind, activateScript);
-    cmd = normalisePathsInString(shellKind, cmd);
-  }
 
   const options: vscode.ShellExecutionOptions = {
     cwd       : zephyrProject.appRootPath,
@@ -63,11 +74,9 @@ export async function execSPDXCommand(
     shellArgs
   };
 
-  // Activate the venv for this command only instead of mutating the user's shell.
-  const cmdEnv = getShellSourceCommand(shellKind, activateScript);
   await execShellCommand(
     cmdName,
-    concatCommands(shellKind, cmdEnv, cmd),
+    `${formatShellExecutable(shellKind, executablePath)} ${args}`.trim(),
     options
   );
 }

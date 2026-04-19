@@ -15,6 +15,34 @@ function quote(p: string): string {
   return /\s/.test(p) ? `"${p}"` : p;
 }
 
+function formatShellPathArg(shellKind: string, p: string): string {
+  const normalized = normalizePathForShell(shellKind, p);
+  if (shellKind === 'cmd.exe' || shellKind === 'powershell.exe' || shellKind === 'pwsh.exe') {
+    return quote(normalized);
+  }
+  return normalized;
+}
+
+function getWestWorkspaceShellOptions(
+  zephyrProject: ZephyrApplication,
+  westWorkspace: WestWorkspace,
+  cwd: string = westWorkspace.rootUri.fsPath,
+): vscode.ShellExecutionOptions {
+  const activeZephyrSdkInstallation = tryGetZephyrSdkInstallation(zephyrProject.zephyrSdkPath);
+  return {
+    env: {
+      ...(activeZephyrSdkInstallation?.buildEnv ?? {}),
+      ...westWorkspace.buildEnv,
+      ...getSelectedToolchainVariantEnv(
+        vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, zephyrProject.appWorkspaceFolder),
+      ),
+    },
+    cwd,
+    executable: getShellExe(),
+    shellArgs: getShellArgs(classifyShell(getShellExe())),
+  };
+}
+
 export async function westInitCommand(srcUrl: string, srcRev: string, workspacePath: string, manifestPath: string = ''): Promise<void> {
   let command = '';
   // If init remote repository
@@ -238,6 +266,56 @@ export async function westBuildCommand(zephyrProject: ZephyrApplication, westWor
       command,
       options
     );
+}
+
+async function runWestSpdxCommand(
+  label: string,
+  zephyrProject: ZephyrApplication,
+  westWorkspace: WestWorkspace,
+  buildConfig: ZephyrBuildConfig,
+  init = false,
+): Promise<void> {
+  if (!zephyrProject.appRootPath) {
+    return;
+  }
+
+  const shellKind = classifyShell(getShellExe());
+  const buildDir = formatShellPathArg(shellKind, buildConfig.getBuildDir(zephyrProject));
+  const command = `west spdx${init ? ' --init' : ''} --build-dir ${buildDir}`;
+
+  await execShellTaskWithEnvAndWait(
+    label,
+    command,
+    getWestWorkspaceShellOptions(zephyrProject, westWorkspace),
+  );
+}
+
+export async function westSpdxInitCommand(
+  zephyrProject: ZephyrApplication,
+  westWorkspace: WestWorkspace,
+  buildConfig: ZephyrBuildConfig,
+): Promise<void> {
+  await runWestSpdxCommand(
+    `SPDX init for ${zephyrProject.appName}`,
+    zephyrProject,
+    westWorkspace,
+    buildConfig,
+    true,
+  );
+}
+
+export async function westSpdxGenerateCommand(
+  zephyrProject: ZephyrApplication,
+  westWorkspace: WestWorkspace,
+  buildConfig: ZephyrBuildConfig,
+): Promise<void> {
+  await runWestSpdxCommand(
+    `SPDX generate for ${zephyrProject.appName}`,
+    zephyrProject,
+    westWorkspace,
+    buildConfig,
+    false,
+  );
 }
 
 function makeWestArgs(
