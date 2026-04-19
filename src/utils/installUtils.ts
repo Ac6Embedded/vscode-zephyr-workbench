@@ -9,7 +9,7 @@ import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
 import yaml from 'yaml';
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
-import { execShellCommand, execShellCommandWithEnv, expandEnvVariables, getShellArgs, getShellExe, execCommandWithEnv } from "./execUtils";
+import { execShellCommand, execShellCommandWithEnv, getConfiguredWorkbenchPath, getShellArgs, getShellExe, execCommandWithEnv, resolveConfiguredPath, toPortableConfiguredPath, toPortableWorkspaceFolderPath } from "./execUtils";
 import { syncAutoDetectEnv } from "./debugTools/autoDetectSyncUtils";
 import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSdkInstallation, getWestWorkspace } from "./utils";
 import { getRunner } from "./debugTools/debugUtils";
@@ -106,7 +106,11 @@ export async function autoSetHostToolsSettings(): Promise<void> {
   return new Promise(async (resolve) => {
     // Set default environment script
     let envPath = findDefaultEnvScriptPath();
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, envPath, vscode.ConfigurationTarget.Global);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(
+      ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
+      toPortableConfiguredPath(envPath),
+      vscode.ConfigurationTarget.Global,
+    );
 
     // Set default internal Zephyr SDK
     let sdk = await getInternalZephyrSdkInstallation();
@@ -137,7 +141,11 @@ export async function setDefaultSettings(): Promise<void> {
     let envPathSetting = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, "");
     if(!(envPathSetting && envPathSetting.length > 0)) {
       let envPath = findDefaultEnvScriptPath();
-      await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, envPath, vscode.ConfigurationTarget.Global);
+      await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(
+        ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
+        toPortableConfiguredPath(envPath),
+        vscode.ConfigurationTarget.Global,
+      );
     }
 
     // Set default internal Zephyr SDK
@@ -168,11 +176,19 @@ export async function setOpenOCDSettings(): Promise<void> {
   let openocdScriptsPath = findDefaultOpenOCDScriptPath();
 
   if(openocdExecPath.length > 0) {
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, openocdExecPath, vscode.ConfigurationTarget.Global);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(
+      ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY,
+      toPortableConfiguredPath(openocdExecPath),
+      vscode.ConfigurationTarget.Global,
+    );
   }
 
   if(openocdScriptsPath.length > 0) {
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, openocdScriptsPath, vscode.ConfigurationTarget.Global);
+    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(
+      ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY,
+      toPortableConfiguredPath(openocdScriptsPath),
+      vscode.ConfigurationTarget.Global,
+    );
   }
 }
 
@@ -917,9 +933,10 @@ async function createLocalManagedVenv(
   options: CreateLocalManagedVenvOptions,
 ): Promise<string | undefined> {
   const installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
-  let envScript: string | undefined = vscode.workspace
-    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+  let envScript = getConfiguredWorkbenchPath(
+    ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
+    workbenchFolder,
+  );
 
   if (!envScript) {
     vscode.window.showErrorMessage("Cannot find installation script");
@@ -968,11 +985,9 @@ async function createLocalManagedVenv(
     }
   }
 
-  envScript = expandEnvVariables(envScript);
-
-  const westWorkspacePath = options.westWorkspacePathOverride ?? vscode.workspace
-    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workbenchFolder)
-    .get<string>(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, '');
+  const westWorkspacePath = options.westWorkspacePathOverride
+    ? resolveConfiguredPath(options.westWorkspacePathOverride, workbenchFolder)
+    : getConfiguredWorkbenchPath(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, workbenchFolder);
   let zephyrBase = path.join(destDir, 'zephyr');
   try {
     if (westWorkspacePath && fileExists(westWorkspacePath)) {
@@ -999,7 +1014,7 @@ async function createLocalManagedVenv(
     workbenchFolder.uri.fsPath,
   );
 
-  return venvDir;
+  return toPortableWorkspaceFolderPath(venvDir, workbenchFolder);
 }
 
 export async function createLocalVenv(

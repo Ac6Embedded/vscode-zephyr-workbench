@@ -17,14 +17,15 @@ import {
   ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY,
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
-  ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
 } from '../constants';
 import { ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import {
   concatCommands,
+  getConfiguredWorkbenchPath,
   getShellCdCommand,
   getShellClearCommand,
   getShellEchoCommand,
+  getConfiguredVenvPath,
   getResolvedShell,
   getShellSetEnvCommand,
   getShellSourceCommand,
@@ -100,19 +101,19 @@ export class ZephyrApplication {
   // Populate the runtime model from workspace-scoped settings while keeping
   // the persisted settings keys unchanged.
   private parseSettings() {
-    this.westWorkspaceRootPath = vscode.workspace
-      .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.appWorkspaceFolder)
-      .get(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, '');
-
     const cfg = vscode.workspace.getConfiguration(
       ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
       this.appWorkspaceFolder,
     );
+    this.westWorkspaceRootPath = getConfiguredWorkbenchPath(
+      ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY,
+      this.appWorkspaceFolder,
+    ) ?? '';
 
     const toolchainVariant = normalizeStoredToolchainVariant(cfg, cfg.get<string>("toolchain") ?? "zephyr");
 
     if (toolchainVariant === "iar") {
-      const selectedIarPath = cfg.get<string>("iar", "");
+      const selectedIarPath = getConfiguredWorkbenchPath("iar", this.appWorkspaceFolder) ?? '';
       const iarToolchainInstallation = findIarToolchainInstallation(selectedIarPath);
 
       if (iarToolchainInstallation) {
@@ -122,10 +123,13 @@ export class ZephyrApplication {
         vscode.window.showWarningMessage(
           `IAR toolchain ${selectedIarPath} not found in listIARs; falling back to SDK setting`
         );
-        this.zephyrSdkPath = cfg.get<string>("sdk", "");
+        this.zephyrSdkPath = getConfiguredWorkbenchPath("sdk", this.appWorkspaceFolder) ?? '';
       }
     } else if (toolchainVariant === 'gnuarmemb') {
-      const selectedArmGnuPath = cfg.get<string>(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, '');
+      const selectedArmGnuPath = getConfiguredWorkbenchPath(
+        ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
+        this.appWorkspaceFolder,
+      ) ?? '';
       const armGnuToolchainInstallation = findArmGnuToolchainInstallation(selectedArmGnuPath);
 
       if (armGnuToolchainInstallation) {
@@ -140,7 +144,7 @@ export class ZephyrApplication {
         this.zephyrSdkPath = '';
       }
     } else {
-      this.zephyrSdkPath = cfg.get<string>("sdk", "");
+      this.zephyrSdkPath = getConfiguredWorkbenchPath("sdk", this.appWorkspaceFolder) ?? '';
     }
 
     this.zephyrSdkVersion = undefined;
@@ -258,12 +262,7 @@ export class ZephyrApplication {
       (shellType === 'bash' || shellType === 'zsh' ||
         shellType === 'dash' || shellType === 'fish');
 
-    let venvPath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
-    if (!venvPath || venvPath.length === 0) {
-      venvPath = vscode.workspace
-        .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, application.appWorkspaceFolder.uri)
-        .get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
-    }
+    const venvPath = getConfiguredVenvPath(application.appWorkspaceFolder);
 
     const env: { [key: string]: string; } = {
       ...(isWinPosix ? { CHERE_INVOKING: '1' } : {}),
@@ -271,6 +270,7 @@ export class ZephyrApplication {
       ...(zephyrSdk?.buildEnv ?? {}),
       ...getSelectedToolchainVariantEnv(
         vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, application.appWorkspaceFolder),
+        application.appWorkspaceFolder,
       ),
       ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {}),
     };
@@ -335,7 +335,10 @@ export class ZephyrApplication {
   }
 
   static getTerminal(application: ZephyrApplication): vscode.Terminal {
-    let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+    let envScript: string | undefined = getConfiguredWorkbenchPath(
+      ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
+      application.appWorkspaceFolder,
+    );
     if (!envScript) {
       throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Ac6 Zephyr');
     }

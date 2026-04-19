@@ -15,7 +15,7 @@ import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVar
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
 import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
 import { getRunner, getFlashRunners, getStaticFlashRunnerNames, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './utils/debugTools/debugUtils';
-import { executeTask, getTerminalDefaultProfile, normalizeSlashesIfPath } from './utils/execUtils';
+import { executeTask, getTerminalDefaultProfile, normalizeSlashesIfPath, toPortableConfiguredPath } from './utils/execUtils';
 import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
@@ -1008,7 +1008,11 @@ export function activate(context: vscode.ExtensionContext) {
 			if (node.project) {
 				const westWorkspacePath = await changeWestWorkspaceQuickStep(context, node.project);
 				if (westWorkspacePath) {
-					await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.appWorkspaceFolder).update(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, westWorkspacePath, vscode.ConfigurationTarget.WorkspaceFolder);
+					await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.appWorkspaceFolder).update(
+						ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY,
+						toPortableConfiguredPath(westWorkspacePath, node.project.appWorkspaceFolder),
+						vscode.ConfigurationTarget.WorkspaceFolder,
+					);
 				}
 			}
 		})
@@ -1030,7 +1034,11 @@ export function activate(context: vscode.ExtensionContext) {
 
 				if (pick.selectedVariant === "zephyr" || pick.selectedVariant === "zephyr/llvm") {
 					await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, pick.selectedVariant, vscode.ConfigurationTarget.WorkspaceFolder);
-					await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY, pick.zephyrSdkPath, vscode.ConfigurationTarget.WorkspaceFolder);
+					await cfg.update(
+						ZEPHYR_PROJECT_SDK_SETTING_KEY,
+						pick.zephyrSdkPath ? toPortableConfiguredPath(pick.zephyrSdkPath, node.project.appWorkspaceFolder) : pick.zephyrSdkPath,
+						vscode.ConfigurationTarget.WorkspaceFolder,
+					);
 					await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
 					await cfg.update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
 
@@ -1049,7 +1057,10 @@ export function activate(context: vscode.ExtensionContext) {
 								const socToolchainName = activeConfig.getKConfigValue(node.project, 'SOC_TOOLCHAIN_NAME');
 								await vscode.workspace.getConfiguration('C_Cpp', node.project.appWorkspaceFolder).update(
 									'default.compilerPath',
-									zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, pick.selectedVariant),
+									toPortableConfiguredPath(
+										zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, pick.selectedVariant),
+										node.project.appWorkspaceFolder,
+									),
 									vscode.ConfigurationTarget.WorkspaceFolder
 								);
 							} catch {
@@ -1064,7 +1075,11 @@ export function activate(context: vscode.ExtensionContext) {
 						return;
 					}
 
-					await cfg.update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, armGnuToolchainInstallation.toolchainPath, vscode.ConfigurationTarget.WorkspaceFolder);
+					await cfg.update(
+						ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
+						toPortableConfiguredPath(armGnuToolchainInstallation.toolchainPath, node.project.appWorkspaceFolder),
+						vscode.ConfigurationTarget.WorkspaceFolder,
+					);
 					await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
 					await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
 					await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "gnuarmemb", vscode.ConfigurationTarget.WorkspaceFolder);
@@ -1072,7 +1087,7 @@ export function activate(context: vscode.ExtensionContext) {
 					try {
 						await vscode.workspace.getConfiguration('C_Cpp', node.project.appWorkspaceFolder).update(
 							'default.compilerPath',
-							armGnuToolchainInstallation.compilerPath,
+							toPortableConfiguredPath(armGnuToolchainInstallation.compilerPath, node.project.appWorkspaceFolder),
 							vscode.ConfigurationTarget.WorkspaceFolder
 						);
 					} catch {
@@ -1080,7 +1095,11 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				} else {
 					await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "iar", vscode.ConfigurationTarget.WorkspaceFolder);
-					await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, pick.iarToolchainPath, vscode.ConfigurationTarget.WorkspaceFolder);
+					await cfg.update(
+						ZEPHYR_PROJECT_IAR_SETTING_KEY,
+						pick.iarToolchainPath ? toPortableConfiguredPath(pick.iarToolchainPath, node.project.appWorkspaceFolder) : pick.iarToolchainPath,
+						vscode.ConfigurationTarget.WorkspaceFolder,
+					);
 					await cfg.update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
 				}
 			}
@@ -2610,12 +2629,16 @@ async function updateCompileSetting(project: ZephyrApplication, configName: stri
 		if (socToolchainName) {
 			let compilerPath: string | undefined;
 			if (toolchainVariantId === 'gnuarmemb') {
-				compilerPath = findArmGnuToolchainInstallation(cfg.get<string>(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ''))?.compilerPath;
+				compilerPath = project.selectedArmGnuToolchainInstallation?.compilerPath;
 			} else if (zephyrSdkInstallation) {
 				compilerPath = zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, toolchainVariant);
 			}
 			if (compilerPath) {
-				await vscode.workspace.getConfiguration('C_Cpp', project.appWorkspaceFolder).update('default.compilerPath', compilerPath, vscode.ConfigurationTarget.WorkspaceFolder);
+				await vscode.workspace.getConfiguration('C_Cpp', project.appWorkspaceFolder).update(
+					'default.compilerPath',
+					toPortableConfiguredPath(compilerPath, project.appWorkspaceFolder),
+					vscode.ConfigurationTarget.WorkspaceFolder,
+				);
 			}
 		}
 	}

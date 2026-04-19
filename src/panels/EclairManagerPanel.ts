@@ -4,7 +4,7 @@ import path from "path";
 import os from "os";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
-import { execCommandWithEnv, execShellCommandWithEnv, getOutputChannel } from "../utils/execUtils";
+import { execCommandWithEnv, execShellCommandWithEnv, getConfiguredWorkbenchPath, getOutputChannel, resolveConfiguredPath } from "../utils/execUtils";
 import { getExtraPaths, normalizePath } from "../utils/env/envYamlUtils";
 import { readEnvYamlObject, writeEnvYamlObject } from "../utils/env/envYamlFileUtils";
 import type { BuildConfigInfo, ExtensionMessage, RpcRequestMessage, WebviewMessage } from "../utils/eclair/eclairEvent";
@@ -1247,7 +1247,7 @@ function deep_resolve_paths(obj: any, folderUri: vscode.Uri): any {
   const fsPath = folderUri.fsPath;
   const walk = (val: any): any => {
     if (typeof val === "string") {
-      return val.replace(/\$\{workspaceFolder\}/g, fsPath);
+      return resolveConfiguredPath(val, folderUri) ?? val.replace(/\$\{workspaceFolder\}/g, fsPath);
     }
     if (Array.isArray(val)) {
       return val.map(walk);
@@ -1266,8 +1266,7 @@ function deep_resolve_paths(obj: any, folderUri: vscode.Uri): any {
 
 // Gets the west workspace path from settings.json configuration.
 function getWestWorkspacePath(folderUri: vscode.Uri): string | undefined {
-  const config = vscode.workspace.getConfiguration(undefined, folderUri);
-  const westWorkspace = deep_resolve_paths(config.get<string>("zephyr-workbench.westWorkspace"), folderUri);
+  const westWorkspace = getConfiguredWorkbenchPath('westWorkspace', folderUri);
   
   if (westWorkspace && fs.existsSync(westWorkspace)) {
     // Verify it has .west folder
@@ -1284,8 +1283,7 @@ function getWestWorkspacePath(folderUri: vscode.Uri): string | undefined {
  */
 function detectZephyrSdkDir(folderUri: vscode.Uri): string | undefined {
   // Try reading settings.json (user/project configuration)
-  const config = vscode.workspace.getConfiguration(undefined, folderUri);
-  const sdkFromSettings = config.get<string>("zephyr-workbench.sdk");
+  const sdkFromSettings = getConfiguredWorkbenchPath('sdk', folderUri);
   if (sdkFromSettings && fs.existsSync(sdkFromSettings)) {
     return sdkFromSettings;
   }

@@ -2,9 +2,9 @@ import * as vscode from 'vscode';
 import fs from "fs";
 import path from 'path';
 import { fileExists, getWorkspaceFolder } from '../utils/utils';
-import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from '../constants';
+import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY } from '../constants';
 import { getBuildEnv, loadEnv } from '../utils/env/zephyrEnvUtils';
-import { concatCommands, getShellCdCommand, getShellClearCommand, getShellEchoCommand, getResolvedShell, getShellSetEnvCommand, getShellSourceCommand, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
+import { concatCommands, getConfiguredWorkbenchPath, getShellCdCommand, getShellClearCommand, getShellEchoCommand, getResolvedShell, getShellSetEnvCommand, getShellSourceCommand, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
 
 export class WestWorkspace {
   versionArray!: { [key: string]: string };
@@ -247,7 +247,10 @@ export class WestWorkspace {
   }
 
   static getTerminal(westWorkspace: WestWorkspace): vscode.Terminal {
-    let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+    let envScript: string | undefined = getConfiguredWorkbenchPath(
+      ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
+      westWorkspace.rootUri,
+    );
     if (!envScript) {
       throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Ac6 Zephyr');
     }

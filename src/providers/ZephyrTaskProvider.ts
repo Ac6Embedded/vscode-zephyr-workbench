@@ -20,7 +20,7 @@ import {
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
   ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
 } from '../constants';
-import { concatCommands, getEnvVarFormat, getShell, getShellArgs } from '../utils/execUtils';
+import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, toPortableConfiguredPath } from '../utils/execUtils';
 import { getSelectedToolchainVariantEnv, getWestWorkspace, msleep, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
@@ -424,8 +424,9 @@ async function tryWriteDefaultProjectSettingsFile(
     : toolchainInstallation.compilerPath;
   const pristineValue = options.pristine ?? 'auto';
   const toolchainVariant = resolveStoredToolchainVariant(toolchainInstallation, options.toolchainVariant);
+  const portableWestWorkspacePath = toPortableConfiguredPath(westWorkspace.rootUri.fsPath, workspaceFolder);
 
-  config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY}`] = westWorkspace.rootUri.fsPath;
+  config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY}`] = portableWestWorkspacePath;
   config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY}`] = pristineValue;
   config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.build.configurations`] = upsertPrimaryBuildConfig(
     config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.build.configurations`],
@@ -434,17 +435,17 @@ async function tryWriteDefaultProjectSettingsFile(
 
   if (toolchainInstallation instanceof ZephyrSdkInstallation) {
     config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY}`] = toolchainVariant;
-    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_SDK_SETTING_KEY}`] = toolchainInstallation.rootUri.fsPath;
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_SDK_SETTING_KEY}`] = toPortableConfiguredPath(toolchainInstallation.rootUri.fsPath, workspaceFolder);
     delete config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_IAR_SETTING_KEY}`];
     delete config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY}`];
   } else if (toolchainInstallation instanceof IarToolchainInstallation) {
     config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY}`] = 'iar';
-    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_IAR_SETTING_KEY}`] = toolchainInstallation.iarPath;
-    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_SDK_SETTING_KEY}`] = toolchainInstallation.zephyrSdkPath;
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_IAR_SETTING_KEY}`] = toPortableConfiguredPath(toolchainInstallation.iarPath, workspaceFolder);
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_SDK_SETTING_KEY}`] = toPortableConfiguredPath(toolchainInstallation.zephyrSdkPath, workspaceFolder);
     delete config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY}`];
   } else {
     config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY}`] = 'gnuarmemb';
-    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY}`] = toolchainInstallation.toolchainPath;
+    config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY}`] = toPortableConfiguredPath(toolchainInstallation.toolchainPath, workspaceFolder);
     delete config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_SDK_SETTING_KEY}`];
     delete config[`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_IAR_SETTING_KEY}`];
   }
@@ -455,7 +456,7 @@ async function tryWriteDefaultProjectSettingsFile(
 
   config['cmake.configureOnOpen'] = false;
   config['cmake.enableAutomaticKitScan'] = false;
-  config['C_Cpp.default.compilerPath'] = compilerPath;
+  config['C_Cpp.default.compilerPath'] = toPortableConfiguredPath(compilerPath, workspaceFolder);
   config['C_Cpp.default.compileCommands'] = path.join(buildDir, 'compile_commands.json');
 
   await writeSettingsJson(settingsJsonPath, config, serialized);
@@ -473,12 +474,16 @@ async function applyDefaultProjectSettingsViaConfigurationApi(
   const pristineValue = options.pristine ?? 'auto';
   const toolchainVariant = resolveStoredToolchainVariant(toolchainInstallation, options.toolchainVariant);
 
-  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, westWorkspace.rootUri.fsPath, vscode.ConfigurationTarget.WorkspaceFolder);
+  await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(
+    ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY,
+    toPortableConfiguredPath(westWorkspace.rootUri.fsPath, workspaceFolder),
+    vscode.ConfigurationTarget.WorkspaceFolder,
+  );
   if (toolchainInstallation instanceof ZephyrSdkInstallation) {
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
       .update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, toolchainVariant, vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-      .update(ZEPHYR_PROJECT_SDK_SETTING_KEY, toolchainInstallation.rootUri.fsPath, vscode.ConfigurationTarget.WorkspaceFolder);
+      .update(ZEPHYR_PROJECT_SDK_SETTING_KEY, toPortableConfiguredPath(toolchainInstallation.rootUri.fsPath, workspaceFolder), vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
       .update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
@@ -487,16 +492,16 @@ async function applyDefaultProjectSettingsViaConfigurationApi(
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
       .update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, 'iar', vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-      .update(ZEPHYR_PROJECT_IAR_SETTING_KEY, toolchainInstallation.iarPath, vscode.ConfigurationTarget.WorkspaceFolder);
+      .update(ZEPHYR_PROJECT_IAR_SETTING_KEY, toPortableConfiguredPath(toolchainInstallation.iarPath, workspaceFolder), vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-      .update(ZEPHYR_PROJECT_SDK_SETTING_KEY, toolchainInstallation.zephyrSdkPath, vscode.ConfigurationTarget.WorkspaceFolder);
+      .update(ZEPHYR_PROJECT_SDK_SETTING_KEY, toPortableConfiguredPath(toolchainInstallation.zephyrSdkPath, workspaceFolder), vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
       .update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
   } else {
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
       .update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, 'gnuarmemb', vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-      .update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, toolchainInstallation.toolchainPath, vscode.ConfigurationTarget.WorkspaceFolder);
+      .update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, toPortableConfiguredPath(toolchainInstallation.toolchainPath, workspaceFolder), vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
       .update(ZEPHYR_PROJECT_SDK_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
@@ -528,7 +533,7 @@ async function applyDefaultProjectSettingsViaConfigurationApi(
 
     await vscode.workspace.getConfiguration('C_Cpp', workspaceFolder).update(
       'default.compilerPath',
-      compilerPath,
+      toPortableConfiguredPath(compilerPath, workspaceFolder),
       vscode.ConfigurationTarget.WorkspaceFolder
     );
     await vscode.workspace.getConfiguration('C_Cpp', workspaceFolder).update('default.compileCommands', path.join(buildDir, 'compile_commands.json'), vscode.ConfigurationTarget.WorkspaceFolder);
@@ -611,11 +616,11 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
     const fullCommand = `${cmd} ${args}${sysbuildFlag}${snippetsFlag}${westArgsFlag}`;
 
-    const envScript = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-    let venvPath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
-    if (!venvPath || venvPath.length === 0) {
-      venvPath = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.appWorkspaceFolder.uri).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
-    }
+    const envScript = getConfiguredWorkbenchPath(
+      ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
+      folder ?? project.appWorkspaceFolder,
+    );
+    const venvPath = getConfiguredVenvPath(folder ?? project.appWorkspaceFolder);
 
     if (!envScript) {
       throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
@@ -644,12 +649,12 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     const cfg = vscode.workspace.getConfiguration(
       ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, folder);
     const toolchainVariant = normalizeStoredToolchainVariant(cfg, cfg.get<string>("toolchain") ?? "zephyr");
-    const toolchainEnv = getSelectedToolchainVariantEnv(cfg);
+    const toolchainEnv = getSelectedToolchainVariantEnv(cfg, folder ?? project.appWorkspaceFolder);
 
     if ((toolchainVariant === 'iar' || toolchainVariant === 'gnuarmemb') && Object.keys(toolchainEnv).length === 0) {
       const missingPath = toolchainVariant === 'iar'
-        ? cfg.get<string>(ZEPHYR_PROJECT_IAR_SETTING_KEY, '')
-        : cfg.get<string>(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, '');
+        ? (getConfiguredWorkbenchPath(ZEPHYR_PROJECT_IAR_SETTING_KEY, folder ?? project.appWorkspaceFolder) ?? '')
+        : (getConfiguredWorkbenchPath(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, folder ?? project.appWorkspaceFolder) ?? '');
       const label = toolchainVariant === 'iar' ? 'IAR' : 'Arm GNU';
       vscode.window.showWarningMessage(
         `${label} toolchain "${missingPath}" not found; tasks will run with the default Zephyr SDK.`,

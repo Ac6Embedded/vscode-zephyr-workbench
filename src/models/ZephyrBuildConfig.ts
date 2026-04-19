@@ -5,9 +5,11 @@ import { ZephyrApplication } from "./ZephyrApplication";
 import { getBuildEnv, loadConfigEnv } from "../utils/env/zephyrEnvUtils";
 import {
   concatCommands,
+  getConfiguredWorkbenchPath,
   getShellCdCommand,
   getShellClearCommand,
   getShellEchoCommand,
+  getConfiguredVenvPath,
   getResolvedShell,
   getShellSetEnvCommand,
   getShellSourceCommand,
@@ -27,7 +29,6 @@ import {
   ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY,
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
-  ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
 } from '../constants';
 import { composeWestBuildArgs, normalizeWestFlagDValue } from '../utils/zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
@@ -211,12 +212,7 @@ export class ZephyrBuildConfig {
       (shellType === 'bash' || shellType === 'zsh' ||
         shellType === 'dash' || shellType === 'fish');
 
-    let venvPath: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
-    if (!venvPath || venvPath.length === 0) {
-      venvPath = vscode.workspace
-        .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, application.appWorkspaceFolder.uri)
-        .get(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
-    }
+    const venvPath = getConfiguredVenvPath(application.appWorkspaceFolder);
 
     const env: { [key: string]: string; } = {
       ...(isWinPosix ? { CHERE_INVOKING: '1' } : {}),
@@ -224,6 +220,7 @@ export class ZephyrBuildConfig {
       ...westWorkspace.buildEnv,
       ...getSelectedToolchainVariantEnv(
         vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, application.appWorkspaceFolder),
+        application.appWorkspaceFolder,
       ),
       ...buildConfig.getBuildEnv(application),
       ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {}),
@@ -287,7 +284,10 @@ export class ZephyrBuildConfig {
   }
 
   static getTerminal(application: ZephyrApplication, buildConfig: ZephyrBuildConfig): vscode.Terminal {
-    let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+    let envScript: string | undefined = getConfiguredWorkbenchPath(
+      ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
+      application.appWorkspaceFolder,
+    );
     if (!envScript) {
       throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Ac6 Zephyr');
     }

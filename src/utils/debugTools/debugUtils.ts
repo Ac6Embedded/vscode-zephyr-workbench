@@ -2,11 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import * as vscode from 'vscode';
 import yaml from 'yaml';
-import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
+import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
 import { Linkserver } from "../../debug/runners/Linkserver";
 import { Openocd } from "../../debug/runners/Openocd";
 import { WestRunner } from "../../debug/runners/WestRunner";
-import { checkPyOCDTarget, concatCommands, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from '../execUtils';
+import { checkPyOCDTarget, concatCommands, getConfiguredWorkbenchPath, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from '../execUtils';
 import { ZephyrApplication } from "../../models/ZephyrApplication";
 import { findBoardByHierarchicalIdentifier, getSupportedBoards } from '../zephyr/boardDiscovery';
 import { findArmGnuToolchainInstallation, getWestWorkspace, deleteFolder, fileExists, tryGetZephyrSdkInstallation } from '../utils';
@@ -467,7 +467,10 @@ export function createWestWrapper(project: ZephyrApplication, buildConfigName?: 
   }
   
   const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
-  let envScript: string | undefined = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).get(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+  let envScript: string | undefined = getConfiguredWorkbenchPath(
+    ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
+    project.appWorkspaceFolder,
+  );
   if(!envScript) {
     throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
        { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` });
@@ -610,7 +613,7 @@ export async function createLaunchConfiguration(
   const toolchainVariant = normalizeStoredToolchainVariant(cfg, cfg.get<string>(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY) ?? 'zephyr');
   const zephyrSdkInstallation = tryGetZephyrSdkInstallation(project.zephyrSdkPath);
   const armGnuToolchainInstallation = toolchainVariant === 'gnuarmemb'
-    ? findArmGnuToolchainInstallation(cfg.get<string>(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ''))
+    ? findArmGnuToolchainInstallation(project.selectedArmGnuToolchainInstallation?.toolchainPath ?? '')
     : undefined;
   let buildConfig: ZephyrBuildConfig | undefined = undefined;
   let targetBoard: ZephyrBoard | undefined;

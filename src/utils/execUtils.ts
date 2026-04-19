@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as os from 'os';
 import * as path from 'path';
 import { compareVersions, fileExists } from './utils';
 import {
@@ -117,6 +118,295 @@ export function normalizePathForShell(shellType: string, p: string): string {
     if (/\s/.test(out)) { out = `"${out}"`; }
   }
   return out;
+}
+
+export type ConfigurationScope = vscode.WorkspaceFolder | vscode.Uri | URL | string;
+
+const WORKSPACE_FOLDER_VARIABLE = '${workspaceFolder}';
+const USER_HOME_VARIABLE = '${userHome}';
+const PORTABLE_MODE_VARIABLE = '${env:VSCODE_PORTABLE}';
+const MAX_CONFIG_VARIABLE_DEPTH = 10;
+
+interface VariableResolutionState {
+  depth: number;
+  seenConfigKeys: Set<string>;
+}
+
+export function buildWorkbenchSettingKey(settingKey: string): string {
+  return `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${settingKey}`;
+}
+
+export function getConfigurationResource(
+  scope?: ConfigurationScope,
+): vscode.Uri | undefined {
+  if (typeof scope === 'string') {
+    return vscode.Uri.file(scope);
+  }
+  if (scope instanceof URL) {
+    return vscode.Uri.parse(scope.toString());
+  }
+  if (scope instanceof vscode.Uri) {
+    return scope;
+  }
+  return scope?.uri;
+}
+
+export function getWorkspaceFolderForScope(
+  scope?: ConfigurationScope,
+): vscode.WorkspaceFolder | undefined {
+  if (typeof scope === 'string') {
+    const resource = vscode.Uri.file(scope);
+    return vscode.workspace.getWorkspaceFolder(resource)
+      ?? vscode.workspace.workspaceFolders?.find(folder => path.normalize(folder.uri.fsPath) === path.normalize(scope));
+  }
+
+  if (scope instanceof URL) {
+    const resource = vscode.Uri.parse(scope.toString());
+    return vscode.workspace.getWorkspaceFolder(resource)
+      ?? vscode.workspace.workspaceFolders?.find(folder => path.normalize(folder.uri.fsPath) === path.normalize(resource.fsPath));
+  }
+
+  if (scope instanceof vscode.Uri) {
+    return vscode.workspace.getWorkspaceFolder(scope)
+      ?? vscode.workspace.workspaceFolders?.find(folder => path.normalize(folder.uri.fsPath) === path.normalize(scope.fsPath));
+  }
+
+  if (scope) {
+    return scope;
+  }
+
+  return vscode.workspace.workspaceFolders?.length === 1
+    ? vscode.workspace.workspaceFolders[0]
+    : undefined;
+}
+
+function getNamedWorkspaceFolder(name: string): vscode.WorkspaceFolder | undefined {
+  return vscode.workspace.workspaceFolders?.find(folder => folder.name === name);
+}
+
+function toPortableBasePath(
+  targetPath: string,
+  variable: string,
+  basePath: string,
+  allowParentRelative = false,
+): string | undefined {
+  const normalizedTargetPath = path.resolve(targetPath);
+  const normalizedBasePath = path.resolve(basePath);
+  const relativePath = path.relative(normalizedBasePath, normalizedTargetPath);
+
+  if (relativePath === '') {
+    return variable;
+  }
+
+  if (!path.isAbsolute(relativePath) && (allowParentRelative || !relativePath.startsWith('..'))) {
+    return `${variable}/${relativePath.replace(/\\/g, '/')}`;
+  }
+
+  return undefined;
+}
+
+export function toPortableWorkspaceFolderPath(
+  targetPath: string,
+  workspaceFolder: vscode.WorkspaceFolder,
+): string {
+  return toPortableBasePath(targetPath, WORKSPACE_FOLDER_VARIABLE, workspaceFolder.uri.fsPath, true)
+    ?? path.resolve(targetPath);
+}
+
+export function toPortableConfiguredPath(
+  targetPath: string,
+  scope?: ConfigurationScope,
+): string {
+  if (!targetPath || targetPath.includes('${')) {
+    return targetPath;
+  }
+
+  const workspaceFolder = getWorkspaceFolderForScope(scope);
+  if (workspaceFolder) {
+    const portableWorkspacePath = toPortableBasePath(targetPath, WORKSPACE_FOLDER_VARIABLE, workspaceFolder.uri.fsPath, true);
+    if (portableWorkspacePath) {
+      return portableWorkspacePath;
+    }
+  }
+
+  const portableModePath = process.env.VSCODE_PORTABLE;
+  if (portableModePath) {
+    const portablePath = toPortableBasePath(targetPath, PORTABLE_MODE_VARIABLE, portableModePath);
+    if (portablePath) {
+      return portablePath;
+    }
+  }
+
+  const userHomePath = toPortableBasePath(targetPath, USER_HOME_VARIABLE, os.homedir());
+  if (userHomePath) {
+    return userHomePath;
+  }
+
+  return path.resolve(targetPath);
+}
+
+export function toPortableConfiguredPathValue(
+  value: string | string[] | undefined,
+  scope?: ConfigurationScope,
+): string | string[] | undefined {
+  if (typeof value === 'string') {
+    return toPortableConfiguredPath(value, scope);
+  }
+  if (Array.isArray(value)) {
+    return value.map(entry => toPortableConfiguredPath(entry, scope));
+  }
+  return value;
+}
+
+function resolveConfigVariable(
+  settingName: string,
+  scope: ConfigurationScope | undefined,
+  state: VariableResolutionState,
+): string | undefined {
+  if (state.depth >= MAX_CONFIG_VARIABLE_DEPTH) {
+    return undefined;
+  }
+
+  const resource = getConfigurationResource(scope);
+  const configKey = `${resource?.toString() ?? '<global>'}:${settingName}`;
+  if (state.seenConfigKeys.has(configKey)) {
+    return undefined;
+  }
+
+  const rawValue = vscode.workspace.getConfiguration(undefined, resource).get<unknown>(settingName);
+  if (typeof rawValue !== 'string') {
+    return undefined;
+  }
+
+  state.seenConfigKeys.add(configKey);
+  try {
+    return resolveConfiguredPath(rawValue, scope, {
+      depth: state.depth + 1,
+      seenConfigKeys: state.seenConfigKeys,
+    });
+  } finally {
+    state.seenConfigKeys.delete(configKey);
+  }
+}
+
+function resolveSupportedVariable(
+  variableName: string,
+  scope: ConfigurationScope | undefined,
+  state: VariableResolutionState,
+): string | undefined {
+  if (variableName === 'workspaceFolder') {
+    return getWorkspaceFolderForScope(scope)?.uri.fsPath;
+  }
+  if (variableName.startsWith('workspaceFolder:')) {
+    const workspaceName = variableName.slice('workspaceFolder:'.length);
+    return workspaceName.length > 0
+      ? getNamedWorkspaceFolder(workspaceName)?.uri.fsPath
+      : undefined;
+  }
+  if (variableName === 'workspaceFolderBasename') {
+    const workspaceFolder = getWorkspaceFolderForScope(scope);
+    return workspaceFolder
+      ? path.basename(workspaceFolder.uri.fsPath)
+      : undefined;
+  }
+  if (variableName === 'userHome') {
+    return os.homedir();
+  }
+  if (variableName === 'pathSeparator' || variableName === '/') {
+    return path.sep;
+  }
+  if (variableName.startsWith('env:')) {
+    return process.env[variableName.slice('env:'.length)] ?? '';
+  }
+  if (variableName.startsWith('config:')) {
+    return resolveConfigVariable(variableName.slice('config:'.length), scope, state);
+  }
+  return undefined;
+}
+
+export function resolveConfiguredPath(
+  targetPath: string | undefined,
+  scope?: ConfigurationScope,
+  state?: VariableResolutionState,
+): string | undefined {
+  if (!targetPath || targetPath.trim().length === 0) {
+    return undefined;
+  }
+
+  const resolutionState = state ?? { depth: 0, seenConfigKeys: new Set<string>() };
+  let replaced = false;
+  const resolved = targetPath.replace(/\$\{([^}]+)\}/g, (match, variableName: string) => {
+    const replacement = resolveSupportedVariable(variableName, scope, resolutionState);
+    if (typeof replacement === 'undefined') {
+      return match;
+    }
+    replaced = true;
+    return replacement;
+  });
+
+  if (!replaced) {
+    return targetPath;
+  }
+
+  return resolved.includes('${') ? resolved : path.normalize(resolved);
+}
+
+export function resolveConfiguredPathValue(
+  value: string | string[] | undefined,
+  scope?: ConfigurationScope,
+): string | string[] | undefined {
+  if (typeof value === 'string') {
+    return resolveConfiguredPath(value, scope);
+  }
+  if (Array.isArray(value)) {
+    return value.map(entry => resolveConfiguredPath(entry, scope) ?? entry);
+  }
+  return value;
+}
+
+export function getConfiguredPathBySettingName(
+  settingName: string,
+  scope?: ConfigurationScope,
+): string | undefined {
+  const resource = getConfigurationResource(scope);
+  const rawValue = vscode.workspace
+    .getConfiguration(undefined, resource)
+    .get<string>(settingName);
+
+  return resolveConfiguredPath(rawValue, scope);
+}
+
+export function getConfiguredWorkbenchPath(
+  settingKey: string,
+  scope?: ConfigurationScope,
+): string | undefined {
+  return getConfiguredPathBySettingName(buildWorkbenchSettingKey(settingKey), scope);
+}
+
+export function isSpdxOnlyVenvPath(venvPath: string | undefined): boolean {
+  if (!venvPath) {
+    return false;
+  }
+
+  return venvPath
+    .split(/[\\/]+/)
+    .some(segment => segment.toLowerCase() === '.venv-spdx');
+}
+
+export function sanitizeConfiguredVenvPath(venvPath: string | undefined): string | undefined {
+  if (!venvPath || venvPath.trim().length === 0) {
+    return undefined;
+  }
+
+  return isSpdxOnlyVenvPath(venvPath) ? undefined : venvPath;
+}
+
+export function getConfiguredVenvPath(
+  scope?: ConfigurationScope,
+): string | undefined {
+  return sanitizeConfiguredVenvPath(
+    getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, scope),
+  );
 }
 
 export function normalizeSlashesIfPath(p: string): string {
@@ -444,12 +734,8 @@ export async function execShellCommandWithEnv(
   cmd: string,
   options: vscode.ShellExecutionOptions
 ) {
-  const rawEnvScript = vscode.workspace
-    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  const rawVenvPath = vscode.workspace
-    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
+  const rawEnvScript = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, options.cwd);
+  const rawVenvPath = getConfiguredVenvPath(options.cwd);
 
   const envScript = normalizePathForShell(classifyShell(getShellExe()), rawEnvScript ?? '');
   const venvPath = rawVenvPath ? normalizePathForShell(classifyShell(getShellExe()), rawVenvPath) : undefined;
@@ -463,7 +749,7 @@ export async function execShellCommandWithEnv(
   if (!cmd) {
     throw new Error('Missing command to execute', { cause: 'missing.command' });
   }
-  if (venvPath && !fileExists(venvPath)) {
+  if (rawVenvPath && !fileExists(rawVenvPath)) {
     throw new Error(
       'Invalid Python virtual environment.',
       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
@@ -499,9 +785,8 @@ export async function execShellCommandWithEnvInteractive(
   options: vscode.ShellExecutionOptions = {}
 ) {
 
-  const cfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY);
-  const envScriptRaw = cfg.get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  const venvRaw = cfg.get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
+  const envScriptRaw = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, options.cwd);
+  const venvRaw = getConfiguredVenvPath(options.cwd);
 
   if (!envScriptRaw) {
     throw new Error(
@@ -572,12 +857,8 @@ export async function execCommandWithEnv(
   cwd?: string,
   cb?: (e: ExecException | null, so: string, se: string) => void
 ): Promise<ChildProcess> {
-  const rawEnvScript = vscode.workspace
-    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  const rawVenvPath = vscode.workspace
-    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
+  const rawEnvScript = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, cwd);
+  const rawVenvPath = getConfiguredVenvPath(cwd);
 
   const envScript = normalizePathForShell(classifyShell(getShellExe()), rawEnvScript ?? '');
   const venvPath = rawVenvPath ? normalizePathForShell(classifyShell(getShellExe()), rawVenvPath) : undefined;
@@ -588,7 +869,7 @@ export async function execCommandWithEnv(
       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
     );
   }
-  if (venvPath && !fileExists(venvPath)) {
+  if (rawVenvPath && !fileExists(rawVenvPath)) {
     throw new Error(
       'Invalid Python virtual environment.',
       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
@@ -617,12 +898,8 @@ export function execCommandWithEnvCB(
   options: ExecOptions = {},
   cb?: (e: ExecException | null, so: string, se: string) => void
 ): ChildProcess {
-  const envScript = vscode.workspace
-    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  const venvPath2 = vscode.workspace
-    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
+  const envScript = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, cwd ?? options.cwd);
+  const venvPath2 = getConfiguredVenvPath(cwd ?? options.cwd);
 
   if (!envScript) {
     throw new Error(
@@ -654,12 +931,8 @@ export function execCommandWithEnvCB(
 }
 
 export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): ChildProcess {
-  const envScript = vscode.workspace
-    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
-  const venvPath3 = vscode.workspace
-    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
+  const envScript = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, options.cwd);
+  const venvPath3 = getConfiguredVenvPath(options.cwd);
 
   if (!envScript) {
     throw new Error(
@@ -694,9 +967,7 @@ export async function execShellTaskWithEnvAndWait(
   hideTerminal = false,
 ): Promise<void> {
 
-  const envScriptRaw = vscode.workspace
-    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-    .get<string>(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+  const envScriptRaw = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, options.cwd);
 
   if (!envScriptRaw) {
     throw new Error(

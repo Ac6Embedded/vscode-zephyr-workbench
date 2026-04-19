@@ -7,7 +7,7 @@ import { ZephyrApplication } from "../models/ZephyrApplication";
 import { ZephyrBoard } from "../models/ZephyrBoard";
 import { ArmGnuToolchainInstallation, normalizeArmGnuTargetTriple, ZephyrSdkInstallation, IarToolchainInstallation } from "../models/ToolchainInstallations";
 import { ZephyrAppTemplateKind, ZephyrSample } from "../models/ZephyrSample";
-import { getEnvVarFormat, getOutputChannel, getShell } from "./execUtils";
+import { ConfigurationScope, getEnvVarFormat, getOutputChannel, getShell } from "./execUtils";
 import { checkHostTools, checkEnvFile } from "./installUtils";
 import {
   ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY,
@@ -601,8 +601,11 @@ export function getArmGnuToolchainInstallationByPath(toolchainPath: string): Arm
   );
 }
 
-export function getSelectedToolchainVariantEnv(cfg: vscode.WorkspaceConfiguration): Record<string, string> {
-  const toolchainSelection = readToolchainSelection(cfg);
+export function getSelectedToolchainVariantEnv(
+  cfg: vscode.WorkspaceConfiguration,
+  scope?: ConfigurationScope,
+): Record<string, string> {
+  const toolchainSelection = readToolchainSelection(cfg, scope);
   const toolchainVariant = toolchainSelection.variant;
 
   if (toolchainVariant === 'iar') {
