@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from "path";
 import {
   fileExists,
-  findTask,
   getSelectedToolchainVariantEnv,
   getWestWorkspace,
   getZephyrSdkInstallation,
@@ -18,7 +17,6 @@ import {
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
 } from '../constants';
-import { ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import {
   concatCommands,
   getConfiguredWorkbenchPath,
@@ -187,7 +185,7 @@ export class ZephyrApplication {
   }
 
   // Detect application folders via the zephyr-workbench.westWorkspace setting,
-  // with a fallback to the legacy "West Build" task for older workspaces.
+  // with a fallback to the persisted workspace settings file.
   static async isApplicationWorkspaceFolder(folder: vscode.WorkspaceFolder) {
     const applicationPath = folder.uri.fsPath;
     const cachedValue = ZephyrApplication.applicationWorkspaceCache.get(applicationPath);
@@ -209,11 +207,8 @@ export class ZephyrApplication {
       return true;
     }
 
-    const westBuildTask = await findTask('West Build', folder);
-    const isApplication = !!(westBuildTask && westBuildTask.definition.type === ZephyrTaskProvider.ZephyrType);
-
-    ZephyrApplication.applicationWorkspaceCache.set(applicationPath, isApplication);
-    return isApplication;
+    ZephyrApplication.applicationWorkspaceCache.set(applicationPath, false);
+    return false;
   }
 
   static async getApplicationWorkspaceFolders(
@@ -246,21 +241,6 @@ export class ZephyrApplication {
         const key = `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY}`;
         if (jsonData && typeof jsonData[key] === 'string' && jsonData[key].length > 0) {
           return true;
-        }
-      } catch {
-        // fall through to legacy detection
-      }
-    }
-
-    const zwFilePath = path.join(applicationPath, '.vscode', 'tasks.json');
-    if (fileExists(zwFilePath)) {
-      const fileContent = fs.readFileSync(zwFilePath, 'utf-8');
-      try {
-        const jsonData = JSON.parse(fileContent);
-        for (const task of jsonData.tasks) {
-          if (task.label === 'West Build' && task.type === ZephyrTaskProvider.ZephyrType) {
-            return true;
-          }
         }
       } catch {
         return false;

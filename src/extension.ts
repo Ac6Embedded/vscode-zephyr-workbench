@@ -408,18 +408,22 @@ export function activate(context: vscode.ExtensionContext) {
 			if (projectPath) {
 				CreateWestWorkspacePanel.currentPanel?.dispose();
 				if (ZephyrApplication.isApplicationPath(projectPath)) {
-					await addWorkspaceFolder(projectPath);
-					// Optionally create a local venv for the imported project
-					if (venvMode === 'local') {
-						const workspaceFolder = getWorkspaceFolder(projectPath);
-						if (workspaceFolder) {
-							const venvPath = await createLocalVenv(context, workspaceFolder);
-							if (venvPath) {
-								await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-									.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+					await withAppRefreshBatch(async () => {
+						await addWorkspaceFolder(projectPath);
+						// Optionally create a local venv for the imported project
+						if (venvMode === 'local') {
+							const workspaceFolder = getWorkspaceFolder(projectPath);
+							if (workspaceFolder) {
+								const venvPath = await createLocalVenv(context, workspaceFolder);
+								if (venvPath) {
+									await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+										.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+								}
 							}
 						}
-					}
+
+						requestAppRefresh();
+					});
 				} else {
 					vscode.window.showErrorMessage("The folder is not a Zephyr project");
 				}
@@ -2456,7 +2460,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 						await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, {
 							toolchainVariant,
-							venvPath
+							venvPath,
+							preferConfigurationApi: true,
 						});
 						await createTasksJson(workspaceFolder, {
 							westWorkspace,
@@ -2491,7 +2496,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, {
 						toolchainVariant,
-						venvPath
+						venvPath,
+						preferConfigurationApi: true,
 					});
 					await createTasksJson(workspaceFolder, {
 						westWorkspace,

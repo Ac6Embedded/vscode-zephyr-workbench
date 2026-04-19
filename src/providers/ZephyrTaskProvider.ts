@@ -238,6 +238,7 @@ export interface CreateTasksJsonOptions {
 export interface DefaultProjectSettingsOptions {
   toolchainVariant?: string;
   venvPath?: string;
+  preferConfigurationApi?: boolean;
 }
 
 const runnerPickInput = {
@@ -931,7 +932,9 @@ export async function setDefaultProjectSettings(
   toolchainInstallation: ZephyrSdkInstallation | IarToolchainInstallation | ArmGnuToolchainInstallation,
   options: DefaultProjectSettingsOptions = {}
 ): Promise<void> {
-  const directWriteApplied = await tryWriteDefaultProjectSettingsFile(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, options);
+  const directWriteApplied = options.preferConfigurationApi
+    ? false
+    : await tryWriteDefaultProjectSettingsFile(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, options);
   if (!directWriteApplied) {
     await applyDefaultProjectSettingsViaConfigurationApi(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, options);
   }

@@ -478,7 +478,7 @@ async function handleCreateMessage(message: any) {
       ?? getIarToolchainInstallationByPath(toolchainInstallationPath)
       ?? getZephyrSdkInstallation(vscode.Uri.parse(toolchainInstallationPath, true).fsPath);
 
-    vscode.commands.executeCommand(
+    await vscode.commands.executeCommand(
       "zephyr-workbench-app-explorer.create-app",
       westWorkspace,
       sample,
@@ -504,7 +504,7 @@ async function handleCreateMessage(message: any) {
   const hasWorkspace = westWorkspaceRootPath.length > 0;
 
   if (!hasBoard && !hasToolchainInstallation && !hasWorkspace) {
-    vscode.commands.executeCommand(
+    await vscode.commands.executeCommand(
       "zephyr-workbench-app-explorer.import-local",
       projectLoc,
       message.venv
