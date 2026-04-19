@@ -8,14 +8,14 @@ import { WestWorkspace } from './models/WestWorkspace';
 import { ZephyrApplication } from './models/ZephyrApplication';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
 import { ZephyrBuildConfig } from './models/ZephyrBuildConfig';
-import { ArmGnuToolchainInstallation, normalizeZephyrSdkVariant, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
+import { ArmGnuToolchainInstallation, ensureWindowsExecutableExtension, normalizeZephyrSdkVariant, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
 import { checkAndCreateTasksJson, createTasksJson, setDefaultProjectSettings, updateTasks, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
 import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
 import { getRunner, getFlashRunners, getStaticFlashRunnerNames, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from './utils/debugTools/debugUtils';
-import { executeTask, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath, toPortableConfiguredPath } from './utils/execUtils';
+import { executeTask, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
 import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
@@ -1129,7 +1129,7 @@ export function activate(context: vscode.ExtensionContext) {
 				if (westWorkspacePath) {
 					await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.appWorkspaceFolder).update(
 						ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY,
-						toPortableConfiguredPath(westWorkspacePath, node.project.appWorkspaceFolder),
+						westWorkspacePath,
 						vscode.ConfigurationTarget.WorkspaceFolder,
 					);
 				}
@@ -1155,7 +1155,7 @@ export function activate(context: vscode.ExtensionContext) {
 					await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, pick.selectedVariant, vscode.ConfigurationTarget.WorkspaceFolder);
 					await cfg.update(
 						ZEPHYR_PROJECT_SDK_SETTING_KEY,
-						pick.zephyrSdkPath ? toPortableConfiguredPath(pick.zephyrSdkPath, node.project.appWorkspaceFolder) : pick.zephyrSdkPath,
+						pick.zephyrSdkPath,
 						vscode.ConfigurationTarget.WorkspaceFolder,
 					);
 					await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
@@ -1176,10 +1176,7 @@ export function activate(context: vscode.ExtensionContext) {
 								const socToolchainName = activeConfig.getKConfigValue(node.project, 'SOC_TOOLCHAIN_NAME');
 								await vscode.workspace.getConfiguration('C_Cpp', node.project.appWorkspaceFolder).update(
 									'default.compilerPath',
-									toPortableConfiguredPath(
-										zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, pick.selectedVariant),
-										node.project.appWorkspaceFolder,
-									),
+									ensureWindowsExecutableExtension(zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, pick.selectedVariant)),
 									vscode.ConfigurationTarget.WorkspaceFolder
 								);
 							} catch {
@@ -1196,7 +1193,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 					await cfg.update(
 						ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
-						toPortableConfiguredPath(armGnuToolchainInstallation.toolchainPath, node.project.appWorkspaceFolder),
+						armGnuToolchainInstallation.toolchainPath,
 						vscode.ConfigurationTarget.WorkspaceFolder,
 					);
 					await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
@@ -1206,7 +1203,7 @@ export function activate(context: vscode.ExtensionContext) {
 					try {
 						await vscode.workspace.getConfiguration('C_Cpp', node.project.appWorkspaceFolder).update(
 							'default.compilerPath',
-							toPortableConfiguredPath(armGnuToolchainInstallation.compilerPath, node.project.appWorkspaceFolder),
+							ensureWindowsExecutableExtension(armGnuToolchainInstallation.compilerPath),
 							vscode.ConfigurationTarget.WorkspaceFolder
 						);
 					} catch {
@@ -1216,7 +1213,7 @@ export function activate(context: vscode.ExtensionContext) {
 					await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "iar", vscode.ConfigurationTarget.WorkspaceFolder);
 					await cfg.update(
 						ZEPHYR_PROJECT_IAR_SETTING_KEY,
-						pick.iarToolchainPath ? toPortableConfiguredPath(pick.iarToolchainPath, node.project.appWorkspaceFolder) : pick.iarToolchainPath,
+						pick.iarToolchainPath,
 						vscode.ConfigurationTarget.WorkspaceFolder,
 					);
 					await cfg.update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
@@ -2746,7 +2743,7 @@ async function updateCompileSetting(project: ZephyrApplication, configName: stri
 			if (compilerPath) {
 				await vscode.workspace.getConfiguration('C_Cpp', project.appWorkspaceFolder).update(
 					'default.compilerPath',
-					toPortableConfiguredPath(compilerPath, project.appWorkspaceFolder),
+					ensureWindowsExecutableExtension(compilerPath),
 					vscode.ConfigurationTarget.WorkspaceFolder,
 				);
 			}

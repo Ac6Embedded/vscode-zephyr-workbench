@@ -7,6 +7,13 @@ export type ToolchainVariantId = 'zephyr' | 'zephyr/llvm' | 'gnuarmemb' | 'iar';
 export type ZephyrSdkVariantId = Extract<ToolchainVariantId, 'zephyr' | 'zephyr/llvm'>;
 export type ArmGnuBareMetalTargetTriple = 'arm-none-eabi' | 'aarch64-none-elf';
 
+export function ensureWindowsExecutableExtension(executablePath: string): string {
+  if (process.platform !== 'win32' || !executablePath || path.extname(executablePath).length > 0) {
+    return executablePath;
+  }
+  return `${executablePath}.exe`;
+}
+
 export function normalizeZephyrSdkVariant(
   variant: string | undefined,
   zephyrSdkInstallation?: ZephyrSdkInstallation,
@@ -134,7 +141,9 @@ export class ZephyrSdkInstallation {
     const compilerPrefix = arch === 'xtensa' && socToolchain
       ? ZephyrSdkInstallation.getCompilerPrefix(arch, socToolchain)
       : ZephyrSdkInstallation.getCompilerPrefix(arch);
-    return path.join(this.gnuToolchainsRootPath, compilerPrefix, 'bin', `${compilerPrefix}-gcc`);
+    return ensureWindowsExecutableExtension(
+      path.join(this.gnuToolchainsRootPath, compilerPrefix, 'bin', `${compilerPrefix}-gcc`)
+    );
   }
 
   public getDebuggerPath(arch: string, socToolchain: string | undefined = undefined): string {
