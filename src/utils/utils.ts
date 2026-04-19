@@ -99,17 +99,6 @@ export function findDefaultEnvScriptPath(): string {
   return path.join(getInternalDirPath(), getEnvScriptFilename());
 }
 
-export function findDefaultOpenOCDPath(): string {
-  let openOCDExecFilePath = path.join(getInternalDirPath(), 'tools', 'openocd', 'bin', 'openocd');
-  return openOCDExecFilePath;
-}
-
-export function findDefaultOpenOCDScriptPath(): string {
-  let openOCDScriptsDirPath = path.join(getInternalDirPath(), 'tools', 'openocd', 'scripts');
-  return openOCDScriptsDirPath;
-}
-
-
 export function copyFolderInto(srcPath: string, destParentPath: string): string {
   const destPath = path.join(destParentPath, path.basename(srcPath));
   fs.cpSync(srcPath, destPath, { recursive: true });

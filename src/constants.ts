@@ -10,8 +10,6 @@ export const ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY = 'venv.path';
 export const ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY = 'listSDKs';
 export const ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY = "listIARs";
 export const ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY = 'listArmGnuToolchains';
-export const ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY = 'openocd.searchDir';
-export const ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY = 'openocd.execPath';
 export const ZEPHYR_WORKBENCH_BUILD_PRISTINE_SETTING_KEY = 'build.pristine';
 
 export const ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY = 'westWorkspace';

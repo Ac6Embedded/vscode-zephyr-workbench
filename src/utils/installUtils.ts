@@ -8,10 +8,10 @@ import path from "path";
 import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
 import yaml from 'yaml';
-import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY, ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
+import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
 import { execShellCommand, execShellCommandWithEnv, getConfiguredWorkbenchPath, getShellArgs, getShellExe, execCommandWithEnv, resolveConfiguredPath, toPortableConfiguredPath, toPortableWorkspaceFolderPath } from "./execUtils";
 import { syncAutoDetectEnv } from "./debugTools/autoDetectSyncUtils";
-import { fileExists, findDefaultEnvScriptPath, findDefaultOpenOCDPath, findDefaultOpenOCDScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSdkInstallation, getWestWorkspace } from "./utils";
+import { fileExists, findDefaultEnvScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSdkInstallation, getWestWorkspace } from "./utils";
 import { getRunner } from "./debugTools/debugUtils";
 import { getZephyrTerminal } from "./zephyr/zephyrTerminalUtils";
 import { ensurePowershellExecutionPolicy } from "./powershellUtils";
@@ -169,27 +169,6 @@ export async function setDefaultSettings(): Promise<void> {
     }
     resolve();
   });
-}
-
-export async function setOpenOCDSettings(): Promise<void> {
-  let openocdExecPath = findDefaultOpenOCDPath();
-  let openocdScriptsPath = findDefaultOpenOCDScriptPath();
-
-  if(openocdExecPath.length > 0) {
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(
-      ZEPHYR_WORKBENCH_OPENOCD_EXECPATH_SETTING_KEY,
-      toPortableConfiguredPath(openocdExecPath),
-      vscode.ConfigurationTarget.Global,
-    );
-  }
-
-  if(openocdScriptsPath.length > 0) {
-    await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY).update(
-      ZEPHYR_WORKBENCH_OPENOCD_SEARCH_DIR_SETTING_KEY,
-      toPortableConfiguredPath(openocdScriptsPath),
-      vscode.ConfigurationTarget.Global,
-    );
-  }
 }
 
 /**
