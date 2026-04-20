@@ -410,6 +410,11 @@
         "category": "Zephyr Workbench/Application"
       },
       {
+        "command": "zephyr-workbench-app-explorer.add-custom-task",
+        "title": "Add Custom Task",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
         "command": "zephyr-workbench-app-explorer.delete-config",
         "title": "Delete",
         "icon": "$(remove)",
@@ -1003,6 +1008,11 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
+          "command": "zephyr-workbench-app-explorer.add-custom-task",
+          "group": "0@view/item/context@9.1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
           "command": "zephyr-workbench-app-explorer.reveal-os",
           "group": "0@view/item/context@10",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
@@ -1593,6 +1603,10 @@
         },
         {
           "command": "zephyr-workbench-app-explorer.add-config",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.add-custom-task",
           "when": "false"
         },
         {

@@ -9,7 +9,7 @@ import { ZephyrApplication } from './models/ZephyrApplication';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
 import { ZephyrBuildConfig } from './models/ZephyrBuildConfig';
 import { ArmGnuToolchainInstallation, ensureWindowsExecutableExtension, normalizeZephyrSdkVariant, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
-import { checkAndCreateTasksJson, createTasksJson, setDefaultProjectSettings, updateTasks, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
+import { checkAndCreateTasksJson, createTasksJson, isReservedTaskLabel, saveCustomTaskDefinition, setDefaultProjectSettings, updateTasks, ZephyrTaskDefinition, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
@@ -1365,6 +1365,41 @@ export function activate(context: vscode.ExtensionContext) {
 						await addConfig(node.project.appWorkspaceFolder, newConfig);
 					}
 				}
+			}
+		})
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.add-custom-task', async (node: ZephyrApplicationTreeItem) => {
+			if (!node.project) {
+				return;
+			}
+
+			await checkAndCreateTasksJson(node.project.appWorkspaceFolder);
+
+			const taskDefinition = await promptCustomTaskDefinition(node.project);
+			if (!taskDefinition) {
+				return;
+			}
+
+			let result = await saveCustomTaskDefinition(node.project.appWorkspaceFolder, taskDefinition);
+			if (result.status === 'conflict') {
+				const overwrite = await showConfirmMessage(`A task named "${taskDefinition.label}" already exists in this application. Replace it?`);
+				if (!overwrite) {
+					return;
+				}
+
+				result = await saveCustomTaskDefinition(node.project.appWorkspaceFolder, taskDefinition, { overwrite: true });
+			}
+
+			const openTasksJsonItem = 'Open tasks.json';
+			const message = result.status === 'updated'
+				? `Custom task "${taskDefinition.label}" updated.`
+				: `Custom task "${taskDefinition.label}" added.`;
+			const choice = await vscode.window.showInformationMessage(message, openTasksJsonItem);
+
+			if (choice === openTasksJsonItem) {
+				const document = await vscode.workspace.openTextDocument(vscode.Uri.file(result.tasksJsonPath));
+				await vscode.window.showTextDocument(document);
 			}
 		})
 	);
@@ -2795,6 +2830,92 @@ async function debugPresetContent(projectRoot: string): Promise<void> {
 	].join('\n');
 
 	fs.writeFileSync(prjConfPath, `${content}${block}`, 'utf8');
+}
+
+type CustomTaskConfigPickItem = vscode.QuickPickItem & {
+	configName: string | null;
+};
+
+async function promptCustomTaskDefinition(project: ZephyrApplication): Promise<ZephyrTaskDefinition | undefined> {
+	const label = await vscode.window.showInputBox({
+		title: 'Add Custom Task',
+		prompt: 'Enter the task label to add to this application\'s tasks.json.',
+		placeHolder: 'Example: West Size',
+		ignoreFocusOut: true,
+		validateInput: value => {
+			const trimmed = value.trim();
+			if (!trimmed) {
+				return 'Task label is required.';
+			}
+			if (isReservedTaskLabel(trimmed)) {
+				return 'This label is reserved by built-in Zephyr Workbench tasks.';
+			}
+			return undefined;
+		},
+	});
+
+	if (label === undefined) {
+		return undefined;
+	}
+
+	const command = await vscode.window.showInputBox({
+		title: 'Add Custom Task',
+		prompt: 'Enter the command to execute. Quote paths with spaces if needed.',
+		placeHolder: 'Example: west',
+		ignoreFocusOut: true,
+		validateInput: value => value.trim() ? undefined : 'Command is required.',
+	});
+
+	if (command === undefined) {
+		return undefined;
+	}
+
+	const args = await vscode.window.showInputBox({
+		title: 'Add Custom Task',
+		prompt: 'Optional: enter the arguments exactly as they should be passed to the command.',
+		placeHolder: 'Example: build -t rom_report',
+		ignoreFocusOut: true,
+	});
+
+	if (args === undefined) {
+		return undefined;
+	}
+
+	const configItems: CustomTaskConfigPickItem[] = [
+		{
+			label: 'No build configuration',
+			description: 'Run with the application-level environment only',
+			configName: null,
+		},
+		...project.buildConfigs.map(config => ({
+			label: config.name,
+			description: config.active ? `${config.boardIdentifier} [active]` : config.boardIdentifier,
+			configName: config.name,
+		})),
+	];
+
+	const selectedConfig = await vscode.window.showQuickPick(configItems, {
+		title: 'Add Custom Task',
+		placeHolder: 'Select an optional build configuration context for this task.',
+		ignoreFocusOut: true,
+	});
+
+	if (!selectedConfig) {
+		return undefined;
+	}
+
+	const taskDefinition: ZephyrTaskDefinition = {
+		label: label.trim(),
+		type: ZephyrTaskProvider.ZephyrType,
+		command: command.trim(),
+		args: args.trim() ? [args.trim()] : [],
+	};
+
+	if (selectedConfig.configName) {
+		taskDefinition.config = selectedConfig.configName;
+	}
+
+	return taskDefinition;
 }
 
 export async function showConfirmMessage(message: string): Promise<boolean> {

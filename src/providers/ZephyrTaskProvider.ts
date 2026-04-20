@@ -19,7 +19,7 @@ import {
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
   ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
 } from '../constants';
-import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, toPortableConfiguredPath } from '../utils/execUtils';
+import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs } from '../utils/execUtils';
 import { getSelectedToolchainVariantEnv, getWestWorkspace, msleep, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
 import { normalizeStoredToolchainVariant } from '../utils/toolchainSelection';
@@ -39,9 +39,17 @@ export interface ZephyrTaskDefinition extends vscode.TaskDefinition {
   config?: string;
 }
 
-const westBuildTask: ZephyrTaskDefinition = {
+const ZEPHYR_TASK_TYPE = 'zephyr-workbench';
+const MANAGED_TASK_MARKER = 'zephyrWorkbenchManaged';
+
+function markManagedTask(task: ZephyrTaskDefinition): ZephyrTaskDefinition {
+  task[MANAGED_TASK_MARKER] = true;
+  return task;
+}
+
+const westBuildTask: ZephyrTaskDefinition = markManagedTask({
   label: "West Build",
-  type: "zephyr-workbench",
+  type: ZEPHYR_TASK_TYPE,
   problemMatcher: ["$gcc"],
   group: {
     kind: "build",
@@ -55,11 +63,11 @@ const westBuildTask: ZephyrTaskDefinition = {
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
-};
+});
 
-const rebuildTask: ZephyrTaskDefinition = {
+const rebuildTask: ZephyrTaskDefinition = markManagedTask({
   label: "West Rebuild",
-  type: "zephyr-workbench",
+  type: ZEPHYR_TASK_TYPE,
   problemMatcher: ["$gcc"],
   group: {
     kind: "build",
@@ -73,11 +81,11 @@ const rebuildTask: ZephyrTaskDefinition = {
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
-};
+});
 
-const guiConfigTask: ZephyrTaskDefinition = {
+const guiConfigTask: ZephyrTaskDefinition = markManagedTask({
   label: "Gui config",
-  type: "zephyr-workbench",
+  type: ZEPHYR_TASK_TYPE,
   problemMatcher: [],
   command: "west",
   config: "primary",
@@ -87,11 +95,11 @@ const guiConfigTask: ZephyrTaskDefinition = {
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
-};
+});
 
-const menuconfigTask: ZephyrTaskDefinition = {
+const menuconfigTask: ZephyrTaskDefinition = markManagedTask({
   label: "Menuconfig",
-  type: "zephyr-workbench",
+  type: ZEPHYR_TASK_TYPE,
   command: "west",
   config: "primary",
   args: [
@@ -100,11 +108,11 @@ const menuconfigTask: ZephyrTaskDefinition = {
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
-};
+});
 
-const hardenConfigTask: ZephyrTaskDefinition = {
+const hardenConfigTask: ZephyrTaskDefinition = markManagedTask({
   label: "Harden Config",
-  type: "zephyr-workbench",
+  type: ZEPHYR_TASK_TYPE,
   command: "west",
   config: "primary",
   args: [
@@ -113,11 +121,11 @@ const hardenConfigTask: ZephyrTaskDefinition = {
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
-};
+});
 
-const flashTask: ZephyrTaskDefinition = {
+const flashTask: ZephyrTaskDefinition = markManagedTask({
   label: "West Flash",
-  type: "zephyr-workbench",
+  type: ZEPHYR_TASK_TYPE,
   problemMatcher: [],
   command: "west",
   config: "primary",
@@ -127,11 +135,11 @@ const flashTask: ZephyrTaskDefinition = {
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
-};
+});
 
-const ramReportTask: ZephyrTaskDefinition = {
+const ramReportTask: ZephyrTaskDefinition = markManagedTask({
   label: "West RAM Report",
-  type: "zephyr-workbench",
+  type: ZEPHYR_TASK_TYPE,
   problemMatcher: [],
   command: "west",
   config: "primary",
@@ -141,11 +149,11 @@ const ramReportTask: ZephyrTaskDefinition = {
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
-};
+});
 
-const romReportTask: ZephyrTaskDefinition = {
+const romReportTask: ZephyrTaskDefinition = markManagedTask({
   label: "West ROM Report",
-  type: "zephyr-workbench",
+  type: ZEPHYR_TASK_TYPE,
   problemMatcher: [],
   command: "west",
   config: "primary",
@@ -155,11 +163,11 @@ const romReportTask: ZephyrTaskDefinition = {
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
-};
+});
 
-const ramPlotTask: ZephyrTaskDefinition = {
+const ramPlotTask: ZephyrTaskDefinition = markManagedTask({
   label: "West RAM Plot",
-  type: "zephyr-workbench",
+  type: ZEPHYR_TASK_TYPE,
   problemMatcher: [],
   command: "west",
   config: "primary",
@@ -169,11 +177,11 @@ const ramPlotTask: ZephyrTaskDefinition = {
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
-};
+});
 
-const romPlotTask: ZephyrTaskDefinition = {
+const romPlotTask: ZephyrTaskDefinition = markManagedTask({
   label: "West ROM Plot",
-  type: "zephyr-workbench",
+  type: ZEPHYR_TASK_TYPE,
   problemMatcher: [],
   command: "west",
   config: "primary",
@@ -183,11 +191,11 @@ const romPlotTask: ZephyrTaskDefinition = {
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
-};
+});
 
-const puncoverTask: ZephyrTaskDefinition = {
+const puncoverTask: ZephyrTaskDefinition = markManagedTask({
   label: "West Puncover",
-  type: "zephyr-workbench",
+  type: ZEPHYR_TASK_TYPE,
   problemMatcher: [],
   command: "west",
   config: "primary",
@@ -197,11 +205,11 @@ const puncoverTask: ZephyrTaskDefinition = {
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
-};
+});
 
-const dtDoctorTask: ZephyrTaskDefinition = {
+const dtDoctorTask: ZephyrTaskDefinition = markManagedTask({
   label: "DT Doctor",
-  type: "zephyr-workbench",
+  type: ZEPHYR_TASK_TYPE,
   problemMatcher: [],
   command: "west",
   config: "primary",
@@ -211,7 +219,7 @@ const dtDoctorTask: ZephyrTaskDefinition = {
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\"",
     "-- -DZEPHYR_SCA_VARIANT=dtdoctor"
   ]
-};
+});
 
 const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [westBuildTask.label, westBuildTask],
@@ -227,6 +235,21 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [puncoverTask.label, puncoverTask],
   [dtDoctorTask.label, dtDoctorTask]
 ]);
+
+const BUILTIN_TASK_LABELS = new Set(tasksMap.keys());
+
+function isManagedWorkbenchTask(task: { label?: string; type?: string; [key: string]: any } | undefined): boolean {
+  if (!task || task.type !== ZEPHYR_TASK_TYPE) {
+    return false;
+  }
+
+  return task[MANAGED_TASK_MARKER] === true
+    || (typeof task.label === 'string' && BUILTIN_TASK_LABELS.has(task.label));
+}
+
+export function isReservedTaskLabel(label: string): boolean {
+  return BUILTIN_TASK_LABELS.has(label.trim());
+}
 
 interface ParsedWestBuildTaskOptions {
   pristine: 'never' | 'always';
@@ -583,7 +606,7 @@ async function applyDefaultProjectSettingsViaConfigurationApi(
 }
 
 export class ZephyrTaskProvider implements vscode.TaskProvider {
-  static ZephyrType: string = 'zephyr-workbench';
+  static ZephyrType: string = ZEPHYR_TASK_TYPE;
 
   public async provideTasks(_token: vscode.CancellationToken): Promise<vscode.Task[]> {
     const folders = vscode.workspace.workspaceFolders ?? [];
@@ -911,6 +934,58 @@ export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder,
   return true;
 }
 
+export interface SaveCustomTaskOptions {
+  overwrite?: boolean;
+}
+
+export interface SaveCustomTaskResult {
+  status: 'added' | 'updated' | 'conflict';
+  tasksJsonPath: string;
+}
+
+export async function saveCustomTaskDefinition(
+  workspaceFolder: vscode.WorkspaceFolder,
+  taskDefinition: ZephyrTaskDefinition,
+  options: SaveCustomTaskOptions = {},
+): Promise<SaveCustomTaskResult> {
+  const { config, tasksJsonPath, serialized } = await ensureTasksFile(workspaceFolder);
+  const normalizedLabel = taskDefinition.label.trim();
+
+  const nextTask: ZephyrTaskDefinition = {
+    ...taskDefinition,
+    label: normalizedLabel,
+    type: ZEPHYR_TASK_TYPE,
+    command: taskDefinition.command.trim(),
+    args: Array.isArray(taskDefinition.args)
+      ? taskDefinition.args.map(arg => typeof arg === 'string' ? arg : String(arg))
+      : [],
+  };
+
+  delete nextTask[MANAGED_TASK_MARKER];
+
+  if (!config.version) {
+    config.version = "2.0.0";
+  }
+
+  const existingIndex = config.tasks.findIndex(task => task && task.label === normalizedLabel);
+  if (existingIndex !== -1 && !options.overwrite) {
+    return { status: 'conflict', tasksJsonPath };
+  }
+
+  if (existingIndex !== -1) {
+    config.tasks[existingIndex] = nextTask;
+  } else {
+    config.tasks.push(nextTask);
+  }
+
+  await writeTasksJson(tasksJsonPath, config, serialized);
+
+  return {
+    status: existingIndex !== -1 ? 'updated' : 'added',
+    tasksJsonPath,
+  };
+}
+
 /**
  * Update task to adapt to the new active configuration
  * @param workspaceFolder 
@@ -924,7 +999,7 @@ export async function updateTasks(workspaceFolder: vscode.WorkspaceFolder, activ
 
   let changed = false;
   const updatedTasks = config.tasks.map(task => {
-    if (task.type !== ZephyrTaskProvider.ZephyrType) {
+    if (!isManagedWorkbenchTask(task)) {
       return task;
     }
 
