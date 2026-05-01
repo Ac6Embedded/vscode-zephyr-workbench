@@ -4,7 +4,7 @@ import path from 'path';
 import { fileExists, getWorkspaceFolder } from '../utils/utils';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY } from '../constants';
 import { getBuildEnv, loadEnv } from '../utils/env/zephyrEnvUtils';
-import { concatCommands, getConfiguredWorkbenchPath, getShellCdCommand, getShellClearCommand, getShellEchoCommand, getResolvedShell, getShellSetEnvCommand, getShellSourceCommand, classifyShell, normalizePathForShell, winToPosixPath } from '../utils/execUtils';
+import { buildStartupSetupShellArgs, buildTerminalEnvCommands, concatCommands, getConfiguredWorkbenchPath, getShellCdCommand, getShellClearCommand, getResolvedShell, getShellSourceCommand, classifyShell, normalizePathForShell, TerminalEnvGroup } from '../utils/execUtils';
 
 export class WestWorkspace {
   versionArray!: { [key: string]: string };
@@ -189,61 +189,69 @@ export class WestWorkspace {
   private static buildTerminalContext(westWorkspace: WestWorkspace) {
     const { path: shellPath, args: shellArgs } = getResolvedShell();
     const shellType = classifyShell(shellPath);
+    const groups: TerminalEnvGroup[] = [
+      { label: 'Zephyr build system', env: westWorkspace.buildEnv },
+    ];
     return {
       shellPath,
       shellArgs,
       shellType,
       env: westWorkspace.buildEnv,
+      groups,
       cwd: westWorkspace.rootUri.fsPath,
     };
   }
 
-  private static setupTerminal(
+  // Reuse path only: shell already running, must use sendText. Visible chained
+  // command is fine because the user explicitly re-triggered "open terminal".
+  private static refreshTerminal(
     terminal: vscode.Terminal,
     westWorkspace: WestWorkspace,
     envScript: string,
   ): void {
     const context = WestWorkspace.buildTerminalContext(westWorkspace);
     const envScriptForShell = normalizePathForShell(context.shellType, envScript);
-    const echoCommand = getShellEchoCommand(context.shellType);
-    const clearCommand = getShellClearCommand(context.shellType);
-    const envSetCommands = Object.entries(context.env).map(([key, value]) =>
-      getShellSetEnvCommand(context.shellType, key, String(value)),
-    );
-    const printEnvCommands = Object.entries(context.env).map(([key, value]) => {
-      const renderedValue = (context.shellType === 'bash')
-        ? winToPosixPath(String(value))
-        : String(value);
-      return `${echoCommand} ${key}="${renderedValue}"`;
-    });
+    const { setCommands, echoCommands } = buildTerminalEnvCommands(context.shellType, context.groups);
 
     const setupCommand = concatCommands(
       context.shellType,
-      clearCommand,
+      getShellClearCommand(context.shellType),
       getShellCdCommand(context.shellType, context.cwd),
-      ...envSetCommands,
+      ...setCommands,
       getShellSourceCommand(context.shellType, envScriptForShell),
-      `echo "======= Zephyr Workbench Environment ======="`,
-      ...printEnvCommands,
-      `echo "============================================"`,
+      ...echoCommands,
     );
-
     terminal.sendText(setupCommand);
   }
 
-  private static openTerminal(westWorkspace: WestWorkspace): vscode.Terminal {
+  // New-terminal path: bake the setup into shellArgs so it runs silently at startup.
+  // env vars are already injected via createTerminal({ env }), so the setup only
+  // sources the env script and echoes the grouped banner.
+  private static openTerminal(westWorkspace: WestWorkspace, envScript: string): vscode.Terminal {
     const context = WestWorkspace.buildTerminalContext(westWorkspace);
-    let opts: vscode.TerminalOptions = {
+    const envScriptForShell = normalizePathForShell(context.shellType, envScript);
+    const { echoCommands } = buildTerminalEnvCommands(context.shellType, context.groups);
+
+    const setupCommands = [
+      getShellSourceCommand(context.shellType, envScriptForShell),
+      ...echoCommands,
+    ];
+    const shellArgs = buildStartupSetupShellArgs(
+      context.shellPath,
+      context.shellType,
+      context.shellArgs,
+      setupCommands,
+    );
+
+    const opts: vscode.TerminalOptions = {
       name: westWorkspace.name + ' Terminal',
       shellPath: `${context.shellPath}`,
-      shellArgs: context.shellArgs,
+      shellArgs,
       env: context.env,
-      cwd: westWorkspace.rootUri
+      cwd: westWorkspace.rootUri,
     };
 
-    const terminal = vscode.window.createTerminal(opts);
-
-    return terminal;
+    return vscode.window.createTerminal(opts);
   }
 
   static getTerminal(westWorkspace: WestWorkspace): vscode.Terminal {
@@ -259,14 +267,12 @@ export class WestWorkspace {
     for (let i = 0; i < terminals.length; i++) {
       const cTerminal = terminals[i];
       if (cTerminal.name === westWorkspace.name + ' Terminal') {
-        WestWorkspace.setupTerminal(cTerminal, westWorkspace, envScript);
+        WestWorkspace.refreshTerminal(cTerminal, westWorkspace, envScript);
         return cTerminal;
       }
     }
 
-    let terminal = WestWorkspace.openTerminal(westWorkspace);
-    WestWorkspace.setupTerminal(terminal, westWorkspace, envScript);
-    return terminal;
+    return WestWorkspace.openTerminal(westWorkspace, envScript);
   }
 
 }

@@ -75,11 +75,15 @@ export function getInstallDirRealPath(): string {
 export function getEnvScriptFilename(): string {
   let scriptName: string = "";
   switch (getShell()) {
-    case 'bash': {
+    case 'bash':
+    case 'zsh':
+    case 'dash':
+    case 'fish': {
       scriptName = 'env.sh';
       break;
     }
-    case 'powershell.exe': {
+    case 'powershell.exe':
+    case 'pwsh.exe': {
       scriptName = 'env.ps1';
       break;
     }

@@ -478,13 +478,17 @@ export function createWestWrapper(project: ZephyrApplication, buildConfigName?: 
   const shell: string = getShell();
   let westCmd = '';
   switch (shell) {
-    case 'bash': 
+    case 'bash':
+    case 'zsh':
+    case 'dash':
+    case 'fish':
       westCmd = 'west "$@"';
       break;
     case 'cmd.exe':
       westCmd = 'west %*';
       break;
     case 'powershell.exe':
+    case 'pwsh.exe':
       westCmd = 'west $args';
       break;
     default:
@@ -642,17 +646,21 @@ export async function createLaunchConfiguration(
   const shell: string = getShell();
   let wrapperFile = '';
   switch (shell) {
-    case 'bash': 
+    case 'bash':
+    case 'zsh':
+    case 'dash':
+    case 'fish':
       wrapperFile = 'west_wrapper.sh';
       break;
     case 'cmd.exe':
       wrapperFile = 'west_wrapper.bat';
       break;
     case 'powershell.exe':
+    case 'pwsh.exe':
       wrapperFile = 'west_wrapper.ps1';
       break;
     default:
-      wrapperFile = 'west_wrapper';
+      wrapperFile = 'west';
       break;
   }
 

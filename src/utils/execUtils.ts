@@ -52,11 +52,10 @@ export function getEnvVarFormat(shell: string, env: string): string {
   }
 }
 
+// Returns the kind of shell the user has configured (e.g. 'zsh', 'pwsh.exe').
+// Used for shell-specific syntax branching; pair with getShellExe() when you need the actual path.
 export function getShell(): string {
-  if (process.platform === 'win32') {
-    return 'cmd.exe';
-  }
-  return 'bash';
+  return classifyShell(getShellExe());
 }
 
 export function getResolvedShell(): { path: string; args?: string[] } {
@@ -66,10 +65,8 @@ export function getResolvedShell(): { path: string; args?: string[] } {
     return { path: prof.exe, args: prof.args };
   }
 
-  if (process.platform === "darwin") {
-    return { path: '/bin/bash' };
-  }
-
+  // `vscode.env.shell` reports the user's configured login shell — on modern macOS
+  // that's /bin/zsh, on Linux whatever the user picked. Trust it before falling back.
   if (vscode.env.shell) {
     return { path: vscode.env.shell };
   }
@@ -77,7 +74,9 @@ export function getResolvedShell(): { path: string; args?: string[] } {
   return {
     path: process.platform === 'win32'
       ? 'C:\\Windows\\System32\\cmd.exe'
-      : '/bin/bash'
+      : process.platform === 'darwin'
+        ? '/bin/zsh'
+        : '/bin/bash'
   };
 }
 
@@ -452,14 +451,6 @@ export function normalizeEnvVarsForShell(
   return out;
 }
 
-export function getTerminalShell(): string {
-  const prof = detectTerminalProfile();
-  if (prof) {
-    return prof.kind;
-  }
-  return process.platform === 'win32' ? 'powershell.exe' : 'bash';
-}
-
 function detectTerminalProfile():
   | {
     kind: 'bash' | 'cmd.exe' | 'powershell.exe' | 'pwsh.exe';
@@ -552,22 +543,6 @@ export function getShellNullRedirect(shell: string): string {
   }
 }
 
-export function getShellIgnoreErrorCommand(shell: string): string {
-  switch (shell) {
-    case 'bash':
-    case 'sh':
-    case 'zsh':
-      return '> /dev/null 2>&1 || true';
-    case 'cmd.exe':
-      return '> NUL 2>&1 || exit 0';
-    case 'powershell.exe':
-    case 'pwsh.exe':
-      return '> $null 2>&1; exit 0';
-    default:
-      return '';
-  }
-}
-
 export function getShellSourceCommand(shell: string, script: string): string {
   switch (shell) {
     case 'bash':
@@ -623,6 +598,9 @@ export function getShellCdCommand(shell: string, cwd: string): string {
 export function getShellEchoCommand(shell: string): string {
   switch (shell) {
     case 'bash':
+    case 'zsh':
+    case 'dash':
+    case 'fish':
     case 'cmd.exe':
       return 'echo';
     case 'powershell.exe':
@@ -637,6 +615,8 @@ export function getShellClearCommand(shell: string): string {
   switch (shell) {
     case 'bash':
     case 'zsh':
+    case 'dash':
+    case 'fish':
       return 'clear';
     case 'cmd.exe':
     case 'powershell.exe':
@@ -645,6 +625,157 @@ export function getShellClearCommand(shell: string): string {
     default:
       return '';
   }
+}
+
+/**
+ * Ensure the workspace has terminal sticky scroll disabled.
+ *
+ * Why: VS Code's terminal sticky-scroll feature pins the most recent command at the
+ * top of the viewport, which obscures Zephyr's grouped env banner on terminal open
+ * and overlays full-screen TUIs like menuconfig / guiconfig during the alt-screen
+ * transition. There's no per-terminal API to disable it (sticky scroll is a global
+ * `terminal.integrated.stickyScroll.enabled` setting), so the next-best fix is to
+ * disable it at the workspace level — narrow enough to leave other workspaces alone.
+ *
+ * Only writes the setting when the user has NOT explicitly set a workspace value
+ * themselves (`inspect()` reveals a workspaceValue of `undefined`). If the user later
+ * re-enables it in their workspace settings, this function leaves it alone.
+ *
+ * Safe to call multiple times — returns early on subsequent calls and on no-op cases.
+ */
+let _stickyScrollChecked = false;
+export async function ensureTerminalStickyScrollDisabled(): Promise<void> {
+  if (_stickyScrollChecked) {
+    return;
+  }
+  _stickyScrollChecked = true;
+
+  if (!vscode.workspace.workspaceFolders?.length) {
+    // No workspace open — falling back to Global would affect every other VS Code
+    // window, which is too intrusive. Skip.
+    return;
+  }
+
+  const cfg = vscode.workspace.getConfiguration('terminal.integrated.stickyScroll');
+  const inspect = cfg.inspect<boolean>('enabled');
+  // Respect any explicit workspace / workspace-folder value the user has chosen.
+  if (inspect?.workspaceValue !== undefined || inspect?.workspaceFolderValue !== undefined) {
+    return;
+  }
+
+  try {
+    await cfg.update('enabled', false, vscode.ConfigurationTarget.Workspace);
+  } catch {
+    // Settings update can fail in untrusted workspaces or when the workspace file
+    // isn't writable. Nothing actionable — sticky scroll just stays at its prior value.
+  }
+}
+
+/**
+ * Build `shellArgs` that runs `setupCommands` silently at terminal startup, then
+ * drops into an interactive shell. Pass to `vscode.window.createTerminal({shellArgs})`.
+ *
+ * Why: `terminal.sendText` types its argument at the prompt and the shell echoes it
+ * back, leaving a long `&&` chain visible in scrollback. By baking the setup into the
+ * shell's launch args (`-c "<setup>; exec <shell>"` on POSIX, `-NoExit -Command` on
+ * PowerShell, `/k` on cmd), no input is ever typed and only the setup's own output
+ * (e.g. our env-banner echoes) is shown.
+ *
+ * Only usable when *creating* a terminal. For an already-running terminal (e.g. when
+ * a build config changes and we want to refresh its env), there's no choice but to
+ * use `sendText` because the shell is past its launch.
+ *
+ * `originalShellArgs` is preserved on the inner `exec` so the user's terminal-profile
+ * args (e.g. `--login`) still apply to the interactive shell.
+ */
+export function buildStartupSetupShellArgs(
+  shellExe: string,
+  shellKind: string,
+  originalShellArgs: string[] | undefined,
+  setupCommands: string[],
+): string[] {
+  if (shellKind === 'cmd.exe') {
+    // /k = run command then stay open in interactive mode. @echo off suppresses cmd's
+    // default per-line echoing of the setup commands.
+    const setupChain = setupCommands.join(' && ');
+    return ['/k', setupChain ? `@echo off && ${setupChain}` : '@echo off'];
+  }
+
+  if (shellKind === 'powershell.exe' || shellKind === 'pwsh.exe') {
+    // -NoExit keeps the shell open after running the -Command argument.
+    return ['-NoExit', '-Command', setupCommands.join('; ')];
+  }
+
+  // POSIX (bash/zsh/dash/fish, plus their Cygwin/MSYS2/Git Bash variants):
+  // `-c` runs the setup non-interactively, then `exec <shell>` replaces the wrapper
+  // with an interactive shell that inherits env, cwd, and any profile args the user
+  // had configured.
+  const setupChain = setupCommands.join(' && ');
+  const userArgs = (originalShellArgs ?? [])
+    .map(arg => `'${arg.replace(/'/g, "'\\''")}'`)
+    .join(' ');
+  const execTail = `exec ${shellExe}${userArgs ? ' ' + userArgs : ''}`;
+  // `;` (not `&&`) before exec so the interactive shell still launches even if a
+  // setup command returns non-zero — otherwise a fluky echo or source would close
+  // the terminal.
+  return ['-c', setupChain ? `${setupChain}; ${execTail}` : execTail];
+}
+
+/**
+ * A labelled bucket of env vars to inject into a Zephyr terminal.
+ * Used to print the env in categorized sections (e.g. "Zephyr build system",
+ * "Toolchain", "Helpers") instead of one undifferentiated dump.
+ */
+export interface TerminalEnvGroup {
+  label: string;
+  env: Record<string, string>;
+}
+
+/**
+ * Build the shell commands a Zephyr terminal needs at startup to inject and
+ * display its env vars, grouped by category.
+ *
+ * Returned commands split into two phases so the caller can interleave them
+ * with cd/source-env-script:
+ *   - `setCommands`  — `export FOO=bar` (or shell equivalent), one per var. Run
+ *                      these BEFORE sourcing the env script so the script can
+ *                      observe and possibly augment them.
+ *   - `echoCommands` — header + per-group label + `echo KEY="value"` lines.
+ *                      Run these AFTER sourcing the env script so the user sees
+ *                      the final, post-source values.
+ *
+ * Empty groups are skipped.
+ */
+export function buildTerminalEnvCommands(
+  shellType: string,
+  groups: TerminalEnvGroup[],
+): { setCommands: string[]; echoCommands: string[] } {
+  const echoCommand = getShellEchoCommand(shellType);
+  const isPosix = shellType === 'bash' || shellType === 'zsh'
+    || shellType === 'dash' || shellType === 'fish';
+  const renderValue = (v: string) => isPosix ? winToPosixPath(v) : v;
+
+  const setCommands: string[] = [];
+  const echoCommands: string[] = [`${echoCommand} "======= Zephyr Workbench Environment ======="`];
+
+  for (const group of groups) {
+    const entries = Object.entries(group.env);
+    if (entries.length === 0) {
+      continue;
+    }
+
+    for (const [key, value] of entries) {
+      setCommands.push(getShellSetEnvCommand(shellType, key, String(value)));
+    }
+
+    echoCommands.push(`${echoCommand} "----- ${group.label} -----"`);
+    for (const [key, value] of entries) {
+      echoCommands.push(`${echoCommand} ${key}="${renderValue(String(value))}"`);
+    }
+  }
+
+  echoCommands.push(`${echoCommand} "============================================"`);
+  return { setCommands, echoCommands };
 }
 
 export function getOutputChannel(): vscode.OutputChannel {
@@ -672,6 +803,14 @@ export function expandEnvVariables(input: string): string {
   });
 }
 
+/**
+ * Runs a `vscode.Task` and resolves when it ends. The companion of `buildDirectTask`:
+ * the typical project-scoped flow is `executeTask(buildDirectTask(folder, name, cfg))`.
+ *
+ * Persists west-build-state markers (`__westBuildStatePath` / `__westBuildState`) that
+ * `ZephyrTaskProvider.resolve` may stash on the task definition, so callers don't need
+ * to call `writeWestBuildState` themselves.
+ */
 export async function executeTask(task: vscode.Task): Promise<vscode.TaskExecution> {
   await vscode.tasks.executeTask(task);
   return new Promise(resolve => {
@@ -693,42 +832,19 @@ export async function executeTask(task: vscode.Task): Promise<vscode.TaskExecuti
   });
 }
 
-export async function execShellCommandInteractive(
-  cmdName: string,
-  cmd: string,
-  options: vscode.ShellExecutionOptions = {}
-): Promise<vscode.Terminal> {
-
-  if (!cmd) {
-    throw new Error('Missing command to execute');
-  }
-
-  const shellPath = options.executable ?? getShellExe();
-  const shellArgs = options.shellArgs;
-  const terminalEnv = { ...process.env, ...options.env };
-
-  const termOpts: vscode.TerminalOptions = {
-    name: cmdName,
-    cwd: options.cwd,
-    env: terminalEnv,
-    shellPath,
-    shellArgs,
-    iconPath: new vscode.ThemeIcon('terminal')
-  };
-
-  logShellCommand(cmdName, cmd, options.cwd);
-  const term = vscode.window.createTerminal(termOpts);
-  term.show(true);
-
-  term.sendText(cmd, true);
-
-  return term;
-}
-
 export function isCygwin(shellPath: string): boolean {
   return /\\cygwin[^\\]*\\bin\\bash.exe$/i.test(shellPath);
 }
 
+/**
+ * Run a shell command as a one-shot VS Code task and await completion. Does NOT source
+ * the Zephyr env script — caller is responsible for any env setup.
+ *
+ * Use for: install / setup flows that run BEFORE the Zephyr env exists (zinstaller,
+ * venv creation, SDK setup, SPDX install). For anything that needs `west`, prefer
+ * `execShellCommandWithEnv` (pre-project) or `buildDirectTask` + `executeTask`
+ * (project-scoped — preferred).
+ */
 export async function execShellCommand(
   cmdName: string,
   cmd: string,
@@ -741,7 +857,7 @@ export async function execShellCommand(
   logShellCommand(cmdName, cmd, options.cwd);
   const shExec = new vscode.ShellExecution(cmd, options);
   const task = new vscode.Task(
-    { label: cmdName, type: 'shell' },
+    { label: cmdName, type: 'zephyr-workbench-shell' },
     vscode.TaskScope.Workspace,
     cmdName,
     'Zephyr Workbench',
@@ -751,6 +867,16 @@ export async function execShellCommand(
   await executeTask(task);
 }
 
+/**
+ * Run a shell command in a VS Code task, sourcing the Zephyr env script first so `west`,
+ * the toolchain, and the venv are on PATH. Awaits completion.
+ *
+ * Use for: workspace-level west operations that don't have a project / build config —
+ * `west init`, `west update`, `west boards`, `west packages pip --install`, ECLAIR
+ * analysis, install-tool checks. For project-scoped operations (build, flash, menuconfig,
+ * SPDX init/generate) use `buildDirectTask` + `executeTask` instead — that path adds
+ * board, build-dir, and toolchain env automatically.
+ */
 export async function execShellCommandWithEnv(
   cmdName: string,
   cmd: string,
@@ -801,79 +927,16 @@ export async function execShellCommandWithEnv(
   await execShellCommand(cmdName, concatCommands(shellKind, cmdEnv, cmd), options);
 }
 
-export async function execShellCommandWithEnvInteractive(
-  cmdName: string,
-  cmd: string,
-  options: vscode.ShellExecutionOptions = {}
-) {
-
-  const envScriptRaw = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, options.cwd);
-  const venvRaw = getConfiguredVenvPath(options.cwd);
-
-  if (!envScriptRaw) {
-    throw new Error(
-      'Missing Zephyr environment script.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
-    );
-  }
-  if (venvRaw && !fileExists(venvRaw)) {
-    throw new Error(
-      'Invalid Python virtual environment.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
-    );
-  }
-
-  const shellPath = options.executable ?? getShellExe();
-  const shellKind = classifyShell(shellPath);
-  let shellArgs = options.shellArgs;
-
-  if (!shellArgs && isCygwin(shellPath)) {
-    shellArgs = ['--login', '-i'];
-  }
-
-  const needsChere = isCygwin(shellPath);
-
-  const isPosixish =
-    shellKind === 'bash' || shellKind === 'zsh' ||
-    shellKind === 'dash' || shellKind === 'fish';
-
-  const envScript = normalizePathForShell(shellKind, envScriptRaw!);
-  const venvPath = venvRaw ? normalizePathForShell(shellKind, venvRaw!) : undefined;
-
-  if (isPosixish) {
-    cmd = normalisePathsInString(shellKind, cmd);
-    if (options.cwd) {
-      options.cwd = normalisePathsInString(shellKind, options.cwd);
-    }
-    if (options.env) {
-      for (const k of Object.keys(options.env)) {
-        const v = options.env[k];
-        if (typeof v === 'string') {
-          options.env[k] = normalisePathsInString(shellKind, v);
-        }
-      }
-    }
-  }
-
-  const redirect = getShellNullRedirect(shellKind);
-  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
-  const fullCmd = concatCommands(shellKind, cmdEnv, cmd);
-
-  options.env = {
-    ...(needsChere ? { CHERE_INVOKING: '1' } : {}),
-    ...getProfileEnv(),
-    ...options.env,
-    ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {})
-  };
-
-  return execShellCommandInteractive(cmdName, fullCmd, {
-    ...options,
-    executable: shellPath,
-    shellArgs
-  });
-}
-
-
+/**
+ * Run a shell command via `child_process.exec`, sourcing the Zephyr env script. Returns
+ * a `ChildProcess` and does NOT show a terminal — use this when you need to capture
+ * stdout/stderr (e.g. parsing `west boards` output, board-discovery probes).
+ *
+ * For interactive output the user should see, use `execShellCommandWithEnv` (pre-project)
+ * or `buildDirectTask` + `executeTask` (project-scoped). Sibling helpers:
+ *   - `execCommandWithEnvCB` — same idea but takes a `ExecOptions` and returns directly.
+ *   - `spawnCommandWithEnv` — `child_process.spawn`-based, for streaming output.
+ */
 export async function execCommandWithEnv(
   cmd: string,
   cwd?: string,
@@ -914,6 +977,11 @@ export async function execCommandWithEnv(
   return exec(concatCommands(shellKind, cmdEnv, cmd), options, cb);
 }
 
+/**
+ * Synchronous-shaped variant of `execCommandWithEnv`: returns the `ChildProcess`
+ * directly (no Promise wrapper) and accepts custom `ExecOptions`. Same env-sourcing
+ * behavior. Pick this when you want full control of `ExecOptions` (env, encoding, etc.).
+ */
 export function execCommandWithEnvCB(
   cmd: string,
   cwd?: string,
@@ -952,6 +1020,12 @@ export function execCommandWithEnvCB(
   return exec(concatCommands(shellKind, cmdEnv, cmd), options, cb);
 }
 
+/**
+ * Run a shell command via `child_process.spawn`, sourcing the Zephyr env script. Returns
+ * a `ChildProcess` for streaming output (`stdout`/`stderr` via `'data'` events) without
+ * a terminal — use for long-running probes where you need to read output incrementally.
+ * For one-shot output capture, prefer `execCommandWithEnv`.
+ */
 export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): ChildProcess {
   const envScript = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, options.cwd);
   const venvPath3 = getConfiguredVenvPath(options.cwd);
@@ -982,6 +1056,16 @@ export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): Ch
   return spawn(concatCommands(shellKind, cmdEnv, cmd), options);
 }
 
+/**
+ * Run a fully-pre-built shell command as an env-sourced VS Code task and await
+ * completion, with an option to hide the terminal panel. Cygwin-aware (adds
+ * `--login -i` and `CHERE_INVOKING=1`).
+ *
+ * Use only for internal, hidden, project-adjacent tasks that don't fit the standard
+ * `tasksMap` shape — currently just the board-discovery probe (`west build -t boards`
+ * into a `.tmp` directory). For all normal Zephyr operations (build, flash, config,
+ * SPDX) use `buildDirectTask` + `executeTask`.
+ */
 export async function execShellTaskWithEnvAndWait(
   cmdName: string,
   cmd: string,
@@ -1025,7 +1109,7 @@ export async function execShellTaskWithEnvAndWait(
   });
 
   const task = new vscode.Task(
-    { label: cmdName, type: 'shell' },
+    { label: cmdName, type: 'zephyr-workbench-shell' },
     vscode.TaskScope.Workspace,
     cmdName,
     'Zephyr Workbench',

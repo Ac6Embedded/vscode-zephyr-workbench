@@ -20,7 +20,7 @@ import {
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
   ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
 } from '../constants';
-import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, toPortableWorkspaceFolderPath } from '../utils/execUtils';
+import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, getShellExe, isCygwin, toPortableWorkspaceFolderPath } from '../utils/execUtils';
 import { getSelectedToolchainVariantEnv, getWestWorkspace, msleep, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
 import { normalizeStoredToolchainVariant } from '../utils/toolchainSelection';
@@ -216,6 +216,31 @@ const dtDoctorTask: ZephyrTaskDefinition = {
   ]
 };
 
+const spdxInitTask: ZephyrTaskDefinition = {
+  label: "SPDX init",
+  type: ZEPHYR_TASK_TYPE,
+  problemMatcher: [],
+  command: "west",
+  config: "primary",
+  args: [
+    "spdx",
+    "--init",
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
+  ]
+};
+
+const spdxGenerateTask: ZephyrTaskDefinition = {
+  label: "SPDX generate",
+  type: ZEPHYR_TASK_TYPE,
+  problemMatcher: [],
+  command: "west",
+  config: "primary",
+  args: [
+    "spdx",
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
+  ]
+};
+
 const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [westBuildTask.label, westBuildTask],
   [rebuildTask.label, rebuildTask],
@@ -228,8 +253,14 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [ramPlotTask.label, ramPlotTask],
   [romPlotTask.label, romPlotTask],
   [puncoverTask.label, puncoverTask],
-  [dtDoctorTask.label, dtDoctorTask]
+  [dtDoctorTask.label, dtDoctorTask],
+  [spdxInitTask.label, spdxInitTask],
+  [spdxGenerateTask.label, spdxGenerateTask]
 ]);
+
+// Subcommands of `west` that don't take --board. We skip auto-injection of --board for these
+// so commands like `west spdx --build-dir ...` aren't passed a redundant flag.
+const WEST_SUBCOMMANDS_WITHOUT_BOARD = new Set(['spdx']);
 
 const BUILTIN_TASK_LABELS = new Set(tasksMap.keys());
 
@@ -756,8 +787,14 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     const project = new ZephyrApplication(folder, folder.uri.fsPath);
     const activeZephyrSdkInstallation = tryGetZephyrSdkInstallation(project.zephyrSdkPath);
     const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
-    const shell: string = getShell();
-    const shellArgs: string[] = getShellArgs(shell);
+    const shellExe = getShellExe();
+    const shellKind = getShell();
+    // Cygwin's bash needs --login -i to source the user profile and CHERE_INVOKING=1 to honor cwd;
+    // MSYS2 / Git Bash classify as 'bash' but don't have these quirks.
+    const cygwin = isCygwin(shellExe);
+    const shellArgs: string[] = cygwin
+      ? ['--login', '-i', ...getShellArgs(shellKind)]
+      : getShellArgs(shellKind);
 
     let config = undefined;
 
@@ -809,16 +846,17 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     }
 
     let envSourceCmd = `source ${envScript}`;
-    if (shell === 'cmd.exe') {
+    if (shellKind === 'cmd.exe') {
       envSourceCmd = `call ${envScript}`;
-    } else if (shell === 'powershell.exe') {
+    } else if (shellKind === 'powershell.exe' || shellKind === 'pwsh.exe') {
       envSourceCmd = `. ${envScript}`;
     }
 
     let options: vscode.ShellExecutionOptions = {
-      executable: shell,
+      executable: shellExe,
       shellArgs: shellArgs,
       env: {
+        ...(cygwin ? { CHERE_INVOKING: '1' } : {}),
         ...(activeZephyrSdkInstallation?.buildEnvWithVar ?? {}),
         ...westWorkspace.buildEnvWithVar
       },
@@ -843,6 +881,9 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
     if (isWestBuildTask && config && westWorkspace) {
       const parsedTaskOptions = parseWestBuildTaskOptions(_task.definition.args);
+      const rawWestArgsOverride = typeof _task.definition.__rawWestArgs === 'string'
+        ? _task.definition.__rawWestArgs
+        : undefined;
       const execution = prepareWestBuildExecution(
         project,
         westWorkspace,
@@ -851,6 +892,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
           pristine: parsedTaskOptions.pristine,
           target: parsedTaskOptions.target,
           additionalCmakeArgs: parsedTaskOptions.additionalCmakeArgs,
+          rawWestArgsOverride,
         },
       );
 
@@ -881,7 +923,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       }
     }
 
-    const shellExecution = new vscode.ShellExecution(concatCommands(shell, envSourceCmd, fullCommand), options);
+    const shellExecution = new vscode.ShellExecution(concatCommands(shellKind, envSourceCmd, fullCommand), options);
     const resolvedTask = new vscode.Task(
       _task.definition,
       _task.scope as vscode.WorkspaceFolder,
@@ -965,6 +1007,7 @@ export interface FlashRunnerSelection {
 export interface BuildDirectTaskOptions {
   flashRunner?: string;
   flashRunnerArgs?: string;
+  rawWestArgsOverride?: string;
 }
 
 function getFlashRunnerPickItems(
@@ -1016,8 +1059,22 @@ export async function resolveFlashRunnerSelection(
 }
 
 /**
- * Build and resolve an in-memory Zephyr task for a given build configuration.
- * Returns undefined if the task is unknown or incompatible (e.g. report task with sysbuild).
+ * Default entry point for invoking a Zephyr-Workbench operation programmatically
+ * (toolbar buttons, context menus, command palette handlers, etc).
+ *
+ * Picks the named template from `tasksMap` (e.g. `'West Build'`, `'West Flash'`,
+ * `'Menuconfig'`, `'SPDX init'`), splices in the active/given build config's board
+ * and build dir, and runs it through `ZephyrTaskProvider.resolve` — so env sourcing,
+ * shell selection (zsh/bash/PowerShell/Cygwin/...), toolchain env, and west-build-state
+ * tracking happen in exactly one place.
+ *
+ * Pair the returned task with `executeTask(...)` to run it and await completion.
+ * Returns `undefined` if `taskName` is not in `tasksMap`, or if the task is incompatible
+ * with the given config (e.g. RAM/ROM Report when sysbuild is enabled).
+ *
+ * Use this for anything that operates on a project + build config. For workspace-level
+ * commands (`west init/update/boards/packages`) or pre-project setup (installs, SDK
+ * setup), use the helpers in `execUtils.ts` instead.
  */
 export function buildDirectTask(
   workspaceFolder: vscode.WorkspaceFolder,
@@ -1057,7 +1114,9 @@ export function buildDirectTask(
     if (taskName === 'West Flash' && options.flashRunner) {
       args.push(`--runner ${options.flashRunner}`);
     }
-    if (targetConfig.boardIdentifier && targetConfig.boardIdentifier.length > 0) {
+    const subcommand = taskDef.command === 'west' ? taskDef.args[0]?.split(' ')[0] : undefined;
+    const skipBoard = subcommand !== undefined && WEST_SUBCOMMANDS_WITHOUT_BOARD.has(subcommand);
+    if (!skipBoard && targetConfig.boardIdentifier && targetConfig.boardIdentifier.length > 0) {
       args.push(`--board ${targetConfig.boardIdentifier}`);
     }
     args.push(`--build-dir ${buildDirVar}`);
@@ -1066,6 +1125,9 @@ export function buildDirectTask(
     }
 
     definition = { ...taskDef, config: targetConfig.name, args };
+    if (typeof options.rawWestArgsOverride === 'string') {
+      (definition as Record<string, unknown>).__rawWestArgs = options.rawWestArgsOverride;
+    }
     taskLabel = `${taskName} [${targetConfig.name}]`;
   }
 

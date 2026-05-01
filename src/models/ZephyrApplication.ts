@@ -18,18 +18,18 @@ import {
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
 } from '../constants';
 import {
+  buildStartupSetupShellArgs,
+  buildTerminalEnvCommands,
   concatCommands,
   getConfiguredWorkbenchPath,
   getShellCdCommand,
   getShellClearCommand,
-  getShellEchoCommand,
   getConfiguredVenvPath,
   getResolvedShell,
-  getShellSetEnvCommand,
   getShellSourceCommand,
   classifyShell,
   normalizePathForShell,
-  winToPosixPath,
+  TerminalEnvGroup,
 } from '../utils/execUtils';
 import { loadEnv } from '../utils/env/zephyrEnvUtils';
 import { ZephyrBuildConfig } from './ZephyrBuildConfig';
@@ -264,75 +264,86 @@ export class ZephyrApplication {
         shellType === 'dash' || shellType === 'fish');
 
     const venvPath = getConfiguredVenvPath(application.appWorkspaceFolder);
+    const toolchainEnv = getSelectedToolchainVariantEnv(
+      vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, application.appWorkspaceFolder),
+      application.appWorkspaceFolder,
+    );
 
-    const env: { [key: string]: string; } = {
-      ...(isWinPosix ? { CHERE_INVOKING: '1' } : {}),
-      ...westWorkspace.buildEnv,
-      ...(zephyrSdk?.buildEnv ?? {}),
-      ...getSelectedToolchainVariantEnv(
-        vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, application.appWorkspaceFolder),
-        application.appWorkspaceFolder,
-      ),
-      ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {}),
-    };
+    const groups: TerminalEnvGroup[] = [
+      { label: 'Zephyr build system', env: { ...westWorkspace.buildEnv } },
+      { label: 'Toolchain', env: { ...(zephyrSdk?.buildEnv ?? {}), ...toolchainEnv } },
+      {
+        label: 'Helpers',
+        env: {
+          ...(isWinPosix ? { CHERE_INVOKING: '1' } : {}),
+          ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {}),
+        },
+      },
+    ];
+
+    const env = groups.reduce<{ [key: string]: string }>((acc, g) => ({ ...acc, ...g.env }), {});
 
     return {
       shellPath,
       shellArgs,
       shellType,
       env,
+      groups,
       cwd: application.appRootPath,
     };
   }
 
-  private static setupTerminal(
+  // Reuse path only: the shell is already running, so we have to sendText.
+  // Visible chained command is acceptable because the user explicitly re-triggered
+  // "open terminal" on an existing one.
+  private static refreshTerminal(
     terminal: vscode.Terminal,
     application: ZephyrApplication,
     envScript: string,
   ): void {
     const context = ZephyrApplication.buildTerminalContext(application);
     const envScriptForShell = normalizePathForShell(context.shellType, envScript);
-    const echoCommand = getShellEchoCommand(context.shellType);
-    const clearCommand = getShellClearCommand(context.shellType);
-    const envSetCommands = Object.entries(context.env).map(([key, value]) =>
-      getShellSetEnvCommand(context.shellType, key, String(value)),
-    );
-    const printEnvCommands = Object.entries(context.env).map(([key, value]) => {
-      const renderedValue = (context.shellType === 'bash')
-        ? winToPosixPath(String(value))
-        : String(value);
-      return `${echoCommand} ${key}="${renderedValue}"`;
-    });
+    const { setCommands, echoCommands } = buildTerminalEnvCommands(context.shellType, context.groups);
 
     const setupCommand = concatCommands(
       context.shellType,
-      clearCommand,
+      getShellClearCommand(context.shellType),
       getShellCdCommand(context.shellType, context.cwd),
-      ...envSetCommands,
+      ...setCommands,
       getShellSourceCommand(context.shellType, envScriptForShell),
-      `echo "======= Zephyr Workbench Environment ======="`,
-      ...printEnvCommands,
-      `echo "============================================"`,
+      ...echoCommands,
     );
-
     terminal.sendText(setupCommand);
   }
 
-  // Recreate the same build/debug environment a user would get from commands,
-  // but inside an interactive terminal.
-  private static openTerminal(application: ZephyrApplication): vscode.Terminal {
+  // New-terminal path: bake the setup into shellArgs so it runs silently at startup.
+  // env vars are already injected via createTerminal({ env }), so the setup only
+  // sources the env script and echoes the grouped banner.
+  private static openTerminal(application: ZephyrApplication, envScript: string): vscode.Terminal {
     const context = ZephyrApplication.buildTerminalContext(application);
+    const envScriptForShell = normalizePathForShell(context.shellType, envScript);
+    const { echoCommands } = buildTerminalEnvCommands(context.shellType, context.groups);
+
+    const setupCommands = [
+      getShellSourceCommand(context.shellType, envScriptForShell),
+      ...echoCommands,
+    ];
+    const shellArgs = buildStartupSetupShellArgs(
+      context.shellPath,
+      context.shellType,
+      context.shellArgs,
+      setupCommands,
+    );
 
     const opts: vscode.TerminalOptions = {
       name: application.appName + ' Terminal',
       shellPath: `${context.shellPath}`,
-      shellArgs: context.shellArgs,
+      shellArgs,
       env: context.env,
       cwd: context.cwd,
     };
 
-    const terminal = vscode.window.createTerminal(opts);
-    return terminal;
+    return vscode.window.createTerminal(opts);
   }
 
   static getTerminal(application: ZephyrApplication): vscode.Terminal {
@@ -348,14 +359,12 @@ export class ZephyrApplication {
     for (let i = 0; i < terminals.length; i++) {
       const currentTerminal = terminals[i];
       if (currentTerminal.name === application.appName + ' Terminal') {
-        ZephyrApplication.setupTerminal(currentTerminal, application, envScript);
+        ZephyrApplication.refreshTerminal(currentTerminal, application, envScript);
         return currentTerminal;
       }
     }
 
-    const terminal = ZephyrApplication.openTerminal(application);
-    ZephyrApplication.setupTerminal(terminal, application, envScript);
-    return terminal;
+    return ZephyrApplication.openTerminal(application, envScript);
   }
 
   /**
