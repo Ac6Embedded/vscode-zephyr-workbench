@@ -170,7 +170,7 @@ export async function toggleSysbuild(
 
   if (targetConfig) {
     // Update the sysbuild property as a string "true" or "false"
-    //targetConfig.sysbuild = enabled ? "true" : "false";
+    targetConfig.sysbuild = enabled ? "true" : "false";
 
     // Since updating nested properties isn’t directly supported by the VS Code API,
     // update the entire build.configurations array.

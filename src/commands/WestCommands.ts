@@ -10,7 +10,7 @@ import { concatCommands, executeTask, execShellCommandWithEnv, getConfiguredVenv
 import { fileExists, getSelectedToolchainVariantEnv, getWestWorkspace, normalizePath, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { composeWestBuildArgs } from '../utils/zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
-import { buildDirectTask } from '../providers/ZephyrTaskProvider';
+import { buildDirectTask, createCppPropertiesCompileCommandsRefresh } from '../providers/ZephyrTaskProvider';
 
 function quote(p: string): string {
   return /\s/.test(p) ? `"${p}"` : p;
@@ -165,11 +165,16 @@ export async function westBuildCommand(
   extraWestArgs = '',
   configName?: string,
 ): Promise<void> {
-  await runWestBuildCommand(zephyrProject, westWorkspace, {
-    configName,
-    extraWestArgs,
-    pristine: 'never',
-  });
+  const refreshCppProperties = await createCppPropertiesCompileCommandsRefresh(zephyrProject.appWorkspaceFolder);
+  try {
+    await runWestBuildCommand(zephyrProject, westWorkspace, {
+      configName,
+      extraWestArgs,
+      pristine: 'never',
+    });
+  } finally {
+    await refreshCppProperties();
+  }
 }
 
 export async function westRebuildCommand(
@@ -177,10 +182,15 @@ export async function westRebuildCommand(
   westWorkspace: WestWorkspace,
   configName?: string,
 ): Promise<void> {
-  await runWestBuildCommand(zephyrProject, westWorkspace, {
-    configName,
-    pristine: 'always',
-  });
+  const refreshCppProperties = await createCppPropertiesCompileCommandsRefresh(zephyrProject.appWorkspaceFolder);
+  try {
+    await runWestBuildCommand(zephyrProject, westWorkspace, {
+      configName,
+      pristine: 'always',
+    });
+  } finally {
+    await refreshCppProperties();
+  }
 }
 
 interface WestBuildRunOptions {

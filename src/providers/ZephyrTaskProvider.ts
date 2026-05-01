@@ -20,7 +20,7 @@ import {
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
   ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
 } from '../constants';
-import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, getShellExe, isCygwin, toPortableWorkspaceFolderPath } from '../utils/execUtils';
+import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, getShellExe, isCygwin, resolveConfiguredPath, toPortableWorkspaceFolderPath } from '../utils/execUtils';
 import { getSelectedToolchainVariantEnv, getWestWorkspace, msleep, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
 import { normalizeStoredToolchainVariant } from '../utils/toolchainSelection';
@@ -515,31 +515,80 @@ function getDefaultCompilerPath(
     : toolchainInstallation.compilerPath;
 }
 
+function getCppPropertiesPath(workspaceFolder: vscode.WorkspaceFolder): string {
+  return path.join(workspaceFolder.uri.fsPath, '.vscode', 'c_cpp_properties.json');
+}
+
+async function readCppPropertiesFile(
+  workspaceFolder: vscode.WorkspaceFolder,
+  showWarning = true,
+): Promise<{ config: CCppPropertiesConfig, cppPropertiesPath: string, serialized: string } | undefined> {
+  const cppPropertiesPath = getCppPropertiesPath(workspaceFolder);
+  if (!fs.existsSync(cppPropertiesPath)) {
+    return undefined;
+  }
+
+  try {
+    const serialized = await fsPromise.readFile(cppPropertiesPath, 'utf8');
+    const parsed = ts.parseConfigFileTextToJson(cppPropertiesPath, serialized);
+    if (parsed.error || !parsed.config || typeof parsed.config !== 'object' || Array.isArray(parsed.config)) {
+      if (showWarning) {
+        vscode.window.showWarningMessage('Cannot setup C/C++ properties: c_cpp_properties.json format is invalid.');
+      }
+      return undefined;
+    }
+    return { config: parsed.config, cppPropertiesPath, serialized };
+  } catch {
+    if (showWarning) {
+      vscode.window.showWarningMessage('Cannot setup C/C++ properties: c_cpp_properties.json could not be parsed.');
+    }
+    return undefined;
+  }
+}
+
+function getZephyrCppConfiguration(config: CCppPropertiesConfig): CCppPropertiesConfiguration | undefined {
+  if (!Array.isArray(config.configurations)) {
+    return undefined;
+  }
+
+  return config.configurations.find(configuration =>
+    configuration && typeof configuration === 'object' && configuration.name === CPP_CONFIGURATION_NAME
+  ) as CCppPropertiesConfiguration | undefined;
+}
+
+function getCompileCommandsValue(configuration: CCppPropertiesConfiguration): string | undefined {
+  const value = Array.isArray(configuration.compileCommands)
+    ? configuration.compileCommands[0]
+    : configuration.compileCommands;
+  return typeof value === 'string' && value.trim().length > 0
+    ? value
+    : undefined;
+}
+
+function getForceRefreshCompileCommandsValue(value: string | string[]): string | string[] {
+  const dummyValue = (entry: string) => `${entry}.force-refresh`;
+  return Array.isArray(value)
+    ? value.map(entry => typeof entry === 'string' ? dummyValue(entry) : entry)
+    : dummyValue(value);
+}
+
 async function updateCppPropertiesFile(
   workspaceFolder: vscode.WorkspaceFolder,
   update: CCppPropertiesUpdateOptions,
 ): Promise<boolean> {
-  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
-  const cppPropertiesPath = path.join(vscodeFolderPath, 'c_cpp_properties.json');
-
   let config: CCppPropertiesConfig = { configurations: [], version: 4 };
   let serialized: string | undefined;
+  const cppPropertiesPath = getCppPropertiesPath(workspaceFolder);
+  const cppPropertiesExists = fs.existsSync(cppPropertiesPath);
+  const parsedFile = await readCppPropertiesFile(workspaceFolder);
 
-  if (fs.existsSync(cppPropertiesPath)) {
-    try {
-      serialized = await fsPromise.readFile(cppPropertiesPath, 'utf8');
-      const parsed = ts.parseConfigFileTextToJson(cppPropertiesPath, serialized);
-      if (parsed.error || !parsed.config || typeof parsed.config !== 'object' || Array.isArray(parsed.config)) {
-        vscode.window.showWarningMessage('Cannot setup C/C++ properties: c_cpp_properties.json format is invalid.');
-        return false;
-      }
-      config = parsed.config;
-    } catch {
-      vscode.window.showWarningMessage('Cannot setup C/C++ properties: c_cpp_properties.json could not be parsed.');
-      return false;
-    }
+  if (parsedFile) {
+    config = parsedFile.config;
+    serialized = parsedFile.serialized;
+  } else if (cppPropertiesExists) {
+    return false;
   } else if (update.createConfiguration) {
-    await fsPromise.mkdir(vscodeFolderPath, { recursive: true });
+    await fsPromise.mkdir(path.dirname(cppPropertiesPath), { recursive: true });
   } else {
     return false;
   }
@@ -582,6 +631,44 @@ async function updateCppPropertiesFile(
     await fsPromise.writeFile(cppPropertiesPath, nextSerialized, 'utf8');
   }
   return true;
+}
+
+export async function createCppPropertiesCompileCommandsRefresh(workspaceFolder: vscode.WorkspaceFolder): Promise<() => Promise<void>> {
+  const parsedFile = await readCppPropertiesFile(workspaceFolder, false);
+  const zephyrConfiguration = parsedFile ? getZephyrCppConfiguration(parsedFile.config) : undefined;
+  const configuredCompileCommandsPath = zephyrConfiguration ? getCompileCommandsValue(zephyrConfiguration) : undefined;
+  const compileCommandsPath = resolveConfiguredPath(configuredCompileCommandsPath, workspaceFolder);
+
+  // Missing c_cpp_properties.json or missing Zephyr Workbench config is valid; leave it as a quiet no-op.
+  if (!compileCommandsPath || fs.existsSync(compileCommandsPath)) {
+    return async () => {};
+  }
+
+  return async () => {
+    if (!fs.existsSync(compileCommandsPath)) {
+      return;
+    }
+
+    const latestFile = await readCppPropertiesFile(workspaceFolder, false);
+    // The file or Zephyr Workbench config may have been removed while the build was running; that is still fine.
+    const latestZephyrConfiguration = latestFile ? getZephyrCppConfiguration(latestFile.config) : undefined;
+    const originalCompileCommands = latestZephyrConfiguration?.compileCommands;
+    if (!latestFile || !latestZephyrConfiguration || (typeof originalCompileCommands !== 'string' && !Array.isArray(originalCompileCommands))) {
+      return;
+    }
+
+    try {
+      // Workaround for cpptools: when compile_commands.json appears after the path was configured,
+      // IntelliSense can miss it. Force a visible setting change, then restore the real value.
+      latestZephyrConfiguration.compileCommands = getForceRefreshCompileCommandsValue(originalCompileCommands);
+      await fsPromise.writeFile(latestFile.cppPropertiesPath, JSON.stringify(latestFile.config, null, 2), 'utf8');
+      await msleep(2000);
+      latestZephyrConfiguration.compileCommands = originalCompileCommands;
+      await fsPromise.writeFile(latestFile.cppPropertiesPath, JSON.stringify(latestFile.config, null, 2), 'utf8');
+    } catch {
+      vscode.window.showWarningMessage('Cannot refresh C/C++ properties for IntelliSense.');
+    }
+  };
 }
 
 async function writeDefaultCppPropertiesFile(

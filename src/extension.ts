@@ -1239,9 +1239,13 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.sysbuild.enable', async (node: any) => {
 			if (node instanceof ZephyrConfigTreeItem) {
 				await toggleSysbuild(node.project.appWorkspaceFolder, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, true, node.project, node.buildConfig.name);
-			}
-			if (node.project) {
+				await updateBuildConfigCompileCommandsSetting(node.project, node.buildConfig, true);
+			} else if (node.project) {
+				const targetConfig = getActiveOrDefaultBuildConfig(node.project);
 				await toggleSysbuild(node.project.appWorkspaceFolder, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, true, node.project);
+				if (targetConfig) {
+					await updateBuildConfigCompileCommandsSetting(node.project, targetConfig, true);
+				}
 			}
 			vscode.window.showInformationMessage("Sysbuild enabled.");
 		})
@@ -1251,9 +1255,13 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.sysbuild.disable', async (node: any) => {
 			if (node instanceof ZephyrConfigTreeItem) {
 				await toggleSysbuild(node.project.appWorkspaceFolder, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, false, node.project, node.buildConfig.name);
-			}
-			if (node.project) {
+				await updateBuildConfigCompileCommandsSetting(node.project, node.buildConfig, false);
+			} else if (node.project) {
+				const targetConfig = getActiveOrDefaultBuildConfig(node.project);
 				await toggleSysbuild(node.project.appWorkspaceFolder, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, false, node.project);
+				if (targetConfig) {
+					await updateBuildConfigCompileCommandsSetting(node.project, targetConfig, false);
+				}
 			}
 			vscode.window.showInformationMessage("Sysbuild disabled.");
 		})
@@ -1453,8 +1461,7 @@ export function activate(context: vscode.ExtensionContext) {
 						await saveConfigSetting(node.project.appWorkspaceFolder, node.project.buildConfigs[configIndex].name, 'active', '');
 					} else {
 						await saveConfigSetting(node.project.appWorkspaceFolder, node.buildConfig.name, 'active', 'true');
-						const compileCommandsPath = path.join(node.project.appWorkspaceFolder.uri.fsPath, 'build', node.buildConfig.name, 'compile_commands.json');
-						await updateCppToolsConfiguration(node.project.appWorkspaceFolder, { compileCommandsPath });
+						await updateBuildConfigCompileCommandsSetting(node.project, node.buildConfig);
 						activeIndex = configIndex;
 					}
 				}
@@ -2774,6 +2781,38 @@ async function updateStatusBar() {
 		statusBarBuildItem.hide();
 		statusBarDebugItem.hide();
 	}
+}
+
+function getActiveOrDefaultBuildConfig(project: ZephyrApplication): ZephyrBuildConfig | undefined {
+	return project.buildConfigs.find(config => config.active) ?? project.buildConfigs[0];
+}
+
+function isSysbuildEnabled(buildConfig: ZephyrBuildConfig, override?: boolean): boolean {
+	return typeof override === 'boolean'
+		? override
+		: String(buildConfig.sysbuild).toLowerCase() === 'true';
+}
+
+function getBuildConfigCompileCommandsPath(
+	project: ZephyrApplication,
+	buildConfig: ZephyrBuildConfig,
+	sysbuildOverride?: boolean,
+): string {
+	const buildDir = buildConfig.getBuildDir(project);
+	if (isSysbuildEnabled(buildConfig, sysbuildOverride)) {
+		return path.join(buildDir, project.appWorkspaceFolder.name, 'compile_commands.json');
+	}
+	return path.join(buildDir, 'compile_commands.json');
+}
+
+async function updateBuildConfigCompileCommandsSetting(
+	project: ZephyrApplication,
+	buildConfig: ZephyrBuildConfig,
+	sysbuildOverride?: boolean,
+): Promise<void> {
+	await updateCppToolsConfiguration(project.appWorkspaceFolder, {
+		compileCommandsPath: getBuildConfigCompileCommandsPath(project, buildConfig, sysbuildOverride),
+	});
 }
 
 async function updateCompileSetting(project: ZephyrApplication, configName: string, boardIdentifier: string) {
