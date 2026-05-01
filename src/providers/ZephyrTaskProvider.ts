@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import { WestWorkspace } from '../models/WestWorkspace';
 import { ZephyrApplication } from '../models/ZephyrApplication';
 import { ZephyrBoard } from '../models/ZephyrBoard';
+import type { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { ArmGnuToolchainInstallation, ensureWindowsExecutableExtension, normalizeZephyrSdkVariant, ZephyrSdkInstallation, IarToolchainInstallation } from '../models/ToolchainInstallations';
 import {
   ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
@@ -24,6 +25,7 @@ import { getSelectedToolchainVariantEnv, getWestWorkspace, msleep, tryGetZephyrS
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
 import { normalizeStoredToolchainVariant } from '../utils/toolchainSelection';
 import { prepareWestBuildExecution } from '../utils/zephyr/westBuildExecution';
+import { readRunnersYamlForProject } from '../utils/zephyr/runnersYamlUtils';
 
 export interface TaskConfig {
   version: string;
@@ -125,7 +127,6 @@ const flashTask: ZephyrTaskDefinition = {
   config: "primary",
   args: [
     "flash",
-    "${input:west.runner}",
     "--board ${config:zephyr-workbench.build.configurations.0.board}",
     "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
   ]
@@ -299,17 +300,6 @@ export interface DefaultProjectSettingsOptions {
   preferConfigurationApi?: boolean;
 }
 
-const runnerPickInput = {
-  id: "west.runner",
-  type: "pickString",
-  description: "Override default runner. Runners can flash and/or debug Zephyr programs.",
-  options: [
-    "",
-    ...getStaticFlashRunnerNames().map(n => `--runner ${n}`)
-  ],
-  default: ""
-};
-
 // Load tasks.json (if it exists) into a normalized structure and keep the serialized
 // version so we can avoid rewriting the file when nothing changed.
 async function ensureTasksFile(workspaceFolder: vscode.WorkspaceFolder): Promise<{ config: TasksJsonConfig, tasksJsonPath: string, serialized?: string }> {
@@ -347,39 +337,6 @@ async function ensureTasksFile(workspaceFolder: vscode.WorkspaceFolder): Promise
   }
 
   return { config, tasksJsonPath, serialized };
-}
-
-// Make sure the runner pick input exists once; return true if we touched the config.
-function ensureRunnerInput(config: TasksJsonConfig): boolean {
-  let changed = false;
-
-  if (!config.inputs || !Array.isArray(config.inputs)) {
-    config.inputs = [];
-    changed = true;
-  }
-
-  const hasRunnerInput = config.inputs.some(input => input && input.id === runnerPickInput.id);
-  if (!hasRunnerInput) {
-    config.inputs.push({ ...runnerPickInput });
-    changed = true;
-  }
-
-  return changed;
-}
-
-// Add any missing Zephyr Workbench tasks without disturbing user-defined tasks.
-function ensureTasks(config: TasksJsonConfig, tasks: ZephyrTaskDefinition[]): boolean {
-  let changed = false;
-
-  for (const task of tasks) {
-    const exists = config.tasks.some(existing => existing.label === task.label && existing.type === task.type);
-    if (!exists) {
-      config.tasks.push({ ...task, args: [...task.args] });
-      changed = true;
-    }
-  }
-
-  return changed;
 }
 
 // Persist only when content actually differs to avoid clobbering timestamps/formatting needlessly.
@@ -790,13 +747,6 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder, o
     changed = true;
   }
 
-  changed = ensureRunnerInput(config) || changed;
-  
-  // Only save essential tasks to tasks.json
-  const persistentTasks = [flashTask];
-
-  changed = ensureTasks(config, persistentTasks) || changed;
-
   if (changed) {
     await writeTasksJson(tasksJsonPath, config, serialized);
   }
@@ -806,6 +756,7 @@ export async function createTasksJson(workspaceFolder: vscode.WorkspaceFolder, o
 const DIRECT_TASKS = new Set<string>([
   'West Build',
   'West Rebuild',
+  'West Flash',
   'DT Doctor',
   'West ROM Report',
   'West RAM Report',
@@ -827,6 +778,64 @@ export function isDirectTask(taskName: string): boolean {
   return DIRECT_TASKS.has(taskName);
 }
 
+export interface FlashRunnerSelection {
+  runner: string;
+  customArgs?: string;
+}
+
+export interface BuildDirectTaskOptions {
+  flashRunner?: string;
+  flashRunnerArgs?: string;
+}
+
+function getFlashRunnerPickItems(
+  project: ZephyrApplication,
+  config: ZephyrBuildConfig,
+): vscode.QuickPickItem[] {
+  const runnersYaml = readRunnersYamlForProject(project, config);
+  const compatibleRunners = runnersYaml?.runners ?? [];
+  const names = compatibleRunners.length > 0
+    ? compatibleRunners
+    : getStaticFlashRunnerNames();
+  const defaultRunner = runnersYaml?.defaultFlashRunner;
+  const ordered = defaultRunner && names.includes(defaultRunner)
+    ? [defaultRunner, ...names.filter(name => name !== defaultRunner)]
+    : names;
+
+  return ordered.map(name => ({
+    label: name,
+    description: compatibleRunners.length > 0 ? 'compatible' : undefined,
+    picked: name === defaultRunner,
+  }));
+}
+
+export async function resolveFlashRunnerSelection(
+  project: ZephyrApplication,
+  config: ZephyrBuildConfig,
+): Promise<FlashRunnerSelection | undefined> {
+  if (config.defaultRunner && config.defaultRunner.length > 0) {
+    return {
+      runner: config.defaultRunner,
+      customArgs: config.customArgs,
+    };
+  }
+
+  const items = getFlashRunnerPickItems(project, config);
+  if (items.length === 0) {
+    vscode.window.showErrorMessage('No flash runners are available.');
+    return undefined;
+  }
+
+  const selection = await vscode.window.showQuickPick(items, {
+    placeHolder: 'Select flash runner',
+  });
+  if (!selection) {
+    return undefined;
+  }
+
+  return { runner: selection.label };
+}
+
 /**
  * Build and resolve an in-memory Zephyr task for a given build configuration.
  * Returns undefined if the task is unknown or incompatible (e.g. report task with sysbuild).
@@ -835,6 +844,7 @@ export function buildDirectTask(
   workspaceFolder: vscode.WorkspaceFolder,
   taskName: string,
   configName?: string,
+  options: BuildDirectTaskOptions = {},
 ): vscode.Task | undefined {
   const taskDef = tasksMap.get(taskName);
   if (!taskDef) {
@@ -865,10 +875,16 @@ export function buildDirectTask(
         args.push(arg);
       }
     }
+    if (taskName === 'West Flash' && options.flashRunner) {
+      args.push(`--runner ${options.flashRunner}`);
+    }
     if (targetConfig.boardIdentifier && targetConfig.boardIdentifier.length > 0) {
       args.push(`--board ${targetConfig.boardIdentifier}`);
     }
     args.push(`--build-dir ${buildDirVar}`);
+    if (taskName === 'West Flash' && options.flashRunnerArgs?.trim()) {
+      args.push(options.flashRunnerArgs.trim());
+    }
 
     definition = { ...taskDef, config: targetConfig.name, args };
     taskLabel = `${taskName} [${targetConfig.name}]`;
@@ -912,7 +928,6 @@ export async function checkOrCreateTask(workspaceFolder: vscode.WorkspaceFolder,
   if (!config.version) {
     config.version = "2.0.0";
   }
-  ensureRunnerInput(config);
 
   config.tasks.push({ ...task, args: [...task.args] });
   const wrote = await writeTasksJson(tasksJsonPath, config, serialized);

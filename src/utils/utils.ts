@@ -16,7 +16,7 @@ import {
   ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY,
   ZINSTALLER_MINIMUM_VERSION,
 } from '../constants';
-import { buildDirectTask, checkOrCreateTask, isDirectTask, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
+import { buildDirectTask, checkOrCreateTask, isDirectTask, resolveFlashRunnerSelection, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { readInstalledZinstallerVersion, versionAtLeast } from './env/zinstallerVersionUtils';
 import { readToolchainSelection } from './toolchainSelection';
 
@@ -690,6 +690,21 @@ export async function findOrCreateTask(taskLabel: string, workspaceFolder: vscod
  */
 export async function findConfigTask(taskLabel: string, project: ZephyrApplication, configName: string): Promise<vscode.Task | undefined> {
   if (isDirectTask(taskLabel)) {
+    if (taskLabel === 'West Flash') {
+      const config = project.getBuildConfiguration(configName);
+      if (!config) {
+        return undefined;
+      }
+      const flashRunner = await resolveFlashRunnerSelection(project, config);
+      if (!flashRunner) {
+        return undefined;
+      }
+      return buildDirectTask(project.appWorkspaceFolder, taskLabel, configName, {
+        flashRunner: flashRunner.runner,
+        flashRunnerArgs: flashRunner.customArgs,
+      });
+    }
+
     return buildDirectTask(project.appWorkspaceFolder, taskLabel, configName);
   }
 

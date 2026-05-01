@@ -9,7 +9,7 @@ import { ZephyrApplication } from './models/ZephyrApplication';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
 import { ZephyrBuildConfig } from './models/ZephyrBuildConfig';
 import { ArmGnuToolchainInstallation, ensureWindowsExecutableExtension, normalizeZephyrSdkVariant, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
-import { checkAndCreateTasksJson, createTasksJson, isReservedTaskLabel, saveCustomTaskDefinition, setDefaultProjectSettings, updateTasks, ZephyrTaskDefinition, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
+import { checkAndCreateTasksJson, isReservedTaskLabel, saveCustomTaskDefinition, setDefaultProjectSettings, updateTasks, ZephyrTaskDefinition, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
@@ -2509,10 +2509,6 @@ export function activate(context: vscode.ExtensionContext) {
 							venvPath,
 							preferConfigurationApi: true,
 						});
-						await createTasksJson(workspaceFolder, {
-							westWorkspace,
-							zephyrSdkPath: toolchainInstallation instanceof ZephyrSdkInstallation ? toolchainInstallation.rootUri.fsPath : toolchainInstallation instanceof IarToolchainInstallation ? toolchainInstallation.zephyrSdkPath : undefined
-						});
 						CreateZephyrAppPanel.currentPanel?.dispose();
 
 						vscode.window.showInformationMessage(`Application '${workspaceFolder.name}' added !`);
@@ -2544,10 +2540,6 @@ export function activate(context: vscode.ExtensionContext) {
 						toolchainVariant,
 						venvPath,
 						preferConfigurationApi: true,
-					});
-					await createTasksJson(workspaceFolder, {
-						westWorkspace,
-						zephyrSdkPath: toolchainInstallation instanceof ZephyrSdkInstallation ? toolchainInstallation.rootUri.fsPath : toolchainInstallation instanceof IarToolchainInstallation ? toolchainInstallation.zephyrSdkPath : undefined
 					});
 					vscode.window.showInformationMessage(`Importing Application '${workspaceFolder.name}' done`);
 					requestAppRefresh();
