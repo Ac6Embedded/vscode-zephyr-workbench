@@ -288,6 +288,28 @@ function parseWestBuildTaskOptions(args: string[] | undefined): ParsedWestBuildT
 
 type TasksJsonConfig = TaskConfig & { inputs?: any[] };
 type SettingsJsonConfig = Record<string, any>;
+type CCppPropertiesConfig = Record<string, any> & {
+  configurations?: any[];
+  version?: number;
+};
+type CCppPropertiesConfiguration = Record<string, any> & {
+  name?: string;
+  compileCommands?: string | string[];
+  compilerPath?: string;
+};
+type GeneratedSettingsPathMode = NonNullable<DefaultProjectSettingsOptions['pathMode']>;
+type CCppConfigurationUpdate = {
+  compilerPath?: string;
+  compileCommandsPath?: string;
+  pathMode?: GeneratedSettingsPathMode;
+};
+type CCppPropertiesUpdateOptions = CCppConfigurationUpdate & {
+  createConfiguration?: boolean;
+};
+
+const CPP_CONFIGURATION_NAME = 'Zephyr Workbench';
+const LEGACY_CPP_COMPILER_PATH_KEY = 'C_Cpp.default.compilerPath';
+const LEGACY_CPP_COMPILE_COMMANDS_KEY = 'C_Cpp.default.compileCommands';
 
 export interface CreateTasksJsonOptions {
   zephyrSdkPath?: string;
@@ -426,6 +448,175 @@ function formatGeneratedSettingsPath(
     : toPortableWorkspaceFolderPath(targetPath, workspaceFolder);
 }
 
+function hasOwnSetting(config: SettingsJsonConfig, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(config, key);
+}
+
+function inferGeneratedPathMode(existingValue: unknown): GeneratedSettingsPathMode | undefined {
+  const value = Array.isArray(existingValue) ? existingValue[0] : existingValue;
+  return typeof value === 'string' && value.startsWith('${workspaceFolder}')
+    ? 'relative'
+    : undefined;
+}
+
+function formatUpdatedPath(
+  targetPath: string,
+  workspaceFolder: vscode.WorkspaceFolder,
+  pathMode?: GeneratedSettingsPathMode,
+  existingValue?: unknown,
+): string {
+  return formatGeneratedSettingsPath(targetPath, workspaceFolder, {
+    pathMode: pathMode ?? inferGeneratedPathMode(existingValue) ?? 'absolute',
+  });
+}
+
+function getDefaultCompilerPath(
+  toolchainInstallation: ZephyrSdkInstallation | IarToolchainInstallation | ArmGnuToolchainInstallation,
+  zephyrBoard: ZephyrBoard,
+  requestedVariant?: string,
+): string {
+  return toolchainInstallation instanceof ZephyrSdkInstallation
+    ? toolchainInstallation.getCompilerPath(
+        zephyrBoard.arch,
+        undefined,
+        resolveStoredToolchainVariant(toolchainInstallation, requestedVariant),
+      )
+    : toolchainInstallation.compilerPath;
+}
+
+async function updateCppPropertiesFile(
+  workspaceFolder: vscode.WorkspaceFolder,
+  update: CCppPropertiesUpdateOptions,
+): Promise<boolean> {
+  const vscodeFolderPath = path.join(workspaceFolder.uri.fsPath, '.vscode');
+  const cppPropertiesPath = path.join(vscodeFolderPath, 'c_cpp_properties.json');
+
+  let config: CCppPropertiesConfig = { configurations: [], version: 4 };
+  let serialized: string | undefined;
+
+  if (fs.existsSync(cppPropertiesPath)) {
+    try {
+      serialized = await fsPromise.readFile(cppPropertiesPath, 'utf8');
+      const parsed = ts.parseConfigFileTextToJson(cppPropertiesPath, serialized);
+      if (parsed.error || !parsed.config || typeof parsed.config !== 'object' || Array.isArray(parsed.config)) {
+        vscode.window.showWarningMessage('Cannot setup C/C++ properties: c_cpp_properties.json format is invalid.');
+        return false;
+      }
+      config = parsed.config;
+    } catch {
+      vscode.window.showWarningMessage('Cannot setup C/C++ properties: c_cpp_properties.json could not be parsed.');
+      return false;
+    }
+  } else if (update.createConfiguration) {
+    await fsPromise.mkdir(vscodeFolderPath, { recursive: true });
+  } else {
+    return false;
+  }
+
+  if (!Array.isArray(config.configurations)) {
+    config.configurations = [];
+  }
+  if (typeof config.version !== 'number') {
+    config.version = 4;
+  }
+
+  const existingIndex = config.configurations.findIndex(configuration =>
+    configuration && typeof configuration === 'object' && configuration.name === CPP_CONFIGURATION_NAME
+  );
+
+  if (existingIndex === -1) {
+    if (!update.createConfiguration) {
+      return false;
+    }
+    config.configurations.push({ name: CPP_CONFIGURATION_NAME });
+  }
+
+  const configuration = config.configurations[existingIndex === -1 ? config.configurations.length - 1 : existingIndex] as CCppPropertiesConfiguration;
+  if (update.compileCommandsPath) {
+    configuration.compileCommands = [
+      formatUpdatedPath(update.compileCommandsPath, workspaceFolder, update.pathMode, configuration.compileCommands),
+    ];
+  }
+  if (update.compilerPath) {
+    configuration.compilerPath = formatUpdatedPath(
+      ensureWindowsExecutableExtension(update.compilerPath),
+      workspaceFolder,
+      update.pathMode,
+      configuration.compilerPath,
+    );
+  }
+
+  const nextSerialized = JSON.stringify(config, null, 2);
+  if (nextSerialized !== serialized) {
+    await fsPromise.writeFile(cppPropertiesPath, nextSerialized, 'utf8');
+  }
+  return true;
+}
+
+async function writeDefaultCppPropertiesFile(
+  workspaceFolder: vscode.WorkspaceFolder,
+  compilerPath: string,
+  compileCommandsPath: string,
+  options: DefaultProjectSettingsOptions,
+): Promise<void> {
+  await updateCppPropertiesFile(workspaceFolder, {
+    compilerPath,
+    compileCommandsPath,
+    pathMode: options.pathMode ?? 'relative',
+    createConfiguration: true,
+  });
+}
+
+export async function updateCppToolsConfiguration(
+  workspaceFolder: vscode.WorkspaceFolder,
+  update: CCppConfigurationUpdate,
+): Promise<boolean> {
+  const { config, settingsJsonPath, serialized, directWriteSupported } = await ensureSettingsFile(workspaceFolder);
+  let legacyUpdated = false;
+  let pendingCompilerPath = update.compilerPath;
+  let pendingCompileCommandsPath = update.compileCommandsPath;
+
+  if (directWriteSupported) {
+    // Legacy C/C++ settings.json keys are kept for existing projects; consider removing this old method in the future.
+    if (pendingCompilerPath && hasOwnSetting(config, LEGACY_CPP_COMPILER_PATH_KEY)) {
+      config[LEGACY_CPP_COMPILER_PATH_KEY] = formatUpdatedPath(
+        ensureWindowsExecutableExtension(pendingCompilerPath),
+        workspaceFolder,
+        update.pathMode,
+        config[LEGACY_CPP_COMPILER_PATH_KEY],
+      );
+      pendingCompilerPath = undefined;
+      legacyUpdated = true;
+    }
+
+    if (pendingCompileCommandsPath && hasOwnSetting(config, LEGACY_CPP_COMPILE_COMMANDS_KEY)) {
+      config[LEGACY_CPP_COMPILE_COMMANDS_KEY] = formatUpdatedPath(
+        pendingCompileCommandsPath,
+        workspaceFolder,
+        update.pathMode,
+        config[LEGACY_CPP_COMPILE_COMMANDS_KEY],
+      );
+      pendingCompileCommandsPath = undefined;
+      legacyUpdated = true;
+    }
+
+    if (legacyUpdated) {
+      await writeSettingsJson(settingsJsonPath, config, serialized);
+    }
+  }
+
+  if (!pendingCompilerPath && !pendingCompileCommandsPath) {
+    return legacyUpdated;
+  }
+
+  const cppPropertiesUpdated = await updateCppPropertiesFile(workspaceFolder, {
+    compilerPath: pendingCompilerPath,
+    compileCommandsPath: pendingCompileCommandsPath,
+    pathMode: update.pathMode,
+  });
+  return legacyUpdated || cppPropertiesUpdated;
+}
+
 async function tryWriteDefaultProjectSettingsFile(
   workspaceFolder: vscode.WorkspaceFolder,
   westWorkspace: WestWorkspace,
@@ -439,14 +630,6 @@ async function tryWriteDefaultProjectSettingsFile(
   }
 
   const boardIdentifier = zephyrBoard.identifier ?? '';
-  const buildDir = path.join(workspaceFolder.uri.fsPath, 'build', 'primary');
-  const compilerPath = toolchainInstallation instanceof ZephyrSdkInstallation
-    ? toolchainInstallation.getCompilerPath(
-        zephyrBoard.arch,
-        undefined,
-        resolveStoredToolchainVariant(toolchainInstallation, options.toolchainVariant),
-      )
-    : toolchainInstallation.compilerPath;
   const toolchainVariant = resolveStoredToolchainVariant(toolchainInstallation, options.toolchainVariant);
   const formatPath = (targetPath: string) => formatGeneratedSettingsPath(targetPath, workspaceFolder, options);
 
@@ -479,8 +662,6 @@ async function tryWriteDefaultProjectSettingsFile(
 
   config['cmake.configureOnOpen'] = false;
   config['cmake.enableAutomaticKitScan'] = false;
-  config['C_Cpp.default.compilerPath'] = formatPath(ensureWindowsExecutableExtension(compilerPath));
-  config['C_Cpp.default.compileCommands'] = formatPath(path.join(buildDir, 'compile_commands.json'));
 
   await writeSettingsJson(settingsJsonPath, config, serialized);
   return true;
@@ -547,21 +728,6 @@ async function applyDefaultProjectSettingsViaConfigurationApi(
     vscode.window.showWarningMessage('Cannot setup cmake setting on project');
   }
 
-  try {
-    const buildDir = path.join(workspaceFolder.uri.fsPath, 'build', 'primary');
-    const compilerPath = toolchainInstallation instanceof ZephyrSdkInstallation
-      ? toolchainInstallation.getCompilerPath(zephyrBoard.arch, undefined, toolchainVariant)
-      : toolchainInstallation.compilerPath;
-
-    await vscode.workspace.getConfiguration('C_Cpp', workspaceFolder).update(
-      'default.compilerPath',
-      formatPath(ensureWindowsExecutableExtension(compilerPath)),
-      vscode.ConfigurationTarget.WorkspaceFolder
-    );
-    await vscode.workspace.getConfiguration('C_Cpp', workspaceFolder).update('default.compileCommands', formatPath(path.join(buildDir, 'compile_commands.json')), vscode.ConfigurationTarget.WorkspaceFolder);
-  } catch (e) {
-    vscode.window.showWarningMessage('Cannot setup C/C++ settings on project');
-  }
 }
 
 export class ZephyrTaskProvider implements vscode.TaskProvider {
@@ -1053,7 +1219,7 @@ export async function updateTasks(workspaceFolder: vscode.WorkspaceFolder, activ
 }
 
 /**
- * Set default settings.json for newly created project
+ * Set default workspace files for newly created or imported project
  * @param workspaceFolder 
  * @param westWorkspace 
  * @param zephyrBoard 
@@ -1072,4 +1238,11 @@ export async function setDefaultProjectSettings(
   if (!directWriteApplied) {
     await applyDefaultProjectSettingsViaConfigurationApi(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, options);
   }
+
+  await writeDefaultCppPropertiesFile(
+    workspaceFolder,
+    getDefaultCompilerPath(toolchainInstallation, zephyrBoard, options.toolchainVariant),
+    path.join(workspaceFolder.uri.fsPath, 'build', 'primary', 'compile_commands.json'),
+    options,
+  );
 }

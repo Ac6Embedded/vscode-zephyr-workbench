@@ -8,8 +8,8 @@ import { WestWorkspace } from './models/WestWorkspace';
 import { ZephyrApplication } from './models/ZephyrApplication';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
 import { ZephyrBuildConfig } from './models/ZephyrBuildConfig';
-import { ArmGnuToolchainInstallation, ensureWindowsExecutableExtension, normalizeZephyrSdkVariant, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
-import { checkAndCreateTasksJson, isReservedTaskLabel, saveCustomTaskDefinition, setDefaultProjectSettings, updateTasks, ZephyrTaskDefinition, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
+import { ArmGnuToolchainInstallation, normalizeZephyrSdkVariant, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
+import { checkAndCreateTasksJson, isReservedTaskLabel, saveCustomTaskDefinition, setDefaultProjectSettings, updateCppToolsConfiguration, updateTasks, ZephyrTaskDefinition, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep, toggleSysbuild } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
@@ -39,7 +39,7 @@ import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommand
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain } from './utils/zephyr/sdkUtils';
 import { registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zephyr/armGnuToolchainUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
-import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
+import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
@@ -1174,11 +1174,9 @@ export function activate(context: vscode.ExtensionContext) {
 									activeConfig
 								);
 								const socToolchainName = activeConfig.getKConfigValue(node.project, 'SOC_TOOLCHAIN_NAME');
-								await vscode.workspace.getConfiguration('C_Cpp', node.project.appWorkspaceFolder).update(
-									'default.compilerPath',
-									ensureWindowsExecutableExtension(zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, pick.selectedVariant)),
-									vscode.ConfigurationTarget.WorkspaceFolder
-								);
+								await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
+									compilerPath: zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, pick.selectedVariant),
+								});
 							} catch {
 								// Keep the variant change even if the compiler path cannot be refreshed yet.
 							}
@@ -1201,11 +1199,9 @@ export function activate(context: vscode.ExtensionContext) {
 					await cfg.update(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, "gnuarmemb", vscode.ConfigurationTarget.WorkspaceFolder);
 
 					try {
-						await vscode.workspace.getConfiguration('C_Cpp', node.project.appWorkspaceFolder).update(
-							'default.compilerPath',
-							ensureWindowsExecutableExtension(armGnuToolchainInstallation.compilerPath),
-							vscode.ConfigurationTarget.WorkspaceFolder
-						);
+						await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
+							compilerPath: armGnuToolchainInstallation.compilerPath,
+						});
 					} catch {
 						// Keep the toolchain change even if the compiler path cannot be refreshed yet.
 					}
@@ -1217,6 +1213,18 @@ export function activate(context: vscode.ExtensionContext) {
 						vscode.ConfigurationTarget.WorkspaceFolder,
 					);
 					await cfg.update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+					if (pick.iarToolchainPath) {
+						try {
+							const iarToolchainInstallation = findIarToolchainInstallation(pick.iarToolchainPath);
+							if (iarToolchainInstallation) {
+								await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
+									compilerPath: iarToolchainInstallation.compilerPath,
+								});
+							}
+						} catch {
+							// Keep the toolchain change even if the compiler path cannot be refreshed yet.
+						}
+					}
 				}
 			}
 		)
@@ -1439,11 +1447,9 @@ export function activate(context: vscode.ExtensionContext) {
 					if (node.project.buildConfigs[configIndex].name !== node.buildConfig.name) {
 						await saveConfigSetting(node.project.appWorkspaceFolder, node.project.buildConfigs[configIndex].name, 'active', '');
 					} else {
-						let buildDir = path.join('${workspaceFolder}', 'build', node.buildConfig.name);
 						await saveConfigSetting(node.project.appWorkspaceFolder, node.buildConfig.name, 'active', 'true');
-						// Try primary build dir first, then fallback to parent build dir (sysbuild case)
-						let compileCommandsPath = normalizePath(path.join(buildDir, 'compile_commands.json'));
-						await vscode.workspace.getConfiguration('C_Cpp', node.project.appWorkspaceFolder).update('default.compileCommands', compileCommandsPath, vscode.ConfigurationTarget.WorkspaceFolder);
+						const compileCommandsPath = path.join(node.project.appWorkspaceFolder.uri.fsPath, 'build', node.buildConfig.name, 'compile_commands.json');
+						await updateCppToolsConfiguration(node.project.appWorkspaceFolder, { compileCommandsPath });
 						activeIndex = configIndex;
 					}
 				}
@@ -2784,11 +2790,7 @@ async function updateCompileSetting(project: ZephyrApplication, configName: stri
 				compilerPath = zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, toolchainVariant);
 			}
 			if (compilerPath) {
-				await vscode.workspace.getConfiguration('C_Cpp', project.appWorkspaceFolder).update(
-					'default.compilerPath',
-					ensureWindowsExecutableExtension(compilerPath),
-					vscode.ConfigurationTarget.WorkspaceFolder,
-				);
+				await updateCppToolsConfiguration(project.appWorkspaceFolder, { compilerPath });
 			}
 		}
 	}
