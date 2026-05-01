@@ -2443,7 +2443,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchainInstallation, venvMode = 'global', debugPreset = false, toolchainVariant = 'zephyr') => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchainInstallation, venvMode = 'global', debugPreset = false, toolchainVariant = 'zephyr', settingsPathMode = 'relative') => {
 			if (!westWorkspace) {
 				vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
 				return;
@@ -2507,6 +2507,7 @@ export function activate(context: vscode.ExtensionContext) {
 						await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, {
 							toolchainVariant,
 							venvPath,
+							pathMode: settingsPathMode,
 							preferConfigurationApi: true,
 						});
 						CreateZephyrAppPanel.currentPanel?.dispose();
@@ -2520,7 +2521,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-app", async (projectLoc, westWorkspace, zephyrBoard, toolchainInstallation, venvMode = 'global', toolchainVariant = 'zephyr') => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-app", async (projectLoc, westWorkspace, zephyrBoard, toolchainInstallation, venvMode = 'global', toolchainVariant = 'zephyr', settingsPathMode = 'relative') => {
 			if (!fileExists(projectLoc)) {
 				vscode.window.showInformationMessage(`Project '${projectLoc}' not found !`);
 				return;
@@ -2539,6 +2540,7 @@ export function activate(context: vscode.ExtensionContext) {
 					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, {
 						toolchainVariant,
 						venvPath,
+						pathMode: settingsPathMode,
 						preferConfigurationApi: true,
 					});
 					vscode.window.showInformationMessage(`Importing Application '${workspaceFolder.name}' done`);

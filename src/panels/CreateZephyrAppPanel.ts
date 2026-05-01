@@ -257,8 +257,8 @@ export class CreateZephyrAppPanel {
                     <summary>
                       <button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right advanced-arrow" aria-hidden="true" tabindex="-1"></button>
                       <span>Advanced options</span>
-                    </summary>
-                    <div class="advanced-options-content">
+	                    </summary>
+	                    <div class="advanced-options-content">
                       <div class="grid-group-div">
                         <vscode-radio-group id="venvMode" orientation="horizontal">
                           <label slot="label">Python virtual environment:&nbsp;&nbsp;
@@ -267,6 +267,15 @@ export class CreateZephyrAppPanel {
                           <vscode-radio value="global" checked>global</vscode-radio>
                           <vscode-radio value="local">local</vscode-radio>
                         </vscode-radio-group>
+                      </div>
+	                      <div class="grid-group-div">
+	                        <vscode-radio-group id="settingsPathMode" orientation="horizontal">
+	                          <label slot="label">Settings paths:&nbsp;&nbsp;
+	                            <span class="tooltip stable-tooltip" data-tooltip="Relative stores generated paths with \${workspaceFolder}. Absolute stores full filesystem paths.">?</span>
+	                          </label>
+	                          <vscode-radio value="relative" checked>relative</vscode-radio>
+	                          <vscode-radio value="absolute">absolute</vscode-radio>
+	                        </vscode-radio-group>
                       </div>
                     </div>
                   </details>
@@ -489,6 +498,7 @@ async function handleCreateMessage(message: any) {
       message.venv,
       message.debugPreset,
       toolchainVariant,
+      getSettingsPathMode(message.settingsPathMode),
     );
     return;
   }
@@ -551,12 +561,17 @@ async function handleCreateMessage(message: any) {
     toolchainInstallation,
     message.venv,
     toolchainVariant,
+    getSettingsPathMode(message.settingsPathMode),
   );
   CreateZephyrAppPanel.currentPanel?.dispose();
 }
 
 function getRequestedToolchainVariant(rawVariant: unknown): ZephyrSdkVariantId {
   return normalizeZephyrSdkVariant(typeof rawVariant === 'string' ? rawVariant : undefined);
+}
+
+function getSettingsPathMode(rawMode: unknown): 'relative' | 'absolute' {
+  return rawMode === 'absolute' ? 'absolute' : 'relative';
 }
 
 function resolveSelectedWorkspace(workspaceUri: string): WestWorkspace {

@@ -531,6 +531,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const projectParentPathText = document.getElementById("projectParentPath") as TextField;
   const appFromGroup = document.getElementById('appFromGroup') as RadioGroup;
   const venvRadioGroup = document.getElementById('venvMode') as RadioGroup;
+  const settingsPathModeGroup = document.getElementById('settingsPathMode') as RadioGroup;
   const toolchainVariantGroup = document.getElementById('toolchainVariantGroup') as RadioGroup;
   const debugPresetCheckbox = document.getElementById('debugPresetCheckbox') as HTMLInputElement | null;
 
@@ -543,15 +544,16 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       toolchainVariant:   sdkInput.getAttribute("data-has-llvm") === 'true'
         ? toolchainVariantGroup.value
         : 'zephyr',
-      boardYamlPath:      boardInput.getAttribute('data-value') ?? '',
-      boardIdentifier:    boardInput.getAttribute('data-board-identifier') ?? '',
-      samplePath:         sampleInput.getAttribute('data-value') ?? '',
-      projectName:        projectNameText.value,
-      projectParentPath:  projectParentPathText.value,
-      venv:               venvRadioGroup?.value ?? 'global',
-      debugPreset:        !!debugPresetCheckbox?.checked,
-    }
-  );
+	      boardYamlPath:      boardInput.getAttribute('data-value') ?? '',
+	      boardIdentifier:    boardInput.getAttribute('data-board-identifier') ?? '',
+	      samplePath:         sampleInput.getAttribute('data-value') ?? '',
+	      projectName:        projectNameText.value,
+	      projectParentPath:  projectParentPathText.value,
+	      venv:               venvRadioGroup?.value ?? 'global',
+	      settingsPathMode:   settingsPathModeGroup?.value ?? 'relative',
+	      debugPreset:        !!debugPresetCheckbox?.checked,
+	    }
+	  );
 }
 
 function browseParentHandler(this: HTMLElement, ev: MouseEvent) {
