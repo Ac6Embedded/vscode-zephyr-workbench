@@ -39,7 +39,7 @@ import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommand
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain } from './utils/zephyr/sdkUtils';
 import { registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zephyr/armGnuToolchainUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
-import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, getInternalToolsDirRealPath, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
+import { addWorkspaceFolder, copySampleSync, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, normalizePath, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
 import { addConfig, addEnvValue, deleteConfig, removeEnvValue, replaceEnvValue, saveConfigEnv, saveConfigSetting, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
@@ -2415,10 +2415,24 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 				return;
 			}
-			if ((await getRegisteredZephyrSdkInstallations()).length === 0) {
-				const importSDKItem = 'Import SDK';
-				const choice = await vscode.window.showErrorMessage("No Zephyr SDK found. Please import a SDK first.", importSDKItem);
-				if (choice === importSDKItem) {
+			const [
+				zephyrSdkInstallations,
+				iarToolchainInstallations,
+				armGnuToolchainInstallations,
+			] = await Promise.all([
+				getRegisteredZephyrSdkInstallations(),
+				getRegisteredIarToolchainInstallations(),
+				getRegisteredArmGnuToolchainInstallations(),
+			]);
+
+			if (
+				zephyrSdkInstallations.length === 0
+				&& iarToolchainInstallations.length === 0
+				&& armGnuToolchainInstallations.length === 0
+			) {
+				const importToolchainItem = 'Import Toolchain';
+				const choice = await vscode.window.showErrorMessage("No toolchain found. Please import a toolchain first.", importToolchainItem);
+				if (choice === importToolchainItem) {
 					vscode.commands.executeCommand('zephyr-workbench-sdk-explorer.open-wizard');
 				}
 				return;

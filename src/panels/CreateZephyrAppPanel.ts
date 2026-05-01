@@ -146,7 +146,7 @@ export class CreateZephyrAppPanel {
                     <label for="listSDKs">Select Toolchain:</label>
                   </div>
                   <div id="listSdks" class="combo-dropdown grid-value-div">
-                    <input type="text" id="sdkInput" class="combo-dropdown-control" placeholder="Choose your SDK..." data-value="">
+                    <input type="text" id="sdkInput" class="combo-dropdown-control" placeholder="Choose your toolchain..." data-value="">
                     <div aria-hidden="true" class="indicator" part="indicator">
                       <slot name="indicator">  
                         <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
@@ -936,7 +936,7 @@ function checkCreateParameters(message: any) {
   }
 
   if (isMissingValue(message.toolchainInstallationPath)) {
-    vscode.window.showErrorMessage('Missing Zephyr SDK, a SDK is required to provide toolchain to your project');
+    vscode.window.showErrorMessage('Missing toolchain, please select a toolchain for your project');
     return false;
   }
 
