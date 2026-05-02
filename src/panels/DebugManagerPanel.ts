@@ -259,7 +259,7 @@ export class DebugManagerPanel {
               </div>
 
               <div id="runnerPathRow" class="grid-group-div">
-                <vscode-text-field class="browse-field" size="50" type="text" id="runnerPath" value="">Runner Path:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Enter to debug server's location if not found automatically in PATH">?</span></vscode-text-field>
+                <vscode-text-field class="browse-field" size="50" type="text" id="runnerPath" value="" placeholder="(Optional)">Runner Path:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Optional. When set, this executable overrides the runner found in the active environment.">?</span></vscode-text-field>
                 <vscode-button id="browseRunnerButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
                 <span class="browse-spinner-inline"><span id="runnerPathSpinner" class="spinner" aria-label="Loading runner path" style="display:none;"></span></span>
               </div>
@@ -535,6 +535,8 @@ export class DebugManagerPanel {
                   }
                 } catch (error) {
                   console.error('Cannot start debug', error);
+                } finally {
+                  webview.postMessage({ command: 'debugFinished' });
                 }
               })();
               break;
@@ -598,7 +600,7 @@ export class DebugManagerPanel {
 
         const programPath = config.program;
         const svdPath = config.svdPath;
-        const gdbPath = config.miDebuggerPath;
+        const gdbPath = typeof config.miDebuggerPath === 'string' ? config.miDebuggerPath : '';
         const serverAddress = getServerAddressFromConfig(config);
         let gdbAddress = 'localhost';
         let gdbPort = '3333';
@@ -624,7 +626,7 @@ export class DebugManagerPanel {
           command: 'updateConfig', 
           programPath: `${programPath}`,
           svdPath: `${svdPath}`,
-          gdbPath: `${gdbPath}`,
+          gdbPath,
           gdbAddress: `${gdbAddress}`,
           gdbPort: `${gdbPort}`,
           gdbMode: `${gdbMode}`,
@@ -703,7 +705,7 @@ export class DebugManagerPanel {
       currentOpenocdInfoText = buildOpenocdInfoText(project, generatedOpenocdPath);
      
       const programPath = config.program;
-      const gdbPath = config.miDebuggerPath;
+      const gdbPath = typeof config.miDebuggerPath === 'string' ? config.miDebuggerPath : '';
       const serverAddress = getServerAddressFromConfig(config);
       let gdbAddress = 'localhost';
       let gdbPort = '3333';
@@ -724,7 +726,7 @@ export class DebugManagerPanel {
       webview.postMessage({ 
         command: 'updateConfig', 
         programPath: `${programPath}`,
-        gdbPath: `${gdbPath}`,
+        gdbPath,
         gdbAddress: `${gdbAddress}`,
         gdbPort: `${gdbPort}`,
         gdbMode: `${gdbMode}`,
@@ -783,11 +785,11 @@ export class DebugManagerPanel {
       const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
       const appProject = await getZephyrApplication(projectPath);
       const buildConfig = appProject.getBuildConfiguration(buildConfigName);
-      const programPath = message.programPath;
-      const svdPath = message.svdPath;
-      const gdbPath = message.gdbPath;
-      const gdbAddress = message.gdbAddress;
-      const gdbPort = message.gdbPort;
+      const programPath = typeof message.programPath === 'string' ? message.programPath.trim() : '';
+      const svdPath = typeof message.svdPath === 'string' ? message.svdPath.trim() : '';
+      const gdbPath = typeof message.gdbPath === 'string' ? message.gdbPath.trim() : '';
+      const gdbAddress = typeof message.gdbAddress === 'string' ? message.gdbAddress.trim() : '';
+      const gdbPort = typeof message.gdbPort === 'string' ? message.gdbPort.trim() : '';
       const gdbMode = message.gdbMode;
       const runnerName = message.runner;
       const runner = getRunner(runnerName);
@@ -796,6 +798,28 @@ export class DebugManagerPanel {
 
       if (!runner) {
         vscode.window.showErrorMessage('Debug manager: No debug runner selected!');
+        return false;
+      }
+
+      if (!programPath) {
+        vscode.window.showErrorMessage('Debug manager: Program path is required. Select a program executable before applying or debugging.');
+        return false;
+      }
+
+      // Missing debugger detection is represented as an empty field in the UI.
+      // Block writes here so we never persist a placeholder like CMAKE_GDB-NOTFOUND.
+      if (!gdbPath) {
+        vscode.window.showErrorMessage('Debug manager: GDB path is required. Select a debugger executable before applying or debugging.');
+        return false;
+      }
+
+      if (!gdbAddress) {
+        vscode.window.showErrorMessage('Debug manager: GDB address is required before applying or debugging.');
+        return false;
+      }
+
+      if (!gdbPort) {
+        vscode.window.showErrorMessage('Debug manager: GDB port is required before applying or debugging.');
         return false;
       }
     

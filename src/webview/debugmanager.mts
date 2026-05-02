@@ -145,6 +145,16 @@ function hideBrowseSpinnerForField(fieldId: string) {
   }
 }
 
+function setDebugButtonDisabled(disabled: boolean) {
+  const debugButton = document.getElementById("debugButton") as Button | null;
+  if (!debugButton) {
+    return;
+  }
+
+  debugButton.disabled = disabled;
+  debugButton.toggleAttribute('disabled', disabled);
+}
+
 function setLocalPath(id: string, path: string) {
   const localPath = document.getElementById(id) as TextField;
   if (path) {
@@ -250,6 +260,10 @@ function setVSCodeMessageListener() {
       case 'fileDialogClosed':
         hideBrowseSpinnerForField(event.data.id);
         break;
+      case 'debugFinished': {
+        setDebugButtonDisabled(false);
+        break;
+      }
       default:
         break;
     }
@@ -331,9 +345,8 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
   const runnerPath = document.getElementById('runnerPath') as TextField;
   const runnerArgs = document.getElementById('runnerArgs') as TextField;
-  const debugButton = document.getElementById("debugButton") as Button;
 
-  debugButton.disabled = true;
+  setDebugButtonDisabled(true);
   webviewApi.postMessage({
     command: 'debug',
     project: applicationInput.getAttribute('data-value'),

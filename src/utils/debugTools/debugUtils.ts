@@ -257,11 +257,26 @@ function getFirstExistingBuildArtifact(buildDir: string, appFolderName: string |
   return getBuildArtifactCandidates(buildDir, appFolderName, ...segments).find(candidate => fileExists(candidate));
 }
 
+function isCMakeNotFoundPath(value: string): boolean {
+  return value.trim().replace(/^"(.*)"$/, '$1').endsWith('-NOTFOUND');
+}
+
+function normalizeDetectedGdbPath(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const strippedValue = value.trim().replace(/^"(.*)"$/, '$1');
+  return strippedValue.length > 0 && !isCMakeNotFoundPath(strippedValue)
+    ? strippedValue
+    : undefined;
+}
+
 function parseGdbPathFromCMakeCache(cmakeCachePath: string): string | undefined {
   try {
     const cacheText = fs.readFileSync(cmakeCachePath, 'utf8');
     const match = cacheText.match(/^CMAKE_GDB(?::[A-Z]+)?=(.+)$/m);
-    return match?.[1]?.trim().length ? match[1].trim() : undefined;
+    return normalizeDetectedGdbPath(match?.[1]);
   } catch {
     return undefined;
   }
@@ -301,6 +316,31 @@ function resolveSdkConfigVariablePath(value: string, sdkPath: string): string {
   return path.normalize(value.replace(ZEPHYR_SDK_CONFIG_VARIABLE, sdkPath));
 }
 
+function resolveExistingSdkDebuggerPath(
+  project: ZephyrApplication,
+  zephyrSdkInstallation: ReturnType<typeof tryGetZephyrSdkInstallation>,
+  targetArch: string,
+  socToolchainName: string | undefined,
+): string {
+  const sdkDebuggerPath = zephyrSdkInstallation?.getDebuggerPath(targetArch, socToolchainName) ?? '';
+  if (!sdkDebuggerPath || !project.zephyrSdkPath) {
+    return sdkDebuggerPath;
+  }
+
+  const concreteDebuggerPath = sdkDebuggerPath.includes(ZEPHYR_SDK_CONFIG_VARIABLE)
+    ? resolveSdkConfigVariablePath(sdkDebuggerPath, project.zephyrSdkPath)
+    : sdkDebuggerPath;
+
+  if (!fileExists(concreteDebuggerPath)) {
+    return '';
+  }
+
+  // VS Code's `${config:...}` token can resolve freestanding app SDK settings,
+  // but workspace applications store SDK/toolchain values inside their
+  // application entry. They therefore need the concrete executable path.
+  return project.isWestWorkspaceApplication ? concreteDebuggerPath : sdkDebuggerPath;
+}
+
 function getFallbackMiDebuggerPath(
   project: ZephyrApplication,
   zephyrSdkInstallation: ReturnType<typeof tryGetZephyrSdkInstallation>,
@@ -312,12 +352,10 @@ function getFallbackMiDebuggerPath(
     return armGnuToolchainInstallation.debuggerPath;
   }
 
-  const sdkDebuggerPath = zephyrSdkInstallation?.getDebuggerPath(targetArch, socToolchainName) ?? '';
-  if (project.isWestWorkspaceApplication && sdkDebuggerPath.includes(ZEPHYR_SDK_CONFIG_VARIABLE) && project.zephyrSdkPath) {
-    return resolveSdkConfigVariablePath(sdkDebuggerPath, project.zephyrSdkPath);
-  }
-
-  return sdkDebuggerPath;
+  // LLVM SDK builds may report `CMAKE_GDB-NOTFOUND` because there is no clang
+  // debugger. Fall back to the GNU GDB that matches the board architecture when
+  // the SDK actually ships it; otherwise keep the launch field empty.
+  return resolveExistingSdkDebuggerPath(project, zephyrSdkInstallation, targetArch, socToolchainName);
 }
 
 function getMiDebuggerPath(
@@ -329,7 +367,11 @@ function getMiDebuggerPath(
     return fallbackPath;
   }
 
-  const strippedGeneratedPath = generatedGdbPath.trim().replace(/^"(.*)"$/, '$1');
+  const strippedGeneratedPath = normalizeDetectedGdbPath(generatedGdbPath);
+  if (!strippedGeneratedPath) {
+    return fallbackPath;
+  }
+
   if (project.isWestWorkspaceApplication) {
     // VS Code cannot resolve application-entry settings from launch.json's
     // `${config:...}` syntax. Workspace-app debug configs therefore keep the
@@ -363,7 +405,7 @@ function resolveGeneratedArtifactsFromBuildDir(
   boardIdentifier?: string,
 ): LaunchConfigurationArtifacts {
   const runnersYaml = readRunnersYamlForBuildDir(buildDir, appFolderName);
-  let generatedGdbPath = runnersYaml?.gdbPath;
+  let generatedGdbPath = normalizeDetectedGdbPath(runnersYaml?.gdbPath);
 
   if (!generatedGdbPath) {
     const cmakeCachePath = getFirstExistingBuildArtifact(buildDir, appFolderName, 'CMakeCache.txt');
@@ -788,7 +830,7 @@ function getGeneratedGdbPath(
   artifacts?: LaunchConfigurationArtifacts,
 ): string | undefined {
   if (artifacts?.generatedGdbPath) {
-    return artifacts.generatedGdbPath;
+    return normalizeDetectedGdbPath(artifacts.generatedGdbPath);
   }
 
   const appFolderName = path.basename(project.appRootPath);
@@ -813,9 +855,12 @@ function getWorkspaceApplicationMiDebuggerPath(
   const currentPath = typeof config.miDebuggerPath === 'string'
     ? config.miDebuggerPath
     : '';
-  return currentPath.includes(ZEPHYR_SDK_CONFIG_VARIABLE) && project.zephyrSdkPath
-    ? resolveSdkConfigVariablePath(currentPath, project.zephyrSdkPath)
-    : undefined;
+  if (!currentPath.includes(ZEPHYR_SDK_CONFIG_VARIABLE) || !project.zephyrSdkPath) {
+    return undefined;
+  }
+
+  const resolvedPath = resolveSdkConfigVariablePath(currentPath, project.zephyrSdkPath);
+  return fileExists(resolvedPath) ? resolvedPath : '';
 }
 
 function getDebugProgramPath(project: ZephyrApplication, buildConfig: ZephyrBuildConfig): string {
@@ -900,7 +945,7 @@ export function syncLaunchConfigurationProjectPaths(
       : '';
     if (!currentMiDebuggerPath || currentMiDebuggerPath.includes(ZEPHYR_SDK_CONFIG_VARIABLE)) {
       const miDebuggerPath = getWorkspaceApplicationMiDebuggerPath(config, project, buildConfig, artifacts);
-      if (miDebuggerPath) {
+      if (typeof miDebuggerPath === 'string') {
         config.miDebuggerPath = miDebuggerPath;
       }
     }
