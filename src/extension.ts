@@ -74,6 +74,10 @@ import {
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
+// Shows the selected west workspace application for the active editor's west
+// workspace. Hidden for freestanding apps and when the active file isn't part
+// of any west workspace that declares applications.
+let statusBarSelectedAppItem: vscode.StatusBarItem;
 let zephyrTaskProvider: vscode.Disposable | undefined;
 let zephyrDebugConfigurationProvide: vscode.Disposable | undefined;
 const WEST_FLAGS_D_LABEL = 'west Flags -D';
@@ -272,9 +276,15 @@ export function activate(context: vscode.ExtensionContext) {
 	statusBarDebugItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
 	statusBarDebugItem.text = "$(debug-alt) Debug";
 	statusBarDebugItem.command = "zephyr-workbench.debug-app";
+	// Higher priority than Build/Debug so the project name reads as the leftmost
+	// indicator of the trio. It provides the context for the build/debug actions
+	// to its right.
+	statusBarSelectedAppItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 102);
+	statusBarSelectedAppItem.command = "zephyr-workbench.select-workspace-application";
 
 	context.subscriptions.push(statusBarBuildItem);
 	context.subscriptions.push(statusBarDebugItem);
+	context.subscriptions.push(statusBarSelectedAppItem);
 
 	// Setup Tree view providers
 	const zephyrShortcutProvider = new ZephyrShortcutCommandProvider();
@@ -1588,6 +1598,80 @@ export function activate(context: vscode.ExtensionContext) {
 			zephyrAppProvider.refresh();
 			westWorkspaceProvider.refresh();
 			void dashboardViewProvider.refresh();
+		})
+	);
+	// Status-bar entry point for changing the selected west workspace application.
+	// Resolves the west workspace from the active editor (rather than from a tree
+	// node) and shows a quick pick scoped to that workspace's declared apps.
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench.select-workspace-application', async () => {
+			const activeUri = vscode.window.activeTextEditor?.document.uri;
+			if (!activeUri) {
+				vscode.window.showInformationMessage('Open a file in a west workspace to pick its application.');
+				return;
+			}
+
+			const workspaceFolder = vscode.workspace.getWorkspaceFolder(activeUri);
+			if (!workspaceFolder || !WestWorkspace.isWestWorkspaceFolder(workspaceFolder)) {
+				vscode.window.showInformationMessage('The active file is not inside a west workspace.');
+				return;
+			}
+
+			// Read entries straight from settings so the quick pick reflects every
+			// declared app, including ones that don't yet have a prj.conf on disk
+			// (filtering by isApplicationPathLike happens in getApplications).
+			const entries = readWorkspaceApplicationEntries(workspaceFolder);
+			if (entries.length === 0) {
+				vscode.window.showInformationMessage('No west workspace applications are declared in this workspace.');
+				return;
+			}
+
+			const effectiveEntry = getEffectiveWorkspaceApplicationEntry(workspaceFolder);
+			const effectivePath = effectiveEntry
+				? resolveWorkspaceApplicationPath(effectiveEntry, workspaceFolder)
+				: undefined;
+			const normalizedEffectivePath = effectivePath ? path.normalize(effectivePath) : undefined;
+
+			type AppPickItem = vscode.QuickPickItem & { appRootPath: string };
+			const items: AppPickItem[] = entries.flatMap(entry => {
+				const appPath = resolveWorkspaceApplicationPath(entry, workspaceFolder);
+				if (!appPath) {
+					return [];
+				}
+				const isSelected = normalizedEffectivePath === path.normalize(appPath);
+				return [{
+					// `$(check)` marks the currently-selected app so the user can see
+					// the current state without opening the tree view.
+					label: `${isSelected ? '$(check) ' : ''}${path.basename(appPath)}`,
+					description: path.relative(workspaceFolder.uri.fsPath, appPath).replace(/\\/g, '/') || '.',
+					detail: appPath,
+					appRootPath: appPath,
+				}];
+			});
+
+			const picked = await vscode.window.showQuickPick<AppPickItem>(items, {
+				title: `Select application for ${workspaceFolder.name}`,
+				placeHolder: 'Pick the west workspace application to use',
+				ignoreFocusOut: true,
+				canPickMany: false,
+			});
+			if (!picked) {
+				return;
+			}
+
+			// Reuse the same downstream side-effects as the tree-driven command:
+			// persist the selection, refresh IntelliSense for the newly active app,
+			// and refresh views/status bar so all surfaces agree.
+			await setSelectedWorkspaceApplicationPath(workspaceFolder, picked.appRootPath);
+			const project = await getZephyrApplication(picked.appRootPath).catch(() => undefined);
+			const targetConfig = project ? getActiveOrDefaultBuildConfig(project) : undefined;
+			if (project && targetConfig) {
+				await updateBuildConfigCompileCommandsSetting(project, targetConfig);
+			}
+			zephyrAppProvider.refresh();
+			westWorkspaceProvider.refresh();
+			void dashboardViewProvider.refresh();
+			updateStatusBar();
 		})
 	);
 	context.subscriptions.push(
@@ -2976,6 +3060,9 @@ export function activate(context: vscode.ExtensionContext) {
 				event.affectsConfiguration(`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.build.configurations`)) {
 				requestAppRefresh();
 				westWorkspaceProvider.refresh();
+				// Selection / declared-apps changes don't fire active-editor events,
+				// so the status bar item needs an explicit refresh here.
+				updateStatusBar();
 			}
 
 			void dashboardViewProvider.refresh();
@@ -3044,19 +3131,100 @@ function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
 
 async function updateStatusBar() {
 	const resource = vscode.window.activeTextEditor?.document.uri;
-	const currentProject = resource
-		? (await ZephyrApplication.getApplications(vscode.workspace.workspaceFolders ?? []))
-			.find(project => isPathWithinWorkspaceApplication(project.appRootPath, resource.fsPath))
+	const projects = resource
+		? await ZephyrApplication.getApplications(vscode.workspace.workspaceFolders ?? [])
+		: [];
+
+	// Direct match: file is inside an application's own folder.
+	const containingProject = resource
+		? projects.find(project => isPathWithinWorkspaceApplication(project.appRootPath, resource.fsPath))
 		: undefined;
-	if (currentProject) {
-		statusBarBuildItem.tooltip = `Zephyr: Build ${currentProject.appName}`;
-		statusBarDebugItem.tooltip = `Zephyr: Debug ${currentProject.appName}`;
+
+	// Fallback: file is somewhere else inside a west workspace (shared module,
+	// workspace root, etc.). Build/Debug commands resolve through the same
+	// effective-application fallback in getZephyrApplication, so the status
+	// bar contract has to match — otherwise the icons would hide while the
+	// commands still work, which is just confusing.
+	const fallbackProject = !containingProject && resource
+		? resolveEffectiveWorkspaceProject(resource, projects)
+		: undefined;
+
+	const projectForActions = containingProject ?? fallbackProject;
+	if (projectForActions) {
+		statusBarBuildItem.tooltip = `Zephyr: Build ${projectForActions.appName}`;
+		statusBarDebugItem.tooltip = `Zephyr: Debug ${projectForActions.appName}`;
 		statusBarBuildItem.show();
 		statusBarDebugItem.show();
 	} else {
 		statusBarBuildItem.hide();
 		statusBarDebugItem.hide();
 	}
+
+	updateSelectedWorkspaceAppStatusBar(resource);
+}
+
+// Resolve the west workspace's effective (selected) application for files
+// living outside any individual app folder. Returns the matching project from
+// the already-loaded list to avoid re-parsing settings twice per refresh.
+function resolveEffectiveWorkspaceProject(
+	resource: vscode.Uri,
+	projects: ZephyrApplication[],
+): ZephyrApplication | undefined {
+	const workspaceFolder = vscode.workspace.getWorkspaceFolder(resource);
+	if (!workspaceFolder || !WestWorkspace.isWestWorkspaceFolder(workspaceFolder)) {
+		return undefined;
+	}
+
+	const effectiveEntry = getEffectiveWorkspaceApplicationEntry(workspaceFolder);
+	const effectivePath = effectiveEntry
+		? resolveWorkspaceApplicationPath(effectiveEntry, workspaceFolder)
+		: undefined;
+	if (!effectivePath) {
+		return undefined;
+	}
+
+	const normalizedEffectivePath = path.normalize(effectivePath);
+	return projects.find(project => path.normalize(project.appRootPath) === normalizedEffectivePath);
+}
+
+// Reflects the currently-selected west workspace application of the workspace
+// containing the active file. The item only appears when the file lives inside
+// a west workspace folder that declares ≥1 application, since picking an app is
+// otherwise meaningless.
+function updateSelectedWorkspaceAppStatusBar(resource: vscode.Uri | undefined): void {
+	if (!resource) {
+		statusBarSelectedAppItem.hide();
+		return;
+	}
+
+	const workspaceFolder = vscode.workspace.getWorkspaceFolder(resource);
+	if (!workspaceFolder || !WestWorkspace.isWestWorkspaceFolder(workspaceFolder)) {
+		statusBarSelectedAppItem.hide();
+		return;
+	}
+
+	const entries = readWorkspaceApplicationEntries(workspaceFolder);
+	if (entries.length === 0) {
+		statusBarSelectedAppItem.hide();
+		return;
+	}
+
+	// When multiple apps exist but none is explicitly selected, the picker is
+	// the only way out, so surface that as a prompt rather than hiding the item.
+	const effectiveEntry = getEffectiveWorkspaceApplicationEntry(workspaceFolder);
+	const effectivePath = effectiveEntry
+		? resolveWorkspaceApplicationPath(effectiveEntry, workspaceFolder)
+		: undefined;
+
+	if (effectivePath) {
+		const appName = path.basename(effectivePath);
+		statusBarSelectedAppItem.text = `$(folder-active) ${appName}`;
+		statusBarSelectedAppItem.tooltip = `Selected west workspace application: ${appName} (${workspaceFolder.name}). Click to change.`;
+	} else {
+		statusBarSelectedAppItem.text = `$(folder-active) Select application…`;
+		statusBarSelectedAppItem.tooltip = `Pick a west workspace application for ${workspaceFolder.name}`;
+	}
+	statusBarSelectedAppItem.show();
 }
 
 function getActiveOrDefaultBuildConfig(project: ZephyrApplication): ZephyrBuildConfig | undefined {
