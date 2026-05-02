@@ -978,11 +978,6 @@
           "when": "view == zephyr-workbench-west-workspace"
         },
         {
-          "command": "zephyr-workbench-app-explorer.select-application",
-          "group": "0@view/item/context@0",
-          "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace-application"
-        },
-        {
           "command": "zephyr-workbench-sdk-explorer.open-wizard",
           "group": "navigation",
           "when": "view == zephyr-workbench-sdk-explorer"
@@ -1018,6 +1013,11 @@
       ],
       "editor/context": [],
       "view/item/context": [
+        {
+          "command": "zephyr-workbench-app-explorer.select-application",
+          "group": "0@view/item/context@0",
+          "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace-application"
+        },
         {
           "command": "zephyr-workbench-app-explorer.build-app",
           "group": "0@view/item/context@0",

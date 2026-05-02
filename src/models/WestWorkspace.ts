@@ -12,13 +12,19 @@ export class WestWorkspace {
   manifestFile!: string;
   zephyrBase!: string;
   envVars: { [key: string]: any } = {
-    ARCH_ROOT: [],
-    SOC_ROOT: [],
     BOARD_ROOT: [],
-    DTS_ROOT: []
+    DTS_ROOT: [],
+    SOC_ROOT: [],
+    ARCH_ROOT: [],
+    // SNIPPET_ROOT: extra search roots for Zephyr snippets (`*.yml` overlay
+    // bundles), consumed by the build system the same way as the other
+    // *_ROOT vars.
+    SNIPPET_ROOT: [],
   };
 
-  static envVarKeys = ['ARCH_ROOT', 'SOC_ROOT', 'BOARD_ROOT', 'DTS_ROOT'];
+  // Order drives the tree-view rendering — BOARD/DTS first because they're
+  // the most commonly customised, then SOC/ARCH, with SNIPPET_ROOT last.
+  static envVarKeys = ['BOARD_ROOT', 'DTS_ROOT', 'SOC_ROOT', 'ARCH_ROOT', 'SNIPPET_ROOT'];
 
   constructor(
     public readonly name: string,
