@@ -1044,6 +1044,7 @@ export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): Ch
   }
 
   options.env = {
+    ...process.env,
     ...getProfileEnv(),
     ...options.env,
     ...(venvPath3 ? { PYTHON_VENV_PATH: venvPath3 } : {})

@@ -2617,12 +2617,24 @@ export function activate(context: vscode.ExtensionContext) {
 				vscode.window.withProgress({
 					location: vscode.ProgressLocation.Notification,
 					title: "Initializing west workspace",
-					cancellable: false,
+					cancellable: true,
 				}, async (progress, token) => {
 					try {
+						progress.report({ increment: 5, message: 'Initializing manifest...' });
 						await westInitCommand(srcUrl, srcRev, workspaceDestPath, manifestPath);
-						await westUpdateCommand(workspaceDestPath);
+						if (token.isCancellationRequested) {
+							throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
+						}
+						progress.report({ increment: 5, message: 'Updating projects...' });
+						await westUpdateCommand(workspaceDestPath, progress, token);
+						if (token.isCancellationRequested) {
+							throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
+						}
+						progress.report({ increment: 10, message: 'Loading boards...' });
 						await westBoardsCommand(workspaceDestPath);
+						if (token.isCancellationRequested) {
+							throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
+						}
 						CreateWestWorkspacePanel.currentPanel?.dispose();
 						await addWorkspaceFolder(workspaceDestPath);
 
@@ -2630,9 +2642,13 @@ export function activate(context: vscode.ExtensionContext) {
 						const workspaceFolder = getWorkspaceFolder(workspaceDestPath);
 						await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('enableAutomaticKitScan', false, vscode.ConfigurationTarget.WorkspaceFolder);
 						westWorkspaceProvider.refresh();
+						progress.report({ increment: 80, message: 'Import complete' });
 					} catch (e) {
 						if (e instanceof Error) {
-							if ((e as any).cause.startsWith(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)) {
+							const cause = (e as any).cause;
+							if (cause === 'cancelled') {
+								vscode.window.showInformationMessage('West workspace import cancelled.');
+							} else if (typeof cause === 'string' && cause.startsWith(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)) {
 								const openSettingItem = 'Open Setting';
 								const choice = await vscode.window.showErrorMessage(`Fail to execute west init command...\n${e}`, openSettingItem);
 								if (choice === openSettingItem) {

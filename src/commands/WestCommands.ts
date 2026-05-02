@@ -6,7 +6,7 @@ import { WestWorkspace } from '../models/WestWorkspace';
 import { ZephyrApplication } from '../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
-import { concatCommands, executeTask, execShellCommandWithEnv, getConfiguredVenvPath, getConfiguredWorkbenchPath, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars } from '../utils/execUtils';
+import { concatCommands, executeTask, execShellCommandWithEnv, getConfiguredVenvPath, getConfiguredWorkbenchPath, getOutputChannel, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars, spawnCommandWithEnv } from '../utils/execUtils';
 import { fileExists, getSelectedToolchainVariantEnv, getWestWorkspace, normalizePath, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { composeWestBuildArgs } from '../utils/zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
@@ -78,13 +78,225 @@ export async function westInitCommand(srcUrl: string, srcRev: string, workspaceP
   await execShellCommandWithEnv(`West Init for current workspace`, command, options);
 }
 
-export async function westUpdateCommand(workspacePath: string): Promise<void> {
-  let command = "west update";
+type NotificationProgress = vscode.Progress<{ message?: string; increment?: number }>;
+
+function stripAnsi(input: string): string {
+  return input.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '');
+}
+
+function projectNameFromPath(repoPath: string): string {
+  const normalizedPath = repoPath.replace(/\\/g, '/').replace(/\/+$/, '');
+  const baseName = path.basename(normalizedPath);
+  return baseName || normalizedPath || 'repository';
+}
+
+function createWestUpdateProgressReporter(progress: NotificationProgress) {
+  let currentProject = '';
+  let lastMessage = '';
+
+  const reportMessage = (message: string) => {
+    if (message !== lastMessage) {
+      lastMessage = message;
+      progress.report({ message });
+    }
+  };
+
+  return (chunk: string) => {
+    const lines = stripAnsi(chunk)
+      .split(/\r|\n/)
+      .map(line => line.trim())
+      .filter(Boolean);
+
+    for (const line of lines) {
+      const projectMatch = line.match(/^={3}\s+updating\s+(.+?)(?:\s+\((.+?)\))?:?$/i);
+      if (projectMatch) {
+        currentProject = projectMatch[1].trim();
+        reportMessage(`${currentProject}: updating`);
+        continue;
+      }
+
+      const cloneMatch = line.match(/Cloning into (?:bare repository )?['"]?(.+?)['"]?(?:\.\.\.)?$/i);
+      if (cloneMatch) {
+        currentProject = projectNameFromPath(cloneMatch[1]);
+        reportMessage(`${currentProject}: cloning`);
+        continue;
+      }
+
+      const percentMatch = line.match(/\b(Counting objects|Compressing objects|Receiving objects|Resolving deltas|Updating files):\s+(\d+)%/i);
+      if (percentMatch) {
+        const phase = percentMatch[1];
+        const percentage = percentMatch[2];
+        reportMessage(`${currentProject ? `${currentProject}: ` : ''}${phase} ${percentage}%`);
+        continue;
+      }
+
+      const westProjectStepMatch = line.match(/^-{3}\s+([^:]+):\s+(.+)$/);
+      if (westProjectStepMatch) {
+        currentProject = westProjectStepMatch[1].trim();
+        reportMessage(`${currentProject}: ${westProjectStepMatch[2].trim()}`);
+      }
+    }
+  };
+}
+
+function toTerminalText(text: string): string {
+  return text.replace(/\r?\n/g, '\r\n');
+}
+
+function createWestUpdateTask(
+  command: string,
+  options: vscode.ShellExecutionOptions,
+  progress: NotificationProgress,
+): { task: vscode.Task; cancel: () => void; wasCancelled: () => boolean } {
+  const output = getOutputChannel();
+  output.appendLine(`[command] West Update for current workspace`);
+  if (options.cwd) {
+    output.appendLine(`[cwd] ${options.cwd}`);
+  }
+  output.appendLine(command);
+  output.appendLine('');
+
+  const reportWestOutput = createWestUpdateProgressReporter(progress);
+  const writeEmitter = new vscode.EventEmitter<string>();
+  const closeEmitter = new vscode.EventEmitter<number>();
+  let child: ReturnType<typeof spawnCommandWithEnv> | undefined;
+  let closed = false;
+  let cancelled = false;
+
+  const closeTask = (code: number) => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    closeEmitter.fire(code);
+    writeEmitter.dispose();
+    closeEmitter.dispose();
+  };
+
+  const cancel = () => {
+    if (closed) {
+      return;
+    }
+    cancelled = true;
+    progress.report({ message: 'Cancelling west update...' });
+    if (child && !child.killed) {
+      child.kill();
+      return;
+    }
+    closeTask(1);
+  };
+
+  const pty: vscode.Pseudoterminal = {
+    onDidWrite: writeEmitter.event,
+    onDidClose: closeEmitter.event,
+    open: () => {
+      writeEmitter.fire(toTerminalText(`[command] West Update for current workspace\n`));
+      if (options.cwd) {
+        writeEmitter.fire(toTerminalText(`[cwd] ${options.cwd}\n`));
+      }
+      writeEmitter.fire(toTerminalText(`${command}\n\n`));
+
+      child = spawnCommandWithEnv(command, {
+        cwd: options.cwd,
+        env: {
+          ...options.env,
+          GIT_PROGRESS_DELAY: '0',
+        },
+      });
+
+      child.stdout?.on('data', (data: Buffer) => {
+        const text = data.toString();
+        output.append(text);
+        writeEmitter.fire(toTerminalText(text));
+        reportWestOutput(text);
+      });
+
+      child.stderr?.on('data', (data: Buffer) => {
+        const text = data.toString();
+        output.append(text);
+        writeEmitter.fire(toTerminalText(text));
+        reportWestOutput(text);
+      });
+
+      child.on('error', error => {
+        const message = `${error}\n`;
+        output.append(message);
+        writeEmitter.fire(toTerminalText(message));
+        closeTask(1);
+      });
+
+      child.on('close', code => {
+        output.appendLine('');
+        closeTask(code ?? (cancelled ? 1 : 0));
+      });
+    },
+    close: cancel,
+  };
+
+  const task = new vscode.Task(
+    { label: 'West Update for current workspace', type: 'zephyr-workbench-shell' },
+    vscode.TaskScope.Workspace,
+    'West Update for current workspace',
+    'Zephyr Workbench',
+    new vscode.CustomExecution(async () => pty),
+  );
+  task.presentationOptions.echo = true;
+  task.presentationOptions.reveal = vscode.TaskRevealKind.Always;
+  task.presentationOptions.panel = vscode.TaskPanelKind.Dedicated;
+
+  return { task, cancel, wasCancelled: () => cancelled };
+}
+
+async function runWestUpdateWithProgress(
+  command: string,
+  options: vscode.ShellExecutionOptions,
+  progress: NotificationProgress,
+  cancellationToken?: vscode.CancellationToken,
+): Promise<void> {
+  const westUpdateTask = createWestUpdateTask(command, options, progress);
+  if (cancellationToken?.isCancellationRequested) {
+    throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
+  }
+
+  const execution = await vscode.tasks.executeTask(westUpdateTask.task);
+  await new Promise<void>((resolve, reject) => {
+    const disposables: vscode.Disposable[] = [];
+    const dispose = () => disposables.forEach(disposable => disposable.dispose());
+
+    disposables.push(vscode.tasks.onDidEndTaskProcess(event => {
+      if (event.execution !== execution) {
+        return;
+      }
+
+      dispose();
+      if (westUpdateTask.wasCancelled() || cancellationToken?.isCancellationRequested) {
+        reject(new Error('West workspace import cancelled.', { cause: 'cancelled' }));
+      } else if (event.exitCode === 0) {
+        resolve();
+      } else {
+        reject(new Error(`west update failed with exit code ${event.exitCode ?? 'unknown'}`));
+      }
+    }));
+
+    disposables.push(cancellationToken?.onCancellationRequested(() => {
+      westUpdateTask.cancel();
+      execution.terminate();
+    }) ?? new vscode.Disposable(() => undefined));
+  });
+}
+
+export async function westUpdateCommand(workspacePath: string, progress?: NotificationProgress, cancellationToken?: vscode.CancellationToken): Promise<void> {
+  let command = progress ? "west update --fetch-opt=--progress" : "west update";
 
   let options: vscode.ShellExecutionOptions = {
     env: { ZEPHYR_PROJECT_DIRECTORY: workspacePath },
     cwd: `${workspacePath}`
   };
+
+  if (progress) {
+    await runWestUpdateWithProgress(command, options, progress, cancellationToken);
+    return;
+  }
 
   await execShellCommandWithEnv(`West Update for current workspace`, command, options);
 }
