@@ -326,12 +326,15 @@ export class ZephyrApplicationEnvTreeItem extends vscode.TreeItem {
 		public readonly project: ZephyrApplication,
     public readonly envKey: string
 	) {
-    super(envKey, vscode.TreeItemCollapsibleState.Collapsed);
-    this.description = project.envVars[envKey].length === 0 ?'[not set]':'';
+    // Drop the chevron when there are no values to expand into; keeps the
+    // tree row visually consistent with leaf nodes that have no children.
+    const isEmpty = project.envVars[envKey].length === 0;
+    super(envKey, isEmpty ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed);
+    this.description = isEmpty ? '[not set]' : '';
     this.tooltip = envKey;
     this.iconPath = new vscode.ThemeIcon('variable');
 	}
-  
+
   contextValue = 'zephyr-application-env';
 }
 
@@ -340,6 +343,10 @@ export class ZephyrConfigExtraEnvTreeItem extends vscode.TreeItem {
     public readonly project: ZephyrApplication,
     public readonly config: ZephyrBuildConfig,
   ) {
+    // EXTRA is a grouping row for EXTRA_CONF_FILE / EXTRA_DTC_OVERLAY_FILE /
+    // EXTRA_ZEPHYR_MODULES. Those child rows are rendered regardless of their
+    // own values, so the chevron must always be shown — otherwise the user
+    // can't reach the empty placeholders to add a first value.
     super('EXTRA', vscode.TreeItemCollapsibleState.Collapsed);
     const hasAnyValue = EXTRA_ENV_KEYS.some((key) => Array.isArray(config.envVars[key]) && config.envVars[key].length > 0);
     this.description = hasAnyValue ? '' : '[not set]';
@@ -354,8 +361,9 @@ export class ZephyrConfigWestFlagsDTreeItem extends vscode.TreeItem {
     public readonly project: ZephyrApplication,
     public readonly config: ZephyrBuildConfig,
   ) {
-    super(WEST_FLAGS_D_LABEL, vscode.TreeItemCollapsibleState.Collapsed);
-    this.description = config.westFlagsD.length === 0 ? '[not set]' : '';
+    const isEmpty = config.westFlagsD.length === 0;
+    super(WEST_FLAGS_D_LABEL, isEmpty ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed);
+    this.description = isEmpty ? '[not set]' : '';
     this.tooltip = WEST_FLAGS_D_LABEL;
     this.iconPath = new vscode.ThemeIcon('symbol-parameter');
   }
@@ -369,12 +377,13 @@ export class ZephyrConfigEnvTreeItem extends vscode.TreeItem {
     public readonly config: ZephyrBuildConfig,
     public readonly envKey: string
 	) {
-    super(envKey, vscode.TreeItemCollapsibleState.Collapsed);
-    this.description = config.envVars[envKey].length === 0 ?'[not set]':'';
+    const isEmpty = config.envVars[envKey].length === 0;
+    super(envKey, isEmpty ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed);
+    this.description = isEmpty ? '[not set]' : '';
     this.tooltip = envKey;
     this.iconPath = new vscode.ThemeIcon('variable');
 	}
-  
+
   contextValue = 'zephyr-application-env';
 }
 
@@ -406,8 +415,9 @@ export class ZephyrApplicationArgTreeItem extends vscode.TreeItem {
 		public readonly project: ZephyrApplication,
     public readonly argName: string
 	) {
-    super(argName, vscode.TreeItemCollapsibleState.Collapsed);
-    this.description = project.westArgs.length === 0 ?'[not set]':'';
+    const isEmpty = project.westArgs.length === 0;
+    super(argName, isEmpty ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed);
+    this.description = isEmpty ? '[not set]' : '';
     this.tooltip = argName;
     this.iconPath = new vscode.ThemeIcon('variable');
 	}
@@ -422,13 +432,9 @@ export class ZephyrConfigArgTreeItem extends vscode.TreeItem {
     public argValue: string,
     public readonly argSetting?: string
 	) {
-    super(argName, vscode.TreeItemCollapsibleState.Collapsed);
-    // if(argName === 'west Arguments') {
-    //   this.description = ((config.westArgs === undefined) || (config.westArgs.length === 0)) ?'[not set]':'';
-    // } else {
-    //   this.description = ((config.envVars[argName] === undefined) || (config.envVars[argName].length === 0)) ?'[not set]':'';
-    // }
-    this.description = ((argValue === undefined) || (argValue.length === 0)) ?'[not set]':'';
+    const isEmpty = (argValue === undefined) || (argValue.length === 0);
+    super(argName, isEmpty ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed);
+    this.description = isEmpty ? '[not set]' : '';
     this.tooltip = argName;
     this.iconPath = new vscode.ThemeIcon('variable');
 	}
