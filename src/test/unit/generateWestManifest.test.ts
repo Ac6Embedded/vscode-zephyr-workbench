@@ -127,12 +127,9 @@ describe('Manifest output comparison', () => {
             import: {
               'path-prefix': 'deps',
               'name-allowlist': [
-                'cmsis',
-                'cmsis-dsp',
                 'cmsis_6',
                 'percepio',
                 'picolibc',
-                'segger',
                 'hal_stm32',
               ],
             },

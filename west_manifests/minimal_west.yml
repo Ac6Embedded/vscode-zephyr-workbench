@@ -10,10 +10,7 @@ manifest:
       import:
         path-prefix: deps
         name-allowlist:
-          - cmsis
-          - cmsis-dsp
           - cmsis_6
           - percepio
           - picolibc
           - mcuboot
-          - segger
