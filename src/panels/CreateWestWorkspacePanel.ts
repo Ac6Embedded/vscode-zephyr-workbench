@@ -218,7 +218,7 @@ export class CreateWestWorkspacePanel {
                   </div>
                   <div class="grid-group-div projects-section" id="projectsGroup">
                     <div class="projects-header">
-                      <label>Projects:</label>
+                      <label>Projects:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Projects included in the generated minimal west.yml name-allowlist. Defaults come from the selected template; remove entries or add upstream projects as needed.">?</span></label>
                       <span id="projectsSpinner" class="spinner projects-spinner hidden" aria-label="Loading projects"></span>
                     </div>
                     <div id="projectsList" class="projects-list" aria-live="polite"></div>
