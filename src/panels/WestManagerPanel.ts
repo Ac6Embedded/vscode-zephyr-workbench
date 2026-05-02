@@ -388,8 +388,10 @@ export class WestManagerPanel {
         <body>
           <h1>West Manager</h1>
           <form class="west-manager-panel">
-            <div class="grid-group-div">
-              <label for="workspaceSelect">Workspace:</label>
+            <div class="grid-group-div west-manager-workspace-field">
+              <div class="grid-header-div">
+                <label for="workspaceSelect">Workspace:</label>
+              </div>
               <select id="workspaceSelect" class="workspace-select"></select>
             </div>
 
@@ -421,7 +423,7 @@ export class WestManagerPanel {
                 </div>
 
                 <div class="grid-group-div">
-                  <label>Projects:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Projects are read from the local zephyr/west.yml and zephyr/submanifests/*.yaml when present. Checked projects are written to the manifest name-allowlist; checking all projects imports all.">?</span></label>
+                  <label>Manifest projects:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Projects are read from the local zephyr/west.yml and zephyr/submanifests/*.yaml when present. Checked projects are written to the manifest name-allowlist; checking all projects imports all.">?</span></label>
                   <div class="project-toolbar">
                     <vscode-text-field id="projectFilter" type="text" placeholder="Filter projects"></vscode-text-field>
                     <button id="selectAllProjectsButton" type="button" class="inline-icon-button codicon codicon-check-all" title="Select all projects" aria-label="Select all projects"></button>

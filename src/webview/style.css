@@ -1155,6 +1155,10 @@ vscode-button {
   max-width: 1100px;
 }
 
+.west-manager-workspace-field {
+  display: block;
+}
+
 .workspace-select {
   width: min(100%, calc(var(--design-unit) * 114px + 98px));
   min-height: 28px;
