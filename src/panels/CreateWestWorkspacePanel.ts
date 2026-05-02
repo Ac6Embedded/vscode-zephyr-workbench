@@ -207,7 +207,7 @@ export class CreateWestWorkspacePanel {
               <details class="advanced-options">
                 <summary>
                   <button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right advanced-arrow" aria-hidden="true" tabindex="-1"></button>
-                  <span>Advanced options</span>
+                  <span>Customize template</span>
                 </summary>
                 <div class="advanced-options-content">
                   <div class="grid-group-div">
