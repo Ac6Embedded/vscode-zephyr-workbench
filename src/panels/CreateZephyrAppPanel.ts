@@ -6,7 +6,7 @@ import { WestWorkspace } from "../models/WestWorkspace";
 import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
 import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
-import { fileExists, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getListSamples, getRegisteredZephyrSdkInstallations, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
+import { describeZephyrApplicationDetectionFailure, fileExists, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getListSamples, getRegisteredZephyrSdkInstallations, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 
@@ -534,6 +534,15 @@ async function handleCreateMessage(message: any) {
   const err = await validateProjectLocation(projectLoc);
   if (err) {
     vscode.window.showErrorMessage(err);
+    return;
+  }
+
+  // Fail fast on folders that can't be configured by Zephyr's build system,
+  // and tell the user which marker file is missing instead of dropping into
+  // the generic downstream "not a Zephyr project" message.
+  const detectionFailure = describeZephyrApplicationDetectionFailure(projectLoc);
+  if (detectionFailure) {
+    vscode.window.showErrorMessage(detectionFailure);
     return;
   }
 

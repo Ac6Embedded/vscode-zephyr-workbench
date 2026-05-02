@@ -435,9 +435,9 @@ export async function getListApplications(appsPath: string | undefined): Promise
       const filePath = vscode.Uri.joinPath(appsUri, name);
 
       if (type === vscode.FileType.Directory) {
-        const projConfPath = vscode.Uri.joinPath(filePath, "prj.conf");
-        try {
-          await vscode.workspace.fs.stat(projConfPath);
+        // Match the broader detection rule: any `prj*.conf` qualifies the
+        // folder as a Zephyr application candidate, not just `prj.conf`.
+        if (hasPrjConfLikeFile(filePath.fsPath)) {
           const workspaceFolder = vscode.workspace.getWorkspaceFolder(filePath);
           if (workspaceFolder) {
             const entry = findContainingWorkspaceApplicationEntry(workspaceFolder, filePath.fsPath);
@@ -447,8 +447,6 @@ export async function getListApplications(appsPath: string | undefined): Promise
               : new ZephyrApplication(workspaceFolder, filePath.fsPath);
             applications.push(application);
           }
-        } catch (error) {
-          // Not an application folder
         }
       }
     }
@@ -968,6 +966,59 @@ export async function validateProjectLocation(location: string) {
   if(!fileExists(location)) {
     return "Invalid project path.";
   }
+}
+
+// Zephyr's CMake supports a configurable Kconfig fragment filename via
+// CONF_FILE, with `prj.conf` as the default. Codebases that maintain several
+// build profiles often keep them side-by-side as `prj.conf`, `prjTEST.conf`,
+// `prj_release.conf`, etc. The detection logic accepts any `prj*.conf` so
+// those layouts are still recognised as Zephyr applications.
+export function hasPrjConfLikeFile(directoryPath: string): boolean {
+  try {
+    return fs.readdirSync(directoryPath).some(name => /^prj.*\.conf$/i.test(name));
+  } catch {
+    return false;
+  }
+}
+
+// Zephyr applications are recognised by a pair of markers at the project root:
+// a Kconfig fragment matching `prj*.conf` (loaded via CONF_FILE; default
+// `prj.conf`) and a `CMakeLists.txt` that calls `find_package(Zephyr)`. If
+// either is missing the build system cannot configure the project, so the
+// import would always fail downstream. Surface that earlier with a reason
+// the user can act on instead of a generic "not a Zephyr project" error.
+export function describeZephyrApplicationDetectionFailure(location: string): string | undefined {
+  if (!fileExists(location)) {
+    return `The folder '${location}' does not exist.`;
+  }
+
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(location);
+  } catch (error) {
+    return `Cannot access '${location}': ${error instanceof Error ? error.message : String(error)}.`;
+  }
+  if (!stats.isDirectory()) {
+    return `The selected path '${location}' is not a folder.`;
+  }
+
+  // Build the list of missing markers in one pass so the message can name
+  // them all together instead of failing the user one file at a time.
+  const missing: string[] = [];
+  if (!hasPrjConfLikeFile(location)) {
+    missing.push('prj*.conf');
+  }
+  if (!fileExists(path.join(location, 'CMakeLists.txt'))) {
+    missing.push('CMakeLists.txt');
+  }
+  if (missing.length === 0) {
+    return undefined;
+  }
+
+  return (
+    `The folder '${location}' was not detected as a Zephyr application: missing ${missing.join(' and ')}. ` +
+    `A Zephyr application needs at least a 'prj*.conf' Kconfig fragment (e.g. 'prj.conf', 'prj_XX.conf') and a 'CMakeLists.txt' that calls find_package(Zephyr) at its root.`
+  );
 }
 
 // Returns true if zinstaller_version is missing or below the minimum required

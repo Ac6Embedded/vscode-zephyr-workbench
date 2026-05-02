@@ -5,6 +5,7 @@ import {
   fileExists,
   getWestWorkspace,
   getZephyrSdkInstallation,
+  hasPrjConfLikeFile,
   tryGetZephyrSdkInstallation,
   findArmGnuToolchainInstallation,
   findIarToolchainInstallation,
@@ -387,12 +388,13 @@ export class ZephyrApplication {
   }
 
   static isApplicationPathLike(applicationPath: string): boolean {
-    return fileExists(path.join(applicationPath, 'prj.conf'));
+    // Accept any `prj*.conf` so projects with multiple build profiles
+    // (prjTEST.conf, prj_release.conf, ...) are still detected.
+    return hasPrjConfLikeFile(applicationPath);
   }
 
   static isApplicationFolder(folder: vscode.WorkspaceFolder): boolean {
-    const prjConfFile = vscode.Uri.joinPath(folder.uri, 'prj.conf');
-    return fileExists(prjConfFile.fsPath);
+    return hasPrjConfLikeFile(folder.uri.fsPath);
   }
 
   private static buildTerminalContext(application: ZephyrApplication) {
