@@ -173,15 +173,23 @@ export function getEffectiveWorkspaceApplicationEntry(
     return entries[0];
   }
 
+  // Honour the explicit selection when it points at a real entry. An empty
+  // or stale `selectedApplication` (e.g. a freshly-cloned west workspace
+  // that committed `applications` but not the selection, or one whose
+  // selected app was removed externally) falls through to the first
+  // declared entry so callers always see one application as selected.
   const selectedPath = getSelectedWorkspaceApplicationPath(workspaceFolder);
-  if (!selectedPath) {
-    return undefined;
+  if (selectedPath) {
+    const explicit = entries.find(entry => {
+      const appPath = resolveWorkspaceApplicationPath(entry, workspaceFolder);
+      return appPath ? normalizeForCompare(appPath) === normalizeForCompare(selectedPath) : false;
+    });
+    if (explicit) {
+      return explicit;
+    }
   }
 
-  return entries.find(entry => {
-    const appPath = resolveWorkspaceApplicationPath(entry, workspaceFolder);
-    return appPath ? normalizeForCompare(appPath) === normalizeForCompare(selectedPath) : false;
-  });
+  return entries[0];
 }
 
 export async function setSelectedWorkspaceApplicationPath(
@@ -264,11 +272,20 @@ export async function removeWorkspaceApplicationEntry(
     );
 
   const selectedPath = getSelectedWorkspaceApplicationPath(workspaceFolder);
-  // Selection is only meaningful when multiple workspace applications remain.
-  // Clearing it when the list drops to zero/one keeps settings compact and
-  // avoids leaving a stale pointer to an application that no longer exists.
-  if (filteredEntries.length <= 1 || (selectedPath && normalizeForCompare(selectedPath) === targetPath)) {
+  const removedSelected = !!selectedPath && normalizeForCompare(selectedPath) === targetPath;
+
+  if (filteredEntries.length <= 1) {
+    // Singleton/empty: selection is implicit, so clear the pointer to keep
+    // settings compact and avoid leaving a stale path on disk.
     await setSelectedWorkspaceApplicationPath(workspaceFolder, undefined);
+  } else if (removedSelected) {
+    // Multiple apps remain but the selected one was just deleted. Elect the
+    // first remaining entry instead of clearing — this keeps the workspace
+    // in the "always one selected" state even after destructive actions.
+    const fallbackPath = filteredEntries
+      .map(entry => resolveWorkspaceApplicationPath(entry, workspaceFolder))
+      .find((appPath): appPath is string => !!appPath);
+    await setSelectedWorkspaceApplicationPath(workspaceFolder, fallbackPath);
   }
 
   await cleanupEmptyWorkspaceSettings(workspaceFolder);
