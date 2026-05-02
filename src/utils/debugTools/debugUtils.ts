@@ -27,6 +27,7 @@ import { mergeOpenocdBuildFlag } from './debugToolSelectionUtils';
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 const LEGACY_ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY = 'zephyrWorkbenchAppRoot';
 const ZEPHYR_SDK_CONFIG_VARIABLE = '${config:zephyr-workbench.sdk}';
+const WORKSPACE_APPLICATION_DEBUG_CONFIG_SEPARATOR = ': ';
 
 interface LaunchConfigurationArtifacts {
   compatibleRunners: string[];
@@ -41,6 +42,54 @@ interface LaunchConfigurationPaths {
   program: string;
   debugServerPath: string;
   workspaceRelativeBuildDir: string;
+}
+
+function getWorkspaceApplicationDebugName(project: ZephyrApplication): string {
+  const relativePath = path
+    .relative(project.appWorkspaceFolder.uri.fsPath, project.appRootPath)
+    .replace(/\\/g, '/');
+
+  return relativePath && relativePath !== '.' && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
+    ? relativePath
+    : project.appName;
+}
+
+export function getDebugLaunchConfigurationName(
+  project: ZephyrApplication,
+  buildConfigName?: string,
+): string {
+  if (!project.isWestWorkspaceApplication) {
+    return getFreestandingDebugLaunchConfigurationName(buildConfigName);
+  }
+
+  // West workspace apps share one launch.json. Include the app path relative to
+  // the west workspace so same-named multibuild configs from different apps
+  // remain distinct and can be resolved from VS Code's Run dropdown.
+  const buildConfigSuffix = buildConfigName ? ` [${buildConfigName}]` : '';
+  return `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME}${WORKSPACE_APPLICATION_DEBUG_CONFIG_SEPARATOR}${getWorkspaceApplicationDebugName(project)}${buildConfigSuffix}`;
+}
+
+function getFreestandingDebugLaunchConfigurationName(buildConfigName?: string): string {
+  return `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME}${buildConfigName ? ` [${buildConfigName}]` : ''}`;
+}
+
+function stripTrailingBuildConfigSuffix(configName: string): string {
+  return configName.replace(/\s+\[[^\]]+\]\s*$/, '').trim();
+}
+
+export function extractDebugBuildConfigName(configName: string): string | undefined {
+  const match = configName.match(/\[([^\]]+)\]\s*$/);
+  return match ? match[1] : undefined;
+}
+
+export function extractWorkspaceApplicationPathFromDebugConfigName(configName: string): string | undefined {
+  const prefix = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME}${WORKSPACE_APPLICATION_DEBUG_CONFIG_SEPARATOR}`;
+  if (!configName.startsWith(prefix)) {
+    return undefined;
+  }
+
+  const appPath = stripTrailingBuildConfigSuffix(configName.slice(prefix.length));
+  return appPath.length > 0 ? appPath : undefined;
 }
 
 /**
@@ -924,7 +973,7 @@ export async function createLaunchConfiguration(
   let paths: LaunchConfigurationPaths | undefined;
 
   if (buildConfig) {
-    configName = `Zephyr Workbench Debug [${buildConfig.name}]`;
+    configName = getDebugLaunchConfigurationName(project, buildConfig.name);
     socToolchainName = buildConfig.getKConfigValue(project, 'SOC_TOOLCHAIN_NAME');
     paths = getLaunchConfigurationPaths(project, buildConfig);
   }
@@ -1115,12 +1164,7 @@ export async function findLaunchConfiguration(
   buildConfigName?: string,
   artifacts?: LaunchConfigurationArtifacts,
 ): Promise<any> {
-  let debugConfigName: string;
-  if(buildConfigName) {
-    debugConfigName = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`;
-  } else {
-    debugConfigName = ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME;
-  }
+  const debugConfigName = getDebugLaunchConfigurationName(project, buildConfigName);
 
   const matchingConfigurations = launchJson.configurations.filter((configuration: any) =>
     configuration && typeof configuration === 'object' && configuration.name === debugConfigName
@@ -1132,6 +1176,23 @@ export async function findLaunchConfiguration(
     }
     return matchingConfigurations[0];
   }
+
+  if (project.isWestWorkspaceApplication) {
+    const legacyConfigName = getFreestandingDebugLaunchConfigurationName(buildConfigName);
+    const legacyConfiguration = launchJson.configurations.find((configuration: any) =>
+      configuration && typeof configuration === 'object' && configuration.name === legacyConfigName
+    );
+    if (legacyConfiguration) {
+      // Workspace applications used to create freestanding-style names in the
+      // shared west workspace launch.json. Rename that one legacy entry to the
+      // app-specific name so existing launch.json files stop presenting an
+      // ambiguous "primary" config beside the new per-app entries.
+      legacyConfiguration.name = debugConfigName;
+      syncLaunchConfigurationProjectPaths(legacyConfiguration, project, buildConfigName, artifacts);
+      return legacyConfiguration;
+    }
+  }
+
   // Create and push a new configuration only if valid
   let newCfg: any;
   try {

@@ -15,11 +15,12 @@ import { changeEnvVarQuickStep } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
 import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_APPLICATIONS_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_SELECTED_APPLICATION_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
 import {
+	extractDebugBuildConfigName,
 	getLaunchConfiguration,
+	getDebugLaunchConfigurationName,
 	getRunner,
 	getFlashRunners,
 	getStaticFlashRunnerNames,
-	ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME,
 } from './utils/debugTools/debugUtils';
 import { ensureTerminalStickyScrollDisabled, executeTask, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
 import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
@@ -928,10 +929,7 @@ export function activate(context: vscode.ExtensionContext) {
 				const launchConfig = vscode.workspace.getConfiguration('launch', workspaceFolder.uri);
 				const configurations: vscode.DebugConfiguration[] = launchConfig.get('configurations', []);
 
-				let configName = ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME;
-				if (buildConfigName) {
-					configName = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`;
-				}
+				const configName = getDebugLaunchConfigurationName(project, buildConfigName);
 
 				const launchConfiguration = findLaunchConfigurationForProject(configurations, configName);
 
@@ -3240,11 +3238,6 @@ function getBuildConfigCompileCommandsPath(
 		return path.join(buildDir, path.basename(project.appRootPath), 'compile_commands.json');
 	}
 	return path.join(buildDir, 'compile_commands.json');
-}
-
-function extractDebugBuildConfigName(debugConfigName: string): string | undefined {
-	const match = debugConfigName.match(/\[(.*?)\]/);
-	return match ? match[1] : undefined;
 }
 
 function findLaunchConfigurationForProject(

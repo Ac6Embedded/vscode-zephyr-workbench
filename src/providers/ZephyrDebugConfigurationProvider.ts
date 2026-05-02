@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
+import path from 'path';
 import { findConfigTask, getZephyrApplication } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
-import { createOpenocdCfg, createWestWrapper, syncLaunchConfigurationProjectPaths } from '../utils/debugTools/debugUtils';
+import { createOpenocdCfg, createWestWrapper, extractDebugBuildConfigName, extractWorkspaceApplicationPathFromDebugConfigName, syncLaunchConfigurationProjectPaths } from '../utils/debugTools/debugUtils';
 import { ZephyrApplication } from '../models/ZephyrApplication';
 import { getTerminalDefaultProfile } from '../utils/execUtils';
 
@@ -12,11 +13,15 @@ export class ZephyrDebugConfigurationProvider implements vscode.DebugConfigurati
     // settings were changed.
     if (config.name.startsWith('Zephyr Workbench Debug')) {
       if(folder) {
-        // West workspace applications intentionally share launch.json with the
-        // workspace. Resolve through the selected application setting at launch
-        // time instead of storing extension-private keys inside cppdbg entries.
-        const appProject = await getZephyrApplication(folder.uri.fsPath);
-        const buildConfigName = this.extractBuildConfigName(config.name);
+        const workspaceApplicationPath = extractWorkspaceApplicationPathFromDebugConfigName(config.name);
+        // Workspace-app launch configurations include the app path in their
+        // name because they all live in the west workspace launch.json. Resolve
+        // that explicit app path first so launching from VS Code's Run dropdown
+        // does not depend on whichever app is currently selected.
+        const appProject = await getZephyrApplication(workspaceApplicationPath
+          ? path.join(folder.uri.fsPath, workspaceApplicationPath)
+          : folder.uri.fsPath);
+        const buildConfigName = extractDebugBuildConfigName(config.name);
         const runnerName = WestRunner.extractRunner(config.debugServerArgs);
         syncLaunchConfigurationProjectPaths(config, appProject, buildConfigName);
 
@@ -40,11 +45,6 @@ export class ZephyrDebugConfigurationProvider implements vscode.DebugConfigurati
       }
     }
     return config;
-  }
-
-  extractBuildConfigName(debugConfigName: string): string | undefined {
-    const match = debugConfigName.match(/\[(.*?)\]/);
-    return match ? match[1] : undefined;
   }
 
   async runPreLaunch(appProject: ZephyrApplication, buildConfigName: string): Promise<void> {
