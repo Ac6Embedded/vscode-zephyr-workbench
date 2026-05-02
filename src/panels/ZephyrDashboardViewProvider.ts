@@ -1,7 +1,13 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
+import { WestWorkspace } from '../models/WestWorkspace';
 import { ZephyrApplication } from '../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
-import { isPathWithin as isPathWithinWorkspaceApplication } from '../utils/zephyr/workspaceApplications';
+import {
+	getEffectiveWorkspaceApplicationEntry,
+	isPathWithin as isPathWithinWorkspaceApplication,
+	resolveWorkspaceApplicationPath,
+} from '../utils/zephyr/workspaceApplications';
 import { getNonce } from '../utilities/getNonce';
 import { readZephyrBuildSummary, type ZephyrBuildSummary } from '../utils/zephyr/buildSummaryParser';
 import { readZephyrMemoryReport, type ZephyrMemoryReport } from '../utils/zephyr/memoryReportParser';
@@ -292,6 +298,24 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			const activeProject = projects.find(project => isPathWithinWorkspaceApplication(project.appRootPath, editor.document.uri.fsPath));
 			if (activeProject) {
 				return activeProject;
+			}
+
+			// File is somewhere inside a west workspace but outside any app folder
+			// (e.g. shared modules, workspace root). Fall back to that workspace's
+			// selected application so the dashboard tracks the user's last
+			// explicit selection instead of going blank.
+			if (WestWorkspace.isWestWorkspaceFolder(activeEditorFolder)) {
+				const selectedEntry = getEffectiveWorkspaceApplicationEntry(activeEditorFolder);
+				const selectedPath = selectedEntry
+					? resolveWorkspaceApplicationPath(selectedEntry, activeEditorFolder)
+					: undefined;
+				if (selectedPath) {
+					const normalizedSelectedPath = path.normalize(selectedPath);
+					const selectedProject = projects.find(project => path.normalize(project.appRootPath) === normalizedSelectedPath);
+					if (selectedProject) {
+						return selectedProject;
+					}
+				}
 			}
 
 			return undefined;
