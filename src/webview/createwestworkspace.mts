@@ -90,6 +90,8 @@ function main() {
 
   // Initialize branch values
   remotePathChanged(remotePathText.value, srcTypeRadioGroup.value);
+
+  wireAdvancedOptions();
 }
 
 function initBranchDropdown() {
@@ -355,6 +357,7 @@ function modifySrcTypeHandler(this: HTMLElement) {
   const templatesGroup = document.getElementById("templatesGroup") as HTMLDivElement;
   const srcRemoteBranchGroup = document.getElementById("branchGroup") as HTMLDivElement;
   const manifestGroup = document.getElementById("manifestGroup") as HTMLDivElement;
+  const advancedTemplateGroup = document.getElementById("advancedTemplateGroup") as HTMLDivElement | null;
 
   // Enable/Disable form section depending on user choice
   if(srcTypeRadioGroup.value === 'remote') {
@@ -370,7 +373,8 @@ function modifySrcTypeHandler(this: HTMLElement) {
     srcRemotePath.style.display = "block";
     srcRemoteBranchGroup.style.display = "block";
     manifestGroup.style.display = "block";
-    
+    if (advancedTemplateGroup) { advancedTemplateGroup.style.display = "none"; }
+
     //remotePathChanged(srcRemotePath.value, srcTypeRadioGroup.value, false);
   } else if(srcTypeRadioGroup.value === 'local') {
     srcRemotePath.setAttribute('disabled', '');
@@ -382,6 +386,7 @@ function modifySrcTypeHandler(this: HTMLElement) {
     srcRemotePath.style.display = "none";
     srcRemoteBranchGroup.style.display = "none";
     manifestGroup.style.display = "none";
+    if (advancedTemplateGroup) { advancedTemplateGroup.style.display = "none"; }
   } else if(srcTypeRadioGroup.value === 'manifest') {
     srcRemotePath.setAttribute('disabled', '');
     srcRemoteBranch.setAttribute('disabled', '');
@@ -393,18 +398,35 @@ function modifySrcTypeHandler(this: HTMLElement) {
     srcRemotePath.style.display = "none";
     srcRemoteBranchGroup.style.display = "none";
     manifestGroup.style.display  = "block";
+    if (advancedTemplateGroup) { advancedTemplateGroup.style.display = "none"; }
   } else if(srcTypeRadioGroup.value === 'template') {
     srcRemotePath.value = "https://github.com/zephyrproject-rtos/zephyr";
-    lastUrl = srcRemotePath.value; 
+    lastUrl = srcRemotePath.value;
     srcRemotePath.setAttribute('disabled', '');
     srcRemoteBranch.removeAttribute('disabled');
     templatesGroup.style.display = "block";
     srcRemotePath.style.display = "block";
     srcRemoteBranchGroup.style.display = "block";
     manifestGroup.style.display  = "none";
-    
+    if (advancedTemplateGroup) { advancedTemplateGroup.style.display = "block"; }
+
     //remotePathChanged(srcRemotePath.value, srcTypeRadioGroup.value, false);
   }
+}
+
+function wireAdvancedOptions() {
+  const advancedDetails = document.querySelector('.advanced-options') as HTMLDetailsElement | null;
+  const advancedArrow = document.querySelector('.advanced-arrow') as HTMLElement | null;
+  if (!advancedDetails || !advancedArrow) {
+    return;
+  }
+  const sync = () => {
+    const isOpen = advancedDetails.open;
+    advancedArrow.classList.toggle('codicon-chevron-right', !isOpen);
+    advancedArrow.classList.toggle('codicon-chevron-down', isOpen);
+  };
+  advancedDetails.addEventListener('toggle', sync);
+  sync();
 }
 
 function browseLocationHandler(this: HTMLElement, ev: MouseEvent) {
@@ -437,6 +459,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const srcRemoteBranch = document.getElementById("branchInput") as TextField;
   const templateInput = document.getElementById("templateInput") as TextField;
   const manifestPath = document.getElementById("manifestPath") as TextField;
+  const manifestDirField = document.getElementById("manifestDir") as TextField | null;
   const workspacePath = document.getElementById("workspacePath") as TextField;
   
   // Get template mode (Full or Minimal)
@@ -458,6 +481,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       remoteBranch: srcRemoteBranch.value,
       templateHal: templateInput.getAttribute('data-value'),
       manifestPath: manifestPath.value,
+      manifestDir: manifestDirField ? manifestDirField.value : undefined,
       workspacePath: workspacePath.value,
       templateMode: templateModeValue
     }

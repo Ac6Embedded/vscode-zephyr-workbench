@@ -30,22 +30,39 @@ export async function westInitCommand(srcUrl: string, srcRev: string, workspaceP
     }
   } else {
     if (manifestPath !== '' && fileExists(manifestPath)) {
-      let manifestDir = path.join(workspacePath, 'manifest');
       let manifestFile = path.basename(manifestPath);
-      const destFilePath = path.join(manifestDir, manifestFile);
+      let manifestDir: string;
 
-      // If the manifest is not already in the destination folder 
-      if (destFilePath !== manifestPath) {
-        // If init from manifest, prepare directory
-        if (!fileExists(workspacePath)) {
-          fs.mkdirSync(workspacePath);
-        }
-        fs.mkdirSync(manifestDir);
+      // If the manifest already lives inside the workspace (e.g. the template flow
+      // wrote it under <workspace>/manifest/ or <workspace>/<custom>/), use that
+      // location directly. Only fall back to the legacy <workspace>/manifest/ copy
+      // when the user picked an external file we need to bring into the workspace.
+      const absManifest = path.resolve(manifestPath);
+      const absWorkspace = path.resolve(workspacePath);
+      const insideWorkspace =
+        absManifest === path.join(absWorkspace, manifestFile) ||
+        absManifest.startsWith(absWorkspace + path.sep);
 
-        if (!fileExists(destFilePath)) {
-          fs.cpSync(manifestPath, destFilePath);
+      if (insideWorkspace) {
+        manifestDir = path.dirname(absManifest);
+      } else {
+        manifestDir = path.join(workspacePath, 'manifest');
+        const destFilePath = path.join(manifestDir, manifestFile);
+
+        if (destFilePath !== manifestPath) {
+          if (!fileExists(workspacePath)) {
+            fs.mkdirSync(workspacePath);
+          }
+          if (!fileExists(manifestDir)) {
+            fs.mkdirSync(manifestDir, { recursive: true });
+          }
+
+          if (!fileExists(destFilePath)) {
+            fs.cpSync(manifestPath, destFilePath);
+          }
         }
       }
+
       manifestFile = normalizePath(manifestFile);
       manifestFile = normalizePathForShell(classifyShell(getShellExe()), manifestFile);
       manifestDir = normalizePath(manifestDir);

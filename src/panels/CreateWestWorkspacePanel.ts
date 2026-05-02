@@ -202,6 +202,20 @@ export class CreateWestWorkspacePanel {
               <vscode-button id="browseManifestButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
             </div>
 
+            <div class="grid-group-div" id="advancedTemplateGroup">
+              <details class="advanced-options">
+                <summary>
+                  <button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right advanced-arrow" aria-hidden="true" tabindex="-1"></button>
+                  <span>Advanced options</span>
+                </summary>
+                <div class="advanced-options-content">
+                  <div class="grid-group-div">
+                    <vscode-text-field size="50" type="text" id="manifestDir" value="manifest" placeholder="(empty for workspace root)">west.yml subfolder:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Subfolder under the workspace where the generated west.yml will be written. Leave empty to put west.yml directly at the workspace root.">?</span></vscode-text-field>
+                  </div>
+                </div>
+              </details>
+            </div>
+
             <div class="grid-group-div" id="locationGroup">
               <vscode-text-field class="browse-field" size="50" type="text" id="workspacePath" value="">Location:</vscode-text-field>
               <vscode-button id="browseLocationButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
@@ -218,6 +232,7 @@ export class CreateWestWorkspacePanel {
               const templateModeGroup = document.getElementById('templateModeGroup');
               const templateModeRadios = document.getElementById('templateMode');
               const templatesGroup = document.getElementById('templatesGroup');
+              const advancedTemplateGroup = document.getElementById('advancedTemplateGroup');
 
               let currentSrcType = 'template';
               let currentTemplateMode = 'minimal';
@@ -228,6 +243,9 @@ export class CreateWestWorkspacePanel {
 
                 templateModeGroup.style.display = inTemplateSource ? 'block' : 'none';
                 templatesGroup.style.display = (inTemplateSource && isMinimal) ? 'block' : 'none';
+                if (advancedTemplateGroup) {
+                  advancedTemplateGroup.style.display = inTemplateSource ? 'block' : 'none';
+                }
               }
 
               srcTypeGroup?.querySelectorAll('vscode-radio').forEach(radio => {
@@ -322,6 +340,7 @@ export class CreateWestWorkspacePanel {
         let remoteBranch;
         let workspacePath;
         let manifestPath;
+        let manifestDir;
         let templateHal;
         let templateMode;
 
@@ -347,6 +366,7 @@ export class CreateWestWorkspacePanel {
             remoteBranch = message.remoteBranch;
             workspacePath = message.workspacePath;
             manifestPath = message.manifestPath;
+            manifestDir = message.manifestDir;
             templateHal = message.templateHal;
             this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: workspacePath, id: 'workspacePath'});
 
@@ -378,8 +398,8 @@ export class CreateWestWorkspacePanel {
             } else if(srcType === 'manifest') {
               vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestPath);
             } else if(srcType === 'template') {
-              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode);
-            } 
+              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir);
+            }
             break;
         }
       },

@@ -30,7 +30,14 @@ export const listHals: any[] = [
   { label: "xtensa", name: "hal_xtensa" }
 ];
 
-export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isFull: boolean) {
+/**
+ * Write a generated west.yml under `workspacePath`. By default it goes into a
+ * `manifest/` subfolder (the legacy convention), but callers can override:
+ *   - undefined / 'manifest' → <workspacePath>/manifest/west.yml (default)
+ *   - any other non-empty string → <workspacePath>/<subfolder>/west.yml
+ *   - empty string → <workspacePath>/west.yml (no subfolder)
+ */
+export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isFull: boolean, manifestSubfolder?: string) {
   let manifestYaml;
   if (isFull) {
     // Full manifest structure
@@ -69,9 +76,10 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
   if(!fileExists(workspacePath)) {
     fs.mkdirSync(workspacePath);
   }
-  let manifestDir = path.join(workspacePath, 'manifest');
+  const subfolder = (manifestSubfolder ?? 'manifest').trim();
+  const manifestDir = subfolder.length > 0 ? path.join(workspacePath, subfolder) : workspacePath;
   if (!fileExists(manifestDir)) {
-    fs.mkdirSync(manifestDir);
+    fs.mkdirSync(manifestDir, { recursive: true });
   }
 
   const destFilePath = path.join(manifestDir, 'west.yml');
