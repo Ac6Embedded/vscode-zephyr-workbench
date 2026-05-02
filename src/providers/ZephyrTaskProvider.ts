@@ -216,6 +216,20 @@ const dtDoctorTask: ZephyrTaskDefinition = {
   ]
 };
 
+const westDashboardTask: ZephyrTaskDefinition = {
+  label: "West Dashboard",
+  type: ZEPHYR_TASK_TYPE,
+  problemMatcher: [],
+  command: "west",
+  config: "primary",
+  args: [
+    "build",
+    "-t dashboard",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
+  ]
+};
+
 const spdxInitTask: ZephyrTaskDefinition = {
   label: "SPDX init",
   type: ZEPHYR_TASK_TYPE,
@@ -254,6 +268,7 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [romPlotTask.label, romPlotTask],
   [puncoverTask.label, puncoverTask],
   [dtDoctorTask.label, dtDoctorTask],
+  [westDashboardTask.label, westDashboardTask],
   [spdxInitTask.label, spdxInitTask],
   [spdxGenerateTask.label, spdxGenerateTask]
 ]);

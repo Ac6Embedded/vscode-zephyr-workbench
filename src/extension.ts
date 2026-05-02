@@ -327,7 +327,7 @@ export function activate(context: vscode.ExtensionContext) {
 		zephyrAppProvider.refresh();
 		void dashboardViewProvider.refresh();
 	});
-	vscode.commands.registerCommand('zephyr-workbench.dashboard.refresh', () => dashboardViewProvider.refresh());
+	vscode.commands.registerCommand('zephyr-workbench.workbench-dashboard.refresh', () => dashboardViewProvider.refresh());
 
 	vscode.commands.registerCommand('zephyr-workbench.build-app', async () => {
 		let currentProject = getCurrentWorkspaceFolder();
@@ -372,8 +372,38 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench.dashboard.open', async (node?: any) => {
+		vscode.commands.registerCommand('zephyr-workbench.workbench-dashboard.open', async (node?: any) => {
 			await dashboardViewProvider.reveal(node);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench.west-dashboard.open', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
+			if (!node?.project) {
+				return;
+			}
+
+			const buildConfig = node instanceof ZephyrConfigTreeItem
+				? node.buildConfig
+				: (node.project.buildConfigs.find(c => c.active) ?? node.project.buildConfigs[0]);
+			if (!buildConfig) {
+				return;
+			}
+
+			// `executeConfigTask` resolves AFTER the task finishes (it awaits our
+			// `executeTask` end-listener internally). Once it returns, the dashboard
+			// artifact should be on disk if the build succeeded.
+			const taskExec = await executeConfigTask('West Dashboard', node);
+			if (!taskExec || taskExec.length === 0) {
+				return;
+			}
+
+			const dashboardHtml = path.join(buildConfig.getBuildDir(node.project), 'dashboard', 'index.html');
+			if (fs.existsSync(dashboardHtml)) {
+				await vscode.env.openExternal(vscode.Uri.file(dashboardHtml));
+			} else {
+				vscode.window.showWarningMessage(`Dashboard not generated: ${dashboardHtml} not found.`);
+			}
 		})
 	);
 
