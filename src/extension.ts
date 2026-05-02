@@ -21,6 +21,7 @@ import {
 	getRunner,
 	getFlashRunners,
 	getStaticFlashRunnerNames,
+	removeApplicationLaunchConfigurations,
 } from './utils/debugTools/debugUtils';
 import { ensureTerminalStickyScrollDisabled, executeTask, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
 import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
@@ -34,7 +35,7 @@ import { HostToolsPanel } from './panels/HostToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { EclairManagerPanel } from './panels/EclairManagerPanel';
 import { ZephyrDashboardViewProvider } from './panels/ZephyrDashboardViewProvider';
-import { changeToolchainQuickStep } from "./quicksteps/changeToolchainQuickStep";
+import { changeToolchainQuickStep, ToolchainVariantPick } from "./quicksteps/changeToolchainQuickStep";
 import { getBoardFromIdentifier } from './utils/zephyr/boardDiscovery';
 import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
@@ -78,6 +79,22 @@ let statusBarDebugItem: vscode.StatusBarItem;
 // workspace. Hidden for freestanding apps and when the active file isn't part
 // of any west workspace that declares applications.
 let statusBarSelectedAppItem: vscode.StatusBarItem;
+
+function hasApplicationToolchainChanged(project: ZephyrApplication, pick: ToolchainVariantPick): boolean {
+	if (project.toolchainVariant !== pick.selectedVariant) {
+		return true;
+	}
+
+	if (pick.selectedVariant === 'gnuarmemb') {
+		return (project.selectedArmGnuToolchainInstallation?.toolchainPath ?? '') !== (pick.armGnuToolchainPath ?? '');
+	}
+
+	if (pick.selectedVariant === 'iar') {
+		return (project.selectedIarToolchainInstallation?.iarPath ?? '') !== (pick.iarToolchainPath ?? '');
+	}
+
+	return (project.zephyrSdkPath ?? '') !== (pick.zephyrSdkPath ?? '');
+}
 let zephyrTaskProvider: vscode.Disposable | undefined;
 let zephyrDebugConfigurationProvide: vscode.Disposable | undefined;
 const WEST_FLAGS_D_LABEL = 'west Flags -D';
@@ -1273,6 +1290,7 @@ export function activate(context: vscode.ExtensionContext) {
 				const pick = await changeToolchainQuickStep(context, node.project);
 				if (!pick) { return; }
 
+				const toolchainChanged = hasApplicationToolchainChanged(node.project, pick);
 				if (pick.selectedVariant === "zephyr" || pick.selectedVariant === "zephyr/llvm") {
 					await updateApplicationSettings(node.project, {
 						[ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY]: pick.selectedVariant,
@@ -1347,6 +1365,15 @@ export function activate(context: vscode.ExtensionContext) {
 						} catch {
 							// Keep the toolchain change even if the compiler path cannot be refreshed yet.
 						}
+					}
+				}
+
+				if (toolchainChanged) {
+					try {
+						await removeApplicationLaunchConfigurations(node.project);
+					} catch (error) {
+						console.error('Failed to remove stale debug launch configurations after toolchain change', error);
+						vscode.window.showWarningMessage('Toolchain changed, but stale debug launch configurations could not be removed.');
 					}
 				}
 			}

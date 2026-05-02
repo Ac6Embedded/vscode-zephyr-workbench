@@ -23,6 +23,7 @@ import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeO
 import { ParsedRunnersYaml, findRunnersYamlForProject, getRunnerPathFromRunnersYaml, readRunnersYamlFile, readRunnersYamlForBuildDir, readRunnersYamlForProject } from '../zephyr/runnersYamlUtils';
 import { composeWestBuildArgs } from '../zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from './debugToolSelectionUtils';
+import { cleanupEmptyWorkspaceSettings } from '../vscodeWorkspaceCleanup';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 const LEGACY_ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY = 'zephyrWorkbenchAppRoot';
@@ -1151,6 +1152,61 @@ export function writeLaunchJson(launchJson: any, project: ZephyrApplication) {
   const launchDir = path.join(project.appWorkspaceFolder.uri.fsPath, '.vscode');
   fs.mkdirSync(launchDir, { recursive: true });
   fs.writeFileSync(path.join(launchDir, 'launch.json'), JSON.stringify(launchJson, null, 2));
+}
+
+function isLaunchConfigurationForApplication(project: ZephyrApplication, configuration: any): boolean {
+  if (!configuration || typeof configuration !== 'object' || typeof configuration.name !== 'string') {
+    return false;
+  }
+
+  if (!project.isWestWorkspaceApplication) {
+    // Freestanding applications own their launch.json, so every Zephyr
+    // Workbench debug entry in that file belongs to this application,
+    // including stale multibuild entries no longer present in settings.
+    return configuration.name === ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME
+      || configuration.name.startsWith(`${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [`);
+  }
+
+  // West workspace applications share the west root launch.json. Only remove
+  // names scoped with this app path, otherwise changing one app's toolchain
+  // could delete another app's debug configuration.
+  const appConfigPrefix = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME}${WORKSPACE_APPLICATION_DEBUG_CONFIG_SEPARATOR}${getWorkspaceApplicationDebugName(project)}`;
+  return configuration.name === appConfigPrefix
+    || configuration.name.startsWith(`${appConfigPrefix} [`);
+}
+
+function hasOnlyLaunchConfigurationKeys(launchJson: any): boolean {
+  return Object.keys(launchJson).every(key => key === 'version' || key === 'configurations');
+}
+
+export async function removeApplicationLaunchConfigurations(project: ZephyrApplication): Promise<number> {
+  const launchPath = path.join(project.appWorkspaceFolder.uri.fsPath, '.vscode', 'launch.json');
+  if (!fs.existsSync(launchPath)) {
+    return 0;
+  }
+
+  const launchJson = await readLaunchJson(project);
+  if (!launchJson || !Array.isArray(launchJson.configurations)) {
+    return 0;
+  }
+
+  const nextConfigurations = launchJson.configurations.filter((configuration: any) =>
+    !isLaunchConfigurationForApplication(project, configuration)
+  );
+  const removedCount = launchJson.configurations.length - nextConfigurations.length;
+  if (removedCount === 0) {
+    return 0;
+  }
+
+  if (nextConfigurations.length === 0 && hasOnlyLaunchConfigurationKeys(launchJson)) {
+    await fs.promises.unlink(launchPath);
+    await cleanupEmptyWorkspaceSettings(project.appWorkspaceFolder);
+    return removedCount;
+  }
+
+  launchJson.configurations = nextConfigurations;
+  writeLaunchJson(launchJson, project);
+  return removedCount;
 }
 
 export function pyocdLaunchJson(
