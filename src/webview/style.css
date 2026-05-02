@@ -1055,18 +1055,18 @@ vscode-button {
   background-color: color-mix(in srgb, var(--vscode-editor-foreground) 3%, transparent);
 }
 
-.additional-projects-section {
+.projects-section {
   width: min(100%, calc(var(--design-unit) * 114px + 98px));
 }
 
-.additional-projects-header {
+.projects-header {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
 }
 
-.additional-projects-spinner {
+.projects-spinner {
   display: none;
   width: 14px;
   height: 14px;
@@ -1074,18 +1074,18 @@ vscode-button {
   min-height: 14px;
 }
 
-.additional-projects-spinner.is-loading {
+.projects-spinner.is-loading {
   display: inline-block;
 }
 
-.additional-projects-list {
+.projects-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-bottom: 6px;
 }
 
-.additional-project-row {
+.project-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1096,24 +1096,24 @@ vscode-button {
   box-sizing: border-box;
 }
 
-.additional-project-name {
+.project-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   padding-right: 8px;
 }
 
-.additional-project-remove {
+.project-remove {
   flex: 0 0 auto;
 }
 
-.additional-projects-empty,
-.additional-projects-status {
+.projects-empty,
+.projects-status {
   color: var(--vscode-descriptionForeground);
   min-height: 18px;
 }
 
-.additional-projects-status {
+.projects-status {
   margin-bottom: 6px;
 }
 

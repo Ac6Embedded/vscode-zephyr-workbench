@@ -9,9 +9,10 @@ const webviewApi = acquireVsCodeApi();
 
 let lastUrl = '';
 let inputTimeout: NodeJS.Timeout | null = null;
-let additionalProjects: string[] = [];
-let additionalProjectsRequestId = 0;
-let additionalProjectsLoadingTimeout: ReturnType<typeof setTimeout> | undefined;
+let projects: string[] = [];
+let selectedTemplateProject = '';
+let projectRequestId = 0;
+let projectLoadingTimeout: ReturnType<typeof setTimeout> | undefined;
 
 window.addEventListener("load", main);
 
@@ -28,7 +29,7 @@ function main() {
 
   initTemplatesDropdown();
   initBranchDropdown();
-  initAdditionalProjects();
+  initProjects();
 
   lastUrl = remotePathText.value;
 
@@ -179,6 +180,7 @@ function initTemplatesDropdown() {
   });
 
   templateInput.addEventListener('input', () => {
+    syncProjectsFromTemplate();
     webviewApi.postMessage(
       { 
         command: 'templateChanged',
@@ -206,6 +208,7 @@ function initTemplatesDropdown() {
   if (defaultItem) {
     defaultItem.click();
   }
+  syncProjectsFromTemplate(true);
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -271,24 +274,24 @@ function setVSCodeMessageListener() {
       case 'updateBranchDropdown':
         updateBranchDropdown(event.data.branchHTML, event.data.branch);
         break;
-      case 'additionalProjectSelected':
-        if (!isCurrentAdditionalProjectRequest(event.data.requestId)) { break; }
-        setAdditionalProjectsLoading(false);
-        addAdditionalProject(event.data.projectName);
+      case 'projectSelected':
+        if (!isCurrentProjectRequest(event.data.requestId)) { break; }
+        setProjectsLoading(false);
+        addProject(event.data.projectName);
         break;
-      case 'additionalProjectSuggestionsReady':
-        if (!isCurrentAdditionalProjectRequest(event.data.requestId)) { break; }
-        setAdditionalProjectsLoading(false, 'Choose a project from the picker...');
+      case 'projectSuggestionsReady':
+        if (!isCurrentProjectRequest(event.data.requestId)) { break; }
+        setProjectsLoading(false, 'Choose a project from the picker...');
         break;
-      case 'additionalProjectSelectionCancelled':
-        if (!isCurrentAdditionalProjectRequest(event.data.requestId)) { break; }
-        setAdditionalProjectsLoading(false);
-        setAdditionalProjectsStatus('');
+      case 'projectSelectionCancelled':
+        if (!isCurrentProjectRequest(event.data.requestId)) { break; }
+        setProjectsLoading(false);
+        setProjectsStatus('');
         break;
-      case 'additionalProjectSelectionError':
-        if (!isCurrentAdditionalProjectRequest(event.data.requestId)) { break; }
-        setAdditionalProjectsLoading(false);
-        setAdditionalProjectsStatus(event.data.message || 'Could not load additional projects.');
+      case 'projectSelectionError':
+        if (!isCurrentProjectRequest(event.data.requestId)) { break; }
+        setProjectsLoading(false);
+        setProjectsStatus(event.data.message || 'Could not load projects.');
         break;
     }
   });
@@ -370,92 +373,123 @@ function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputEl
   }
 }
 
-function initAdditionalProjects() {
-  const addButton = document.getElementById('addAdditionalProjectButton') as Button | HTMLButtonElement | null;
+function initProjects() {
+  const addButton = document.getElementById('addProjectButton') as Button | HTMLButtonElement | null;
   addButton?.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    requestAdditionalProject();
+    requestProject();
   });
-  setAdditionalProjectsLoading(false);
-  renderAdditionalProjects();
+  setProjectsLoading(false);
+  syncProjectsFromTemplate(true);
 }
 
-function requestAdditionalProject() {
+function getTemplateProjectDefaults(): string[] {
+  const configuredProjects = (window as any).zephyrWorkbenchTemplateProjects;
+  return Array.isArray(configuredProjects)
+    ? configuredProjects.filter((projectName): projectName is string => typeof projectName === 'string' && projectName.length > 0)
+    : [];
+}
+
+function getCurrentTemplateProject(): string {
+  const templateInput = document.getElementById('templateInput') as HTMLInputElement | null;
+  return templateInput?.getAttribute('data-value') || '';
+}
+
+function buildTemplateProjects(templateProject: string): string[] {
+  const names: string[] = [];
+  for (const projectName of [...getTemplateProjectDefaults(), templateProject]) {
+    if (projectName && !names.includes(projectName)) {
+      names.push(projectName);
+    }
+  }
+  return names;
+}
+
+function syncProjectsFromTemplate(force = false) {
+  const templateProject = getCurrentTemplateProject();
+  if (force || templateProject !== selectedTemplateProject) {
+    selectedTemplateProject = templateProject;
+    projects = buildTemplateProjects(templateProject);
+  }
+  renderProjects();
+}
+
+function requestProject() {
   const srcRemotePath = document.getElementById("remotePath") as TextField;
   const srcRemoteBranch = document.getElementById("branchInput") as HTMLInputElement;
-  const requestId = ++additionalProjectsRequestId;
-  setAdditionalProjectsLoading(true, 'Loading projects...');
+  const requestId = ++projectRequestId;
+  setProjectsLoading(true, 'Loading projects...');
   webviewApi.postMessage({
-    command: 'selectAdditionalProject',
+    command: 'selectProject',
     requestId,
     remotePath: srcRemotePath.value,
     remoteBranch: srcRemoteBranch.value,
-    selectedProjects: additionalProjects,
+    projects: projects,
   });
 }
 
-function isCurrentAdditionalProjectRequest(requestId: number | undefined): boolean {
-  return typeof requestId !== 'number' || requestId === additionalProjectsRequestId;
+function isCurrentProjectRequest(requestId: number | undefined): boolean {
+  return typeof requestId !== 'number' || requestId === projectRequestId;
 }
 
-function addAdditionalProject(projectName: string | undefined) {
-  if (!projectName || additionalProjects.includes(projectName)) {
-    renderAdditionalProjects();
+function addProject(projectName: string | undefined) {
+  if (!projectName || projects.includes(projectName)) {
+    renderProjects();
     return;
   }
-  additionalProjects = [...additionalProjects, projectName];
-  setAdditionalProjectsStatus('');
-  renderAdditionalProjects();
+  projects = [...projects, projectName];
+  setProjectsStatus('');
+  renderProjects();
 }
 
-function removeAdditionalProject(projectName: string) {
-  additionalProjects = additionalProjects.filter(name => name !== projectName);
-  renderAdditionalProjects();
+function removeProject(projectName: string) {
+  projects = projects.filter(name => name !== projectName);
+  renderProjects();
 }
 
-function renderAdditionalProjects() {
-  const list = document.getElementById('additionalProjectsList') as HTMLElement | null;
+function renderProjects() {
+  const list = document.getElementById('projectsList') as HTMLElement | null;
   if (!list) {
     return;
   }
 
   list.innerHTML = '';
-  if (additionalProjects.length === 0) {
+  if (projects.length === 0) {
     const empty = document.createElement('div');
-    empty.className = 'additional-projects-empty';
+    empty.className = 'projects-empty';
     empty.textContent = 'None';
     list.appendChild(empty);
     return;
   }
 
-  for (const projectName of additionalProjects) {
+  for (const projectName of projects) {
     const row = document.createElement('div');
-    row.className = 'additional-project-row';
+    row.className = 'project-row';
 
     const label = document.createElement('span');
-    label.className = 'additional-project-name';
+    label.className = 'project-name';
     label.textContent = projectName;
     row.appendChild(label);
 
     const removeButton = document.createElement('button');
     removeButton.type = 'button';
-    removeButton.className = 'inline-icon-button codicon codicon-remove additional-project-remove';
+    removeButton.className = 'inline-icon-button codicon codicon-remove project-remove';
     removeButton.title = `Remove ${projectName}`;
     removeButton.setAttribute('aria-label', `Remove ${projectName}`);
-    removeButton.addEventListener('click', () => removeAdditionalProject(projectName));
+    removeButton.addEventListener('click', () => removeProject(projectName));
     row.appendChild(removeButton);
 
     list.appendChild(row);
   }
 }
 
-function setAdditionalProjectsLoading(isLoading: boolean, message = '') {
-  const spinner = document.getElementById('additionalProjectsSpinner') as HTMLElement | null;
-  const addButton = document.getElementById('addAdditionalProjectButton') as HTMLElement | null;
-  if (additionalProjectsLoadingTimeout) {
-    clearTimeout(additionalProjectsLoadingTimeout);
-    additionalProjectsLoadingTimeout = undefined;
+function setProjectsLoading(isLoading: boolean, message = '') {
+  const spinner = document.getElementById('projectsSpinner') as HTMLElement | null;
+  const addButton = document.getElementById('addProjectButton') as HTMLElement | null;
+  if (projectLoadingTimeout) {
+    clearTimeout(projectLoadingTimeout);
+    projectLoadingTimeout = undefined;
   }
   if (spinner) {
     spinner.classList.toggle('hidden', !isLoading);
@@ -469,18 +503,18 @@ function setAdditionalProjectsLoading(isLoading: boolean, message = '') {
     }
   }
   if (isLoading) {
-    const requestId = additionalProjectsRequestId;
-    additionalProjectsLoadingTimeout = setTimeout(() => {
-      if (requestId === additionalProjectsRequestId) {
-        setAdditionalProjectsLoading(false, 'Loading projects timed out. Try again.');
+    const requestId = projectRequestId;
+    projectLoadingTimeout = setTimeout(() => {
+      if (requestId === projectRequestId) {
+        setProjectsLoading(false, 'Loading projects timed out. Try again.');
       }
     }, 30000);
   }
-  setAdditionalProjectsStatus(message);
+  setProjectsStatus(message);
 }
 
-function setAdditionalProjectsStatus(message: string) {
-  const status = document.getElementById('additionalProjectsStatus') as HTMLElement | null;
+function setProjectsStatus(message: string) {
+  const status = document.getElementById('projectsStatus') as HTMLElement | null;
   if (status) {
     status.textContent = message;
   }
@@ -548,6 +582,7 @@ function modifySrcTypeHandler(this: HTMLElement) {
     srcRemoteBranchGroup.style.display = "block";
     manifestGroup.style.display  = "none";
     if (advancedTemplateGroup) { advancedTemplateGroup.style.display = "block"; }
+    syncProjectsFromTemplate();
 
     //remotePathChanged(srcRemotePath.value, srcTypeRadioGroup.value, false);
   }
@@ -625,7 +660,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       pathPrefix: pathPrefixField ? pathPrefixField.value : undefined,
       workspacePath: workspacePath.value,
       templateMode: templateModeValue,
-      additionalProjects: additionalProjects
+      projects: projects
     }
   );
 }

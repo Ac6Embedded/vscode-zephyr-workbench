@@ -43,6 +43,12 @@ export const listHals: any[] = [
   { label: "xtensa", name: "hal_xtensa" }
 ];
 
+function readMinimalWestManifest(extensionUri: vscode.Uri): WestManifestData {
+  const templateManifestUri = vscode.Uri.joinPath(extensionUri, 'west_manifests', 'minimal_west.yml');
+  const templateFile = fs.readFileSync(templateManifestUri.fsPath, 'utf8');
+  return yaml.parse(templateFile) as WestManifestData;
+}
+
 function normalizeRevision(revision: string): string {
   return revision.trim().replace(/^\/+|\/+$/g, '');
 }
@@ -63,7 +69,7 @@ export function getUpstreamWestManifestUrl(remotePath: string, revision: string)
 
   const url = new URL(normalizedRemotePath);
   if (url.hostname !== 'github.com') {
-    throw new Error('Additional projects are only supported for GitHub Zephyr remotes.');
+    throw new Error('Project suggestions are only supported for GitHub Zephyr remotes.');
   }
 
   const segments = url.pathname.split('/').filter(Boolean);
@@ -110,25 +116,39 @@ export async function getUpstreamProjectNames(remotePath: string, revision: stri
     .sort((left, right) => left.localeCompare(right));
 }
 
-function appendAdditionalProjectsToAllowlist(
-  zephyrProject: WestManifestProject | undefined,
-  additionalProjects: string[],
-): void {
+function getProjectAllowlist(zephyrProject: WestManifestProject | undefined): string[] {
   const importBlock = zephyrProject?.import;
-  if (!importBlock || typeof importBlock !== 'object' || Array.isArray(importBlock) || additionalProjects.length === 0) {
-    return;
-  }
-
-  if (!Array.isArray(importBlock['name-allowlist'])) {
-    importBlock['name-allowlist'] = [];
+  if (!importBlock || typeof importBlock !== 'object' || Array.isArray(importBlock)) {
+    return [];
   }
 
   const allowlist = importBlock['name-allowlist'];
-  for (const projectName of additionalProjects) {
+  return Array.isArray(allowlist)
+    ? allowlist.filter((entry: unknown): entry is string => typeof entry === 'string' && entry.length > 0)
+    : [];
+}
+
+export function getMinimalTemplateProjectNames(extensionUri: vscode.Uri): string[] {
+  const manifestYaml = readMinimalWestManifest(extensionUri);
+  return getProjectAllowlist(manifestYaml.manifest?.projects?.[0]);
+}
+
+function setProjectAllowlist(
+  zephyrProject: WestManifestProject | undefined,
+  projects: string[],
+): void {
+  const importBlock = zephyrProject?.import;
+  if (!importBlock || typeof importBlock !== 'object' || Array.isArray(importBlock)) {
+    return;
+  }
+
+  const allowlist: string[] = [];
+  for (const projectName of projects) {
     if (typeof projectName === 'string' && projectName.length > 0 && !allowlist.includes(projectName)) {
       allowlist.push(projectName);
     }
   }
+  importBlock['name-allowlist'] = allowlist;
 }
 
 /**
@@ -144,7 +164,7 @@ function appendAdditionalProjectsToAllowlist(
  *   - any other non-empty string → imported under <workspace>/<value>/
  *   - empty string → no `path-prefix` (modules imported at workspace root)
  */
-export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isFull: boolean, manifestSubfolder?: string, pathPrefix?: string, additionalProjects: string[] = []) {
+export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isFull: boolean, manifestSubfolder?: string, pathPrefix?: string, projects?: string[]) {
   const prefix = (pathPrefix ?? 'deps').trim();
 
   let manifestYaml: WestManifestData;
@@ -169,9 +189,7 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
     };
   } else {
     // Minimal manifest structure
-    let templateManifestUri = vscode.Uri.joinPath(context.extensionUri, 'west_manifests', 'minimal_west.yml');
-    const templateFile = fs.readFileSync(templateManifestUri.fsPath, 'utf8');
-    manifestYaml = yaml.parse(templateFile) as WestManifestData;
+    manifestYaml = readMinimalWestManifest(context.extensionUri);
     const manifest = manifestYaml.manifest!;
     // Do not duplicate zephyr in url-base
     manifest.remotes![0]['url-base'] = remotePath.replace(/\/zephyr\/?$/, '');
@@ -183,7 +201,11 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
       } else {
         delete importBlock['path-prefix'];
       }
-      appendAdditionalProjectsToAllowlist(manifest.projects![0], [templateHal, ...additionalProjects]);
+      if (Array.isArray(projects)) {
+        setProjectAllowlist(manifest.projects![0], projects);
+      } else {
+        setProjectAllowlist(manifest.projects![0], [...getProjectAllowlist(manifest.projects![0]), templateHal]);
+      }
     }
   }
 
