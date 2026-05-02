@@ -781,7 +781,7 @@
       "panel": [
         {
           "id": "zephyr-workbench-dashboard-panel",
-          "title": "Workbench Dashboard",
+          "title": "Zephyr Dashboard",
           "icon": "res/icons/zephyr.svg"
         }
       ]
