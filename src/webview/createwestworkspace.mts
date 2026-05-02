@@ -460,6 +460,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const templateInput = document.getElementById("templateInput") as TextField;
   const manifestPath = document.getElementById("manifestPath") as TextField;
   const manifestDirField = document.getElementById("manifestDir") as TextField | null;
+  const pathPrefixField = document.getElementById("pathPrefix") as TextField | null;
   const workspacePath = document.getElementById("workspacePath") as TextField;
   
   // Get template mode (Full or Minimal)
@@ -482,6 +483,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       templateHal: templateInput.getAttribute('data-value'),
       manifestPath: manifestPath.value,
       manifestDir: manifestDirField ? manifestDirField.value : undefined,
+      pathPrefix: pathPrefixField ? pathPrefixField.value : undefined,
       workspacePath: workspacePath.value,
       templateMode: templateModeValue
     }

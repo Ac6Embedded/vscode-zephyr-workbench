@@ -210,7 +210,10 @@ export class CreateWestWorkspacePanel {
                 </summary>
                 <div class="advanced-options-content">
                   <div class="grid-group-div">
-                    <vscode-text-field size="50" type="text" id="manifestDir" value="manifest" placeholder="(empty for workspace root)">west.yml subfolder:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Subfolder under the workspace where the generated west.yml will be written. Leave empty to put west.yml directly at the workspace root.">?</span></vscode-text-field>
+                    <vscode-text-field size="50" type="text" id="manifestDir" value="manifest" placeholder="manifest">west.yml subfolder:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Subfolder under the workspace where the generated west.yml will be written. Required.">?</span></vscode-text-field>
+                  </div>
+                  <div class="grid-group-div">
+                    <vscode-text-field size="50" type="text" id="pathPrefix" value="deps" placeholder="(empty to import at workspace root)">Modules subfolder:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Subfolder where Zephyr modules and dependencies will be imported (sets import.path-prefix in the generated west.yml). Leave empty to import them directly at the workspace root.">?</span></vscode-text-field>
                   </div>
                 </div>
               </details>
@@ -341,6 +344,7 @@ export class CreateWestWorkspacePanel {
         let workspacePath;
         let manifestPath;
         let manifestDir;
+        let pathPrefix;
         let templateHal;
         let templateMode;
 
@@ -367,6 +371,7 @@ export class CreateWestWorkspacePanel {
             workspacePath = message.workspacePath;
             manifestPath = message.manifestPath;
             manifestDir = message.manifestDir;
+            pathPrefix = message.pathPrefix;
             templateHal = message.templateHal;
             this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: workspacePath, id: 'workspacePath'});
 
@@ -391,6 +396,13 @@ export class CreateWestWorkspacePanel {
             
             templateMode = message.templateMode;
 
+            // The west.yml subfolder is required for the template flow — empty would
+            // put the manifest at the workspace root which we don't support.
+            if (srcType === 'template' && (!manifestDir || !manifestDir.trim())) {
+              vscode.window.showWarningMessage('Please provide a value for "west.yml subfolder".');
+              return;
+            }
+
             if(srcType === 'remote') {
               vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath);
             } else if(srcType === 'local') {
@@ -398,7 +410,7 @@ export class CreateWestWorkspacePanel {
             } else if(srcType === 'manifest') {
               vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestPath);
             } else if(srcType === 'template') {
-              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir);
+              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir, pathPrefix);
             }
             break;
         }

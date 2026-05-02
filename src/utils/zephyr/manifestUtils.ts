@@ -33,14 +33,23 @@ export const listHals: any[] = [
 /**
  * Write a generated west.yml under `workspacePath`. By default it goes into a
  * `manifest/` subfolder (the legacy convention), but callers can override:
- *   - undefined / 'manifest' → <workspacePath>/manifest/west.yml (default)
+ *   - undefined / empty / 'manifest' → <workspacePath>/manifest/west.yml (default)
  *   - any other non-empty string → <workspacePath>/<subfolder>/west.yml
- *   - empty string → <workspacePath>/west.yml (no subfolder)
+ * (An empty value falls back to the default — west.yml at the workspace root is
+ *  not supported, the UI also enforces this on submit.)
+ *
+ * `pathPrefix` controls the `import.path-prefix` written into the manifest:
+ *   - undefined / 'deps' → projects imported under <workspace>/deps/ (default)
+ *   - any other non-empty string → imported under <workspace>/<value>/
+ *   - empty string → no `path-prefix` (modules imported at workspace root)
  */
-export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isFull: boolean, manifestSubfolder?: string) {
+export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isFull: boolean, manifestSubfolder?: string, pathPrefix?: string) {
+  const prefix = (pathPrefix ?? 'deps').trim();
+
   let manifestYaml;
   if (isFull) {
-    // Full manifest structure
+    // Full manifest structure. `import: true` (vs an object with path-prefix) means
+    // "import everything, no subfolder".
     manifestYaml = {
       manifest: {
         remotes: [
@@ -52,7 +61,7 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
             "repo-path": "zephyr",
             remote: "zephyrproject",
             revision: remoteBranch,
-            import: { "path-prefix": "deps" }
+            import: prefix.length > 0 ? { "path-prefix": prefix } : true
           }
         ]
       }
@@ -65,10 +74,18 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
     // Do not duplicate zephyr in url-base
     manifestYaml.manifest.remotes[0]['url-base'] = remotePath.replace(/\/zephyr\/?$/, '');
     manifestYaml.manifest.projects[0]['revision'] = remoteBranch;
-    if (manifestYaml.manifest.projects[0]['import'] && manifestYaml.manifest.projects[0]['import']['name-allowlist']) {
-      const allowlist = manifestYaml.manifest.projects[0]['import']['name-allowlist'];
-      if (!allowlist.includes(templateHal)) {
-        allowlist.push(templateHal);
+    const importBlock = manifestYaml.manifest.projects[0]['import'];
+    if (importBlock && typeof importBlock === 'object') {
+      if (prefix.length > 0) {
+        importBlock['path-prefix'] = prefix;
+      } else {
+        delete importBlock['path-prefix'];
+      }
+      if (importBlock['name-allowlist']) {
+        const allowlist = importBlock['name-allowlist'];
+        if (!allowlist.includes(templateHal)) {
+          allowlist.push(templateHal);
+        }
       }
     }
   }
@@ -76,8 +93,9 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
   if(!fileExists(workspacePath)) {
     fs.mkdirSync(workspacePath);
   }
-  const subfolder = (manifestSubfolder ?? 'manifest').trim();
-  const manifestDir = subfolder.length > 0 ? path.join(workspacePath, subfolder) : workspacePath;
+  // Empty / undefined falls back to the default 'manifest' folder.
+  const subfolder = (manifestSubfolder ?? '').trim() || 'manifest';
+  const manifestDir = path.join(workspacePath, subfolder);
   if (!fileExists(manifestDir)) {
     fs.mkdirSync(manifestDir, { recursive: true });
   }

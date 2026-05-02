@@ -2670,12 +2670,12 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir?: string) => {
+		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir?: string, pathPrefix?: string) => {
 			if (remotePath && remoteBranch && workspacePath && templateHal) {
 				// Determine if mode is 'full' or 'minimal'
 				const isFull = templateMode === 'full';
 				// Generate west.xml from template
-				let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal, isFull, manifestDir);
+				let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal, isFull, manifestDir, pathPrefix);
 				// Run west init to the newly create manifest
 				vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestFile);
 			}
