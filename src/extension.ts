@@ -19,7 +19,6 @@ import {
 	getRunner,
 	getFlashRunners,
 	getStaticFlashRunnerNames,
-	ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY,
 	ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME,
 } from './utils/debugTools/debugUtils';
 import { ensureTerminalStickyScrollDisabled, executeTask, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
@@ -934,15 +933,12 @@ export function activate(context: vscode.ExtensionContext) {
 					configName = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`;
 				}
 
-				const launchConfiguration = findLaunchConfigurationForProject(configurations, project, configName);
+				const launchConfiguration = findLaunchConfigurationForProject(configurations, configName);
 
 				if (launchConfiguration) {
 					if (project.isWestWorkspaceApplication) {
 						await setSelectedWorkspaceApplicationPath(project.appWorkspaceFolder, project.appRootPath);
-						await vscode.debug.startDebugging(workspaceFolder, {
-							...launchConfiguration,
-							[ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY]: project.appRootPath,
-						});
+						await vscode.debug.startDebugging(workspaceFolder, launchConfiguration);
 					} else {
 						await vscode.debug.startDebugging(workspaceFolder, configName);
 					}
@@ -2150,10 +2146,7 @@ export function activate(context: vscode.ExtensionContext) {
 				const [, launchConfiguration] = await getLaunchConfiguration(project, buildConfigName);
 				if (launchConfiguration) {
 					await setSelectedWorkspaceApplicationPath(project.appWorkspaceFolder, project.appRootPath);
-					await vscode.debug.startDebugging(project.appWorkspaceFolder, {
-						...launchConfiguration,
-						[ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY]: project.appRootPath,
-					});
+					await vscode.debug.startDebugging(project.appWorkspaceFolder, launchConfiguration);
 					return;
 				}
 			}
@@ -3256,32 +3249,10 @@ function extractDebugBuildConfigName(debugConfigName: string): string | undefine
 
 function findLaunchConfigurationForProject(
 	configurations: vscode.DebugConfiguration[] | undefined,
-	project: ZephyrApplication,
 	configName: string,
 ): vscode.DebugConfiguration | undefined {
 	const matchingConfigurations = (configurations ?? []).filter(config => config && config.name === configName);
-	if (!project.isWestWorkspaceApplication) {
-		return matchingConfigurations[0];
-	}
-
-	const normalizedProjectPath = path.normalize(project.appRootPath);
-	const matchingApplicationConfig = matchingConfigurations.find(config => {
-		const appRoot = config[ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY];
-		return typeof appRoot === 'string' && path.normalize(appRoot) === normalizedProjectPath;
-	});
-	if (matchingApplicationConfig) {
-		return matchingApplicationConfig;
-	}
-
-	// Older workspace-app launch entries did not carry an app-root marker. Treat
-	// a single unmarked match as belonging to this app so existing users do not
-	// need to recreate their debug config; ambiguous duplicates fall back to the
-	// Debug Manager where a new marked config can be written.
-	if (matchingConfigurations.length === 1 && !matchingConfigurations[0][ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY]) {
-		return matchingConfigurations[0];
-	}
-
-	return undefined;
+	return matchingConfigurations[0];
 }
 
 async function removeWorkspaceApplicationAndGeneratedConfig(project: ZephyrApplication): Promise<void> {

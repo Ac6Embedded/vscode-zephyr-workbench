@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugManagerLaunchConfiguration, getDebugRunners, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getServerAddressFromConfig, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugTools/debugUtils";
+import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugManagerLaunchConfiguration, getDebugRunners, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getServerAddressFromConfig, getWestDebugArgsForProject, setupPyOCDTarget, writeLaunchJson, ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME } from "../utils/debugTools/debugUtils";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { getZephyrApplication } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
@@ -811,7 +811,7 @@ export class DebugManagerPanel {
           runner.serverAddress = gdbAddress;
           runner.serverPort = gdbPort;
           config.serverStarted = runner.serverStartedPattern;
-          config.debugServerArgs = runner.getWestDebugArgs(buildConfig.relativeBuildDir);
+          config.debugServerArgs = getWestDebugArgsForProject(runner, appProject, buildConfig);
           config.debugServerArgs = runnerPathArg(config.debugServerArgs, runner.name, runnerPath);
           config.setupCommands = [];
           for(const arg of getSetupCommands(programPath, runner.serverAddress, runner.serverPort, gdbMode)) {
