@@ -88,7 +88,7 @@ export class CreateZephyrAppPanel {
     const nonce = getNonce();
     let workspacesHTML = '';
     for (const westWorkspace of getWestWorkspaces()) {
-      workspacesHTML += `<div class="dropdown-item" data-value="${westWorkspace.rootUri}" data-label="${westWorkspace.name}">${westWorkspace.name}<span class="description">${westWorkspace.rootUri.fsPath}</span></div>`;
+      workspacesHTML += `<div class="dropdown-item" data-value="${westWorkspace.rootUri}" data-label="${westWorkspace.name}" data-path="${westWorkspace.rootUri.fsPath}">${westWorkspace.name}<span class="description">${westWorkspace.rootUri.fsPath}</span></div>`;
     }
 
     let sdkHTML = '';
@@ -172,7 +172,7 @@ export class CreateZephyrAppPanel {
                   <div class="grid-header-div">
                     <label for="listBoards">Select Board:</label>
                   </div>
-                  <div id="listBoards" class="combo-dropdown grid-value-div">
+                  <div id="listBoards" class="combo-dropdown grid-value-div no-icon-tooltip">
                     <div class="combo-dropdown-input">
                       <input type="text" id="boardInput" class="combo-dropdown-control" placeholder="Choose your target board..." data-value="">
                       <div aria-hidden="true" class="indicator" part="indicator">
@@ -203,7 +203,7 @@ export class CreateZephyrAppPanel {
                   <div class="grid-header-div">
                     <label for="listBoards">Select template:</label>
                   </div>
-                  <div id="listSamples" class="combo-dropdown grid-value-div">
+                  <div id="listSamples" class="combo-dropdown grid-value-div no-icon-tooltip">
                     <div class="combo-dropdown-input">
                       <input type="text" id="sampleInput" class="combo-dropdown-control" placeholder="Choose a sample or test as base..." data-value="">
                       <div aria-hidden="true" class="indicator" part="indicator">
@@ -228,10 +228,29 @@ export class CreateZephyrAppPanel {
                   </div>
                 </div>
 
-                <div class="grid-group-div">
+                <div class="grid-group-div create-only">
+                  <vscode-radio-group id="appLocationType" orientation="horizontal">
+                    <label slot="label">Application type:&nbsp;&nbsp;
+                      <span class="tooltip stable-tooltip" data-tooltip="West workspace application: lives inside the selected west workspace (e.g. under applications/). The location is derived from the workspace.\n\nFreestanding application: lives outside any west workspace; pick any location on disk.">?</span>
+                    </label>
+                    <vscode-radio value="workspace" checked>West workspace application</vscode-radio>
+                    <vscode-radio value="freestanding">Freestanding application</vscode-radio>
+                  </vscode-radio-group>
+                </div>
+
+                <div class="grid-group-div" id="freestandingLocationGroup">
                   <div class="grid-value-div">
                     <vscode-text-field class="browse-field" type="text" id="projectParentPath">Project Location:</vscode-text-field>
                     <vscode-button id="browseParentButton" class="browse-input-button">Browse...</vscode-button>
+                  </div>
+                </div>
+
+                <div class="grid-group-div" id="workspaceLocationGroup" style="display: none;">
+                  <div class="grid-header-div">
+                    <label>Project Location:</label>
+                  </div>
+                  <div class="grid-value-div">
+                    <code id="workspaceLocationPath" class="readonly-path">(select a west workspace and enter a project name)</code>
                   </div>
                 </div>
 
@@ -276,6 +295,9 @@ export class CreateZephyrAppPanel {
 	                          <vscode-radio value="relative" checked>relative</vscode-radio>
 	                          <vscode-radio value="absolute">absolute</vscode-radio>
 	                        </vscode-radio-group>
+                      </div>
+                      <div class="grid-group-div" id="applicationsSubfolderRow">
+                        <vscode-text-field size="50" type="text" id="applicationsSubfolder" value="applications" placeholder="(empty for workspace root)">Applications subfolder:&nbsp;&nbsp;<span class="tooltip stable-tooltip" data-tooltip="Subfolder under the west workspace where the application will be created (default 'applications', matching Zephyr's reference workspace-app convention). Leave empty to place the application directly at the workspace root. Only used for West workspace applications.">?</span></vscode-text-field>
                       </div>
                     </div>
                   </details>

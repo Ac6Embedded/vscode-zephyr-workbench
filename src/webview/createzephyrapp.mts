@@ -14,6 +14,7 @@ type DiscoveryTarget = 'board' | 'sample';
 
 const discoveryTargets = {
   board: {
+    wrapperId: 'listBoards',
     inputId: 'boardInput',
     dropdownId: 'boardDropdown',
     spinnerId: 'boardDropdownSpinner',
@@ -21,6 +22,7 @@ const discoveryTargets = {
     emptyMessage: 'No boards were found for this workspace.',
   },
   sample: {
+    wrapperId: 'listSamples',
     inputId: 'sampleInput',
     dropdownId: 'samplesDropdown',
     spinnerId: 'samplesDropdownSpinner',
@@ -51,6 +53,12 @@ function main() {
   const boardImage = document.getElementById('boardImg') as HTMLImageElement;
   const createButton = document.getElementById("createButton") as Button;
   const appFromGroup = document.getElementById('appFromGroup') as RadioGroup;
+  const appLocationTypeGroup = document.getElementById('appLocationType') as RadioGroup | null;
+  const freestandingLocationGroup = document.getElementById('freestandingLocationGroup') as HTMLElement | null;
+  const workspaceLocationGroup = document.getElementById('workspaceLocationGroup') as HTMLElement | null;
+  const workspaceLocationPath = document.getElementById('workspaceLocationPath') as HTMLElement | null;
+  const applicationsSubfolderField = document.getElementById('applicationsSubfolder') as TextField | null;
+  const applicationsSubfolderRow = document.getElementById('applicationsSubfolderRow') as HTMLElement | null;
   const createOnlyElems = document.querySelectorAll<HTMLElement>('.create-only');
   const advancedDetails = document.querySelector('.advanced-options') as HTMLDetailsElement | null;
   const advancedArrow = document.querySelector('.advanced-arrow') as HTMLElement | null;
@@ -212,6 +220,9 @@ function main() {
   sampleInput.addEventListener('input', () => {
     clearSelectedValueIfEdited(sampleInput);
     projectNameText.value = sampleInput.value || '';
+    // Notify listeners (e.g. workspace-mode location label) — assigning to .value
+    // doesn't fire an 'input' event on its own.
+    projectNameText.dispatchEvent(new Event('input'));
   });
 
   samplesDropdown.addEventListener('mousedown', function (event) {
@@ -255,6 +266,68 @@ function main() {
   appFromGroup.addEventListener('change', refreshCreateOnlyRows);
   refreshCreateOnlyRows();        // call once on load
 
+  // Workspace-app UI only applies to the create-new flow: when creating, we know
+  // upfront whether the app belongs to a west workspace because the user picks the
+  // type. For Import, the type is undetermined — it will be detected from disk
+  // once the app's location is known — so we just show the plain location picker.
+  const isWorkspaceApp = () =>
+    appFromGroup.value === 'create' && appLocationTypeGroup?.value === 'workspace';
+
+  const joinWorkspacePath = (workspaceFsPath: string, applicationsSubfolder: string, projectName: string): string => {
+    const trimmedWs = workspaceFsPath.replace(/[\\/]+$/, '');
+    const trimmedName = projectName.trim();
+    if (!trimmedWs || !trimmedName) {
+      return '';
+    }
+    const sep = trimmedWs.includes('\\') ? '\\' : '/';
+    const subfolder = applicationsSubfolder.trim().replace(/^[\\/]+|[\\/]+$/g, '');
+    return subfolder.length > 0
+      ? `${trimmedWs}${sep}${subfolder}${sep}${trimmedName}`
+      : `${trimmedWs}${sep}${trimmedName}`;
+  };
+
+  const refreshWorkspaceLocationLabel = () => {
+    if (!workspaceLocationPath) {
+      return;
+    }
+    const workspaceFsPath = workspaceInput.getAttribute('data-path') ?? '';
+    const projectName = projectNameText.value;
+    const subfolder = applicationsSubfolderField?.value ?? 'applications';
+    const computed = joinWorkspacePath(workspaceFsPath, subfolder, projectName);
+    workspaceLocationPath.textContent = computed || '(select a west workspace and enter a project name)';
+  };
+
+  // Workspace application: hide the path text-field/Browse button, show a static
+  // computed-path label instead. Freestanding: show the path field as before.
+  // The "Applications subfolder" advanced option is only relevant in workspace mode.
+  const refreshAppLocationType = () => {
+    const workspaceMode = isWorkspaceApp();
+    if (freestandingLocationGroup) {
+      freestandingLocationGroup.style.display = workspaceMode ? 'none' : '';
+    }
+    if (workspaceLocationGroup) {
+      workspaceLocationGroup.style.display = workspaceMode ? '' : 'none';
+    }
+    if (applicationsSubfolderRow) {
+      applicationsSubfolderRow.style.display = workspaceMode ? '' : 'none';
+    }
+    if (workspaceMode) {
+      refreshWorkspaceLocationLabel();
+    }
+  };
+  appLocationTypeGroup?.addEventListener('change', refreshAppLocationType);
+  // Switching between Create / Import also affects which location UI shows.
+  appFromGroup.addEventListener('change', refreshAppLocationType);
+  refreshAppLocationType();
+
+  // Keep the workspace-mode label in sync as the user picks a workspace, types a
+  // name, or edits the applications subfolder under Advanced options.
+  workspaceInput.addEventListener('input', refreshWorkspaceLocationLabel);
+  projectNameText.addEventListener('input', refreshWorkspaceLocationLabel);
+  projectNameText.addEventListener('change', refreshWorkspaceLocationLabel);
+  applicationsSubfolderField?.addEventListener('input', refreshWorkspaceLocationLabel);
+  applicationsSubfolderField?.addEventListener('change', refreshWorkspaceLocationLabel);
+
   if (advancedDetails && advancedArrow) {
     const syncAdvancedArrow = () => {
       const isOpen = advancedDetails.open;
@@ -293,6 +366,12 @@ function addDropdownItemEventListeners(dropdown: HTMLElement,
           input.setAttribute("data-board-identifier", boardIdentifier);
         } else {
           input.removeAttribute("data-board-identifier");
+        }
+        const itemPath = item.dataset.path ?? "";
+        if (itemPath) {
+          input.setAttribute("data-path", itemPath);
+        } else {
+          input.removeAttribute("data-path");
         }
         input.dispatchEvent(new Event("input"));
         dropdown.style.display = "none";
@@ -407,6 +486,7 @@ function updateBoardImage(imgSrc: string) {
 function getDiscoveryElements(target: DiscoveryTarget) {
   const config = discoveryTargets[target];
   return {
+    wrapper: document.getElementById(config.wrapperId) as HTMLElement,
     input: document.getElementById(config.inputId) as HTMLInputElement,
     dropdown: document.getElementById(config.dropdownId) as HTMLElement,
     spinner: document.getElementById(config.spinnerId) as HTMLElement,
@@ -416,10 +496,19 @@ function getDiscoveryElements(target: DiscoveryTarget) {
 }
 
 function setDiscoveryStatus(target: DiscoveryTarget, message: string, tone: 'info' | 'error' = 'info') {
-  const { status } = getDiscoveryElements(target);
+  const { status, wrapper } = getDiscoveryElements(target);
   status.textContent = message;
   status.classList.toggle('error', tone === 'error');
   status.hidden = message.length === 0;
+  // Info-tone hints surface as a hover tooltip on the combo wrapper rather than
+  // an always-visible label. Errors keep the inline label only.
+  if (wrapper) {
+    if (tone === 'info' && message.length > 0) {
+      wrapper.setAttribute('data-tooltip', message);
+    } else {
+      wrapper.removeAttribute('data-tooltip');
+    }
+  }
 }
 
 function resetDiscoveryState(target: DiscoveryTarget, message: string) {

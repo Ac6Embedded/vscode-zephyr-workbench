@@ -73,6 +73,14 @@ form {
   color: var(--vscode-descriptionForeground);
 }
 
+/* Info-tone hints surface as a floating tooltip on hover (driven by the
+   `no-icon-tooltip`/`data-tooltip` pattern on the combo-dropdown wrapper),
+   so we hide the inline label here — it would otherwise duplicate the
+   tooltip text. Errors stay inline because the user must see them. */
+.combo-status:not(.error) {
+  display: none;
+}
+
 .combo-status.error {
   color: var(--vscode-errorForeground);
 }
@@ -276,6 +284,17 @@ vscode-text-field {
 vscode-text-field.browse-field {
   width: calc(var(--design-unit)* 114px);
   min-width: calc(var(--design-unit)* 40px);
+}
+
+code.readonly-path {
+  display: inline-block;
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--vscode-input-background, transparent) 80%, transparent);
+  border: 1px solid var(--vscode-panel-border, transparent);
+  border-radius: 2px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-foreground);
+  user-select: text;
 }
 
 .em-placeholder-value {
@@ -721,6 +740,12 @@ vscode-button {
   opacity: 1;
   visibility: visible;
   transition: opacity 0.25s ease 0.4s;
+}
+
+/* Don't render an empty bubble when there's no message currently set. */
+.no-icon-tooltip:not([data-tooltip])::after,
+.no-icon-tooltip[data-tooltip=""]::after {
+  display: none;
 }
 
 .no-icon-tooltip[data-tooltip]:hover::after {
