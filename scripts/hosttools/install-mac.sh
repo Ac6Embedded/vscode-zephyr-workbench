@@ -287,8 +287,8 @@ if [[ $non_root_packages == true ]]; then
     PYTHON_PREFIX=$(brew --prefix "python@$PYTHON_VERSION" 2>/dev/null || echo "$BREW_PREFIX/opt/python@$PYTHON_VERSION")
     export PATH="$PYTHON_PREFIX/libexec/bin:$BREW_PREFIX/bin:$PATH"
 
-    echo "Installing other required packages: cmake ninja gperf ccache dtc libmagic wget git yq xz dfu-util"
-    brew install cmake ninja gperf ccache dtc libmagic wget git yq xz dfu-util
+    echo "Installing other required packages: cmake ninja gperf ccache dtc libmagic wget git yq xz dfu-util libftdi hidapi"
+    brew install cmake ninja gperf ccache dtc libmagic wget git yq xz dfu-util libftdi hidapi
 
     mkdir -p "$TMP_DIR"
     mkdir -p "$DL_DIR"
