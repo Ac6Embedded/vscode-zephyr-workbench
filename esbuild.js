@@ -75,6 +75,14 @@ const webviewDebugManagerConfig = {
   outfile: "./out/debugmanager.js",
 };
 
+const webviewWestManagerConfig = {
+  ...baseConfig,
+  target: "es2020",
+  format: "esm",
+  entryPoints: ["./src/webview/westmanager.mts"],
+  outfile: "./out/westmanager.js",
+};
+
 const webviewHostToolsConfig = {
   ...baseConfig,
   target: "es2020",
@@ -98,6 +106,7 @@ const buildConfigs = [
   webviewCreateZephyrAppConfig,
   webviewDebugToolsConfig,
   webviewDebugManagerConfig,
+  webviewWestManagerConfig,
   webviewHostToolsConfig,
   webviewEclairManagerConfig,
 ];

@@ -77,6 +77,16 @@ const debugManagerMenuItem = new MenuItem(
   }
 );
 
+const westManagerMenuItem = new MenuItem(
+  'West Manager',
+  vscode.TreeItemCollapsibleState.None,
+  'tools',
+  {
+    command: 'zephyr-workbench.west-manager',
+    title: 'West Manager',
+  }
+);
+
 
 export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<MenuItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<MenuItem | undefined> = new vscode.EventEmitter<MenuItem | undefined>();
@@ -97,6 +107,7 @@ export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<Me
       items.push(newAppMenuItem);
       items.push(newWestWorkspaceMenuItem);
       items.push(newSDKMenuItem);
+      items.push(westManagerMenuItem);
       items.push(debugManagerMenuItem);
     } 
     return items;

@@ -22,6 +22,7 @@ import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
 import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
+import { WestManagerPanel } from './panels/WestManagerPanel';
 import { HostToolsPanel } from './panels/HostToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { EclairManagerPanel } from './panels/EclairManagerPanel';
@@ -411,6 +412,12 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('zephyr-workbench.eclair-manager.open', async (node?: any) => {
 			const { workspaceFolder, settingsRoot } = resolveWorkspaceFolderForEclair(node);
 			EclairManagerPanel.render(context.extensionUri, workspaceFolder, settingsRoot);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench.west-manager', async (node?: WestWorkspaceTreeItem) => {
+			WestManagerPanel.render(context.extensionUri, node?.westWorkspace);
 		})
 	);
 

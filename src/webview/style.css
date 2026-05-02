@@ -415,6 +415,40 @@ vscode-button {
   flex: 0 0 auto;
   margin-left: 4px;
 }
+
+#revisionCombo {
+  display: flex;
+  align-items: center;
+  width: min(100%, calc(var(--design-unit) * 114px + 98px));
+}
+
+#revisionCombo .combo-dropdown-input {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#revisionCombo .combo-dropdown-control {
+  flex-grow: 1;
+  min-width: 0;
+  padding-right: 28px;
+}
+
+#revisionCombo .combo-dropdown-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-left: 4px;
+}
+
+#revisionCombo .dropdown-content {
+  left: 0;
+  right: calc(var(--input-height)*1px + 28px);
+  width: auto;
+  min-width: 300px;
+  box-sizing: border-box;
+}
 #listBoards, #listSamples {
   display: flex !important;
 }
@@ -1115,6 +1149,75 @@ vscode-button {
 
 .projects-status {
   margin-bottom: 6px;
+}
+
+.west-manager-panel {
+  max-width: 1100px;
+}
+
+.workspace-select {
+  width: min(100%, calc(var(--design-unit) * 114px + 98px));
+  min-height: 28px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+}
+
+.west-manager-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 34%);
+  gap: 16px;
+  align-items: start;
+}
+
+.west-manager-main,
+.west-manager-side {
+  min-width: 0;
+}
+
+.project-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.project-toolbar vscode-text-field {
+  flex: 1 1 auto;
+}
+
+.west-manager-projects-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 4px 10px;
+  max-height: 420px;
+  overflow: auto;
+  padding: 6px 0;
+}
+
+.west-manager-project-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 24px;
+}
+
+.west-manager-project-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 780px) {
+  .west-manager-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .project-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
 }
 
 /* Prevent scroll jitter caused by tooltip overflow/reflow */

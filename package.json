@@ -357,6 +357,12 @@
         "category": "Zephyr Workbench"
       },
       {
+        "command": "zephyr-workbench.west-manager",
+        "title": "West Manager",
+        "icon": "$(tools)",
+        "category": "Zephyr Workbench"
+      },
+      {
         "command": "zephyr-workbench.debug-manager",
         "title": "Debug Manager",
         "icon": "$(desktop-download)",
@@ -1191,6 +1197,11 @@
         {
           "command": "zephyr-workbench-west-workspace.open-terminal",
           "group": "inline@0",
+          "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace"
+        },
+        {
+          "command": "zephyr-workbench.west-manager",
+          "group": "0@view/item/context@0",
           "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace"
         },
         {
