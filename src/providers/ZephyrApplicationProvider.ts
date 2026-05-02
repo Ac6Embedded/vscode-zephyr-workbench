@@ -41,6 +41,10 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
     if(element instanceof ZephyrApplicationTreeItem) {
       const workspaceItem = new ZephyrApplicationWestWorkspaceTreeItem(element.project);
       items.push(workspaceItem);
+      // Toolchain row sits next to the west workspace row because both are
+      // application-scoped (apply across all build configs), unlike the
+      // board/runner/env rows that belong to a specific build config.
+      items.push(new ZephyrApplicationToolchainTreeItem(element.project));
 
       if(element.project.buildConfigs.length > 1) {
         for(let config of element.project.buildConfigs) {
@@ -258,6 +262,66 @@ export class ZephyrConfigTreeItem extends vscode.TreeItem {
       }
     }
 	}
+}
+
+// Application-scoped toolchain row. Right-clicking it triggers the existing
+// change-toolchain command, which reads `node.project` — kept compatible by
+// extending ZephyrApplicationTreeItem so the same payload is exposed.
+export class ZephyrApplicationToolchainTreeItem extends ZephyrApplicationTreeItem {
+  constructor(
+    public readonly project: ZephyrApplication,
+  ) {
+    super(project, vscode.TreeItemCollapsibleState.None);
+
+    // Use the same naming as the Toolchains sidebar so the row identifies the
+    // exact installation in use (e.g. `zephyr-sdk-1.6.0` for Zephyr SDK,
+    // `IAR-…` for IAR, `Arm GNU 12.2 (arm-none-eabi)` for Arm GNU). Falls
+    // back to `[not set]` when the variant has no resolvable installation.
+    const variant = project.toolchainVariant;
+    let installationName: string | undefined;
+    let detailPath: string | undefined;
+    if (variant === 'iar') {
+      installationName = project.selectedIarToolchainInstallation?.name;
+      detailPath = project.selectedIarToolchainInstallation?.iarPath;
+    } else if (variant === 'gnuarmemb') {
+      installationName = project.selectedArmGnuToolchainInstallation?.name;
+      detailPath = project.selectedArmGnuToolchainInstallation?.toolchainPath;
+    } else {
+      // 'zephyr' / 'zephyr/llvm': the SDK installation isn't loaded eagerly,
+      // so derive the install folder name from the configured path the same
+      // way ZephyrSdkInstallation.name does (`path.basename(rootUri.fsPath)`).
+      if (project.zephyrSdkPath) {
+        installationName = path.basename(project.zephyrSdkPath);
+        detailPath = project.zephyrSdkPath;
+      }
+    }
+
+    this.label = installationName ?? 'toolchain';
+    this.description = installationName ? `[${variant}]` : '[not set]';
+    this.tooltip = detailPath
+      ? `${installationName} (${variant})\n${detailPath}`
+      : `Toolchain not set (${variant})`;
+    // Mirror the Toolchains sidebar's icon-per-vendor convention so the row
+    // tells the user which toolchain family is in use at a glance:
+    //   - IAR uses the IAR logo (raster, no theme variants).
+    //   - Arm GNU uses the dedicated Arm GNU glyph.
+    //   - Zephyr SDK (default) uses the generic toolchain glyph.
+    if (variant === 'iar') {
+      this.iconPath = path.join(__filename, '..', '..', 'res', 'icons', 'iar-logo.jpg');
+    } else if (variant === 'gnuarmemb') {
+      this.iconPath = {
+        light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'arm_gnu_icon_light.svg'),
+        dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'arm_gnu_icon_dark.svg'),
+      };
+    } else {
+      this.iconPath = {
+        light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'toolchain_icon_light.svg'),
+        dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'toolchain_icon_dark.svg'),
+      };
+    }
+  }
+
+  contextValue = 'zephyr-application-toolchain';
 }
 
 export class ZephyrApplicationWestWorkspaceTreeItem extends ZephyrApplicationTreeItem {

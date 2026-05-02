@@ -1099,6 +1099,11 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-workspace"
         },
         {
+          "command": "zephyr-workbench-app-explorer.change-toolchain",
+          "group": "0@view/item/context@9.1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application-toolchain"
+        },
+        {
           "command": "zephyr-workbench-app-explorer.build-app",
           "group": "0@view/item/context@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
