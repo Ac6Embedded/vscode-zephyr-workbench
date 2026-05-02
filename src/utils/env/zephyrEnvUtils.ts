@@ -13,8 +13,28 @@ const PATH_ENV_KEYS = new Set([
   'EXTRA_ZEPHYR_MODULES',
 ]);
 
-function shouldResolveEnvKeyAsPath(key: string): boolean {
+export function shouldResolveEnvKeyAsPath(key: string): boolean {
   return PATH_ENV_KEYS.has(key);
+}
+
+export function toStoredEnvValue(
+  key: string,
+  value: string | string[] | undefined,
+  workspaceFolder: vscode.WorkspaceFolder,
+): string | string[] | undefined {
+  return shouldResolveEnvKeyAsPath(key)
+    ? toPortableConfiguredPathValue(value, workspaceFolder)
+    : value;
+}
+
+export function resolveStoredEnvValue(
+  key: string,
+  value: string | string[] | undefined,
+  workspaceFolder: vscode.WorkspaceFolder,
+): string | string[] | undefined {
+  return shouldResolveEnvKeyAsPath(key)
+    ? resolveConfiguredPathValue(value, workspaceFolder)
+    : value;
 }
 
 export function addEnvValue(envVars: { [key: string]: any }, key: string, value: string): void {
@@ -60,17 +80,13 @@ export function removeEnvValue(envVars: { [key: string]: any }, key: string, val
 }
 
 export async function saveEnv(workspaceFolder: vscode.WorkspaceFolder, key: string, value: string | string[] | undefined ) {
-  const nextValue = shouldResolveEnvKeyAsPath(key)
-    ? toPortableConfiguredPathValue(value, workspaceFolder)
-    : value;
+  const nextValue = toStoredEnvValue(key, value, workspaceFolder);
   await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).update(`${ZEPHYR_ENV_SETTING_PREFIX_KEY}.${key}`, nextValue, vscode.ConfigurationTarget.WorkspaceFolder);
 }
 
 export function loadEnv(workspaceFolder: vscode.WorkspaceFolder, key: string): string | string[] | undefined  {
   const value = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder).get<string | string[] | undefined>(`${ZEPHYR_ENV_SETTING_PREFIX_KEY}.${key}`);
-  return shouldResolveEnvKeyAsPath(key)
-    ? resolveConfiguredPathValue(value, workspaceFolder)
-    : value;
+  return resolveStoredEnvValue(key, value, workspaceFolder);
 }
 
 export async function addConfig(workspaceFolder: vscode.WorkspaceFolder, configToAdd: ZephyrBuildConfig) {
@@ -127,9 +143,7 @@ export async function saveConfigEnv(workspaceFolder: vscode.WorkspaceFolder, bui
   if(buildConfigs) {
     let buildConfig = buildConfigs.find(buildConfig => buildConfig.name === buildConfigName);
     if(buildConfig) {
-      buildConfig[`${ZEPHYR_ENV_SETTING_PREFIX_KEY}.${key}`] = shouldResolveEnvKeyAsPath(key)
-        ? toPortableConfiguredPathValue(value, workspaceFolder)
-        : value;
+      buildConfig[`${ZEPHYR_ENV_SETTING_PREFIX_KEY}.${key}`] = toStoredEnvValue(key, value, workspaceFolder);
       await config.update('build.configurations', buildConfigs, vscode.ConfigurationTarget.WorkspaceFolder);
     }
   }
@@ -142,9 +156,7 @@ export function loadConfigEnv(workspaceFolder: vscode.WorkspaceFolder, buildConf
     let buildConfig = buildConfigs.find(buildConfig => buildConfig.name === buildConfigName);
     if(buildConfig) {
       const value = buildConfig[`${ZEPHYR_ENV_SETTING_PREFIX_KEY}.${key}`] as string | string[] | undefined;
-      return shouldResolveEnvKeyAsPath(key)
-        ? resolveConfiguredPathValue(value, workspaceFolder)
-        : value;
+      return resolveStoredEnvValue(key, value, workspaceFolder);
     }
   }
   return undefined;

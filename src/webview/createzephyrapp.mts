@@ -622,6 +622,8 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const venvRadioGroup = document.getElementById('venvMode') as RadioGroup;
   const settingsPathModeGroup = document.getElementById('settingsPathMode') as RadioGroup;
   const toolchainVariantGroup = document.getElementById('toolchainVariantGroup') as RadioGroup;
+  const appLocationTypeGroup = document.getElementById('appLocationType') as RadioGroup | null;
+  const applicationsSubfolderField = document.getElementById('applicationsSubfolder') as TextField | null;
   const debugPresetCheckbox = document.getElementById('debugPresetCheckbox') as HTMLInputElement | null;
 
   webviewApi.postMessage(
@@ -638,6 +640,8 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
 	      samplePath:         sampleInput.getAttribute('data-value') ?? '',
 	      projectName:        projectNameText.value,
 	      projectParentPath:  projectParentPathText.value,
+	      appLocationType:    appLocationTypeGroup?.value ?? 'freestanding',
+	      applicationsSubfolder: applicationsSubfolderField?.value ?? 'applications',
 	      venv:               venvRadioGroup?.value ?? 'global',
 	      settingsPathMode:   settingsPathModeGroup?.value ?? 'relative',
 	      debugPreset:        !!debugPresetCheckbox?.checked,

@@ -829,6 +829,7 @@ const SPDX_VENV_EXTRA_PACKAGES = [
 interface CreateLocalManagedVenvOptions {
   venvDirName: string;
   westWorkspacePathOverride?: string;
+  venvBasePathOverride?: string;
   extraPackages?: string[];
 }
 
@@ -922,7 +923,7 @@ async function createLocalManagedVenv(
     return undefined;
   }
 
-  const destDir = workbenchFolder.uri.fsPath;
+  const destDir = options.venvBasePathOverride ?? workbenchFolder.uri.fsPath;
   const venvDir = getManagedVenvPath(destDir, options.venvDirName);
   let installScript = '';
   let installCmd = '';
@@ -999,11 +1000,13 @@ async function createLocalManagedVenv(
 export async function createLocalVenv(
   context: vscode.ExtensionContext,
   workbenchFolder: vscode.WorkspaceFolder,
-  westWorkspacePathOverride?: string
+  westWorkspacePathOverride?: string,
+  venvBasePathOverride?: string
 ): Promise<string | undefined> {
   return createLocalManagedVenv(context, workbenchFolder, {
     venvDirName: '.venv',
     westWorkspacePathOverride,
+    venvBasePathOverride,
   });
 }
 

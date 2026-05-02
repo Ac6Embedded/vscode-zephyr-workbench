@@ -7,7 +7,7 @@ import { ZephyrApplication } from '../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, executeTask, execShellCommandWithEnv, getConfiguredVenvPath, getConfiguredWorkbenchPath, getOutputChannel, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars, spawnCommandWithEnv } from '../utils/execUtils';
-import { fileExists, getSelectedToolchainVariantEnv, getWestWorkspace, normalizePath, tryGetZephyrSdkInstallation } from '../utils/utils';
+import { fileExists, getWestWorkspace, normalizePath, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { composeWestBuildArgs } from '../utils/zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
 import { buildDirectTask, createCppPropertiesCompileCommandsRefresh } from '../providers/ZephyrTaskProvider';
@@ -372,7 +372,8 @@ export async function westTmpBuildCmakeOnlyCommand(
     env        : {
       ...buildConfig.envVars,
       ...(activeZephyrSdkInstallation?.buildEnv ?? {}),
-      ...westWorkspace.buildEnv
+      ...westWorkspace.buildEnv,
+      ...zephyrProject.getToolchainEnv(),
     },
     executable : getShellExe(),
     shellArgs  : getShellArgs(classifyShell(getShellExe()))
@@ -444,6 +445,7 @@ async function runWestBuildCommand(
     taskName,
     buildConfig.name,
     { rawWestArgsOverride: runOptions.extraWestArgs },
+    zephyrProject,
   );
   if (!task) {
     return;
@@ -470,7 +472,7 @@ export async function westSpdxInitCommand(
   if (!zephyrProject.appRootPath) {
     return;
   }
-  const task = buildDirectTask(zephyrProject.appWorkspaceFolder, 'SPDX init', buildConfig.name);
+  const task = buildDirectTask(zephyrProject.appWorkspaceFolder, 'SPDX init', buildConfig.name, {}, zephyrProject);
   if (!task) {
     return;
   }
@@ -485,7 +487,7 @@ export async function westSpdxGenerateCommand(
   if (!zephyrProject.appRootPath) {
     return;
   }
-  const task = buildDirectTask(zephyrProject.appWorkspaceFolder, 'SPDX generate', buildConfig.name);
+  const task = buildDirectTask(zephyrProject.appWorkspaceFolder, 'SPDX generate', buildConfig.name, {}, zephyrProject);
   if (!task) {
     return;
   }
@@ -522,7 +524,7 @@ export async function westConfigCommand(
     : target === 'guiconfig'
       ? 'Gui config'
       : 'Harden Config';
-  const task = buildDirectTask(zephyrProject.appWorkspaceFolder, taskName, buildConfig.name);
+  const task = buildDirectTask(zephyrProject.appWorkspaceFolder, taskName, buildConfig.name, {}, zephyrProject);
   if (!task) {
     return;
   }
@@ -646,6 +648,9 @@ export function execWestCommandWithEnv(
   const venvPath = getConfiguredVenvPath(
     parent instanceof ZephyrApplication ? parent.appWorkspaceFolder : parent.rootUri,
   );
+  const projectVenvPath = parent instanceof ZephyrApplication
+    ? parent.venvPath ?? venvPath
+    : venvPath;
 
   const envScript = getConfiguredWorkbenchPath(
     ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
@@ -653,7 +658,7 @@ export function execWestCommandWithEnv(
   );
 
   if (!envScript) {throw new Error('Missing Zephyr env script');}
-  if (venvPath && !fileExists(venvPath)) {throw new Error('Invalid venv path');}
+  if (projectVenvPath && !fileExists(projectVenvPath)) {throw new Error('Invalid venv path');}
 
   // build cwd + env
   const options: any = { env: { ...process.env }, cwd: '' };
@@ -665,7 +670,7 @@ export function execWestCommandWithEnv(
       ...options.env,
       ...(zephyrSdkInstallation?.buildEnv ?? {}),
       ...ws.buildEnv,
-      ...getSelectedToolchainVariantEnv(vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, parent.appWorkspaceFolder), parent.appWorkspaceFolder),
+      ...parent.getToolchainEnv(),
       ...parent.getBuildConfiguration,
     };
   } else {
@@ -673,7 +678,7 @@ export function execWestCommandWithEnv(
     options.cwd = ws.rootUri.fsPath;
     options.env = { ...options.env, ...ws.buildEnv };
   }
-  if (venvPath) {options.env.PYTHON_VENV_PATH = venvPath;}
+  if (projectVenvPath) {options.env.PYTHON_VENV_PATH = projectVenvPath;}
 
   // shell + flags
   const shellExe = getShellExe();
@@ -720,6 +725,9 @@ export function execWestCommandWithEnvAsync(
   const venvPath = getConfiguredVenvPath(
     parent instanceof ZephyrApplication ? parent.appWorkspaceFolder : parent.rootUri,
   );
+  const projectVenvPath = parent instanceof ZephyrApplication
+    ? parent.venvPath ?? venvPath
+    : venvPath;
 
   if (!envScript) {
     throw new Error(
@@ -728,7 +736,7 @@ export function execWestCommandWithEnvAsync(
       { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
     );
   }
-  if (venvPath && !fileExists(venvPath)) {
+  if (projectVenvPath && !fileExists(projectVenvPath)) {
     throw new Error(
       'Invalid Python virtual environment.\n' +
       'Go to File > Preferences > Settings > Extensions > Zephyr Workbench > Venv: Path',
@@ -739,7 +747,7 @@ export function execWestCommandWithEnvAsync(
   let options: ExecOptions = {
     env: {
       ...process.env,
-      ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {})
+      ...(projectVenvPath ? { PYTHON_VENV_PATH: projectVenvPath } : {})
     }
   };
 
@@ -754,7 +762,7 @@ export function execWestCommandWithEnvAsync(
       ...options.env,
       ...(activeZephyrSdkInstallation?.buildEnv ?? {}),
       ...westWorkspace.buildEnv,
-      ...getSelectedToolchainVariantEnv(vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.appWorkspaceFolder), project.appWorkspaceFolder),
+      ...project.getToolchainEnv(),
       ...buildEnv
     };
   } else {

@@ -488,11 +488,16 @@ async function updateBoardImage(webview: vscode.Webview, boardYamlPath: string) 
 }
 
 async function handleCreateMessage(message: any) {
-  const projectLoc = message.projectParentPath;
   const isCreate = message.appFrom === "create";
   const toolchainVariant = getRequestedToolchainVariant(message.toolchainVariant);
   const westWorkspaceRootPath = getStringValue(message.westWorkspaceRootPath);
   const toolchainInstallationPath = getStringValue(message.toolchainInstallationPath);
+  const applicationType = isCreate && getStringValue(message.appLocationType) === 'workspace'
+    ? 'workspace'
+    : 'freestanding';
+  const projectLoc = isCreate && applicationType === 'workspace'
+    ? getWorkspaceApplicationParentPath(westWorkspaceRootPath, getStringValue(message.applicationsSubfolder))
+    : getStringValue(message.projectParentPath);
 
   if (isCreate) {
     if (!checkCreateParameters(message)) {
@@ -521,6 +526,7 @@ async function handleCreateMessage(message: any) {
       message.debugPreset,
       toolchainVariant,
       getSettingsPathMode(message.settingsPathMode),
+      applicationType,
     );
     return;
   }
@@ -586,6 +592,14 @@ async function handleCreateMessage(message: any) {
     getSettingsPathMode(message.settingsPathMode),
   );
   CreateZephyrAppPanel.currentPanel?.dispose();
+}
+
+function getWorkspaceApplicationParentPath(westWorkspaceRootPath: string, applicationsSubfolder: string): string {
+  const workspaceRootPath = vscode.Uri.parse(westWorkspaceRootPath, true).fsPath;
+  const subfolder = applicationsSubfolder.trim().replace(/^[\\/]+|[\\/]+$/g, '');
+  return subfolder.length > 0
+    ? path.join(workspaceRootPath, subfolder)
+    : workspaceRootPath;
 }
 
 function getRequestedToolchainVariant(rawVariant: unknown): ZephyrSdkVariantId {

@@ -105,6 +105,31 @@
             "description": "The path to the attached west workspace",
             "scope": "resource"
           },
+          "zephyr-workbench.westWorkspace.applications": {
+            "type": "array",
+            "default": [],
+            "description": "Applications declared by this West workspace. Entries use the same Zephyr Workbench application settings shape as freestanding applications, scoped to this workspace.",
+            "scope": "resource",
+            "items": {
+              "type": "object",
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Application path relative to the West workspace root."
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "zephyr-workbench.westWorkspace.selectedApplication": {
+            "type": "string",
+            "default": "",
+            "description": "Selected West workspace application path, relative to the West workspace root. Used when a workspace declares more than one application.",
+            "scope": "resource"
+          },
           "zephyr-workbench.sdk": {
             "type": "string",
             "default": "",
@@ -424,6 +449,12 @@
       {
         "command": "zephyr-workbench-app-explorer.add-custom-task",
         "title": "Add Custom Task",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.select-application",
+        "title": "Select Application",
+        "icon": "$(check)",
         "category": "Zephyr Workbench/Application"
       },
       {
@@ -944,6 +975,11 @@
           "when": "view == zephyr-workbench-west-workspace"
         },
         {
+          "command": "zephyr-workbench-app-explorer.select-application",
+          "group": "0@view/item/context@0",
+          "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace-application"
+        },
+        {
           "command": "zephyr-workbench-sdk-explorer.open-wizard",
           "group": "navigation",
           "when": "view == zephyr-workbench-sdk-explorer"
@@ -1022,6 +1058,11 @@
         {
           "command": "zephyr-workbench-app-explorer.add-custom-task",
           "group": "0@view/item/context@9.1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.select-application",
+          "group": "0@view/item/context@9.2",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {

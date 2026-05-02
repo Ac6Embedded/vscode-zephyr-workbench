@@ -1,7 +1,5 @@
 import * as fs from 'fs';
 import path from 'path';
-import * as vscode from 'vscode';
-import { ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from '../../constants';
 import { ZephyrApplication } from '../../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
 import { WestWorkspace } from '../../models/WestWorkspace';
@@ -14,7 +12,7 @@ import {
   normalizePathForShell,
   RawEnvVars,
 } from '../execUtils';
-import { getSelectedToolchainVariantEnv, tryGetZephyrSdkInstallation } from '../utils';
+import { tryGetZephyrSdkInstallation } from '../utils';
 import { splitWestBuildArgs } from './westArgUtils';
 import { getWestBuildStatePath, WestBuildState } from './westBuildState';
 
@@ -66,14 +64,7 @@ export function prepareWestBuildExecution(
     ? snippets.map(s => ` -S ${s}`).join('')
     : '';
 
-  const folderUri = vscode.Uri.file(zephyrProject.appRootPath);
-  const folder = vscode.workspace.getWorkspaceFolder(folderUri);
-  const cfg = vscode.workspace.getConfiguration(
-    ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
-    folder ?? undefined
-  );
-
-  const toolchainEnv = getSelectedToolchainVariantEnv(cfg, folder ?? zephyrProject.appWorkspaceFolder);
+  const toolchainEnv = zephyrProject.getToolchainEnv();
   const sdkEnv = tryGetZephyrSdkInstallation(zephyrProject.zephyrSdkPath)?.buildEnv ?? {};
   const workspaceEnv = westWorkspace.buildEnv;
   const buildState = createWestBuildState(
@@ -91,7 +82,7 @@ export function prepareWestBuildExecution(
   const stateChanged = !buildStatesMatch(readWestBuildState(buildDirPath), buildState);
   const needsConfigure = runOptions.pristine === 'always' || !buildDirConfigured || stateChanged;
 
-  const venvPath = getConfiguredVenvPath(folder ?? zephyrProject.appWorkspaceFolder) ?? '';
+  const venvPath = zephyrProject.venvPath ?? getConfiguredVenvPath(zephyrProject.appWorkspaceFolder) ?? '';
   const baseEnv = { ...sdkEnv, ...workspaceEnv, ...toolchainEnv };
   const configureEnv = needsConfigure ? normEnvVars : {};
 

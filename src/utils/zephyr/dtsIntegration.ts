@@ -30,7 +30,7 @@ import yaml from 'yaml';
 
 import { ZephyrApplication } from '../../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
-import { getWestWorkspaces } from '../utils';
+import { getWestWorkspaces, getZephyrApplication } from '../utils';
 
 // Minimal copies of the external types we need
 // We keep them narrow to avoid adding new dependencies
@@ -159,17 +159,12 @@ async function maybeUpdateDtsContext(doc: vscode.TextDocument) {
 async function handleApplicationOverlay(filePath: string) {
   if (!dtsApi) { return; }
 
-  // Find the workspace folder that owns this file
-  const wsFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath));
-  if (!wsFolder) { return; }
-
-  // Check this is an application (prj.conf at root). If not, skip.
-  if (!ZephyrApplication.isApplicationFolder(wsFolder)) {
-    return; // Not an application folder
+  let project: ZephyrApplication;
+  try {
+    project = await getZephyrApplication(filePath);
+  } catch {
+    return;
   }
-
-  // Make a project instance; configs will be parsed from settings
-  const project = new ZephyrApplication(wsFolder, wsFolder.uri.fsPath);
   const buildConfig = pickActiveOrFirstConfig(project);
   if (!buildConfig) { return; }
 

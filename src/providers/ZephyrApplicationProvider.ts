@@ -4,6 +4,10 @@ import { ZephyrApplication } from '../models/ZephyrApplication';
 import { getWestWorkspace } from '../utils/utils';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY } from '../constants';
+import {
+  getEffectiveWorkspaceApplicationEntry,
+  resolveWorkspaceApplicationPath,
+} from '../utils/zephyr/workspaceApplications';
 
 const EXTRA_ENV_KEYS = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES'];
 const WEST_ARGUMENTS_LABEL = 'west Arguments';
@@ -25,9 +29,8 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
 		const items: vscode.TreeItem[] = [];
     if(element === undefined) {
       if(vscode.workspace.workspaceFolders) {
-        const projectFolders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders);
-        for (const workspaceFolder of projectFolders) {
-          const appProject = new ZephyrApplication(workspaceFolder, workspaceFolder.uri.fsPath);
+        const applications = await ZephyrApplication.getApplications(vscode.workspace.workspaceFolders);
+        for (const appProject of applications) {
           const item =  new ZephyrApplicationTreeItem(appProject, vscode.TreeItemCollapsibleState.Collapsed);
           items.push(item);
         }
@@ -204,7 +207,10 @@ export class ZephyrApplicationTreeItem extends vscode.TreeItem {
       try {
         let westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
         if(westWorkspace !== null) {
-          this.description = project.buildConfigs.length > 0 ? `[with ${westWorkspace.name}]` : `[invalid]`;
+          const selectedDescription = isSelectedWorkspaceApplication(project) ? ' [selected]' : '';
+          this.description = project.buildConfigs.length > 0
+            ? `[with ${westWorkspace.name}]${selectedDescription}`
+            : `[invalid]`;
           this.contextValue = 'zephyr-application';
         } else {
           this.description = `[not configured]`;
@@ -217,6 +223,18 @@ export class ZephyrApplicationTreeItem extends vscode.TreeItem {
       this.tooltip = project.appRootPath;
     }
 	}
+}
+
+function isSelectedWorkspaceApplication(project: ZephyrApplication): boolean {
+  if (!project.isWestWorkspaceApplication) {
+    return false;
+  }
+
+  const effectiveEntry = getEffectiveWorkspaceApplicationEntry(project.appWorkspaceFolder);
+  const effectivePath = effectiveEntry
+    ? resolveWorkspaceApplicationPath(effectiveEntry, project.appWorkspaceFolder)
+    : undefined;
+  return !!effectivePath && path.normalize(effectivePath) === path.normalize(project.appRootPath);
 }
 
 export class ZephyrConfigTreeItem extends vscode.TreeItem {

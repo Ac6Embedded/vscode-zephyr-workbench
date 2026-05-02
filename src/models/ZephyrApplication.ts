@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from "path";
 import {
   fileExists,
-  getSelectedToolchainVariantEnv,
   getWestWorkspace,
   getZephyrSdkInstallation,
   tryGetZephyrSdkInstallation,
@@ -12,10 +11,14 @@ import {
 } from '../utils/utils';
 import {
   ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
+  ZEPHYR_PROJECT_IAR_SETTING_KEY,
+  ZEPHYR_PROJECT_SDK_SETTING_KEY,
+  ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY,
   ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY,
   ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY,
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
+  ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
 } from '../constants';
 import {
   buildStartupSetupShellArgs,
@@ -24,17 +27,31 @@ import {
   getConfiguredWorkbenchPath,
   getShellCdCommand,
   getShellClearCommand,
-  getConfiguredVenvPath,
   getResolvedShell,
   getShellSourceCommand,
   classifyShell,
   normalizePathForShell,
   TerminalEnvGroup,
 } from '../utils/execUtils';
-import { loadEnv } from '../utils/env/zephyrEnvUtils';
+import { loadEnv, resolveStoredEnvValue } from '../utils/env/zephyrEnvUtils';
 import { ZephyrBuildConfig } from './ZephyrBuildConfig';
 import { ArmGnuToolchainInstallation, IarToolchainInstallation } from './ToolchainInstallations';
 import { normalizeStoredToolchainVariant } from '../utils/toolchainSelection';
+import { ToolchainVariantId } from './ToolchainInstallations';
+import { WestWorkspace } from './WestWorkspace';
+import {
+  findContainingWorkspaceApplicationEntry,
+  getEffectiveWorkspaceApplicationEntry,
+  getWorkspaceApplicationPathSetting,
+  getWorkspaceApplicationSetting,
+  readWorkspaceApplicationEntries,
+  resolveWorkspaceApplicationPath,
+  WorkspaceApplicationSettings,
+} from '../utils/zephyr/workspaceApplications';
+
+interface ZephyrApplicationOptions {
+  workspaceApplicationSettings?: WorkspaceApplicationSettings;
+}
 
 /**
  * Runtime model for one Zephyr application managed by the extension.
@@ -55,11 +72,14 @@ import { normalizeStoredToolchainVariant } from '../utils/toolchainSelection';
 export class ZephyrApplication {
   private static applicationWorkspaceCache = new Map<string, boolean>();
 
-  readonly appWorkspaceFolder: any;
+  readonly appWorkspaceFolder: vscode.WorkspaceFolder;
   readonly appRootPath: string;
+  readonly workspaceApplicationSettings?: WorkspaceApplicationSettings;
   westWorkspaceRootPath!: string;
   zephyrSdkPath!: string;
   zephyrSdkVersion?: string;
+  toolchainVariant: ToolchainVariantId = 'zephyr';
+  venvPath?: string;
   selectedIarToolchainInstallation!: IarToolchainInstallation;
   selectedArmGnuToolchainInstallation!: ArmGnuToolchainInstallation;
   buildConfigs: ZephyrBuildConfig[] = [];
@@ -76,11 +96,13 @@ export class ZephyrApplication {
   static envVarKeys = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES', 'SHIELD', 'SNIPPETS'];
 
   public constructor(
-    appWorkspaceFolder: any,
+    appWorkspaceFolder: vscode.WorkspaceFolder,
     appRootPath: string,
+    options: ZephyrApplicationOptions = {},
   ) {
     this.appWorkspaceFolder = appWorkspaceFolder;
     this.appRootPath = appRootPath;
+    this.workspaceApplicationSettings = options.workspaceApplicationSettings;
     this.parseSettings();
   }
 
@@ -89,11 +111,60 @@ export class ZephyrApplication {
   }
 
   get prjConfUri(): vscode.Uri {
-    return vscode.Uri.joinPath(this.appWorkspaceFolder.uri, 'prj.conf');
+    return vscode.Uri.file(path.join(this.appRootPath, 'prj.conf'));
   }
 
   get manifestUri(): vscode.Uri {
-    return vscode.Uri.joinPath(this.appWorkspaceFolder.uri, 'west.yaml');
+    return vscode.Uri.file(path.join(this.appRootPath, 'west.yaml'));
+  }
+
+  get isWestWorkspaceApplication(): boolean {
+    return !!this.workspaceApplicationSettings;
+  }
+
+  get settingsRootPath(): string {
+    return this.appWorkspaceFolder.uri.fsPath;
+  }
+
+  getWorkspaceRelativePath(targetPath: string): string {
+    const relativePath = path.relative(this.appWorkspaceFolder.uri.fsPath, targetPath).replace(/\\/g, '/');
+    return relativePath && !relativePath.startsWith('..')
+      ? path.posix.join('${workspaceFolder}', relativePath)
+      : targetPath;
+  }
+
+  getToolchainEnv(): Record<string, string> {
+    if (this.toolchainVariant === 'iar') {
+      const iarToolchainInstallation = this.selectedIarToolchainInstallation;
+      if (!iarToolchainInstallation) {
+        return {};
+      }
+
+      const armSubdir =
+        process.platform === 'win32'
+          ? path.join(iarToolchainInstallation.iarPath, 'arm')
+          : path.posix.join(iarToolchainInstallation.iarPath, 'arm');
+
+      return {
+        IAR_TOOLCHAIN_PATH: armSubdir,
+        ZEPHYR_TOOLCHAIN_VARIANT: 'iar',
+        IAR_LMS_BEARER_TOKEN: iarToolchainInstallation.token ?? '',
+      };
+    }
+
+    if (this.toolchainVariant === 'gnuarmemb') {
+      const armGnuToolchainInstallation = this.selectedArmGnuToolchainInstallation;
+      if (!armGnuToolchainInstallation) {
+        return {};
+      }
+
+      return {
+        GNUARMEMB_TOOLCHAIN_PATH: armGnuToolchainInstallation.toolchainPath,
+        ZEPHYR_TOOLCHAIN_VARIANT: 'gnuarmemb',
+      };
+    }
+
+    return { ZEPHYR_TOOLCHAIN_VARIANT: this.toolchainVariant };
   }
 
   // Populate the runtime model from workspace-scoped settings while keeping
@@ -103,15 +174,27 @@ export class ZephyrApplication {
       ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
       this.appWorkspaceFolder,
     );
-    this.westWorkspaceRootPath = getConfiguredWorkbenchPath(
-      ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY,
-      this.appWorkspaceFolder,
-    ) ?? '';
+    const appSettings = this.workspaceApplicationSettings;
+    const getSetting = <T>(key: string, defaultValue?: T): T | undefined => appSettings
+      ? getWorkspaceApplicationSetting<T>(appSettings, key, defaultValue)
+      : cfg.get<T>(key, defaultValue as T);
+    const getPathSetting = (key: string): string | undefined => appSettings
+      ? getWorkspaceApplicationPathSetting(appSettings, key, this.appWorkspaceFolder)
+      : getConfiguredWorkbenchPath(key, this.appWorkspaceFolder);
+    this.westWorkspaceRootPath = appSettings
+      ? this.appWorkspaceFolder.uri.fsPath
+      : getConfiguredWorkbenchPath(
+          ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY,
+          this.appWorkspaceFolder,
+        ) ?? '';
 
-    const toolchainVariant = normalizeStoredToolchainVariant(cfg, cfg.get<string>("toolchain") ?? "zephyr");
+    const toolchainVariant = appSettings
+      ? normalizeStoredToolchainVariant(cfg, getSetting<string>(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY) ?? 'zephyr')
+      : normalizeStoredToolchainVariant(cfg, cfg.get<string>(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY) ?? 'zephyr');
+    this.toolchainVariant = toolchainVariant;
 
     if (toolchainVariant === "iar") {
-      const selectedIarPath = getConfiguredWorkbenchPath("iar", this.appWorkspaceFolder) ?? '';
+      const selectedIarPath = getPathSetting(ZEPHYR_PROJECT_IAR_SETTING_KEY) ?? '';
       const iarToolchainInstallation = findIarToolchainInstallation(selectedIarPath);
 
       if (iarToolchainInstallation) {
@@ -121,13 +204,10 @@ export class ZephyrApplication {
         vscode.window.showWarningMessage(
           `IAR toolchain ${selectedIarPath} not found in listIARs; falling back to SDK setting`
         );
-        this.zephyrSdkPath = getConfiguredWorkbenchPath("sdk", this.appWorkspaceFolder) ?? '';
+        this.zephyrSdkPath = getPathSetting(ZEPHYR_PROJECT_SDK_SETTING_KEY) ?? '';
       }
     } else if (toolchainVariant === 'gnuarmemb') {
-      const selectedArmGnuPath = getConfiguredWorkbenchPath(
-        ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
-        this.appWorkspaceFolder,
-      ) ?? '';
+      const selectedArmGnuPath = getPathSetting(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY) ?? '';
       const armGnuToolchainInstallation = findArmGnuToolchainInstallation(selectedArmGnuPath);
 
       if (armGnuToolchainInstallation) {
@@ -142,8 +222,9 @@ export class ZephyrApplication {
         this.zephyrSdkPath = '';
       }
     } else {
-      this.zephyrSdkPath = getConfiguredWorkbenchPath("sdk", this.appWorkspaceFolder) ?? '';
+      this.zephyrSdkPath = getPathSetting(ZEPHYR_PROJECT_SDK_SETTING_KEY) ?? '';
     }
+    this.venvPath = getPathSetting(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
 
     this.zephyrSdkVersion = undefined;
     if (this.zephyrSdkPath) {
@@ -154,20 +235,18 @@ export class ZephyrApplication {
       }
     }
 
-    this.westArgs = vscode.workspace
-      .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.appWorkspaceFolder)
-      .get(ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, '');
+    this.westArgs = getSetting<string>(ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY, '') ?? '';
 
     for (const key of Object.keys(this.envVars)) {
-      const values = loadEnv(this.appWorkspaceFolder, key);
+      const values = appSettings
+        ? resolveStoredEnvValue(key, getWorkspaceApplicationSetting<string | string[]>(appSettings, `env.${key}`), this.appWorkspaceFolder)
+        : loadEnv(this.appWorkspaceFolder, key);
       if (values) {
         this.envVars[key] = values;
       }
     }
 
-    const rawBuildConfigs: any[] = vscode.workspace
-      .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, this.appWorkspaceFolder)
-      .get('build.configurations', []);
+    const rawBuildConfigs: any[] = getSetting<any[]>('build.configurations', []) ?? [];
 
     rawBuildConfigs.forEach(buildConfig => {
       const config = new ZephyrBuildConfig(buildConfig.name);
@@ -224,6 +303,64 @@ export class ZephyrApplication {
     return results.flatMap((result) => result.status === 'fulfilled' && result.value ? [result.value] : []);
   }
 
+  static async getApplications(
+    folders: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? []
+  ): Promise<ZephyrApplication[]> {
+    const applications: ZephyrApplication[] = [];
+
+    for (const folder of folders) {
+      if (WestWorkspace.isWestWorkspaceFolder(folder)) {
+        // Workspace applications deliberately keep their settings in the west
+        // workspace. The app root is resolved per entry so the rest of the
+        // feature code can still operate on a normal ZephyrApplication object.
+        for (const entry of readWorkspaceApplicationEntries(folder)) {
+          const appPath = resolveWorkspaceApplicationPath(entry, folder);
+          if (appPath && ZephyrApplication.isApplicationPathLike(appPath)) {
+            applications.push(new ZephyrApplication(folder, appPath, {
+              workspaceApplicationSettings: entry,
+            }));
+          }
+        }
+        continue;
+      }
+
+      if (await ZephyrApplication.isApplicationWorkspaceFolder(folder)) {
+        applications.push(new ZephyrApplication(folder, folder.uri.fsPath));
+      }
+    }
+
+    return applications;
+  }
+
+  static getWorkspaceApplication(
+    workspaceFolder: vscode.WorkspaceFolder,
+    appRootPath: string,
+  ): ZephyrApplication | undefined {
+    const entry = findContainingWorkspaceApplicationEntry(workspaceFolder, appRootPath);
+    if (!entry) {
+      return undefined;
+    }
+
+    const resolvedPath = resolveWorkspaceApplicationPath(entry, workspaceFolder);
+    return resolvedPath
+      ? new ZephyrApplication(workspaceFolder, resolvedPath, { workspaceApplicationSettings: entry })
+      : undefined;
+  }
+
+  static getEffectiveWorkspaceApplication(
+    workspaceFolder: vscode.WorkspaceFolder,
+  ): ZephyrApplication | undefined {
+    const entry = getEffectiveWorkspaceApplicationEntry(workspaceFolder);
+    if (!entry) {
+      return undefined;
+    }
+
+    const resolvedPath = resolveWorkspaceApplicationPath(entry, workspaceFolder);
+    return resolvedPath
+      ? new ZephyrApplication(workspaceFolder, resolvedPath, { workspaceApplicationSettings: entry })
+      : undefined;
+  }
+
   static invalidateApplicationWorkspaceFolder(applicationPath: string) {
     ZephyrApplication.applicationWorkspaceCache.delete(applicationPath);
   }
@@ -249,6 +386,10 @@ export class ZephyrApplication {
     return false;
   }
 
+  static isApplicationPathLike(applicationPath: string): boolean {
+    return fileExists(path.join(applicationPath, 'prj.conf'));
+  }
+
   static isApplicationFolder(folder: vscode.WorkspaceFolder): boolean {
     const prjConfFile = vscode.Uri.joinPath(folder.uri, 'prj.conf');
     return fileExists(prjConfFile.fsPath);
@@ -263,11 +404,8 @@ export class ZephyrApplication {
       (shellType === 'bash' || shellType === 'zsh' ||
         shellType === 'dash' || shellType === 'fish');
 
-    const venvPath = getConfiguredVenvPath(application.appWorkspaceFolder);
-    const toolchainEnv = getSelectedToolchainVariantEnv(
-      vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, application.appWorkspaceFolder),
-      application.appWorkspaceFolder,
-    );
+    const venvPath = application.venvPath;
+    const toolchainEnv = application.getToolchainEnv();
 
     const groups: TerminalEnvGroup[] = [
       { label: 'Zephyr build system', env: { ...westWorkspace.buildEnv } },

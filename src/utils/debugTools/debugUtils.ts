@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import * as vscode from 'vscode';
 import yaml from 'yaml';
-import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
+import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
 import { Linkserver } from "../../debug/runners/Linkserver";
 import { Openocd } from "../../debug/runners/Openocd";
 import { WestRunner } from "../../debug/runners/WestRunner";
@@ -23,9 +23,9 @@ import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeO
 import { ParsedRunnersYaml, findRunnersYamlForProject, getRunnerPathFromRunnersYaml, readRunnersYamlFile, readRunnersYamlForBuildDir, readRunnersYamlForProject } from '../zephyr/runnersYamlUtils';
 import { composeWestBuildArgs } from '../zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from './debugToolSelectionUtils';
-import { normalizeStoredToolchainVariant } from '../toolchainSelection';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
+export const ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY = 'zephyrWorkbenchAppRoot';
 
 interface LaunchConfigurationArtifacts {
   compatibleRunners: string[];
@@ -291,7 +291,7 @@ async function collectLaunchConfigurationArtifacts(
   buildConfig: ZephyrBuildConfig,
   westWorkspace: ReturnType<typeof getWestWorkspace>,
 ): Promise<LaunchConfigurationArtifacts> {
-  const appFolderName = project.appWorkspaceFolder?.name;
+  const appFolderName = path.basename(project.appRootPath);
   const buildDir = buildConfig.getBuildDir(project);
   const boardIdentifier = buildConfig.boardIdentifier;
   let {
@@ -498,6 +498,7 @@ export function createWestWrapper(project: ZephyrApplication, buildConfigName?: 
 
   let envVars = {
     ...westWorkspace.buildEnv,
+    ...project.getToolchainEnv(),
   };
 
   if(buildConfig) {
@@ -613,8 +614,7 @@ export async function createLaunchConfiguration(
   artifacts?: LaunchConfigurationArtifacts,
 ): Promise<any> {
   const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
-  const cfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, project.appWorkspaceFolder);
-  const toolchainVariant = normalizeStoredToolchainVariant(cfg, cfg.get<string>(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY) ?? 'zephyr');
+  const toolchainVariant = project.toolchainVariant;
   const zephyrSdkInstallation = tryGetZephyrSdkInstallation(project.zephyrSdkPath);
   const armGnuToolchainInstallation = toolchainVariant === 'gnuarmemb'
     ? findArmGnuToolchainInstallation(project.selectedArmGnuToolchainInstallation?.toolchainPath ?? '')
@@ -674,17 +674,16 @@ export async function createLaunchConfiguration(
     configName = `Zephyr Workbench Debug [${buildConfig.name}]`;
     socToolchainName = buildConfig.getKConfigValue(project, 'SOC_TOOLCHAIN_NAME');
 
-    const workspacePath = project.appWorkspaceFolder.uri.fsPath;
-    const buildFolderPath = path.join(workspacePath, buildConfig.relativeBuildDir);
-    const appFolderName = project.appWorkspaceFolder.name;
+    const buildFolderPath = buildConfig.getBuildDir(project);
+    const appFolderName = path.basename(project.appRootPath);
     const appNameDir = path.join(buildFolderPath, appFolderName);
 
     if (fs.existsSync(appNameDir)) {
-      program = path.join('${workspaceFolder}', buildConfig.relativeBuildDir, appFolderName, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
+      program = project.getWorkspaceRelativePath(path.join(appNameDir, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME));
     } else {
-      program = path.join('${workspaceFolder}', buildConfig.relativeBuildDir, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME);
+      program = project.getWorkspaceRelativePath(path.join(buildFolderPath, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME));
     }
-    wrapper = path.join('${workspaceFolder}', buildConfig.relativeInternalDebugDir, wrapperFile);
+    wrapper = project.getWorkspaceRelativePath(path.join(buildConfig.getInternalDebugDir(project), wrapperFile));
   }
 
   // Auto-detect SVD for STM32 boards (best effort)
@@ -697,7 +696,11 @@ export async function createLaunchConfiguration(
     name: `${configName}`,
     type: "cppdbg",
     request: "launch",
-    cwd: "${workspaceFolder}",
+    // Workspace applications share the west workspace launch.json. Store a
+    // private app-root marker so identical multibuild names from different
+    // applications still resolve to the intended project at debug time.
+    [ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY]: project.isWestWorkspaceApplication ? project.appRootPath : undefined,
+    cwd: project.getWorkspaceRelativePath(project.appRootPath),
     program: `${program}`,
     args: [],
     stopAtEntry: true,
@@ -775,7 +778,7 @@ export async function readLaunchJson(project: ZephyrApplication): Promise<any | 
   // user opens the Run/Debug view) or contain malformed JSON. Treat both as
   // "no usable config" so callers can fall back to creating a fresh one,
   // instead of crashing with "Unexpected end of JSON input".
-  const raw = await fs.promises.readFile(path.join(project.appRootPath, '.vscode', 'launch.json'), 'utf8');
+  const raw = await fs.promises.readFile(path.join(project.appWorkspaceFolder.uri.fsPath, '.vscode', 'launch.json'), 'utf8');
   if (raw.trim().length === 0) {
     return undefined;
   }
@@ -787,7 +790,9 @@ export async function readLaunchJson(project: ZephyrApplication): Promise<any | 
 }
 
 export function writeLaunchJson(launchJson: any, project: ZephyrApplication) {
-  fs.writeFileSync(path.join(project.appRootPath, '.vscode', 'launch.json'), JSON.stringify(launchJson, null, 2));
+  const launchDir = path.join(project.appWorkspaceFolder.uri.fsPath, '.vscode');
+  fs.mkdirSync(launchDir, { recursive: true });
+  fs.writeFileSync(path.join(launchDir, 'launch.json'), JSON.stringify(launchJson, null, 2));
 }
 
 export function pyocdLaunchJson(
@@ -853,10 +858,29 @@ export async function findLaunchConfiguration(
     debugConfigName = ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME;
   }
 
-  for(let configuration of launchJson.configurations) {
-    if(configuration.name === debugConfigName) {
-      return configuration;
+  const matchingConfigurations = launchJson.configurations.filter((configuration: any) =>
+    configuration && typeof configuration === 'object' && configuration.name === debugConfigName
+  );
+
+  if (project.isWestWorkspaceApplication) {
+    const normalizedProjectPath = path.normalize(project.appRootPath);
+    const matchingApplicationConfig = matchingConfigurations.find((configuration: any) => {
+      const appRoot = configuration[ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY];
+      return typeof appRoot === 'string' && path.normalize(appRoot) === normalizedProjectPath;
+    });
+    if (matchingApplicationConfig) {
+      return matchingApplicationConfig;
     }
+
+    if (matchingConfigurations.length === 1 && !matchingConfigurations[0][ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY]) {
+      // Migrate an older workspace-app launch entry lazily. Without this marker,
+      // a west workspace containing multiple apps cannot distinguish same-named
+      // build configs such as "primary".
+      matchingConfigurations[0][ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY] = project.appRootPath;
+      return matchingConfigurations[0];
+    }
+  } else if (matchingConfigurations.length > 0) {
+    return matchingConfigurations[0];
   }
   // Create and push a new configuration only if valid
   let newCfg: any;
@@ -882,7 +906,7 @@ export async function getLaunchConfiguration(
   artifacts?: LaunchConfigurationArtifacts,
 ): Promise<[any, any]> {
   let launchJson: any;
-  const launchPath = path.join(project.appRootPath, '.vscode', 'launch.json');
+  const launchPath = path.join(project.appWorkspaceFolder.uri.fsPath, '.vscode', 'launch.json');
 
   if (fs.existsSync(launchPath)) {
     launchJson = await readLaunchJson(project);

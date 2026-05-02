@@ -19,6 +19,13 @@ import {
 import { buildDirectTask, checkOrCreateTask, isDirectTask, resolveFlashRunnerSelection, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { readInstalledZinstallerVersion, versionAtLeast } from './env/zinstallerVersionUtils';
 import { readToolchainSelection } from './toolchainSelection';
+import {
+  findContainingWorkspaceApplicationEntry,
+  getEffectiveWorkspaceApplicationEntry,
+  isPathWithin as isPathWithinWorkspaceApplication,
+  readWorkspaceApplicationEntries,
+  resolveWorkspaceApplicationPath,
+} from './zephyr/workspaceApplications';
 
 let zephyrTasksFetchPromise: Promise<vscode.Task[]> | undefined;
 const APP_TEMPLATE_METADATA_FILES: Record<string, ZephyrAppTemplateKind> = {
@@ -200,9 +207,25 @@ export function formatWindowsPath(path: string): string {
   return path.replace(/\\/g, '\\\\');
 }
 
-export function getWorkspaceFolder(path: string): vscode.WorkspaceFolder | undefined {
-  const folderUri: vscode.Uri = vscode.Uri.file(path);
-  return vscode.workspace.getWorkspaceFolder(folderUri);
+export function getWorkspaceFolder(folderPath: string): vscode.WorkspaceFolder | undefined {
+  const folderUri: vscode.Uri = vscode.Uri.file(folderPath);
+  return getExactWorkspaceFolder(folderPath) ?? vscode.workspace.getWorkspaceFolder(folderUri);
+}
+
+export function getExactWorkspaceFolder(folderPath: string): vscode.WorkspaceFolder | undefined {
+  const normalizedPath = path.normalize(folderPath);
+  return vscode.workspace.workspaceFolders?.find(workspaceFolder =>
+    path.normalize(workspaceFolder.uri.fsPath) === normalizedPath
+  );
+}
+
+export function createWorkspaceFolderReference(folderPath: string): vscode.WorkspaceFolder {
+  const exactFolder = getExactWorkspaceFolder(folderPath);
+  return exactFolder ?? {
+    uri: vscode.Uri.file(folderPath),
+    name: path.basename(folderPath),
+    index: -1,
+  };
 }
 
 export function isWorkspaceFolder(path: string): boolean {
@@ -415,8 +438,15 @@ export async function getListApplications(appsPath: string | undefined): Promise
         const projConfPath = vscode.Uri.joinPath(filePath, "prj.conf");
         try {
           await vscode.workspace.fs.stat(projConfPath);
-          const application = new ZephyrApplication(vscode.workspace.getWorkspaceFolder(filePath), filePath.fsPath);
-          applications.push(application);
+          const workspaceFolder = vscode.workspace.getWorkspaceFolder(filePath);
+          if (workspaceFolder) {
+            const entry = findContainingWorkspaceApplicationEntry(workspaceFolder, filePath.fsPath);
+            const resolvedPath = entry ? resolveWorkspaceApplicationPath(entry, workspaceFolder) : undefined;
+            const application = entry && resolvedPath
+              ? new ZephyrApplication(workspaceFolder, resolvedPath, { workspaceApplicationSettings: entry })
+              : new ZephyrApplication(workspaceFolder, filePath.fsPath);
+            applications.push(application);
+          }
         } catch (error) {
           // Not an application folder
         }
@@ -500,10 +530,32 @@ export function findArmGnuToolchainInstallation(toolchainPath: string): ArmGnuTo
 
 
 export async function getZephyrApplication(projectPath: string): Promise<ZephyrApplication> {
-  const projectFolders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders as vscode.WorkspaceFolder[]);
-  for (const workspaceFolder of projectFolders) {
-    if (workspaceFolder.uri.fsPath === projectPath) {
-      return new ZephyrApplication(workspaceFolder, workspaceFolder.uri.fsPath);
+  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+  const resourcePath = path.normalize(projectPath);
+  const applications = await ZephyrApplication.getApplications(workspaceFolders);
+
+  const containingApplications = applications
+    .filter(application => isPathWithinWorkspaceApplication(application.appRootPath, resourcePath))
+    .sort((a, b) => b.appRootPath.length - a.appRootPath.length);
+  if (containingApplications.length > 0) {
+    return containingApplications[0];
+  }
+
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(resourcePath))
+    ?? workspaceFolders.find(folder => path.normalize(folder.uri.fsPath) === resourcePath);
+  if (workspaceFolder && WestWorkspace.isWestWorkspaceFolder(workspaceFolder)) {
+    const selectedEntry = getEffectiveWorkspaceApplicationEntry(workspaceFolder);
+    if (selectedEntry) {
+      const selectedPath = resolveWorkspaceApplicationPath(selectedEntry, workspaceFolder);
+      if (selectedPath) {
+        return new ZephyrApplication(workspaceFolder, selectedPath, {
+          workspaceApplicationSettings: selectedEntry,
+        });
+      }
+    }
+
+    if (readWorkspaceApplicationEntries(workspaceFolder).length > 1) {
+      vscode.window.showInformationMessage("Select a West workspace application first.");
     }
   }
   vscode.window.showInformationMessage("This is not a Zephyr application " +`${projectPath}`);
@@ -706,10 +758,10 @@ export async function findConfigTask(taskLabel: string, project: ZephyrApplicati
       return buildDirectTask(project.appWorkspaceFolder, taskLabel, configName, {
         flashRunner: flashRunner.runner,
         flashRunnerArgs: flashRunner.customArgs,
-      });
+      }, project);
     }
 
-    return buildDirectTask(project.appWorkspaceFolder, taskLabel, configName);
+    return buildDirectTask(project.appWorkspaceFolder, taskLabel, configName, {}, project);
   }
 
   const taskExists = await checkOrCreateTask(project.appWorkspaceFolder, taskLabel);
@@ -722,7 +774,19 @@ export async function findConfigTask(taskLabel: string, project: ZephyrApplicati
     if (task) {
       // If task found is already set for the chosen build configuration
       if (task.definition.config === configName) {
-        return task;
+        const taskDefinition = {
+          ...task.definition,
+          __appRootPath: project.appRootPath,
+        };
+        const tmpTask = new vscode.Task(
+          taskDefinition,
+          task.scope as vscode.WorkspaceFolder,
+          task.name,
+          task.source,
+          task.execution,
+          task.problemMatchers,
+        );
+        return ZephyrTaskProvider.resolve(tmpTask);
       } else {
         // Else, if the build config differs, create temporary task to
         // avoid messing with tasks.json
@@ -749,7 +813,8 @@ export async function findConfigTask(taskLabel: string, project: ZephyrApplicati
             const taskDefinition = {
               ...task.definition,
               config: configName,
-              args: args
+              args: args,
+              __appRootPath: project.appRootPath,
             };
 
             const tmpTask = new vscode.Task(

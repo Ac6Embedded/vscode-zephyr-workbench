@@ -1,14 +1,23 @@
-import vscode, { ExtensionContext, QuickPickItem, WorkspaceFolder } from "vscode";
+import vscode, { ExtensionContext, QuickPickItem } from "vscode";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 
-export async function pickApplicationQuickStep(context: ExtensionContext): Promise<WorkspaceFolder | undefined> {
+type ApplicationQuickPickItem = QuickPickItem & {
+  appRootPath: string;
+};
 
-  const applicationItems: QuickPickItem[] = [];
+export async function pickApplicationQuickStep(context: ExtensionContext): Promise<ZephyrApplication | undefined> {
+
+  const applicationItems: ApplicationQuickPickItem[] = [];
   
   if(vscode.workspace.workspaceFolders) {
-    const projectFolders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders);
-    for (const workspaceFolder of projectFolders) {
-      applicationItems.push({ label: workspaceFolder.name, description: workspaceFolder.uri.fsPath});
+    const applications = await ZephyrApplication.getApplications(vscode.workspace.workspaceFolders);
+    for (const application of applications) {
+      applicationItems.push({
+        label: application.appName,
+        description: application.appRootPath,
+        detail: application.isWestWorkspaceApplication ? `West workspace: ${application.appWorkspaceFolder.name}` : 'Freestanding',
+        appRootPath: application.appRootPath,
+      });
     }
   }
   
@@ -19,11 +28,11 @@ export async function pickApplicationQuickStep(context: ExtensionContext): Promi
     canPickMany: false
   };
 
-  const result = await vscode.window.showQuickPick(applicationItems, options);
+  const result = await vscode.window.showQuickPick<ApplicationQuickPickItem>(applicationItems, options);
 
-  if(result && result.description) {
-    const selectedFolder = vscode.workspace.workspaceFolders?.find(folder => folder.uri.fsPath === result.description);
-    return Promise.resolve(selectedFolder);
+  if(result) {
+    return ZephyrApplication.getApplications(vscode.workspace.workspaceFolders ?? [])
+      .then(applications => applications.find(application => application.appRootPath === result.appRootPath));
   } 
   return Promise.resolve(undefined);
 }

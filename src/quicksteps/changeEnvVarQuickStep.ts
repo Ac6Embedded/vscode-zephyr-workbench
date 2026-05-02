@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { WestWorkspace } from "../models/WestWorkspace";
 import { ZephyrApplication } from "../models/ZephyrApplication";
-import { saveConfigSetting } from '../utils/env/zephyrEnvUtils';
+import { saveApplicationConfigSetting } from '../utils/zephyr/applicationSettings';
 import { getWestWorkspace } from "../utils/utils";
 import { getSupportedShields, getSupportedSnippets } from '../commands/WestCommands';
 
@@ -172,9 +172,9 @@ export async function toggleSysbuild(
     // Update the sysbuild property as a string "true" or "false"
     targetConfig.sysbuild = enabled ? "true" : "false";
 
-    // Since updating nested properties isn’t directly supported by the VS Code API,
-    // update the entire build.configurations array.
-    //await config.update('build.configurations', buildConfigs, vscode.ConfigurationTarget.WorkspaceFolder);
-    await saveConfigSetting(workspaceFolder, targetConfig.name, key, enabled ? "true" : "false");
+    // Route through the project-aware settings helper so freestanding apps keep
+    // their per-folder settings while west workspace apps update their scoped
+    // application entry in the containing workspace.
+    await saveApplicationConfigSetting(project, targetConfig.name, key, enabled ? "true" : "false");
   }
 }

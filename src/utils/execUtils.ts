@@ -329,7 +329,7 @@ export function resolveConfiguredPath(
   scope?: ConfigurationScope,
   state?: VariableResolutionState,
 ): string | undefined {
-  if (!targetPath || targetPath.trim().length === 0) {
+  if (typeof targetPath !== 'string' || targetPath.trim().length === 0) {
     return undefined;
   }
 
@@ -371,9 +371,11 @@ export function getConfiguredPathBySettingName(
   const resource = getConfigurationResource(scope);
   const rawValue = vscode.workspace
     .getConfiguration(undefined, resource)
-    .get<string>(settingName);
+    .get<unknown>(settingName);
 
-  return resolveConfiguredPath(rawValue, scope);
+  return typeof rawValue === 'string'
+    ? resolveConfiguredPath(rawValue, scope)
+    : undefined;
 }
 
 export function getConfiguredWorkbenchPath(

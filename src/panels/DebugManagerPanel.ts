@@ -45,7 +45,7 @@ export class DebugManagerPanel {
       DebugManagerPanel.currentPanel.buildConfig = buildConfig;
       // Update selection field
       DebugManagerPanel.currentPanel._setDefaultSelection(DebugManagerPanel.currentPanel._panel.webview);
-      const projectPath = project ? project.appWorkspaceFolder.uri.fsPath : '';
+      const projectPath = project ? project.appRootPath : '';
       // Notify webview about project change
       if (projectPath.length > 0) {
         DebugManagerPanel.currentPanel._panel.webview.postMessage({ command: 'projectChanged', project: projectPath });
@@ -305,7 +305,7 @@ export class DebugManagerPanel {
   private _setDefaultSelection(webview: vscode.Webview) {
     webview.postMessage({ 
       command: 'updateLaunchConfig', 
-      projectPath: this.project ? this.project.appWorkspaceFolder.uri.fsPath : '',
+      projectPath: this.project ? this.project.appRootPath : '',
       configName: this.buildConfig ? this.buildConfig.name : '',
     });
   }
@@ -560,10 +560,9 @@ export class DebugManagerPanel {
     async function loadApplications(webview: vscode.Webview) {
       let applicationsHTML = '';
       if(vscode.workspace.workspaceFolders) {
-        const projectFolders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders);
-        for (const workspaceFolder of projectFolders) {
+        const applications = await ZephyrApplication.getApplications(vscode.workspace.workspaceFolders);
+        for (const appProject of applications) {
           try {
-            const appProject = new ZephyrApplication(workspaceFolder, workspaceFolder.uri.fsPath);
             applicationsHTML = applicationsHTML.concat(`<div class="dropdown-item" data-value="${appProject.appRootPath}" data-label="${appProject.appName}">${appProject.appName} <span class="description">${appProject.appRootPath}</span></div>`);
           } catch {}
         }
@@ -860,7 +859,7 @@ export class DebugManagerPanel {
         const appProject = await getZephyrApplication(projectPath);
         if(buildConfigName) {
           vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug', 
-            appProject.appWorkspaceFolder,
+            appProject,
             `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME} [${buildConfigName}]`);
         }
       } else {

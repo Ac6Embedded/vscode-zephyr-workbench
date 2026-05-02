@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import fs from "fs";
 import path from 'path';
 import { ZephyrApplication } from "./ZephyrApplication";
-import { getBuildEnv, loadConfigEnv } from "../utils/env/zephyrEnvUtils";
+import { getBuildEnv, loadConfigEnv, resolveStoredEnvValue } from "../utils/env/zephyrEnvUtils";
 import {
   buildStartupSetupShellArgs,
   buildTerminalEnvCommands,
@@ -10,7 +10,6 @@ import {
   getConfiguredWorkbenchPath,
   getShellCdCommand,
   getShellClearCommand,
-  getConfiguredVenvPath,
   getResolvedShell,
   getShellSourceCommand,
   classifyShell,
@@ -21,14 +20,12 @@ import { getBoardFromIdentifier } from '../utils/zephyr/boardDiscovery';
 import {
   fileExists,
   getConfigValue,
-  getSelectedToolchainVariantEnv,
   getWestWorkspace,
   tryGetZephyrSdkInstallation,
 } from '../utils/utils';
 import {
   ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY,
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
-  ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
 } from '../constants';
 import { composeWestBuildArgs, normalizeWestFlagDValue } from '../utils/zephyr/westArgUtils';
 import { getPyOcdTargetFromRunnersYaml, readRunnersYamlForProject } from '../utils/zephyr/runnersYamlUtils';
@@ -85,7 +82,13 @@ export class ZephyrBuildConfig {
         .filter((value: string) => value.length > 0)
       : [];
     for (const key in this.envVars) {
-      const values = loadConfigEnv(workspaceFolder, this.name, key);
+      // Freestanding applications load config env from their resource settings.
+      // Workspace applications store the same `env.*` keys directly inside the
+      // application entry, so prefer the raw build-config object when present.
+      const directValue = buildConfig[`env.${key}`] as string | string[] | undefined;
+      const values = typeof directValue !== 'undefined'
+        ? resolveStoredEnvValue(key, directValue, workspaceFolder)
+        : loadConfigEnv(workspaceFolder, this.name, key);
       if (values) {
         this.envVars[key] = values;
       }
@@ -124,7 +127,7 @@ export class ZephyrBuildConfig {
   // directory, so probe both shapes before concluding that an artifact is missing.
   private getBuildArtifactCandidates(application: ZephyrApplication, ...segments: string[]): string[] {
     const buildDir = this.getBuildDir(application);
-    const appFolderName = application.appWorkspaceFolder?.name;
+    const appFolderName = path.basename(application.appRootPath);
     const candidates: string[] = [];
 
     if (appFolderName && appFolderName.length > 0) {
@@ -209,11 +212,8 @@ export class ZephyrBuildConfig {
       (shellType === 'bash' || shellType === 'zsh' ||
         shellType === 'dash' || shellType === 'fish');
 
-    const venvPath = getConfiguredVenvPath(application.appWorkspaceFolder);
-    const toolchainEnv = getSelectedToolchainVariantEnv(
-      vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, application.appWorkspaceFolder),
-      application.appWorkspaceFolder,
-    );
+    const venvPath = application.venvPath;
+    const toolchainEnv = application.getToolchainEnv();
 
     // "Zephyr build system" holds anything Zephyr / west / CMake actually consume:
     // ZEPHYR_BASE, BOARD, plus user-configured Zephyr env vars from west.yml or the

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ZephyrApplication } from '../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
+import { isPathWithin as isPathWithinWorkspaceApplication } from '../utils/zephyr/workspaceApplications';
 import { getNonce } from '../utilities/getNonce';
 import { readZephyrBuildSummary, type ZephyrBuildSummary } from '../utils/zephyr/buildSummaryParser';
 import { readZephyrMemoryReport, type ZephyrMemoryReport } from '../utils/zephyr/memoryReportParser';
@@ -143,7 +144,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		let projectPath: string | undefined;
 
 		if ((node as any)?.project?.appWorkspaceFolder?.uri?.fsPath) {
-			projectPath = (node as any).project.appWorkspaceFolder.uri.fsPath;
+			projectPath = (node as any).project.appRootPath;
 		}
 
 		if (!projectPath && (node as vscode.WorkspaceFolder)?.uri?.fsPath) {
@@ -176,18 +177,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 	}
 
 	private async _getProjects(): Promise<ZephyrApplication[]> {
-		const folders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders ?? []);
-		const projects: ZephyrApplication[] = [];
-
-		for (const folder of folders) {
-			try {
-				projects.push(new ZephyrApplication(folder, folder.uri.fsPath));
-			} catch {
-				// Skip malformed project state instead of breaking the view.
-			}
-		}
-
-		return projects;
+		return ZephyrApplication.getApplications(vscode.workspace.workspaceFolders ?? []);
 	}
 
 	private async _resolveTarget(): Promise<DashboardTarget> {
@@ -299,7 +289,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 				return undefined;
 			}
 
-			const activeProject = projects.find(project => project.appWorkspaceFolder.uri.fsPath === activeEditorFolder.uri.fsPath);
+			const activeProject = projects.find(project => isPathWithinWorkspaceApplication(project.appRootPath, editor.document.uri.fsPath));
 			if (activeProject) {
 				return activeProject;
 			}
@@ -308,7 +298,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		}
 
 		if (this._revealedProjectPath) {
-			const revealedProject = projects.find(project => project.appWorkspaceFolder.uri.fsPath === this._revealedProjectPath);
+			const revealedProject = projects.find(project => project.appRootPath === this._revealedProjectPath);
 			if (revealedProject) {
 				return revealedProject;
 			}

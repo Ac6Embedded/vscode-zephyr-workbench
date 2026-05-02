@@ -1186,18 +1186,7 @@ async function load_applications(): Promise<ZephyrApplication[]> {
     return [];
   }
 
-  let applications: ZephyrApplication[] = [];
-  const project_folders = await ZephyrApplication.getApplicationWorkspaceFolders(vscode.workspace.workspaceFolders);
-  for (const workspace_folder of project_folders) {
-    try {
-      const app_project = new ZephyrApplication(workspace_folder, workspace_folder.uri.fsPath);
-      applications.push(app_project);
-    } catch {
-      // TODO consider returning Result<...>[] instead
-    }
-  }
-
-  return applications;
+  return ZephyrApplication.getApplications(vscode.workspace.workspaceFolders);
 }
 
 /**
