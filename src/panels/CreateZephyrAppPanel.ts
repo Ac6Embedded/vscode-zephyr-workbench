@@ -500,7 +500,7 @@ async function handleCreateMessage(message: any) {
     : getStringValue(message.projectParentPath);
 
   if (isCreate) {
-    if (!checkCreateParameters(message)) {
+    if (!checkCreateParameters(message, projectLoc)) {
       return;
     }
 
@@ -528,6 +528,11 @@ async function handleCreateMessage(message: any) {
       getSettingsPathMode(message.settingsPathMode),
       applicationType,
     );
+    return;
+  }
+
+  if (hasPathSpace(projectLoc)) {
+    showPathSpaceError('The application path');
     return;
   }
 
@@ -989,7 +994,16 @@ function isMissingValue(value: unknown): boolean {
   return getStringValue(value).length === 0;
 }
 
-function checkCreateParameters(message: any) {
+function hasPathSpace(value: string): boolean {
+  return value.includes(' ');
+}
+
+function showPathSpaceError(label: string): boolean {
+  vscode.window.showErrorMessage(`${label} cannot contain spaces.`);
+  return false;
+}
+
+function checkCreateParameters(message: any, projectParentPath: string) {
   if (isMissingValue(message.westWorkspaceRootPath)) {
     vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
     return false;
@@ -1005,9 +1019,25 @@ function checkCreateParameters(message: any) {
     return false;
   }
 
-  if (getStringValue(message.projectName).indexOf(' ') >= 0) {
-    vscode.window.showErrorMessage('The project name cannot contain spaces');
-    return false;
+  const projectName = getStringValue(message.projectName);
+  if (hasPathSpace(projectName)) {
+    return showPathSpaceError('The project name');
+  }
+
+  const applicationType = getStringValue(message.appLocationType) === 'workspace'
+    ? 'workspace'
+    : 'freestanding';
+  const applicationsSubfolder = getStringValue(message.applicationsSubfolder).trim();
+  if (applicationType === 'workspace' && hasPathSpace(applicationsSubfolder)) {
+    return showPathSpaceError('The applications subfolder');
+  }
+
+  if (hasPathSpace(projectParentPath)) {
+    return showPathSpaceError('The project location');
+  }
+
+  if (hasPathSpace(path.join(projectParentPath, projectName))) {
+    return showPathSpaceError('The application path');
   }
 
   if (isMissingValue(message.boardYamlPath)) {

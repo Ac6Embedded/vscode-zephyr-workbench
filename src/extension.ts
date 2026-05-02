@@ -80,6 +80,15 @@ let statusBarDebugItem: vscode.StatusBarItem;
 // of any west workspace that declares applications.
 let statusBarSelectedAppItem: vscode.StatusBarItem;
 
+function hasPathSpace(value: string): boolean {
+	return value.includes(' ');
+}
+
+function showPathSpaceError(label: string): boolean {
+	vscode.window.showErrorMessage(`${label} cannot contain spaces.`);
+	return false;
+}
+
 function hasApplicationToolchainChanged(project: ZephyrApplication, pick: ToolchainVariantPick): boolean {
 	if (project.toolchainVariant !== pick.selectedVariant) {
 		return true;
@@ -2745,6 +2754,21 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
+			if (hasPathSpace(projectName)) {
+				showPathSpaceError('The project name');
+				return;
+			}
+
+			if (hasPathSpace(projectLoc)) {
+				showPathSpaceError('The project location');
+				return;
+			}
+
+			if (projectLoc.length > 0 && hasPathSpace(path.join(projectLoc, projectName))) {
+				showPathSpaceError('The application path');
+				return;
+			}
+
 			if (!zephyrBoard) {
 				vscode.window.showErrorMessage('Missing target board');
 				return;
@@ -2846,6 +2870,11 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-app", async (projectLoc, westWorkspace, zephyrBoard, toolchainInstallation, venvMode = 'global', toolchainVariant = 'zephyr', settingsPathMode = 'relative') => {
+			if (hasPathSpace(projectLoc)) {
+				showPathSpaceError('The application path');
+				return;
+			}
+
 			if (!fileExists(projectLoc)) {
 				vscode.window.showInformationMessage(`Project '${projectLoc}' not found !`);
 				return;
