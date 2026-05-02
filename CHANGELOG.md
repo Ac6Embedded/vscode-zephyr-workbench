@@ -4,6 +4,73 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.7.8]
+
+### West Manager (new)
+- Added a West Manager view for managing workspace manifests, with a dedicated west icon in the shortcut view, panel tab, and command
+- Added a Modules subfolder option and required a `west.yml` subfolder when importing template workspaces
+- Allowed a custom `west.yml` subfolder in template workspace import
+- Added optional extra projects to west workspace templates and made template projects editable
+- Showed west import progress with cancel support
+- Added a tooltip next to `Projects:` in Add West Workspace
+- Removed `cmsis`, `cmsis-dsp`, and `segger` from default minimal templates
+- Standardized west workspace action labels and renamed/moved several west manager labels
+
+### West Workspace Applications (new)
+- Added West workspace applications and a West-workspace choice in the Add Application UI
+- Added a status-bar picker for the selected west workspace app, and showed Build/Debug for files outside an app folder
+- Made the dashboard fall back to the selected west workspace app for files outside an app folder
+- West workspace tree: hid chevron on empty env rows, added `SNIPPET_ROOT`, reordered roots, fixed Select Application right-click, and ticked the selected app
+- Always elected a selection when at least one west workspace app is declared
+- Fixed debug launch generation for West workspace apps
+
+### Applications
+- Application tree: added a toolchain row with right-click change, vendor icon, and SDK name
+- Application tree: hid expand chevron on empty leaves while keeping `EXTRA` group expandable
+- Add Application: explained why an imported folder isn't detected as a Zephyr app and accepted `prj*.conf`
+- Renamed the customize template label
+- Rejected application paths containing spaces
+- Fixed the app creation toolchain guard so it isn't limited to the SDK
+- Added an application context-menu command to create custom tasks in `tasks.json`
+- Fixed application panel refresh after create/import
+- Stored project settings as absolute paths and kept portable paths only for env extras
+
+### Dashboard
+- Renamed the Dashboard to Workbench Dashboard and added a West Dashboard
+- Added a tabbed Zephyr dashboard layout, a sys-init panel, and RAM/ROM tabs with ELF size breakdown
+- Updated the summary layout/content and made some fields clickable
+- Changed the panel tab title to Zephyr Dashboard (internal IDs untouched)
+
+### Debug Manager
+- Cleared stale debug configs on toolchain changes
+- Hardened debug configuration input resolution
+- Disambiguated workspace app debug configurations
+- Improved runner detection UX for STM32CubeCLT, pyOCD, and hidden-path runners
+- Improved runner detection and launch config handling
+- Preserved the saved runner and threw a clear error on a missing build config
+
+### Build & Tasks
+- Synced `compile_commands` path with sysbuild and refreshed IntelliSense
+- Migrated C/C++ setup to `c_cpp_properties.json`
+- Centralized Zephyr task execution and unified west build reconfigure logic for commands and tasks
+- Detected Zephyr workspaces from settings and built direct tasks dynamically without writing them to `tasks.json`
+- Reworked the flash runner task flow and removed managed task marker logic
+- Refactored board discovery to use `west boards`, fixed target expansion, and preserved board revisions
+- Added a relative settings path option for apps and supported portable VS Code path variables in path settings
+- Removed the pristine build mode setting and UI
+
+### Toolchain
+- Added ARM GNU toolchain support
+
+### Host Tools
+- Added `libftdi` and `hidapi` to the macOS host-tools install
+
+### Misc
+- Clarified the global venv action and added a local venv picker for applications
+- Sourced env when opening a terminal on an existing project
+- SPDX: unified local venv setup and ran SPDX commands directly (removed SPDX entries from `tasks.json`)
+- Removed obsolete OpenOCD settings path handling
+
 ## [2.7.5]
 
 ### Applications
