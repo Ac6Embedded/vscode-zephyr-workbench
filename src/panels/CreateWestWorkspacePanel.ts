@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getGitTags, getGitBranches } from "../utils/execUtils";
-import { listHals } from "../utils/zephyr/manifestUtils";
+import { getUpstreamProjectNames, listHals } from "../utils/zephyr/manifestUtils";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -215,6 +215,15 @@ export class CreateWestWorkspacePanel {
                   <div class="grid-group-div">
                     <vscode-text-field size="50" type="text" id="pathPrefix" value="deps" placeholder="(empty to import at workspace root)">Modules subfolder:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Subfolder where Zephyr modules and dependencies will be imported (sets import.path-prefix in the generated west.yml). Leave empty to import them directly at the workspace root.">?</span></vscode-text-field>
                   </div>
+                  <div class="grid-group-div additional-projects-section">
+                    <div class="additional-projects-header">
+                      <label>Additional projects:</label>
+                      <span id="additionalProjectsSpinner" class="spinner additional-projects-spinner hidden" aria-label="Loading additional projects"></span>
+                    </div>
+                    <div id="additionalProjectsList" class="additional-projects-list" aria-live="polite"></div>
+                    <div id="additionalProjectsStatus" class="additional-projects-status"></div>
+                    <button id="addAdditionalProjectButton" type="button" class="inline-icon-button codicon codicon-add" title="Add project" aria-label="Add project"></button>
+                  </div>
                 </div>
               </details>
             </div>
@@ -334,6 +343,56 @@ export class CreateWestWorkspacePanel {
       });
   }
 
+  private async pickAdditionalProject(
+    webview: vscode.Webview,
+    remotePath: string,
+    remoteBranch: string,
+    selectedProjects: string[] = [],
+    requestId?: number,
+  ): Promise<void> {
+    const postAdditionalProjectMessage = (payload: Record<string, unknown>) =>
+      webview.postMessage({ ...payload, requestId });
+
+    try {
+      if (!remotePath || !remoteBranch) {
+        const message = 'Select a Zephyr revision before adding additional projects.';
+        postAdditionalProjectMessage({ command: 'additionalProjectSelectionError', message });
+        vscode.window.showWarningMessage(message);
+        return;
+      }
+
+      const projectNames = await getUpstreamProjectNames(remotePath, remoteBranch);
+      const selectedProjectSet = new Set(selectedProjects);
+      const items = projectNames
+        .filter(projectName => !selectedProjectSet.has(projectName))
+        .map(projectName => ({ label: projectName }));
+      await postAdditionalProjectMessage({ command: 'additionalProjectSuggestionsReady' });
+
+      if (items.length === 0) {
+        const message = 'No additional upstream projects are available for this revision.';
+        postAdditionalProjectMessage({ command: 'additionalProjectSelectionError', message });
+        vscode.window.showInformationMessage(message);
+        return;
+      }
+
+      const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select an additional project to include',
+        matchOnDescription: true,
+        matchOnDetail: true,
+      });
+
+      if (picked) {
+        postAdditionalProjectMessage({ command: 'additionalProjectSelected', projectName: picked.label });
+      } else {
+        postAdditionalProjectMessage({ command: 'additionalProjectSelectionCancelled' });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      postAdditionalProjectMessage({ command: 'additionalProjectSelectionError', message });
+      vscode.window.showErrorMessage(message);
+    }
+  }
+
   private _setWebviewMessageListener(webview: vscode.Webview) {
     webview.onDidReceiveMessage(
       (message: any) => {
@@ -347,6 +406,7 @@ export class CreateWestWorkspacePanel {
         let pathPrefix;
         let templateHal;
         let templateMode;
+        let additionalProjects;
 
         switch (command) {
           case 'debug':
@@ -364,6 +424,9 @@ export class CreateWestWorkspacePanel {
           case 'remotePathChanged':
             this.updateBranches(webview, message.remotePath, message.srcType, !!message.clear);
             break;
+          case 'selectAdditionalProject':
+            this.pickAdditionalProject(webview, message.remotePath, message.remoteBranch, message.selectedProjects, message.requestId);
+            break;
           case 'create':
             srcType = message.srcType;
             remotePath = message.remotePath;
@@ -373,6 +436,7 @@ export class CreateWestWorkspacePanel {
             manifestDir = message.manifestDir;
             pathPrefix = message.pathPrefix;
             templateHal = message.templateHal;
+            additionalProjects = Array.isArray(message.additionalProjects) ? message.additionalProjects : [];
             this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: workspacePath, id: 'workspacePath'});
 
             const hasDeps = fs.existsSync(path.join(workspacePath, 'deps'));
@@ -410,7 +474,7 @@ export class CreateWestWorkspacePanel {
             } else if(srcType === 'manifest') {
               vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestPath);
             } else if(srcType === 'template') {
-              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir, pathPrefix);
+              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir, pathPrefix, additionalProjects);
             }
             break;
         }

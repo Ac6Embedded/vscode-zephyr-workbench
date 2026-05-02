@@ -4,6 +4,19 @@ import yaml from 'yaml';
 import { fileExists } from "../utils";
 import path from "path";
 
+type WestManifestProject = Record<string, any> & {
+  name?: string;
+};
+
+type WestManifestData = Record<string, any> & {
+  manifest?: {
+    remotes?: Record<string, any>[];
+    projects?: WestManifestProject[];
+  };
+};
+
+const upstreamManifestCache = new Map<string, WestManifestData>();
+
 export const listHals: any[] = [
   { label: "Analog Devices", name: "hal_adi" },
   { label: "Altera", name: "hal_altera" },
@@ -30,6 +43,94 @@ export const listHals: any[] = [
   { label: "xtensa", name: "hal_xtensa" }
 ];
 
+function normalizeRevision(revision: string): string {
+  return revision.trim().replace(/^\/+|\/+$/g, '');
+}
+
+function normalizeRemotePath(remotePath: string): string {
+  return remotePath.trim().replace(/\/+$/, '').replace(/\.git$/i, '');
+}
+
+export function getUpstreamWestManifestUrl(remotePath: string, revision: string): string {
+  const normalizedRevision = normalizeRevision(revision);
+  const normalizedRemotePath = normalizeRemotePath(remotePath);
+  const sshMatch = normalizedRemotePath.match(/^git@github\.com:(?<owner>[^/]+)(?:\/(?<repo>[^/]+))?$/);
+  if (sshMatch?.groups?.owner) {
+    const owner = sshMatch.groups.owner;
+    const repo = sshMatch.groups.repo ?? 'zephyr';
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${normalizedRevision}/west.yml`;
+  }
+
+  const url = new URL(normalizedRemotePath);
+  if (url.hostname !== 'github.com') {
+    throw new Error('Additional projects are only supported for GitHub Zephyr remotes.');
+  }
+
+  const segments = url.pathname.split('/').filter(Boolean);
+  const owner = segments[0];
+  const repo = segments[1] ?? 'zephyr';
+  if (!owner) {
+    throw new Error('Cannot determine the Zephyr repository from the remote path.');
+  }
+
+  return `https://raw.githubusercontent.com/${owner}/${repo}/${normalizedRevision}/west.yml`;
+}
+
+function getUpstreamManifestCacheKey(remotePath: string, revision: string): string {
+  return getUpstreamWestManifestUrl(remotePath, revision);
+}
+
+export async function getUpstreamWestManifest(remotePath: string, revision: string): Promise<WestManifestData> {
+  const cacheKey = getUpstreamManifestCacheKey(remotePath, revision);
+  const cached = upstreamManifestCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetch(cacheKey);
+  if (!response.ok) {
+    throw new Error(`Could not load upstream west.yml for revision "${revision}". Check that the revision exists and the repository is accessible.`);
+  }
+
+  const text = await response.text();
+  const parsed = yaml.parse(text) as WestManifestData;
+  if (!parsed?.manifest || !Array.isArray(parsed.manifest.projects)) {
+    throw new Error(`The upstream west.yml for revision "${revision}" does not contain manifest projects.`);
+  }
+
+  upstreamManifestCache.set(cacheKey, parsed);
+  return parsed;
+}
+
+export async function getUpstreamProjectNames(remotePath: string, revision: string): Promise<string[]> {
+  const upstreamManifest = await getUpstreamWestManifest(remotePath, revision);
+  return (upstreamManifest.manifest?.projects ?? [])
+    .map(project => typeof project?.name === 'string' ? project.name : '')
+    .filter(name => name.length > 0)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function appendAdditionalProjectsToAllowlist(
+  zephyrProject: WestManifestProject | undefined,
+  additionalProjects: string[],
+): void {
+  const importBlock = zephyrProject?.import;
+  if (!importBlock || typeof importBlock !== 'object' || Array.isArray(importBlock) || additionalProjects.length === 0) {
+    return;
+  }
+
+  if (!Array.isArray(importBlock['name-allowlist'])) {
+    importBlock['name-allowlist'] = [];
+  }
+
+  const allowlist = importBlock['name-allowlist'];
+  for (const projectName of additionalProjects) {
+    if (typeof projectName === 'string' && projectName.length > 0 && !allowlist.includes(projectName)) {
+      allowlist.push(projectName);
+    }
+  }
+}
+
 /**
  * Write a generated west.yml under `workspacePath`. By default it goes into a
  * `manifest/` subfolder (the legacy convention), but callers can override:
@@ -43,10 +144,10 @@ export const listHals: any[] = [
  *   - any other non-empty string → imported under <workspace>/<value>/
  *   - empty string → no `path-prefix` (modules imported at workspace root)
  */
-export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isFull: boolean, manifestSubfolder?: string, pathPrefix?: string) {
+export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isFull: boolean, manifestSubfolder?: string, pathPrefix?: string, additionalProjects: string[] = []) {
   const prefix = (pathPrefix ?? 'deps').trim();
 
-  let manifestYaml;
+  let manifestYaml: WestManifestData;
   if (isFull) {
     // Full manifest structure. `import: true` (vs an object with path-prefix) means
     // "import everything, no subfolder".
@@ -70,23 +171,19 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
     // Minimal manifest structure
     let templateManifestUri = vscode.Uri.joinPath(context.extensionUri, 'west_manifests', 'minimal_west.yml');
     const templateFile = fs.readFileSync(templateManifestUri.fsPath, 'utf8');
-    manifestYaml = yaml.parse(templateFile);
+    manifestYaml = yaml.parse(templateFile) as WestManifestData;
+    const manifest = manifestYaml.manifest!;
     // Do not duplicate zephyr in url-base
-    manifestYaml.manifest.remotes[0]['url-base'] = remotePath.replace(/\/zephyr\/?$/, '');
-    manifestYaml.manifest.projects[0]['revision'] = remoteBranch;
-    const importBlock = manifestYaml.manifest.projects[0]['import'];
+    manifest.remotes![0]['url-base'] = remotePath.replace(/\/zephyr\/?$/, '');
+    manifest.projects![0]['revision'] = remoteBranch;
+    const importBlock = manifest.projects![0]['import'];
     if (importBlock && typeof importBlock === 'object') {
       if (prefix.length > 0) {
         importBlock['path-prefix'] = prefix;
       } else {
         delete importBlock['path-prefix'];
       }
-      if (importBlock['name-allowlist']) {
-        const allowlist = importBlock['name-allowlist'];
-        if (!allowlist.includes(templateHal)) {
-          allowlist.push(templateHal);
-        }
-      }
+      appendAdditionalProjectsToAllowlist(manifest.projects![0], [templateHal, ...additionalProjects]);
     }
   }
 

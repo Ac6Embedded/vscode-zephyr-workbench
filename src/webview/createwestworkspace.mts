@@ -9,6 +9,9 @@ const webviewApi = acquireVsCodeApi();
 
 let lastUrl = '';
 let inputTimeout: NodeJS.Timeout | null = null;
+let additionalProjects: string[] = [];
+let additionalProjectsRequestId = 0;
+let additionalProjectsLoadingTimeout: ReturnType<typeof setTimeout> | undefined;
 
 window.addEventListener("load", main);
 
@@ -25,6 +28,7 @@ function main() {
 
   initTemplatesDropdown();
   initBranchDropdown();
+  initAdditionalProjects();
 
   lastUrl = remotePathText.value;
 
@@ -264,8 +268,27 @@ function setVSCodeMessageListener() {
      case 'manifestSelected':
         setLocalPath(event.data.id, event.data.fileUri);
         break;
-     case 'updateBranchDropdown':
+      case 'updateBranchDropdown':
         updateBranchDropdown(event.data.branchHTML, event.data.branch);
+        break;
+      case 'additionalProjectSelected':
+        if (!isCurrentAdditionalProjectRequest(event.data.requestId)) { break; }
+        setAdditionalProjectsLoading(false);
+        addAdditionalProject(event.data.projectName);
+        break;
+      case 'additionalProjectSuggestionsReady':
+        if (!isCurrentAdditionalProjectRequest(event.data.requestId)) { break; }
+        setAdditionalProjectsLoading(false, 'Choose a project from the picker...');
+        break;
+      case 'additionalProjectSelectionCancelled':
+        if (!isCurrentAdditionalProjectRequest(event.data.requestId)) { break; }
+        setAdditionalProjectsLoading(false);
+        setAdditionalProjectsStatus('');
+        break;
+      case 'additionalProjectSelectionError':
+        if (!isCurrentAdditionalProjectRequest(event.data.requestId)) { break; }
+        setAdditionalProjectsLoading(false);
+        setAdditionalProjectsStatus(event.data.message || 'Could not load additional projects.');
         break;
     }
   });
@@ -344,6 +367,122 @@ function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputEl
       input.dispatchEvent(new Event('input'));
       dropdown.style.display = "none";
     });
+  }
+}
+
+function initAdditionalProjects() {
+  const addButton = document.getElementById('addAdditionalProjectButton') as Button | HTMLButtonElement | null;
+  addButton?.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    requestAdditionalProject();
+  });
+  setAdditionalProjectsLoading(false);
+  renderAdditionalProjects();
+}
+
+function requestAdditionalProject() {
+  const srcRemotePath = document.getElementById("remotePath") as TextField;
+  const srcRemoteBranch = document.getElementById("branchInput") as HTMLInputElement;
+  const requestId = ++additionalProjectsRequestId;
+  setAdditionalProjectsLoading(true, 'Loading projects...');
+  webviewApi.postMessage({
+    command: 'selectAdditionalProject',
+    requestId,
+    remotePath: srcRemotePath.value,
+    remoteBranch: srcRemoteBranch.value,
+    selectedProjects: additionalProjects,
+  });
+}
+
+function isCurrentAdditionalProjectRequest(requestId: number | undefined): boolean {
+  return typeof requestId !== 'number' || requestId === additionalProjectsRequestId;
+}
+
+function addAdditionalProject(projectName: string | undefined) {
+  if (!projectName || additionalProjects.includes(projectName)) {
+    renderAdditionalProjects();
+    return;
+  }
+  additionalProjects = [...additionalProjects, projectName];
+  setAdditionalProjectsStatus('');
+  renderAdditionalProjects();
+}
+
+function removeAdditionalProject(projectName: string) {
+  additionalProjects = additionalProjects.filter(name => name !== projectName);
+  renderAdditionalProjects();
+}
+
+function renderAdditionalProjects() {
+  const list = document.getElementById('additionalProjectsList') as HTMLElement | null;
+  if (!list) {
+    return;
+  }
+
+  list.innerHTML = '';
+  if (additionalProjects.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'additional-projects-empty';
+    empty.textContent = 'None';
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const projectName of additionalProjects) {
+    const row = document.createElement('div');
+    row.className = 'additional-project-row';
+
+    const label = document.createElement('span');
+    label.className = 'additional-project-name';
+    label.textContent = projectName;
+    row.appendChild(label);
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'inline-icon-button codicon codicon-remove additional-project-remove';
+    removeButton.title = `Remove ${projectName}`;
+    removeButton.setAttribute('aria-label', `Remove ${projectName}`);
+    removeButton.addEventListener('click', () => removeAdditionalProject(projectName));
+    row.appendChild(removeButton);
+
+    list.appendChild(row);
+  }
+}
+
+function setAdditionalProjectsLoading(isLoading: boolean, message = '') {
+  const spinner = document.getElementById('additionalProjectsSpinner') as HTMLElement | null;
+  const addButton = document.getElementById('addAdditionalProjectButton') as HTMLElement | null;
+  if (additionalProjectsLoadingTimeout) {
+    clearTimeout(additionalProjectsLoadingTimeout);
+    additionalProjectsLoadingTimeout = undefined;
+  }
+  if (spinner) {
+    spinner.classList.toggle('hidden', !isLoading);
+    spinner.classList.toggle('is-loading', isLoading);
+  }
+  if (addButton) {
+    if (isLoading) {
+      addButton.setAttribute('disabled', 'true');
+    } else {
+      addButton.removeAttribute('disabled');
+    }
+  }
+  if (isLoading) {
+    const requestId = additionalProjectsRequestId;
+    additionalProjectsLoadingTimeout = setTimeout(() => {
+      if (requestId === additionalProjectsRequestId) {
+        setAdditionalProjectsLoading(false, 'Loading projects timed out. Try again.');
+      }
+    }, 30000);
+  }
+  setAdditionalProjectsStatus(message);
+}
+
+function setAdditionalProjectsStatus(message: string) {
+  const status = document.getElementById('additionalProjectsStatus') as HTMLElement | null;
+  if (status) {
+    status.textContent = message;
   }
 }
 
@@ -485,10 +624,8 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       manifestDir: manifestDirField ? manifestDirField.value : undefined,
       pathPrefix: pathPrefixField ? pathPrefixField.value : undefined,
       workspacePath: workspacePath.value,
-      templateMode: templateModeValue
+      templateMode: templateModeValue,
+      additionalProjects: additionalProjects
     }
   );
 }
-
-
-
