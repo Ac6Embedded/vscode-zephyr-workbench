@@ -80,7 +80,10 @@ const debugManagerMenuItem = new MenuItem(
 const westManagerMenuItem = new MenuItem(
   'West Manager',
   vscode.TreeItemCollapsibleState.None,
-  'tools',
+  {
+    light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'west_icon_light.svg'),
+    dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'west_icon_dark.svg'),
+  },
   {
     command: 'zephyr-workbench.west-manager',
     title: 'West Manager',

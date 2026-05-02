@@ -384,7 +384,10 @@
       {
         "command": "zephyr-workbench.west-manager",
         "title": "West Manager",
-        "icon": "$(tools)",
+        "icon": {
+          "dark": "res/icons/dark/west_icon_dark.svg",
+          "light": "res/icons/light/west_icon_light.svg"
+        },
         "category": "Zephyr Workbench"
       },
       {

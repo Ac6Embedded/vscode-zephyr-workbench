@@ -303,8 +303,8 @@ export class WestManagerPanel {
     });
 
     panel.iconPath = {
-      light: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'zephyr.svg'),
-      dark: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'zephyr.svg')
+      light: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'light', 'west_icon_light.svg'),
+      dark: vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'dark', 'west_icon_dark.svg'),
     };
 
     WestManagerPanel.currentPanel = new WestManagerPanel(panel, extensionUri, westWorkspace);
