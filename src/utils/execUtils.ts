@@ -486,7 +486,13 @@ function detectTerminalProfile():
   }
 
   const entry = profiles[profName];
-  const exe = String(entry.path ?? '');
+  // `path` may be a string OR an array of fallbacks (e.g. the built-in "Command Prompt"
+  // profile lists Sysnative + System32). Pick the first entry that exists on disk;
+  // otherwise fall back to the first declared candidate so we still return something.
+  const rawPath = entry.path;
+  const candidates: string[] = (Array.isArray(rawPath) ? rawPath : [rawPath])
+    .filter((p: unknown): p is string => typeof p === 'string' && p.length > 0);
+  const exe = candidates.find(p => fileExists(p)) ?? candidates[0] ?? '';
   const low = exe.toLowerCase();
 
   const kind =
