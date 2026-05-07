@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
-import { compareVersions, fileExists } from './utils';
+import { compareVersions, fileExists, resolveEnvScriptForShell } from './utils';
 import {
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
@@ -382,7 +382,19 @@ export function getConfiguredWorkbenchPath(
   settingKey: string,
   scope?: ConfigurationScope,
 ): string | undefined {
-  return getConfiguredPathBySettingName(buildWorkbenchSettingKey(settingKey), scope);
+  const raw = getConfiguredPathBySettingName(buildWorkbenchSettingKey(settingKey), scope);
+  // Centralized workaround: when the user's `pathToEnvScript` was set on a different
+  // shell than the one currently active (e.g. saved as env.bat but the integrated
+  // terminal is now PowerShell), rewrite the basename's extension to match the active
+  // shell so the source command actually loads the env vars into the parent process.
+  // Only Windows has multiple env-script flavors (.ps1/.bat) — POSIX is always env.sh.
+  // TODO: drop this workaround once the env-script setting moves to a per-application
+  // setting that can also be skipped, so the right script is chosen explicitly per
+  // project (or omitted entirely) instead of inferred from the active terminal type.
+  if (settingKey === ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY) {
+    return resolveEnvScriptForShell(raw);
+  }
+  return raw;
 }
 
 export function isSpdxOnlyVenvPath(venvPath: string | undefined): boolean {

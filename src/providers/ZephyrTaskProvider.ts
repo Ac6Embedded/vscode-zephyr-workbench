@@ -20,7 +20,7 @@ import {
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
   ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
 } from '../constants';
-import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, getShellExe, isCygwin, resolveConfiguredPath, toPortableWorkspaceFolderPath } from '../utils/execUtils';
+import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, getShellExe, getShellSourceCommand, isCygwin, normalizePathForShell, resolveConfiguredPath, toPortableWorkspaceFolderPath } from '../utils/execUtils';
 import { getWestWorkspace, msleep, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
 import { normalizeStoredToolchainVariant } from '../utils/toolchainSelection';
@@ -1016,12 +1016,8 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       throw new Error('Missing command to execute');
     }
 
-    let envSourceCmd = `source ${envScript}`;
-    if (shellKind === 'cmd.exe') {
-      envSourceCmd = `call ${envScript}`;
-    } else if (shellKind === 'powershell.exe' || shellKind === 'pwsh.exe') {
-      envSourceCmd = `. ${envScript}`;
-    }
+    const envScriptForShell = normalizePathForShell(shellKind, envScript);
+    const envSourceCmd = getShellSourceCommand(shellKind, envScriptForShell);
 
     let options: vscode.ShellExecutionOptions = {
       executable: shellExe,

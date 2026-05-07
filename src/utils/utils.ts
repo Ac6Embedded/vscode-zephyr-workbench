@@ -110,6 +110,27 @@ export function findDefaultEnvScriptPath(): string {
   return path.join(getInternalDirPath(), getEnvScriptFilename());
 }
 
+// Workaround: rewrites the basename of the configured env-script path so its extension
+// matches the active integrated terminal (env.bat ↔ env.ps1). Needed because the
+// `pathToEnvScript` setting is stored as a fully-qualified path, so a user who saved
+// it from a cmd.exe session will have ".bat" in the setting even after switching the
+// integrated terminal to PowerShell — and dot-sourcing a .bat from PowerShell launches
+// a child cmd.exe, so the env vars never propagate back to the parent shell.
+// Only Windows has multiple flavors (.ps1/.bat); POSIX is always env.sh.
+// The existence guard avoids masking a genuinely misconfigured path.
+//
+// TODO: drop this workaround once the env-script setting moves to a per-application
+// setting that can also be skipped, so the right script is chosen explicitly per
+// project (or omitted entirely) instead of inferred from the active terminal type.
+export function resolveEnvScriptForShell(configuredPath: string | undefined): string | undefined {
+  if (!configuredPath) { return configuredPath; }
+  if (process.platform !== 'win32') { return configuredPath; }
+  const targetExt = path.extname(getEnvScriptFilename());
+  const stem = path.basename(configuredPath, path.extname(configuredPath));
+  const swapped = path.join(path.dirname(configuredPath), stem + targetExt);
+  return fs.existsSync(swapped) ? swapped : configuredPath;
+}
+
 export function copyFolderInto(srcPath: string, destParentPath: string): string {
   const destPath = path.join(destParentPath, path.basename(srcPath));
   fs.cpSync(srcPath, destPath, { recursive: true });
