@@ -610,7 +610,7 @@ export function createWestWrapper(project: ZephyrApplication, buildConfigName?: 
   if(!buildDir) {
     return;
   }
-  
+
   const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
   let envScript: string | undefined = getConfiguredWorkbenchPath(
     ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
@@ -619,8 +619,16 @@ export function createWestWrapper(project: ZephyrApplication, buildConfigName?: 
   if(!envScript) {
     throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
        { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` });
-  } 
-  const shell: string = getShell();
+  }
+
+  const shell: string = process.platform === 'win32' ? 'cmd.exe' : getShell();
+  if (process.platform === 'win32') {
+    const batchEnvScript = envScript.replace(/\.(ps1|sh)$/i, '.bat');
+    if (fs.existsSync(batchEnvScript)) {
+      envScript = batchEnvScript;
+    }
+  }
+
   let westCmd = '';
   switch (shell) {
     case 'bash':
@@ -733,6 +741,10 @@ ${debugServerCommand}
 }
 
 function getWestWrapperFile(shell: string = getShell()): string {
+  if (process.platform === 'win32') {
+    return 'west_wrapper.bat';
+  }
+
   switch (shell) {
     case 'bash':
     case 'zsh':
