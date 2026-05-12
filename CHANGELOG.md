@@ -4,7 +4,7 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [3.0.1]
+## [3.0.2]
 
 ### [Partial] Breaking changes
 - `tasks.json` is no longer used by the extension. Build/debug/run arguments must now be added directly in the extension (per-application Extra Args / build configuration), not in `.vscode/tasks.json`.
