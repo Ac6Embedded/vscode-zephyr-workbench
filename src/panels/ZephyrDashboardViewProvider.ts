@@ -124,8 +124,40 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			case 'openFile':
 				await this._openFile(message?.path);
 				break;
+			case 'revealSymbol':
+				await this._revealSymbol(message?.name);
+				break;
 			default:
 				break;
+		}
+	}
+
+	private async _revealSymbol(symbolName: unknown): Promise<void> {
+		if (typeof symbolName !== 'string' || symbolName.length === 0) {
+			return;
+		}
+
+		try {
+			const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+				'vscode.executeWorkspaceSymbolProvider',
+				symbolName,
+			);
+
+			const match = symbols?.find(s => s.name === symbolName) ?? symbols?.[0];
+			if (!match) {
+				void vscode.window.showInformationMessage(`No declaration found for "${symbolName}" in the workspace.`);
+				return;
+			}
+
+			const document = await vscode.workspace.openTextDocument(match.location.uri);
+			await vscode.window.showTextDocument(document, {
+				preview: false,
+				preserveFocus: false,
+				selection: match.location.range,
+			});
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			void vscode.window.showWarningMessage(`Unable to reveal symbol: ${reason}`);
 		}
 	}
 
@@ -722,6 +754,33 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		}
 
 		.summary-source-link:focus-visible {
+			outline: 1px solid var(--shell-accent);
+			outline-offset: 2px;
+			border-radius: 3px;
+		}
+
+		.symbol-link {
+			padding: 0;
+			border: 0;
+			background: transparent;
+			color: var(--shell-accent);
+			font: inherit;
+			font-family: var(--vscode-editor-font-family, Consolas, monospace);
+			font-size: 11px;
+			text-align: left;
+			cursor: pointer;
+			min-width: 0;
+			max-width: 100%;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.symbol-link:hover {
+			text-decoration: underline;
+		}
+
+		.symbol-link:focus-visible {
 			outline: 1px solid var(--shell-accent);
 			outline-offset: 2px;
 			border-radius: 3px;
@@ -1492,9 +1551,10 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 
 				const rows = filteredSymbols.map(sym => {
 					const symPercent = section.size > 0 ? (sym.size * 100 / section.size) : 0;
+					const safeName = escapeHtml(sym.name);
 					return '<tr class="data-row">' +
 						'<td class="call-cell">' +
-							'<div class="call-main"><code>' + escapeHtml(sym.name) + '</code></div>' +
+							'<div class="call-main"><button class="symbol-link" type="button" data-reveal-symbol="true" data-symbol-name="' + safeName + '" title="Go to declaration">' + safeName + '</button></div>' +
 							(sym.sectionName !== section.name ? '<div class="call-sub"><code>' + escapeHtml(sym.sectionName) + '</code></div>' : '') +
 						'</td>' +
 						'<td><code>' + escapeHtml(sym.addressHex) + '</code></td>' +
@@ -1630,6 +1690,15 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		reportPanel.addEventListener('click', (event) => {
 			const target = event.target;
 			if (!target || typeof target.closest !== 'function') {
+				return;
+			}
+
+			const symbolTrigger = target.closest('[data-reveal-symbol="true"]');
+			if (symbolTrigger) {
+				const symbolName = symbolTrigger.getAttribute('data-symbol-name');
+				if (symbolName) {
+					vscode.postMessage({ command: 'revealSymbol', name: symbolName });
+				}
 				return;
 			}
 
