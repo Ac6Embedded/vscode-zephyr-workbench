@@ -4,6 +4,16 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [3.0.1]
+
+### [Partial] Breaking changes
+- `tasks.json` is no longer used by the extension. Build/debug/run arguments must now be added directly in the extension (per-application Extra Args / build configuration), not in `.vscode/tasks.json`.
+- IntelliSense is now driven by the C/C++ extension's `c_cpp_properties.json` instead of `tasks.json`-based configuration.
+- **Recommended migration:** delete `.vscode/tasks.json` from existing applications, or re-import the applications to regenerate the project state cleanly.
+
+### Added
+- Support for West workspace applications (applications living inside a West workspace are now first-class).
+
 ## [2.7.8]
 
 ### West Manager (new)
