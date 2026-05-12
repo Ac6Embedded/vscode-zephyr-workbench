@@ -153,6 +153,14 @@ export class ImportZephyrSDKPanel {
       </vscode-radio-group>
     </div>
 
+    <div id="armGnuOptions" class="sub-option-group" style="display:none">
+      <vscode-radio-group id="srcTypeArmGnu" orientation="vertical">
+        <label slot="label">Source:</label>
+        <vscode-radio value="arm-gnu" checked>Official</vscode-radio>
+        <vscode-radio value="arm-gnu-local">Local</vscode-radio>
+      </vscode-radio-group>
+    </div>
+
     <div id="iarOptions" class="sub-option-group iar-row" style="display:none">
       <a class="iar-download-link"
          href="https://github.com/iarsystems/zephyr-iar/releases"
@@ -383,6 +391,13 @@ export class ImportZephyrSDKPanel {
                 );
                 break;
 
+              case "arm-gnu-local":
+                vscode.commands.executeCommand(
+                  "zephyr-workbench-sdk-explorer.import-local-arm-gnu-toolchain",
+                  workspacePath,
+                );
+                break;
+
               case "iar":
                 vscode.commands.executeCommand(
                   "zephyr-workbench-sdk-explorer.import-iar-sdk",
@@ -490,6 +505,13 @@ export async function checkParameters(msg: any): Promise<boolean> {
   const { srcType, workspacePath } = msg;
 
   if (!workspacePath) {
+    if (srcType === "arm-gnu-local") {
+      vscode.window.showErrorMessage(
+        "Missing Arm GNU toolchain location, please select its install folder.",
+      );
+      return false;
+    }
+
     vscode.window.showErrorMessage(
       "Missing SDK destination, please enter SDK location.",
     );

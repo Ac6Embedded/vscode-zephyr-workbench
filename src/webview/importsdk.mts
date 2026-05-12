@@ -79,12 +79,15 @@ window.addEventListener("load", () => {
 
   const sourceCat = getEl<RadioGroup>("sourceCategory");
   const zephyrSub = getEl<RadioGroup>("srcTypeZephyr");
+  const armGnuSub = getEl<RadioGroup>("srcTypeArmGnu");
   const sdkTypeSub = getEl<RadioGroup>("sdkType");
 
   sourceCat.addEventListener("click", modifyCategoryHandler);
   sourceCat.addEventListener("select", modifyCategoryHandler);
   zephyrSub.addEventListener("click", modifySrcTypeHandler);
   zephyrSub.addEventListener("select", modifySrcTypeHandler);
+  armGnuSub.addEventListener("click", modifySrcTypeHandler);
+  armGnuSub.addEventListener("select", modifySrcTypeHandler);
   getEl<RadioGroup>("srcTypeIar")
     .addEventListener("select", modifySrcTypeHandler);
   const armGnuTargetGroup = getEl<RadioGroup>("armGnuTargetGroup");
@@ -165,6 +168,7 @@ function requestImportSdkData(): void {
 function modifyCategoryHandler(): void {
   const cat = (getEl<RadioGroup>("sourceCategory") as unknown as { value: string }).value;
   getEl("zephyrOptions").style.display = cat === "zephyr" ? "block" : "none";
+  getEl("armGnuOptions").style.display = cat === "arm-gnu" ? "block" : "none";
   getEl("iarOptions").style.display = cat === "iar" ? "block" : "none";
 
   modifySrcTypeHandler();
@@ -173,6 +177,7 @@ function modifyCategoryHandler(): void {
 function modifySrcTypeHandler(): void {
   const catRadio = getEl<RadioGroup>("sourceCategory") as unknown as { value: string };
   const zephyrGroup = getEl<RadioGroup>("srcTypeZephyr") as unknown as { value: string };
+  const armGnuGroup = getEl<RadioGroup>("srcTypeArmGnu") as unknown as { value: string };
 
   const officialForm = getEl("official-form");
   const remotePath = getEl<TextField>("remotePath");
@@ -203,7 +208,7 @@ function modifySrcTypeHandler(): void {
     officialForm.style.display = "none";
     remotePath.setAttribute("disabled", "");
     remotePath.style.display = "none";
-    armGnuForm.style.display = "block";
+    armGnuForm.style.display = armGnuGroup.value === "arm-gnu" ? "block" : "none";
     iarForm.style.display = "none";
   } else {
     officialForm.style.display = "none";
@@ -623,7 +628,7 @@ function importHandler(): void {
   if (sourceCategory === "zephyr") {
     srcType = (getEl<RadioGroup>("srcTypeZephyr") as unknown as { value: string }).value;
   } else if (sourceCategory === "arm-gnu") {
-    srcType = "arm-gnu";
+    srcType = (getEl<RadioGroup>("srcTypeArmGnu") as unknown as { value: string }).value;
   }
 
   const armGnuVersion = getEl<HTMLInputElement>("armGnuVersionInput").getAttribute("data-value") || "";

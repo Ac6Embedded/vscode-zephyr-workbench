@@ -8,7 +8,7 @@ import { WestWorkspace } from './models/WestWorkspace';
 import { ZephyrApplication } from './models/ZephyrApplication';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
 import { ZephyrBuildConfig } from './models/ZephyrBuildConfig';
-import { ArmGnuToolchainInstallation, normalizeZephyrSdkVariant, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
+import { ArmGnuToolchainInstallation, normalizeArmGnuTargetTriple, normalizeZephyrSdkVariant, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
 import { checkAndCreateTasksJson, isReservedTaskLabel, removeCppToolsConfiguration, saveCustomTaskDefinition, setDefaultProjectSettings, setDefaultWorkspaceApplicationSettings, updateCppToolsConfiguration, updateTasks, ZephyrTaskDefinition, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep } from './quicksteps/changeEnvVarQuickStep';
@@ -104,6 +104,12 @@ function hasApplicationToolchainChanged(project: ZephyrApplication, pick: Toolch
 
 	return (project.zephyrSdkPath ?? '') !== (pick.zephyrSdkPath ?? '');
 }
+
+function inferArmGnuToolchainVersion(toolchainPath: string): string {
+	const match = /^arm-gnu-toolchain-([^-]+)-/i.exec(path.basename(toolchainPath));
+	return match?.[1] ?? '';
+}
+
 let zephyrTaskProvider: vscode.Disposable | undefined;
 let zephyrDebugConfigurationProvide: vscode.Disposable | undefined;
 const WEST_FLAGS_D_LABEL = 'west Flags -D';
@@ -2510,6 +2516,43 @@ export function activate(context: vscode.ExtensionContext) {
 						}
 					}
 				});
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench-sdk-explorer.import-local-arm-gnu-toolchain",
+			async (toolchainPath?: string) => {
+				if (!toolchainPath) {
+					vscode.window.showErrorMessage("Please provide an Arm GNU toolchain folder.");
+					return;
+				}
+
+				let candidate = toolchainPath;
+				if (path.basename(candidate).toLowerCase() === "bin") {
+					candidate = path.dirname(candidate);
+				}
+
+				if (!ArmGnuToolchainInstallation.isArmGnuPath(candidate)) {
+					vscode.window.showErrorMessage("The folder is not a valid Arm GNU toolchain.");
+					return;
+				}
+
+				try {
+					await registerArmGnuToolchain({
+						toolchainPath: candidate,
+						targetTriple: normalizeArmGnuTargetTriple(undefined, candidate),
+						version: inferArmGnuToolchainVersion(candidate),
+					});
+				} catch (error: any) {
+					vscode.window.showErrorMessage(error?.message ?? String(error));
+					return;
+				}
+
+				ImportZephyrSDKPanel.currentPanel?.dispose();
+				toolchainInstallationsProvider.refresh();
+				vscode.window.showInformationMessage("ARM GNU toolchain imported.");
 			}
 		)
 	);
