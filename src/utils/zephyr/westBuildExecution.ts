@@ -13,7 +13,7 @@ import {
   RawEnvVars,
 } from '../execUtils';
 import { tryGetZephyrSdkInstallation } from '../utils';
-import { splitWestBuildArgs } from './westArgUtils';
+import { getWestBuildSourceDirArgValue, hasWestBuildSourceDirArg, splitWestBuildArgs } from './westArgUtils';
 import { getWestBuildStatePath, WestBuildState } from './westBuildState';
 
 export interface PrepareWestBuildExecutionOptions {
@@ -48,6 +48,8 @@ export function prepareWestBuildExecution(
   const splitArgs = splitWestBuildArgs(rawWestArgs, effectiveWestFlagsD);
   const westArgs = [splitArgs.westArgs, runOptions.additionalWestArgs].filter(Boolean).join(' ').trim();
   const cmakeArgs = [splitArgs.cmakeArgs, runOptions.additionalCmakeArgs].filter(Boolean).join(' ').trim();
+  const sourceDirOverride = getWestBuildSourceDirArgValue(westArgs);
+  const includeDefaultSourceDir = !hasWestBuildSourceDirArg(westArgs);
 
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
   const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
@@ -76,6 +78,7 @@ export function prepareWestBuildExecution(
     toolchainEnv,
     sdkEnv,
     workspaceEnv,
+    sourceDirOverride,
   );
 
   const buildDirConfigured = hasWestBuildConfiguration(buildDirPath);
@@ -105,7 +108,7 @@ export function prepareWestBuildExecution(
     ` --build-dir "${buildDir}"` +
     (needsConfigure && sysbuildEnabled ? ' --sysbuild' : '') +
     (needsConfigure ? snippetsFlag : '') +
-    (needsConfigure ? ` "${zephyrProject.appRootPath}"` : '') +
+    (needsConfigure && includeDefaultSourceDir ? ` --source-dir "${zephyrProject.appRootPath}"` : '') +
     (westArgs.length > 0 ? ` ${westArgs}` : '') +
     (needsConfigure && cmakeArgs.length > 0 ? ` -- ${cmakeArgs}` : '');
 
@@ -127,6 +130,7 @@ function createWestBuildState(
   toolchainEnv: Record<string, string>,
   sdkEnv: Record<string, string>,
   workspaceEnv: Record<string, string>,
+  sourceDirOverride: string | undefined,
 ): WestBuildState {
   return {
     board,
@@ -137,6 +141,7 @@ function createWestBuildState(
     toolchainEnv: sortRecord(toolchainEnv),
     sdkEnv: sortRecord(sdkEnv),
     workspaceEnv: sortRecord(workspaceEnv),
+    ...(sourceDirOverride !== undefined ? { sourceDirOverride } : {}),
   };
 }
 

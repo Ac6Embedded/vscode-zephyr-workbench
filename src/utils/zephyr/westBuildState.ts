@@ -11,6 +11,7 @@ export interface WestBuildState {
   toolchainEnv: Record<string, string>;
   sdkEnv: Record<string, string>;
   workspaceEnv: Record<string, string>;
+  sourceDirOverride?: string;
 }
 
 const WEST_BUILD_STATE_FILE = '.zephyr-workbench-build-state.json';

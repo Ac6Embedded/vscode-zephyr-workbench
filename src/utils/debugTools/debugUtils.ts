@@ -21,7 +21,7 @@ import { ZephyrBoard } from '../../models/ZephyrBoard';
 import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
 import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeOnlyCommand } from '../../commands/WestCommands';
 import { ParsedRunnersYaml, findRunnersYamlForProject, getRunnerPathFromRunnersYaml, readRunnersYamlFile, readRunnersYamlForBuildDir, readRunnersYamlForProject } from '../zephyr/runnersYamlUtils';
-import { composeWestBuildArgs } from '../zephyr/westArgUtils';
+import { composeWestBuildArgs, hasWestBuildSourceDirArg } from '../zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from './debugToolSelectionUtils';
 import { cleanupEmptyWorkspaceSettings } from '../vscodeWorkspaceCleanup';
 
@@ -514,7 +514,8 @@ export async function getFlashRunners(
     //    Use dedicated target runners_yaml_props_target then query help
     const composedWestArgs = composeWestBuildArgs(config.westArgs, mergeOpenocdBuildFlag(project, config.westArgs, config.westFlagsD));
     const westArgs = composedWestArgs.length > 0 ? ` ${composedWestArgs}` : '';
-    const buildCmd = `west build -t runners_yaml_props_target --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.appRootPath}"${westArgs}`;
+    const sourceDirArg = hasWestBuildSourceDirArg(composedWestArgs) ? '' : ` --source-dir "${project.appRootPath}"`;
+    const buildCmd = `west build -t runners_yaml_props_target --board ${config.boardIdentifier} --build-dir "${buildDir}"${sourceDirArg}${westArgs}`;
     const helpCmd  = `west flash -H --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.appRootPath}"`;
 
     execWestCommandWithEnvAsync(buildCmd, project)

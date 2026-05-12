@@ -39,6 +39,81 @@ export interface SplitWestBuildArgs {
   cmakeArgs: string;
 }
 
+function tokenizeWestArgs(raw: string | undefined): string[] {
+  const input = raw?.trim() ?? '';
+  const tokens: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | undefined;
+
+  for (let index = 0; index < input.length; index++) {
+    const char = input[index];
+
+    if (quote) {
+      if (char === quote) {
+        quote = undefined;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+
+export function getWestBuildSourceDirArgValue(raw: string | undefined): string | undefined {
+  const tokens = tokenizeWestArgs(raw);
+
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+
+    if (token === '--') {
+      return undefined;
+    }
+
+    if (token === '-s' || token === '--source-dir') {
+      return tokens[index + 1] ?? '';
+    }
+
+    if (token.startsWith('-s=')) {
+      return token.slice(3);
+    }
+
+    if (token.startsWith('-s') && token.length > 2) {
+      return token.slice(2);
+    }
+
+    if (token.startsWith('--source-dir=')) {
+      return token.slice('--source-dir='.length);
+    }
+  }
+
+  return undefined;
+}
+
+export function hasWestBuildSourceDirArg(raw: string | undefined): boolean {
+  return getWestBuildSourceDirArgValue(raw) !== undefined;
+}
+
 function splitExplicitCMakeArgs(raw: string): SplitWestBuildArgs | undefined {
   const directCMakeMatch = raw.match(/^--(?:\s+(.*))?$/);
   if (directCMakeMatch) {

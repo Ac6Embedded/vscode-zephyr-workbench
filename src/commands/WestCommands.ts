@@ -8,7 +8,7 @@ import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
 import { concatCommands, executeTask, execShellCommandWithEnv, getConfiguredVenvPath, getConfiguredWorkbenchPath, getOutputChannel, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars, spawnCommandWithEnv } from '../utils/execUtils';
 import { fileExists, getWestWorkspace, normalizePath, tryGetZephyrSdkInstallation } from '../utils/utils';
-import { composeWestBuildArgs } from '../utils/zephyr/westArgUtils';
+import { composeWestBuildArgs, hasWestBuildSourceDirArg } from '../utils/zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
 import { buildDirectTask, createCppPropertiesCompileCommandsRefresh } from '../providers/ZephyrTaskProvider';
 
@@ -350,6 +350,9 @@ export async function westTmpBuildCmakeOnlyCommand(
   const tmpPath = normalizePathForShell(shellKind, path.join(zephyrProject.appRootPath, '.tmp'));
 
   const westArgs = makeWestArgs(zephyrProject, buildConfig.westArgs, buildConfig.westFlagsD);
+  const sourceDirArg = hasWestBuildSourceDirArg(westArgs)
+    ? ''
+    : `--source-dir ${quote(normalizePathForShell(shellKind, zephyrProject.appRootPath))}`;
 
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
   normalizeEnvVarsForShell(rawEnvVars, shellKind);
@@ -362,8 +365,8 @@ export async function westTmpBuildCmakeOnlyCommand(
     '--cmake-only',
     `--board ${buildConfig.boardIdentifier}`,
     `--build-dir ${quote(tmpPath)}`,
-    quote(normalizePathForShell(shellKind,zephyrProject.appRootPath)),
-    (westArgs ? ` ${westArgs}` : ''),
+    sourceDirArg,
+    westArgs,
     redirect,
   ].filter(Boolean).join(' ');
 
