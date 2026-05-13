@@ -1024,8 +1024,8 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       shellArgs: shellArgs,
       env: {
         ...(cygwin ? { CHERE_INVOKING: '1' } : {}),
-        ...(activeZephyrSdkInstallation?.buildEnvWithVar ?? {}),
-        ...westWorkspace.buildEnvWithVar
+        ...(activeZephyrSdkInstallation?.buildEnv ?? {}),
+        ...westWorkspace.buildEnv
       },
     };
 
