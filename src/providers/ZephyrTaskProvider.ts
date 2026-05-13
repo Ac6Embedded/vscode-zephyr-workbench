@@ -1000,6 +1000,8 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     }
 
     const isWestBuildTask = cmd === 'west' && Array.isArray(_task.definition.args) && _task.definition.args[0] === 'build';
+    // Direct tasks such as `west flash` run this command shape as-is. `west build`
+    // tasks are expanded below so configure state, source dir, and CMake args stay in sync.
     let fullCommand = `${cmd} ${args}`;
 
     const envScript = getConfiguredWorkbenchPath(
@@ -1024,6 +1026,9 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       shellArgs: shellArgs,
       env: {
         ...(cygwin ? { CHERE_INVOKING: '1' } : {}),
+        // Use resolved paths here. Workspace applications store their settings
+        // under westWorkspace.applications, so `${config:zephyr-workbench.westWorkspace}`
+        // is not always a string VS Code can substitute.
         ...(activeZephyrSdkInstallation?.buildEnv ?? {}),
         ...westWorkspace.buildEnv
       },
@@ -1048,6 +1053,8 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     options.env = { ...options.env, ...toolchainEnv };
 
     if (isWestBuildTask && config && westWorkspace) {
+      // Build targets such as menuconfig use the west build planner, which expands
+      // the terminal command and may replace the base task environment.
       const parsedTaskOptions = parseWestBuildTaskOptions(_task.definition.args);
       const rawWestArgsOverride = typeof _task.definition.__rawWestArgs === 'string'
         ? _task.definition.__rawWestArgs
@@ -1295,6 +1302,8 @@ export function buildDirectTask(
     if (!skipBoard && targetConfig.boardIdentifier && targetConfig.boardIdentifier.length > 0) {
       args.push(`--board ${targetConfig.boardIdentifier}`);
     }
+    // Keep the build directory as a shell env var for direct tasks like flash;
+    // resolve() injects BUILD_DIR from the selected build configuration.
     args.push(`--build-dir ${buildDirVar}`);
     if (taskName === 'West Flash' && options.flashRunnerArgs?.trim()) {
       args.push(options.flashRunnerArgs.trim());
