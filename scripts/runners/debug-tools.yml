@@ -12,7 +12,7 @@
 # `version-command`, `version-file`, and `version-source` can be a string or OS-specific map.
 
 #--- use versionning, this is needed to manage env.yml, mainly for auto-detect ---
-version: 2
+version: 3
 other_content:
 - tool: yq
   os:
@@ -181,11 +181,11 @@ debug_tools:
     darwin: false
 - tool: jlink
   name: J-Link Software
-  version: 9.32
+  version: 9.42
   version-command:
     windows: JLinkGDBServerCL.exe --version
-    linux: JLinkGDBServerCL --version
-    darwin: JLinkGDBServerCL --version
+    linux: JLinkGDBServerCLExe --version || JLinkGDBServerCL --version || JLinkExe --version || JLink --version || jlink --version
+    darwin: JLinkGDBServerCLExe --version || JLinkGDBServerCL --version || JLinkExe --version || JLink --version || jlink --version
   version-regex: '/J-Link GDB Server V([\d.]+[a-z]?)/i'
   website: https://www.segger.com/downloads/jlink/
   vendor: Segger
