@@ -9,16 +9,18 @@ import {
 
 type WestWorkspaceProviderItem =
   | WestWorkspaceTreeItem
+  | WestWorkspaceApplicationsTreeItem
   | WestWorkspaceApplicationTreeItem
+  | WestWorkspaceRootConfigurationsTreeItem
   | WestWorkspaceEnvTreeItem
   | WestWorkspaceEnvValueTreeItem;
 
 export class WestWorkspaceDataProvider implements vscode.TreeDataProvider<WestWorkspaceProviderItem> {
-	private _onDidChangeTreeData: vscode.EventEmitter<WestWorkspaceProviderItem | undefined | void> = new vscode.EventEmitter<WestWorkspaceProviderItem | undefined | void>();
-	readonly onDidChangeTreeData: vscode.Event<WestWorkspaceProviderItem | undefined | void> = this._onDidChangeTreeData.event;
+  private _onDidChangeTreeData: vscode.EventEmitter<WestWorkspaceProviderItem | undefined | void> = new vscode.EventEmitter<WestWorkspaceProviderItem | undefined | void>();
+  readonly onDidChangeTreeData: vscode.Event<WestWorkspaceProviderItem | undefined | void> = this._onDidChangeTreeData.event;
 
   getTreeItem(element: WestWorkspaceProviderItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
-		return element;
+    return element;
   }
 
   getChildren(element?: WestWorkspaceProviderItem | undefined): vscode.ProviderResult<WestWorkspaceProviderItem[]> {
@@ -35,35 +37,28 @@ export class WestWorkspaceDataProvider implements vscode.TreeDataProvider<WestWo
         return Promise.resolve(items);
       }
     }
-    
+
     if(element instanceof WestWorkspaceTreeItem) {
       const items: WestWorkspaceProviderItem[] = [];
-      const workspaceFolder = vscode.workspace.getWorkspaceFolder(element.westWorkspace.rootUri);
-      if (workspaceFolder) {
-        const entries = readWorkspaceApplicationEntries(workspaceFolder);
-        // Only mark a row as "selected" when there are several apps to choose
-        // from — when there's just one, the tick is noise since selection is
-        // implicit and unchangeable.
-        const showSelection = entries.length > 1;
-        const effectiveEntry = showSelection ? getEffectiveWorkspaceApplicationEntry(workspaceFolder) : undefined;
-        const effectivePath = effectiveEntry
-          ? resolveWorkspaceApplicationPath(effectiveEntry, workspaceFolder)
-          : undefined;
-        const normalizedSelectedPath = effectivePath ? path.normalize(effectivePath) : undefined;
-
-        for (const entry of entries) {
-          const appPath = resolveWorkspaceApplicationPath(entry, workspaceFolder);
-          if (appPath) {
-            const isSelected = !!normalizedSelectedPath && path.normalize(appPath) === normalizedSelectedPath;
-            items.push(new WestWorkspaceApplicationTreeItem(element.westWorkspace, appPath, isSelected));
-          }
-        }
+      const applications = getWorkspaceApplicationTreeItems(element.westWorkspace);
+      if (applications.length > 0) {
+        items.push(new WestWorkspaceApplicationsTreeItem(element.westWorkspace, applications.length));
       }
-      for(let key of WestWorkspace.envVarKeys) {
-        const envItem = new WestWorkspaceEnvTreeItem(element.westWorkspace, key);
-        items.push(envItem);
-      }
+      items.push(new WestWorkspaceRootConfigurationsTreeItem(
+        element.westWorkspace,
+        applications.length === 0
+          ? vscode.TreeItemCollapsibleState.Expanded
+          : vscode.TreeItemCollapsibleState.Collapsed,
+      ));
       return Promise.resolve(items);
+    }
+
+    if(element instanceof WestWorkspaceApplicationsTreeItem) {
+      return Promise.resolve(getWorkspaceApplicationTreeItems(element.westWorkspace));
+    }
+
+    if(element instanceof WestWorkspaceRootConfigurationsTreeItem) {
+      return Promise.resolve(getWorkspaceRootConfigurationTreeItems(element.westWorkspace));
     }
 
     if(element instanceof WestWorkspaceEnvTreeItem) {
@@ -76,18 +71,78 @@ export class WestWorkspaceDataProvider implements vscode.TreeDataProvider<WestWo
           items.push(envValueItem);
         }
       }
-      
+
       return Promise.resolve(items);
-    } 
+    }
 
     return Promise.resolve([]);
   }
 
 
   refresh(): void {
-		this._onDidChangeTreeData.fire();
-	}
+    this._onDidChangeTreeData.fire();
+  }
 
+}
+
+function getWorkspaceRootConfigurationTreeItems(westWorkspace: WestWorkspace): WestWorkspaceEnvTreeItem[] {
+  return WestWorkspace.envVarKeys.map(key => new WestWorkspaceEnvTreeItem(westWorkspace, key));
+}
+
+function getWorkspaceApplicationTreeItems(westWorkspace: WestWorkspace): WestWorkspaceApplicationTreeItem[] {
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(westWorkspace.rootUri);
+  if (!workspaceFolder) {
+    return [];
+  }
+
+  const items: WestWorkspaceApplicationTreeItem[] = [];
+  const entries = readWorkspaceApplicationEntries(workspaceFolder);
+  // Only mark a row as "selected" when there are several apps to choose
+  // from - when there's just one, the tick is noise since selection is
+  // implicit and unchangeable.
+  const showSelection = entries.length > 1;
+  const effectiveEntry = showSelection ? getEffectiveWorkspaceApplicationEntry(workspaceFolder) : undefined;
+  const effectivePath = effectiveEntry
+    ? resolveWorkspaceApplicationPath(effectiveEntry, workspaceFolder)
+    : undefined;
+  const normalizedSelectedPath = effectivePath ? path.normalize(effectivePath) : undefined;
+
+  for (const entry of entries) {
+    const appPath = resolveWorkspaceApplicationPath(entry, workspaceFolder);
+    if (appPath) {
+      const isSelected = !!normalizedSelectedPath && path.normalize(appPath) === normalizedSelectedPath;
+      items.push(new WestWorkspaceApplicationTreeItem(westWorkspace, appPath, isSelected));
+    }
+  }
+
+  return items;
+}
+
+export class WestWorkspaceApplicationsTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly westWorkspace: WestWorkspace,
+    public readonly applicationCount: number,
+  ) {
+    super('Applications', vscode.TreeItemCollapsibleState.Expanded);
+    this.description = `[${applicationCount}]`;
+    this.tooltip = 'West workspace applications';
+    this.iconPath = new vscode.ThemeIcon('folder');
+  }
+
+  contextValue = 'west-workspace-applications';
+}
+
+export class WestWorkspaceRootConfigurationsTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly westWorkspace: WestWorkspace,
+    public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+  ) {
+    super('Configurations', collapsibleState);
+    this.tooltip = 'West workspace root configurations';
+    this.iconPath = new vscode.ThemeIcon('variable');
+  }
+
+  contextValue = 'west-workspace-root-configurations';
 }
 
 export class WestWorkspaceApplicationTreeItem extends vscode.TreeItem {
@@ -96,14 +151,11 @@ export class WestWorkspaceApplicationTreeItem extends vscode.TreeItem {
     public readonly appRootPath: string,
     public readonly isSelected: boolean = false,
   ) {
-    // VS Code's TreeItem renders rows as `[chevron] [icon] [label] [description]`.
-    // The chevron column is owned by the tree (auto-rendered from
-    // collapsibleState) and has no API to inject custom icons. To mark the
-    // selected app without losing the folder glyph we prepend a Unicode tick
-    // ("✓") to the label — sibling env-var rows still get their auto chevron
-    // because they have children, so the visual columns stay aligned.
+    // VS Code renders rows as: chevron, icon, label, description. The chevron
+    // is controlled by collapsibleState, so selected apps keep the folder glyph
+    // and use a text marker in the label.
     const baseLabel = path.basename(appRootPath);
-    super(isSelected ? `✓ ${baseLabel}` : baseLabel, vscode.TreeItemCollapsibleState.None);
+    super(isSelected ? `\u2713 ${baseLabel}` : baseLabel, vscode.TreeItemCollapsibleState.None);
     this.description = path.relative(westWorkspace.rootUri.fsPath, appRootPath).replace(/\\/g, '/');
     this.tooltip = isSelected ? `${appRootPath}\n[selected]` : appRootPath;
     this.iconPath = new vscode.ThemeIcon('folder');
@@ -114,28 +166,28 @@ export class WestWorkspaceApplicationTreeItem extends vscode.TreeItem {
 
 export class WestWorkspaceTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly westWorkspace: WestWorkspace,
-		public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-	) {
+    public readonly westWorkspace: WestWorkspace,
+    public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+  ) {
     super(`${westWorkspace.name}`, collapsibleState);
 
-		this.tooltip = `${this.westWorkspace.rootUri.fsPath}`;
-		this.description = `[${this.westWorkspace.version}]`;
-	}
+    this.tooltip = `${this.westWorkspace.rootUri.fsPath}`;
+    this.description = `[${this.westWorkspace.version}]`;
+  }
 
-	//iconPath = new vscode.ThemeIcon('symbol-misc');
+  //iconPath = new vscode.ThemeIcon('symbol-misc');
   iconPath = {
     light: path.join(__filename, '..', '..', 'res', 'icons','zephyr.svg'),
     dark: path.join(__filename, '..', '..', 'res', 'icons','zephyr.svg')
-	};
-	contextValue = 'west-workspace';
+  };
+  contextValue = 'west-workspace';
 }
 
 export class WestWorkspaceEnvTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly westWorkspace: WestWorkspace,
+    public readonly westWorkspace: WestWorkspace,
     public readonly envKey: string
-	) {
+  ) {
     // Match the application tree's behaviour: drop the chevron on empty
     // env-var rows (BOARD_ROOT, DTS_ROOT, ...) so they don't pretend to
     // have children when there's nothing to expand into.
@@ -143,18 +195,18 @@ export class WestWorkspaceEnvTreeItem extends vscode.TreeItem {
     super(envKey, isEmpty ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed);
     this.description = isEmpty ? '[not set]' : '';
     this.tooltip = envKey;
-	}
+  }
   iconPath = new vscode.ThemeIcon('variable');
   contextValue = 'west-workspace-env';
 }
 
 export class WestWorkspaceEnvValueTreeItem extends vscode.TreeItem {
   constructor(
-		public readonly westWorkspace: WestWorkspace,
+    public readonly westWorkspace: WestWorkspace,
     public readonly envKey: string,
     public readonly envValue: string
-	) {
+  ) {
     super(envValue, vscode.TreeItemCollapsibleState.None);
-	}
+  }
   contextValue = 'west-workspace-env-value';
 }
