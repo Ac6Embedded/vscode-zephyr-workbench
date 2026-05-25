@@ -23,7 +23,7 @@ import {
 	getStaticFlashRunnerNames,
 	removeApplicationLaunchConfigurations,
 } from './utils/debugTools/debugUtils';
-import { ensureTerminalStickyScrollDisabled, executeTask, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
+import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
 import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
@@ -75,6 +75,12 @@ import {
 
 let statusBarBuildItem: vscode.StatusBarItem;
 let statusBarDebugItem: vscode.StatusBarItem;
+// Opens the Devicetree Manager companion extension preselected to the
+// active editor's application. Visible only when the active editor is a
+// devicetree source (.overlay / .dts / .dtsi) AND a containing or
+// effective project resolves; otherwise hidden so it does not clutter
+// the status bar on unrelated files.
+let statusBarDtManagerItem: vscode.StatusBarItem;
 // Shows the selected west workspace application for the active editor's west
 // workspace. Hidden for freestanding apps and when the active file isn't part
 // of any west workspace that declares applications.
@@ -308,6 +314,9 @@ export function activate(context: vscode.ExtensionContext) {
 	statusBarDebugItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
 	statusBarDebugItem.text = "$(debug-alt) Debug";
 	statusBarDebugItem.command = "zephyr-workbench.debug-app";
+	statusBarDtManagerItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
+	statusBarDtManagerItem.text = "$(chip) DT Manager";
+	statusBarDtManagerItem.command = "zephyr-workbench.devicetree-manager-from-active";
 	// Higher priority than Build/Debug so the project name reads as the leftmost
 	// indicator of the trio. It provides the context for the build/debug actions
 	// to its right.
@@ -316,6 +325,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(statusBarBuildItem);
 	context.subscriptions.push(statusBarDebugItem);
+	context.subscriptions.push(statusBarDtManagerItem);
 	context.subscriptions.push(statusBarSelectedAppItem);
 
 	// Setup Tree view providers
@@ -2162,6 +2172,62 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
+	// Devicetree Manager — opens after the Debug Manager in the workbench
+	// shortcut tree. Accepts an optional { project, buildConfig } payload
+	// so it can be triggered from the application explorer with a
+	// pre-selected target (same convention as zephyr-workbench.debug-manager).
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench.devicetree-manager", async (node: any) => {
+			// Delegate to the Devicetree Manager for Zephyr extension.
+			// We pass plain identifiers (appRootPath + configName) rather
+			// than the ZephyrApplication / ZephyrBuildConfig instances
+			// because instanceof checks do not cross extension bundles;
+			// the new extension resolves the path back into its own
+			// DTOs via the API exports we publish below.
+			const appRootPath: string | undefined = node?.project?.appRootPath;
+			const configName: string | undefined = node?.buildConfig?.name;
+			try {
+				await vscode.commands.executeCommand(
+					'devicetree-manager-for-zephyr.open',
+					{ appRootPath, configName },
+				);
+			} catch (err) {
+				void vscode.window.showErrorMessage(
+					'Devicetree Manager: install the "Devicetree Manager for Zephyr" extension to use this command. ' +
+					((err as Error).message ?? String(err)),
+				);
+			}
+		})
+	);
+
+	/* Status-bar entry point for the Devicetree Manager. Fires from the
+	 * "$(chip) DT Manager" item next to Build / Debug; the item is only
+	 * visible when the active editor is a devicetree source. Resolves
+	 * the active editor's project (containing or fallback through the
+	 * west workspace's effective application) and picks its first
+	 * build configuration. The user can change either choice from
+	 * inside the panel; we just save them the two clicks. */
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench.devicetree-manager-from-active", async () => {
+			const resource = vscode.window.activeTextEditor?.document.uri;
+			const projects = resource
+				? await ZephyrApplication.getApplications(vscode.workspace.workspaceFolders ?? [])
+				: [];
+			const containing = resource
+				? projects.find(p => isPathWithinWorkspaceApplication(p.appRootPath, resource.fsPath))
+				: undefined;
+			const fallback = !containing && resource
+				? resolveEffectiveWorkspaceProject(resource, projects)
+				: undefined;
+			const project = containing ?? fallback;
+			const buildConfig = project?.buildConfigs[0];
+			await vscode.commands.executeCommand(
+				"zephyr-workbench.devicetree-manager",
+				project ? { project, buildConfig } : undefined,
+			);
+		})
+	);
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench.debug-manager.debug", async (
 			target: vscode.WorkspaceFolder | ZephyrApplication,
@@ -3198,6 +3264,61 @@ export function activate(context: vscode.ExtensionContext) {
 	checkZinstallerVersion(context).catch(console.error);
 
 	setDefaultSettings();
+
+	// Public API for sibling extensions (currently consumed by
+	// `Ac6.devicetree-manager-for-zephyr`). Exposes plain-data DTOs
+	// for the Zephyr application list, single-application lookup, and
+	// the workbench-global Zephyr venv setting. Plain data on purpose:
+	// VSCode's `extensions.exports` mechanism crosses bundle
+	// boundaries, and class instances from one bundle do not satisfy
+	// `instanceof` checks in another.
+	//
+	// Keep this shape in lockstep with the consumer's
+	// `ZephyrWorkbenchApi` interface in
+	// `vscode-devicetree-manager-for-zephyr/src/devicetree-manager/workbench-bridge.ts`.
+	const toApplicationDto = (app: ZephyrApplication) => ({
+		appRootPath: app.appRootPath,
+		appName: app.appName,
+		description: app.appRootPath,
+		venvPath: app.venvPath,
+		buildConfigs: app.buildConfigs.map(cfg => ({
+			name: cfg.name,
+			boardIdentifier: cfg.boardIdentifier,
+			buildDir: cfg.getBuildDir(app),
+		})),
+	});
+
+	return {
+		async getApplications() {
+			const folders = vscode.workspace.workspaceFolders ?? [];
+			const apps = await ZephyrApplication.getApplications(folders);
+			return apps.map(toApplicationDto);
+		},
+		async getApplication(appRootPath: string) {
+			try {
+				const app = await getZephyrApplication(appRootPath);
+				return app ? toApplicationDto(app) : undefined;
+			} catch {
+				return undefined;
+			}
+		},
+		async getZephyrVenvPath(appRootPath?: string) {
+			// Scope the lookup to the application's workspace folder
+			// when one is supplied so multi-root workspaces resolve
+			// the right per-folder setting. Falls back to the
+			// global-scope value when no folder is available.
+			let scope: vscode.WorkspaceFolder | undefined;
+			if (appRootPath) {
+				try {
+					const app = await getZephyrApplication(appRootPath);
+					scope = app?.appWorkspaceFolder;
+				} catch {
+					scope = undefined;
+				}
+			}
+			return getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, scope);
+		},
+	};
 }
 
 function resolveWorkspaceFolderForEclair(node?: any): { workspaceFolder?: vscode.WorkspaceFolder, settingsRoot?: string } {
@@ -3248,6 +3369,23 @@ async function updateStatusBar() {
 	} else {
 		statusBarBuildItem.hide();
 		statusBarDebugItem.hide();
+	}
+
+	/* DT Manager item: only show on devicetree source files. The panel
+	 * needs an application + build configuration to load anything
+	 * meaningful, so the item also depends on a resolved project. The
+	 * companion extension may not be installed; the click handler
+	 * (zephyr-workbench.devicetree-manager) already surfaces a
+	 * "install Devicetree Manager for Zephyr" notification when that
+	 * happens, so we do not gate visibility on the companion's
+	 * presence here. */
+	const dtExt = resource ? path.extname(resource.fsPath).toLowerCase() : '';
+	const isDtFile = dtExt === '.overlay' || dtExt === '.dts' || dtExt === '.dtsi';
+	if (isDtFile && projectForActions) {
+		statusBarDtManagerItem.tooltip = `Open Devicetree Manager for ${projectForActions.appName}`;
+		statusBarDtManagerItem.show();
+	} else {
+		statusBarDtManagerItem.hide();
 	}
 
 	updateSelectedWorkspaceAppStatusBar(resource);

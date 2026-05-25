@@ -4,6 +4,14 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [3.1.0]
+
+### Devicetree Manager (new)
+- Added a **Devicetree Manager** row to the Zephyr shortcut tree. Opens a visual editor for pin muxing and the devicetree of the selected application + build configuration, with a Generate action that writes `boards/<board>.overlay`.
+- Added a **DT Manager** status-bar item next to Build / Debug. Appears automatically when the active editor is a devicetree source file (`.overlay`, `.dts`, `.dtsi`) belonging to a resolved Zephyr application, and opens the manager preselected to that application.
+- The editor ships in a separate companion extension, **Devicetree Manager for Zephyr** (`Ac6.devicetree-manager-for-zephyr`). Install it from the marketplace to enable the feature.
+- The Workbench remains fully usable without the companion installed. Clicking the row without it shows a friendly install hint; every other Workbench feature is unaffected.
+
 ## [3.0.3]
 
 ### [Partial] Breaking changes

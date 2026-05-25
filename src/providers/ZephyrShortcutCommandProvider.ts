@@ -77,6 +77,27 @@ const debugManagerMenuItem = new MenuItem(
   }
 );
 
+// Devicetree Manager — listed right after the Debug Manager so the
+// pin + DT configuration steps are discoverable in the same place
+// users already look for build / debug entry points.
+//
+// Icon: the project-shipped SVG pair
+// (res/icons/{light,dark}/circuit-board.svg) so menu, command
+// palette and panel tab all render the same Devicetree-Manager-
+// specific glyph regardless of how each surface resolves icons.
+const devicetreeManagerMenuItem = new MenuItem(
+  'Devicetree Manager',
+  vscode.TreeItemCollapsibleState.None,
+  {
+    light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'circuit-board.svg'),
+    dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'circuit-board.svg'),
+  },
+  {
+    command: 'zephyr-workbench.devicetree-manager',
+    title: 'Devicetree Manager',
+  }
+);
+
 const westManagerMenuItem = new MenuItem(
   'West Manager',
   vscode.TreeItemCollapsibleState.None,
@@ -112,7 +133,8 @@ export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<Me
       items.push(newSDKMenuItem);
       items.push(westManagerMenuItem);
       items.push(debugManagerMenuItem);
-    } 
+      items.push(devicetreeManagerMenuItem);
+    }
     return items;
   }
 

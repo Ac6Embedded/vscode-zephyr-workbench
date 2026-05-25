@@ -4,4 +4,4 @@ node_modules
 .vscode-test/
 *.vsix
 .venv/
-.claude/settings.local.json
+.claude/

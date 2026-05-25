@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://z-workbench.com",
-  "version": "3.0.4",
+  "version": "3.1.0",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -394,6 +394,15 @@
         "command": "zephyr-workbench.debug-manager",
         "title": "Debug Manager",
         "icon": "$(desktop-download)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.devicetree-manager",
+        "title": "Devicetree Manager",
+        "icon": {
+          "light": "res/icons/light/circuit-board.svg",
+          "dark": "res/icons/dark/circuit-board.svg"
+        },
         "category": "Zephyr Workbench"
       },
       {
