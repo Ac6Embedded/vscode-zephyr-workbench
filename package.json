@@ -52,6 +52,10 @@
     "onStartupFinished",
     "workspaceContains:prj.conf"
   ],
+  "extensionPack": [
+    "Ac6.devicetree-manager-for-zephyr",
+    "ms-vscode.vscode-serial-monitor"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "configuration": [
@@ -1992,7 +1996,6 @@
   "extensionDependencies": [
     "ms-vscode.cpptools",
     "ms-vscode.cpptools-extension-pack",
-    "ms-vscode.vscode-serial-monitor",
     "mindaro-dev.file-downloader",
     "KyleMicallefBonnici.dts-lsp"
   ]
