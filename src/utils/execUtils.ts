@@ -856,6 +856,64 @@ export function isCygwin(shellPath: string): boolean {
   return /\\cygwin[^\\]*\\bin\\bash.exe$/i.test(shellPath);
 }
 
+export interface EnvSourcedShellCommand {
+  command: string;
+  shellKind: ReturnType<typeof classifyShell>;
+  executable: string;
+  shellArgs: string[];
+  needsChere: boolean;
+  venvPath?: string;
+}
+
+export function buildEnvSourcedShellCommand(
+  cmd: string,
+  cwd?: ConfigurationScope,
+  executable = getShellExe(),
+  shellArgs?: string[],
+): EnvSourcedShellCommand {
+  const shellKind = classifyShell(executable);
+  const rawEnvScript = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, cwd);
+  const rawVenvPath = getConfiguredVenvPath(cwd);
+
+  const envScript = normalizePathForShell(shellKind, rawEnvScript ?? '');
+  const venvPath = rawVenvPath ? normalizePathForShell(shellKind, rawVenvPath) : undefined;
+
+  if (!envScript) {
+    throw new Error(
+      'Missing Zephyr environment script.',
+      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
+    );
+  }
+  if (!cmd) {
+    throw new Error('Missing command to execute', { cause: 'missing.command' });
+  }
+  if (rawVenvPath && !fileExists(rawVenvPath)) {
+    throw new Error(
+      'Invalid Python virtual environment.',
+      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
+    );
+  }
+
+  const needsChere = isCygwin(executable);
+  let resolvedShellArgs = shellArgs ?? getShellArgs(shellKind);
+
+  if (needsChere) {
+    resolvedShellArgs = ['--login', '-i', ...resolvedShellArgs];
+  }
+
+  const redirect = getShellNullRedirect(shellKind);
+  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
+
+  return {
+    command: concatCommands(shellKind, cmdEnv, cmd),
+    shellKind,
+    executable,
+    shellArgs: resolvedShellArgs,
+    needsChere,
+    venvPath,
+  };
+}
+
 /**
  * Run a shell command as a one-shot VS Code task and await completion. Does NOT source
  * the Zephyr env script — caller is responsible for any env setup.
@@ -902,49 +960,18 @@ export async function execShellCommandWithEnv(
   cmd: string,
   options: vscode.ShellExecutionOptions
 ) {
-  const rawEnvScript = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, options.cwd);
-  const rawVenvPath = getConfiguredVenvPath(options.cwd);
-
-  const envScript = normalizePathForShell(classifyShell(getShellExe()), rawEnvScript ?? '');
-  const venvPath = rawVenvPath ? normalizePathForShell(classifyShell(getShellExe()), rawVenvPath) : undefined;
-
-  if (!envScript) {
-    throw new Error(
-      'Missing Zephyr environment script.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
-    );
-  }
-  if (!cmd) {
-    throw new Error('Missing command to execute', { cause: 'missing.command' });
-  }
-  if (rawVenvPath && !fileExists(rawVenvPath)) {
-    throw new Error(
-      'Invalid Python virtual environment.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
-    );
-  }
-
-  const shellKind = classifyShell(getShellExe());
-  const exe = getShellExe();
-  options.executable = exe;
-  options.shellArgs = getShellArgs(shellKind);
-
-  if (isCygwin(exe)) {
-    options.shellArgs = ['--login', '-i', ...options.shellArgs];
-  }
-
-  const needsChere = isCygwin(exe);
+  const prepared = buildEnvSourcedShellCommand(cmd, options.cwd);
+  options.executable = prepared.executable;
+  options.shellArgs = prepared.shellArgs;
 
   options.env = {
-    ...(needsChere ? { CHERE_INVOKING: '1' } : {}),
+    ...(prepared.needsChere ? { CHERE_INVOKING: '1' } : {}),
     ...getProfileEnv(),
     ...options.env,
-    ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {})
+    ...(prepared.venvPath ? { PYTHON_VENV_PATH: prepared.venvPath } : {})
   };
 
-  const redirect = getShellNullRedirect(shellKind);
-  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
-  await execShellCommand(cmdName, concatCommands(shellKind, cmdEnv, cmd), options);
+  await execShellCommand(cmdName, prepared.command, options);
 }
 
 /**
@@ -962,39 +989,20 @@ export async function execCommandWithEnv(
   cwd?: string,
   cb?: (e: ExecException | null, so: string, se: string) => void
 ): Promise<ChildProcess> {
-  const rawEnvScript = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, cwd);
-  const rawVenvPath = getConfiguredVenvPath(cwd);
-
-  const envScript = normalizePathForShell(classifyShell(getShellExe()), rawEnvScript ?? '');
-  const venvPath = rawVenvPath ? normalizePathForShell(classifyShell(getShellExe()), rawVenvPath) : undefined;
-
-  if (!envScript) {
-    throw new Error(
-      'Missing Zephyr environment script.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
-    );
-  }
-  if (rawVenvPath && !fileExists(rawVenvPath)) {
-    throw new Error(
-      'Invalid Python virtual environment.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
-    );
-  }
+  const prepared = buildEnvSourcedShellCommand(cmd, cwd);
 
   const options: ExecOptions = {
     cwd,
     env: {
       ...process.env,
+      ...(prepared.needsChere ? { CHERE_INVOKING: '1' } : {}),
       ...getProfileEnv(),
-      ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {})
+      ...(prepared.venvPath ? { PYTHON_VENV_PATH: prepared.venvPath } : {})
     },
-    shell: getShellExe()
+    shell: prepared.executable
   };
 
-  const shellKind = classifyShell(getShellExe());
-  const redirect = getShellNullRedirect(shellKind);
-  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
-  return exec(concatCommands(shellKind, cmdEnv, cmd), options, cb);
+  return exec(prepared.command, options, cb);
 }
 
 /**
@@ -1008,36 +1016,20 @@ export function execCommandWithEnvCB(
   options: ExecOptions = {},
   cb?: (e: ExecException | null, so: string, se: string) => void
 ): ChildProcess {
-  const envScript = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, cwd ?? options.cwd);
-  const venvPath2 = getConfiguredVenvPath(cwd ?? options.cwd);
-
-  if (!envScript) {
-    throw new Error(
-      'Missing Zephyr environment script.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
-    );
-  }
-  if (venvPath2 && !fileExists(venvPath2)) {
-    throw new Error(
-      'Invalid Python virtual environment.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
-    );
-  }
+  const prepared = buildEnvSourcedShellCommand(cmd, cwd ?? options.cwd);
 
   options.env = {
+    ...(prepared.needsChere ? { CHERE_INVOKING: '1' } : {}),
     ...getProfileEnv(),
     ...options.env,
-    ...(venvPath2 ? { PYTHON_VENV_PATH: venvPath2 } : {})
+    ...(prepared.venvPath ? { PYTHON_VENV_PATH: prepared.venvPath } : {})
   };
   if (cwd) {
     options.cwd = cwd;
   }
-  options.shell = getShellExe();
+  options.shell = prepared.executable;
 
-  const shellKind = classifyShell(getShellExe());
-  const redirect = getShellNullRedirect(shellKind);
-  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
-  return exec(concatCommands(shellKind, cmdEnv, cmd), options, cb);
+  return exec(prepared.command, options, cb);
 }
 
 /**
@@ -1047,34 +1039,18 @@ export function execCommandWithEnvCB(
  * For one-shot output capture, prefer `execCommandWithEnv`.
  */
 export function spawnCommandWithEnv(cmd: string, options: SpawnOptions = {}): ChildProcess {
-  const envScript = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, options.cwd);
-  const venvPath3 = getConfiguredVenvPath(options.cwd);
-
-  if (!envScript) {
-    throw new Error(
-      'Missing Zephyr environment script.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` }
-    );
-  }
-  if (venvPath3 && !fileExists(venvPath3)) {
-    throw new Error(
-      'Invalid Python virtual environment.',
-      { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY}` }
-    );
-  }
+  const prepared = buildEnvSourcedShellCommand(cmd, options.cwd);
 
   options.env = {
     ...process.env,
+    ...(prepared.needsChere ? { CHERE_INVOKING: '1' } : {}),
     ...getProfileEnv(),
     ...options.env,
-    ...(venvPath3 ? { PYTHON_VENV_PATH: venvPath3 } : {})
+    ...(prepared.venvPath ? { PYTHON_VENV_PATH: prepared.venvPath } : {})
   };
-  options.shell = getShellExe();
+  options.shell = prepared.executable;
 
-  const shellKind = classifyShell(getShellExe());
-  const redirect = getShellNullRedirect(shellKind);
-  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
-  return spawn(concatCommands(shellKind, cmdEnv, cmd), options);
+  return spawn(prepared.command, options);
 }
 
 /**
@@ -1094,39 +1070,25 @@ export async function execShellTaskWithEnvAndWait(
   hideTerminal = false,
 ): Promise<void> {
 
-  const envScriptRaw = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, options.cwd);
+  const prepared = buildEnvSourcedShellCommand(
+    cmd,
+    options.cwd,
+    options.executable ?? getShellExe(),
+    options.shellArgs,
+  );
 
-  if (!envScriptRaw) {
-    throw new Error(
-      'Missing Zephyr environment script.\n' +
-      'Set “Zephyr Workbench > Path To Env Script” in Settings.'
-    );
-  }
+  logShellCommand(cmdName, prepared.command, options.cwd);
 
-  const exe = options.executable ?? getShellExe();
-  const shellKind = classifyShell(exe);
-
-  let shellArgs = options.shellArgs ?? getShellArgs(shellKind);
-
-  if (isCygwin(exe)) {
-    shellArgs = ['--login', '-i', ...shellArgs];
-  }
-
-  const needsChere = isCygwin(exe);
-
-
-  const envScript = normalizePathForShell(shellKind, envScriptRaw);
-  const redirect = getShellNullRedirect(shellKind);
-  const cmdEnv = `${getShellSourceCommand(shellKind, envScript)} ${redirect}`;
-  const fullCmd = concatCommands(shellKind, cmdEnv, cmd);
-
-  logShellCommand(cmdName, fullCmd, options.cwd);
-
-  const shExec = new vscode.ShellExecution(fullCmd, {
+  const shExec = new vscode.ShellExecution(prepared.command, {
     ...options,
-    executable: exe,
-    shellArgs: shellArgs,
-    env: { ...getProfileEnv(), ...(needsChere ? { CHERE_INVOKING: '1' } : {}), ...options.env }
+    executable: prepared.executable,
+    shellArgs: prepared.shellArgs,
+    env: {
+      ...getProfileEnv(),
+      ...(prepared.needsChere ? { CHERE_INVOKING: '1' } : {}),
+      ...options.env,
+      ...(prepared.venvPath ? { PYTHON_VENV_PATH: prepared.venvPath } : {})
+    }
   });
 
   const task = new vscode.Task(
