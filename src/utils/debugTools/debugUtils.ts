@@ -6,7 +6,7 @@ import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIP
 import { Linkserver } from "../../debug/runners/Linkserver";
 import { Openocd } from "../../debug/runners/Openocd";
 import { WestRunner } from "../../debug/runners/WestRunner";
-import { checkPyOCDTarget, concatCommands, getConfiguredWorkbenchPath, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from '../execUtils';
+import { checkPyOCDTarget, concatCommands, expandEnvVariables, getConfiguredWorkbenchPath, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from '../execUtils';
 import { ZephyrApplication } from "../../models/ZephyrApplication";
 import { findBoardByHierarchicalIdentifier, getSupportedBoards } from '../zephyr/boardDiscovery';
 import { findArmGnuToolchainInstallation, getWestWorkspace, deleteFolder, fileExists, tryGetZephyrSdkInstallation } from '../utils';
@@ -621,6 +621,13 @@ export function createWestWrapper(project: ZephyrApplication, buildConfigName?: 
     throw new Error('Missing Zephyr environment script.\nGo to File > Preferences > Settings > Extensions > Zephyr Workbench > Path To Env Script',
        { cause: `${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY}` });
   }
+
+  // The wrapper may be executed from a terminal launched outside VS Code, where
+  // VSCODE_PORTABLE (and similar shell-native env vars used to store the env-script
+  // path in portable mode) are undefined. Bake in the resolved absolute path so the
+  // wrapper is self-contained. This also lets the .bat existence check below run
+  // against a real path instead of the literal "%VSCODE_PORTABLE%\..." string.
+  envScript = expandEnvVariables(envScript);
 
   const shell: string = process.platform === 'win32' ? 'cmd.exe' : getShell();
   if (process.platform === 'win32') {

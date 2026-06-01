@@ -816,9 +816,11 @@ function logShellCommand(cmdName: string, cmd: string, cwd?: string): void {
 }
 
 export function expandEnvVariables(input: string): string {
-  const envVariableRegex = /\$(\w+)|\$\{(\w+)\}|@(\w+)@|%(\w+)%/g;
-  return input.replace(envVariableRegex, (_, v1, v2, v3, v4) => {
-    const name = v1 || v2 || v3 || v4;
+  // Order matters: match $env:VAR (PowerShell) before the bare $VAR alternative,
+  // otherwise "$env:VSCODE_PORTABLE" would match "$env" and leave ":VSCODE_PORTABLE".
+  const envVariableRegex = /%(\w+)%|\$\{(\w+)\}|\$env:(\w+)|\$(\w+)|@(\w+)@/g;
+  return input.replace(envVariableRegex, (_match, v1, v2, v3, v4, v5) => {
+    const name = v1 || v2 || v3 || v4 || v5;
     return process.env[name] || '';
   });
 }
