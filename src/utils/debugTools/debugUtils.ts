@@ -114,15 +114,10 @@ export function autoDetectSvdPath(board: ZephyrBoard): string {
 
   // Locate STM32CubeCLT installation
   const stlink = new StlinkGdbserver();
-  const cubeCLTVersion = stlink.getVersionCubeCLT();
-  if (!cubeCLTVersion) {
+  const cubeCLTPath = stlink.getLatestCubeCLTDirectory();
+  if (!cubeCLTPath) {
     return '';
   }
-
-  // Construct CubeCLT base path
-  const root = process.platform === 'win32' ? 'C:\\ST' :
-               process.platform === 'darwin' ? '/opt/ST' : '/opt/st';
-  const cubeCLTPath = path.join(root, `STM32CubeCLT_${cubeCLTVersion}`);
 
   // Construct SVD file path
   const svdFilePath = path.join(cubeCLTPath, 'STMicroelectronics_CMSIS_SVD', `${processed}.svd`);

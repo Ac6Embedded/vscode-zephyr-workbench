@@ -437,7 +437,7 @@ function buildProbeConfig(
       return undefined;
     }
 
-    const detectedPath = findDetectedToolRoot(tool, ziBaseDir, platform);
+    const detectedPath = findDetectedToolRoot(tool, ziBaseDir, platform, envData);
     if (!detectedPath) {
       return undefined;
     }

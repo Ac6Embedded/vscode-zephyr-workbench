@@ -154,12 +154,13 @@ function resolveDetectedExecutablePath(
   tool: DebugToolEntry | undefined,
   executableName: string,
   ziBaseDir: string,
+  envData: DebugEnvData | undefined,
 ): string | undefined {
   if (!tool) {
     return undefined;
   }
 
-  const detectedRoot = findDetectedToolRoot(tool, ziBaseDir, getDetectPlatform());
+  const detectedRoot = findDetectedToolRoot(tool, ziBaseDir, getDetectPlatform(), envData);
   if (!detectedRoot) {
     return undefined;
   }
@@ -184,7 +185,7 @@ export function getDebugToolAliasSelection(
   const toolConfiguredPath = defaultToolId ? envData?.runners?.[defaultToolId]?.path : undefined;
   const executablePath = resolveConfiguredExecutablePath(aliasConfiguredPath, executableName, envData, ziBaseDir)
     || resolveConfiguredExecutablePath(toolConfiguredPath, executableName, envData, ziBaseDir)
-    || resolveDetectedExecutablePath(selectedTool, executableName, ziBaseDir);
+    || resolveDetectedExecutablePath(selectedTool, executableName, ziBaseDir, envData);
 
   return {
     alias,

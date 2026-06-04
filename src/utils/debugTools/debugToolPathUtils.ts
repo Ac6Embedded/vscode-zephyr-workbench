@@ -9,6 +9,10 @@ export interface DetectableToolLike {
   ['explicit-detect']?: Partial<Record<DetectPlatform, string[]>>;
 }
 
+export interface DetectPatternEnvData {
+  env?: Record<string, string | undefined>;
+}
+
 function normalizePathSlashes(value: string): string {
   return value.replace(/\\/g, '/');
 }
@@ -19,6 +23,32 @@ function hasGlobPattern(value: string): boolean {
 
 function hasTemplateVariable(value: string): boolean {
   return /\$\{[^}]+\}/.test(value);
+}
+
+export function expandDetectPatternTemplate(
+  value: string,
+  ziBaseDir: string,
+  envData?: DetectPatternEnvData,
+): string | undefined {
+  const replacements: Record<string, string | undefined> = {
+    zi_base_dir: envData?.env?.zi_base_dir || ziBaseDir,
+    zi_tools_dir: envData?.env?.zi_tools_dir || path.join(ziBaseDir, 'tools'),
+    HOME: process.env.HOME || process.env.USERPROFILE,
+    USERPROFILE: process.env.USERPROFILE || process.env.HOME,
+  };
+
+  const expanded = value.replace(/\$\{([^}]+)\}/g, (match, variableName: string) => {
+    const replacement = replacements[variableName] ?? process.env[variableName];
+    return typeof replacement === 'string' && replacement.length > 0
+      ? normalizePathSlashes(replacement)
+      : match;
+  });
+
+  if (hasTemplateVariable(expanded)) {
+    return undefined;
+  }
+
+  return normalizePathSlashes(expanded);
 }
 
 export function getDetectPlatform(platform: NodeJS.Platform = process.platform): DetectPlatform {
@@ -45,14 +75,22 @@ export function preserveDetectPatterns(patterns: string[], ziBaseDir: string): s
   ));
 }
 
-export function evaluateDetectPatterns(patterns: string[], ziBaseDir: string): string[] {
+export function evaluateDetectPatterns(
+  patterns: string[],
+  ziBaseDir: string,
+  envData?: DetectPatternEnvData,
+): string[] {
   const { sync: globSync } = require('glob');
   const matches: string[] = [];
 
   for (const pattern of patterns) {
-    const expanded = preserveDetectPattern(pattern, ziBaseDir);
+    const expanded = expandDetectPatternTemplate(preserveDetectPattern(pattern, ziBaseDir), ziBaseDir, envData);
+    if (!expanded) {
+      continue;
+    }
+
     if (hasGlobPattern(expanded)) {
-      const globMatches = globSync(expanded, { dot: true })
+      const globMatches = globSync(expanded, { dot: true, nocase: true })
         .map((match: string) => normalizePathSlashes(match))
         .sort((a: string, b: string) => b.localeCompare(a));
       matches.push(...globMatches);
@@ -100,24 +138,31 @@ export function findDetectedToolRoot(
   tool: DetectableToolLike,
   ziBaseDir: string,
   platform: DetectPlatform = getDetectPlatform(),
+  envData?: DetectPatternEnvData,
 ): string | undefined {
+  return findDetectedToolRoots(tool, ziBaseDir, platform, envData)[0];
+}
+
+export function findDetectedToolRoots(
+  tool: DetectableToolLike,
+  ziBaseDir: string,
+  platform: DetectPlatform = getDetectPlatform(),
+  envData?: DetectPatternEnvData,
+): string[] {
   const patterns = getToolDetectPatterns(tool, platform, ziBaseDir);
-  const matches = evaluateDetectPatterns(
-    patterns.filter(pattern => !hasTemplateVariable(pattern)),
-    ziBaseDir,
-  );
+  const matches = evaluateDetectPatterns(patterns, ziBaseDir, envData);
   if (matches.length > 0) {
-    return matches[0];
+    return matches;
   }
 
   // Placeholder-based paths are kept literal for env.yml. For installation
   // detection we fall back to the internal install_dir when one exists.
   const internalInstallRoot = getInternalInstallRoot(tool, ziBaseDir);
   if (internalInstallRoot && fs.existsSync(internalInstallRoot)) {
-    return internalInstallRoot;
+    return [internalInstallRoot];
   }
 
-  return matches[0];
+  return [];
 }
 
 function looksLikeExecutablePath(target: string, executableName: string): boolean {

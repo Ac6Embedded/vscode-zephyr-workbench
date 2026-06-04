@@ -244,15 +244,19 @@ debug_tools:
   group: STM32
   root: false
   no_edit: true
-  # Detect the bundled ST-LINK GDB Server directory and extract the package
-  # version from the matched STM32CubeCLT_<version> path segment.
+  # Detect the STM32CubeCLT package root. The ST-LINK GDB Server,
+  # STM32CubeProgrammer, and SVD paths are derived from this root.
   explicit-detect:
     windows:
-      - "C:/ST/STM32CubeCLT_*/STLink-gdb-server/bin"
+      - "C:/ST/STM32CubeCLT_*"
+      - "${HOME}/st/STM32CubeCLT_*"
+      - "${USERPROFILE}/st/STM32CubeCLT_*"
     linux:
-      - "/opt/st/STM32CubeCLT_*/STLink-gdb-server/bin"
+      - "/opt/st/STM32CubeCLT_*"
+      - "${HOME}/st/STM32CubeCLT_*"
     darwin:
-      - "/opt/ST/STM32CubeCLT_*/STLink-gdb-server/bin"
+      - "/opt/ST/STM32CubeCLT_*"
+      - "${HOME}/st/STM32CubeCLT_*"
 - tool: linkserver
   name: NXP LinkServer for Microcontrollers
   version: 24.9.75
