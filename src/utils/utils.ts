@@ -818,9 +818,10 @@ export function getSelectedToolchainVariantEnv(
 
 export async function getInternalZephyrSdkInstallation(): Promise<ZephyrSdkInstallation | undefined> {
   if (await checkHostTools()) {
-    const files = fs.readdirSync(getInternalDirRealPath(), { withFileTypes: true, recursive: false });
+    const internalDir = getInternalDirRealPath();
+    const files = fs.readdirSync(internalDir, { withFileTypes: true, recursive: false });
     for (const file of files) {
-      const filePath = path.join(file.path, file.name);
+      const filePath = path.join(internalDir, file.name);
       if (file.isDirectory() && ZephyrSdkInstallation.isSdkPath(filePath)) {
         const uri = vscode.Uri.file(filePath);
         return new ZephyrSdkInstallation(uri);
