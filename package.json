@@ -404,8 +404,8 @@
         "command": "zephyr-workbench.devicetree-manager",
         "title": "Devicetree Manager",
         "icon": {
-          "light": "res/icons/light/circuit-board.svg",
-          "dark": "res/icons/dark/circuit-board.svg"
+          "light": "res/icons/light/dt-icon.svg",
+          "dark": "res/icons/dark/dt-icon.svg"
         },
         "category": "Zephyr Workbench"
       },

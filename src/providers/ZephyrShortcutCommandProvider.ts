@@ -82,15 +82,15 @@ const debugManagerMenuItem = new MenuItem(
 // users already look for build / debug entry points.
 //
 // Icon: the project-shipped SVG pair
-// (res/icons/{light,dark}/circuit-board.svg) so menu, command
+// (res/icons/{light,dark}/dt-icon.svg) so menu, command
 // palette and panel tab all render the same Devicetree-Manager-
 // specific glyph regardless of how each surface resolves icons.
 const devicetreeManagerMenuItem = new MenuItem(
   'Devicetree Manager',
   vscode.TreeItemCollapsibleState.None,
   {
-    light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'circuit-board.svg'),
-    dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'circuit-board.svg'),
+    light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'dt-icon.svg'),
+    dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'dt-icon.svg'),
   },
   {
     command: 'zephyr-workbench.devicetree-manager',
