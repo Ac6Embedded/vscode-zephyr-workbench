@@ -14,7 +14,7 @@ import { syncAutoDetectEnv } from "./debugTools/autoDetectSyncUtils";
 import { fileExists, findDefaultEnvScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSdkInstallation, getWestWorkspace } from "./utils";
 import { getRunner } from "./debugTools/debugUtils";
 import { getZephyrTerminal } from "./zephyr/zephyrTerminalUtils";
-import { ensurePowershellExecutionPolicy } from "./powershellUtils";
+import { ensurePowershellExecutionPolicy, quotePathForPwshCommand } from "./powershellUtils";
 import { setDebugToolAliasDefault } from './debugTools/debugToolEnvUtils';
 
 export let output = vscode.window.createOutputChannel("Installing Host Tools");
@@ -428,8 +428,8 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
           return;
         }
         installScript = 'install.ps1';
-        installCmd = `powershell --% -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += ` -InstallDir ${destDir}`;
+        installCmd = `powershell --% -File ${quotePathForPwshCommand(vscode.Uri.joinPath(installDirUri, installScript).fsPath)}`;
+        installArgs += ` -InstallDir ${quotePathForPwshCommand(destDir)}`;
         shell = 'powershell.exe';
         // TODO: check if powershell 7 is installed and used by default then use pwsh.exe instead
         break; 
@@ -558,8 +558,8 @@ export async function installVenv(context: vscode.ExtensionContext) {
         const ok = await ensurePowershellExecutionPolicy();
         if (!ok) { return; }
         installScript = 'install.ps1';
-        installCmd = `powershell -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += ` -InstallDir ${destDir}`;
+        installCmd = `powershell -File ${quotePathForPwshCommand(vscode.Uri.joinPath(installDirUri, installScript).fsPath)}`;
+        installArgs += ` -InstallDir ${quotePathForPwshCommand(destDir)}`;
         shell = 'powershell.exe';
         break; 
       }
@@ -614,8 +614,8 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
         const ok = await ensurePowershellExecutionPolicy();
         if (!ok) { return; }
         installScript = 'install.ps1';
-        installCmd = `powershell -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += `-InstallDir ${destDir}`;
+        installCmd = `powershell -File ${quotePathForPwshCommand(vscode.Uri.joinPath(installDirUri, installScript).fsPath)}`;
+        installArgs += `-InstallDir ${quotePathForPwshCommand(destDir)}`;
         shell = 'powershell.exe';
         const pwshInstalled = await checkPwshInstalled();
         if (pwshInstalled) {
