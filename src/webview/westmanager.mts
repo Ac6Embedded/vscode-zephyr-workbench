@@ -1,4 +1,4 @@
-import { Button, TextField, allComponents, provideVSCodeDesignSystem } from "@vscode/webview-ui-toolkit/";
+import { Button, Checkbox, TextField, allComponents, provideVSCodeDesignSystem } from "@vscode/webview-ui-toolkit/";
 
 provideVSCodeDesignSystem().register(allComponents);
 
@@ -21,6 +21,7 @@ interface WestManagerWorkspaceDetails extends WestManagerWorkspaceSummary {
   importAll: boolean;
   availableProjects: string[];
   selectedProjects: string[];
+  rustEnabled: boolean;
 }
 
 interface WestManagerState {
@@ -189,6 +190,11 @@ function renderDetails(details: WestManagerWorkspaceDetails | undefined) {
   setText('manifestPathText', details.manifestPath);
   setText('zephyrWestPathText', details.zephyrWestPath);
   setText('submanifestsText', details.submanifestPaths.length > 0 ? details.submanifestPaths.join(', ') : 'None');
+
+  const rustEnabledCheckbox = document.getElementById('rustEnabledCheckbox') as Checkbox | null;
+  if (rustEnabledCheckbox) {
+    rustEnabledCheckbox.checked = details.rustEnabled;
+  }
 
   renderProjects();
   setOperationButtonsDisabled(false);
@@ -363,6 +369,7 @@ function postOperation(command: 'apply' | 'applyAndUpdate') {
   }
 
   const revisionInput = document.getElementById('revisionInput') as HTMLInputElement | null;
+  const rustEnabledCheckbox = document.getElementById('rustEnabledCheckbox') as Checkbox | null;
   setOperationButtonsDisabled(true);
   setStatus(command === 'apply' ? 'Applying manifest changes...' : 'Applying manifest changes and updating workspace...');
   webviewApi.postMessage({
@@ -371,6 +378,7 @@ function postOperation(command: 'apply' | 'applyAndUpdate') {
       rootPath: currentDetails.rootPath,
       zephyrRevision: revisionInput?.value ?? '',
       selectedProjects: Array.from(selectedProjects),
+      rustEnabled: rustEnabledCheckbox?.checked === true,
     },
   });
 }

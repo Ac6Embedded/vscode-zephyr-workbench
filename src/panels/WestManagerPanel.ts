@@ -40,12 +40,97 @@ interface WestManagerWorkspaceDetails extends WestManagerWorkspaceSummary {
   importAll: boolean;
   availableProjects: string[];
   selectedProjects: string[];
+  rustEnabled: boolean;
 }
 
 interface WestManagerApplyState {
   rootPath: string;
   zephyrRevision: string;
   selectedProjects: string[];
+  rustEnabled: boolean;
+}
+
+const ZEPHYR_LANG_RUST_PROJECT_FILTER = '+zephyr-lang-rust';
+
+interface WestConfigProjectFilter {
+  /* Line index where a new project-filter entry can be inserted (end of the
+     [manifest] section), -1 when the section is missing. */
+  manifestInsertIndex: number;
+  /* Line index of the existing manifest.project-filter entry, -1 when absent. */
+  filterLineIndex: number;
+  tokens: string[];
+}
+
+function readWestConfigProjectFilter(configLines: string[]): WestConfigProjectFilter {
+  let inManifestSection = false;
+  let manifestInsertIndex = -1;
+  let filterLineIndex = -1;
+  let tokens: string[] = [];
+
+  for (let i = 0; i < configLines.length; i++) {
+    const line = configLines[i];
+    const sectionMatch = line.match(/^\s*\[([^\]]*)\]/);
+    if (sectionMatch) {
+      inManifestSection = sectionMatch[1].trim() === 'manifest';
+      if (inManifestSection) {
+        manifestInsertIndex = i + 1;
+      }
+      continue;
+    }
+    if (!inManifestSection || line.trim().length === 0) {
+      continue;
+    }
+
+    manifestInsertIndex = i + 1;
+    const filterMatch = line.match(/^\s*project-filter\s*[=:]\s*(.*)$/);
+    if (filterMatch) {
+      filterLineIndex = i;
+      tokens = filterMatch[1].split(',')
+        .map(token => token.trim())
+        .filter(token => token.length > 0);
+    }
+  }
+
+  return { manifestInsertIndex, filterLineIndex, tokens };
+}
+
+function isRustEnabledInWestConfig(configPath: string): boolean {
+  try {
+    const lines = fs.readFileSync(configPath, 'utf8').split(/\r?\n/);
+    return readWestConfigProjectFilter(lines).tokens.includes(ZEPHYR_LANG_RUST_PROJECT_FILTER);
+  } catch {
+    return false;
+  }
+}
+
+function setRustEnabledInWestConfig(configPath: string, enabled: boolean): void {
+  const content = fs.readFileSync(configPath, 'utf8');
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const filter = readWestConfigProjectFilter(lines);
+  const rustEnabled = filter.tokens.includes(ZEPHYR_LANG_RUST_PROJECT_FILTER);
+  if (enabled === rustEnabled) {
+    return;
+  }
+
+  const tokens = enabled
+    ? [...filter.tokens, ZEPHYR_LANG_RUST_PROJECT_FILTER]
+    : filter.tokens.filter(token => token !== ZEPHYR_LANG_RUST_PROJECT_FILTER);
+
+  if (filter.filterLineIndex >= 0) {
+    if (tokens.length > 0) {
+      lines[filter.filterLineIndex] = `project-filter = ${tokens.join(',')}`;
+    } else {
+      lines.splice(filter.filterLineIndex, 1);
+    }
+  } else {
+    if (filter.manifestInsertIndex < 0) {
+      throw new Error(`Cannot enable Rust: no [manifest] section found in ${configPath}`);
+    }
+    lines.splice(filter.manifestInsertIndex, 0, `project-filter = ${tokens.join(',')}`);
+  }
+
+  fs.writeFileSync(configPath, lines.join(newline), 'utf8');
 }
 
 function uniqueProjectNames(projects: string[]): string[] {
@@ -214,6 +299,7 @@ function getWorkspaceDetails(westWorkspace: WestWorkspace): WestManagerWorkspace
     importAll: selection.importAll,
     availableProjects,
     selectedProjects: selection.selectedProjects,
+    rustEnabled: isRustEnabledInWestConfig(westWorkspace.westConfUri.fsPath),
   };
 }
 
@@ -267,6 +353,7 @@ function applyWorkspaceState(state: WestManagerApplyState): WestManagerWorkspace
   }
 
   fs.writeFileSync(westWorkspace.manifestUri.fsPath, yaml.stringify(manifest), 'utf8');
+  setRustEnabledInWestConfig(westWorkspace.westConfUri.fsPath, state.rustEnabled === true);
   return getWorkspaceDetails(westWorkspace);
 }
 
@@ -430,6 +517,10 @@ export class WestManagerPanel {
                     <button id="clearProjectsButton" type="button" class="inline-icon-button codicon codicon-clear-all" title="Clear projects" aria-label="Clear projects"></button>
                   </div>
                   <div id="projectsList" class="west-manager-projects-list"></div>
+                </div>
+
+                <div class="grid-group-div">
+                  <vscode-checkbox id="rustEnabledCheckbox">Enable Rust&nbsp;&nbsp;<span class="tooltip" data-tooltip="Reflects the manifest.project-filter entry in .west/config: checked when +zephyr-lang-rust is present. Apply writes the change; run Update afterwards to fetch or prune the module (modules/lang/rust).">?</span></vscode-checkbox>
                 </div>
               </section>
 
