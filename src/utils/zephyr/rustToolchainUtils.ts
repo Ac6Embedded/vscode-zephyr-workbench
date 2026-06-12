@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -6,7 +7,7 @@ import {
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
 } from '../../constants';
 import { getGitTags } from '../execUtils';
-import { execCommand } from '../installUtils';
+import { download, execCommand, extract } from '../installUtils';
 import { compareVersions } from '../utils';
 import { findLibclangDir, RustLinkedCToolchainType } from '../../models/ToolchainInstallations';
 
@@ -230,6 +231,141 @@ export function getLlvmTopLevelDirName(version: string): string | undefined {
 
 export function isLlvmPath(llvmRoot: string): boolean {
   return !!findLibclangDir(llvmRoot);
+}
+
+const WINLIBS_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/brechtsanders/winlibs_mingw/releases/latest';
+export const WINLIBS_MANUAL_URL = 'https://winlibs.com/';
+
+export function getMingwBinDirPath(toolchainPath: string): string {
+  return path.join(toolchainPath, 'mingw64', 'bin');
+}
+
+export function hasMingwToolchain(toolchainPath: string): boolean {
+  return fs.existsSync(path.join(getMingwBinDirPath(toolchainPath), 'gcc.exe'));
+}
+
+interface WinLibsAsset {
+  name: string;
+  url: string;
+  sha256Url?: string;
+}
+
+// Latest WinLibs MinGW-w64 build for x86_64 with POSIX threads and the UCRT
+// runtime, as a plain zip (no LLVM bundle). This matches exactly one asset
+// per release.
+async function fetchLatestWinLibsAsset(): Promise<WinLibsAsset> {
+  const response = await fetch(WINLIBS_LATEST_RELEASE_API_URL, {
+    headers: {
+      'User-Agent': 'zephyr-workbench',
+      'Accept': 'application/vnd.github+json',
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to query WinLibs releases (${response.status}).`);
+  }
+
+  const release: any = await response.json();
+  const assets: any[] = Array.isArray(release?.assets) ? release.assets : [];
+  const asset = assets.find(entry => typeof entry?.name === 'string'
+    && entry.name.startsWith('winlibs-x86_64-')
+    && entry.name.includes('posix')
+    && entry.name.includes('ucrt')
+    && !entry.name.includes('llvm')
+    && entry.name.endsWith('.zip'));
+
+  if (!asset) {
+    throw new Error('No WinLibs UCRT x86_64 zip asset found in the latest release.');
+  }
+
+  const shaAsset = assets.find(entry => entry?.name === `${asset.name}.sha256`);
+  return {
+    name: asset.name,
+    url: asset.browser_download_url,
+    sha256Url: shaAsset?.browser_download_url,
+  };
+}
+
+function sha256OfFile(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', reject);
+    stream.on('data', chunk => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+/**
+ * Install the WinLibs MinGW-w64 GCC toolchain into <rust toolchain>/mingw64
+ * so standalone Rust installs carry their own host C tools (gcc, dlltool,
+ * ld, ar, ...). The bin directory is picked up automatically by
+ * prependRustBinPath whenever it exists.
+ */
+export async function installMingwToolchain(
+  context: vscode.ExtensionContext,
+  rustToolchainPath: string,
+  progress: vscode.Progress<{ message?: string; increment?: number }>,
+  token: vscode.CancellationToken,
+): Promise<string> {
+  progress.report({ message: 'Querying the latest WinLibs MinGW-w64 release...' });
+  const asset = await fetchLatestWinLibsAsset();
+
+  progress.report({ message: `Download ${asset.name}` });
+  const downloadedFileUri = await download(asset.url, rustToolchainPath, context, progress, token);
+
+  // Best-effort checksum: skip silently when the hash cannot be obtained,
+  // but fail hard on a real mismatch.
+  if (asset.sha256Url) {
+    progress.report({ message: 'Verifying SHA-256 checksum...' });
+    let expected: string | undefined;
+    try {
+      const response = await fetch(asset.sha256Url, { headers: { 'User-Agent': 'zephyr-workbench' } });
+      const text = response.ok ? await response.text() : '';
+      // WinLibs .sha256 files wrap the hash in descriptive text.
+      expected = /[0-9a-fA-F]{64}/.exec(text)?.[0]?.toLowerCase();
+    } catch {
+      expected = undefined;
+    }
+    if (expected) {
+      const actual = await sha256OfFile(downloadedFileUri.fsPath);
+      if (expected !== actual.toLowerCase()) {
+        throw new Error(`WinLibs checksum mismatch (expected ${expected}, got ${actual}).`);
+      }
+    }
+  }
+
+  const stagingPath = path.join(rustToolchainPath, '.zw-mingw-staging');
+  fs.mkdirSync(stagingPath, { recursive: true });
+  try {
+    progress.report({ message: `Extracting ${asset.name}` });
+    await extract(downloadedFileUri.fsPath, stagingPath, progress, token);
+
+    // WinLibs x86_64 archives wrap everything in a single top-level folder
+    // (usually 'mingw64').
+    const topDir = fs.readdirSync(stagingPath, { withFileTypes: true }).find(entry => entry.isDirectory());
+    if (!topDir) {
+      throw new Error('WinLibs archive extraction produced no top-level folder.');
+    }
+
+    const mingwDestPath = path.join(rustToolchainPath, 'mingw64');
+    if (fs.existsSync(mingwDestPath)) {
+      fs.rmSync(mingwDestPath, { recursive: true, force: true });
+    }
+    try {
+      fs.renameSync(path.join(stagingPath, topDir.name), mingwDestPath);
+    } catch {
+      fs.cpSync(path.join(stagingPath, topDir.name), mingwDestPath, { recursive: true });
+      fs.rmSync(path.join(stagingPath, topDir.name), { recursive: true, force: true });
+    }
+
+    if (!hasMingwToolchain(rustToolchainPath)) {
+      throw new Error('MinGW-w64 installation is incomplete (gcc.exe not found).');
+    }
+
+    return mingwDestPath;
+  } finally {
+    fs.rmSync(stagingPath, { recursive: true, force: true });
+  }
 }
 
 export async function updateRustToolchainLlvm(toolchainPath: string, llvmPath: string | undefined) {

@@ -51,9 +51,18 @@ export function prependRustBinPath(
     return env;
   }
 
+  const prefixes = [rustBinPath];
+
+  // Standalone installs may bundle a MinGW-w64 GCC toolchain (gcc, dlltool,
+  // ld, ...) under <toolchain>/mingw64; expose its bin automatically.
+  const mingwBinPath = path.join(path.dirname(rustBinPath), 'mingw64', 'bin');
+  if (fs.existsSync(mingwBinPath)) {
+    prefixes.push(mingwBinPath);
+  }
+
   return {
     ...env,
-    PATH: `${rustBinPath}${path.delimiter}${env.PATH ?? process.env.PATH ?? ''}`,
+    PATH: [...prefixes, env.PATH ?? process.env.PATH ?? ''].join(path.delimiter),
   };
 }
 export type ZephyrSdkVariantId = Extract<ToolchainVariantId, 'zephyr' | 'zephyr/llvm'>;

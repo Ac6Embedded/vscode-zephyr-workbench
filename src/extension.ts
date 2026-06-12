@@ -47,8 +47,8 @@ import { ToolchainInstallationsDataProvider, ToolchainInstallationTreeItem } fro
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain } from './utils/zephyr/sdkUtils';
 import { registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zephyr/armGnuToolchainUtils';
-import { checkRustPrerequisites, findRustup, installManagedRustup, installMsvcBuildTools, installRustToolchainViaRustup, MSVC_BUILD_TOOLS_MANUAL_URL, resolveRustupToolchainName, uninstallRustToolchainViaRustup } from './utils/zephyr/rustupUtils';
-import { buildLlvmDownloadUrl, buildRustDistUrls, detectRustVersion, getLlvmTopLevelDirName, getRustDistTopLevelDirName, getRustHostTriple, installRustDistComponents, isLlvmPath, registerRustToolchain, unregisterRustToolchain, updateRustToolchainLink, updateRustToolchainLlvm } from './utils/zephyr/rustToolchainUtils';
+import { checkRustPrerequisites, findRustup, getManagedRustupRootDir, installManagedRustup, installMsvcBuildTools, installRustToolchainViaRustup, MSVC_BUILD_TOOLS_MANUAL_URL, resolveRustupToolchainName, uninstallRustToolchainViaRustup } from './utils/zephyr/rustupUtils';
+import { buildLlvmDownloadUrl, buildRustDistUrls, detectRustVersion, getLlvmTopLevelDirName, getRustDistTopLevelDirName, getRustHostTriple, installMingwToolchain, installRustDistComponents, isLlvmPath, registerRustToolchain, unregisterRustToolchain, updateRustToolchainLink, updateRustToolchainLlvm, WINLIBS_MANUAL_URL } from './utils/zephyr/rustToolchainUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
 import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, findRustToolchainInstallation, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './utils/env/zephyrEnvUtils';
@@ -146,20 +146,21 @@ function isValidRustCToolchainLink(cToolchainType?: string, cToolchainPath?: str
 }
 
 // Resolve the host LLVM linked to a Rust toolchain: validate a local
-// installation or download/extract a release from llvm-project. Returns the
-// LLVM root (containing libclang) or undefined when resolution failed.
+// installation or download/extract a release from llvm-project into the
+// same folder the Rust toolchain uses (no separate location is asked).
+// Returns the LLVM root (containing libclang) or undefined on failure.
 async function resolveRustLlvm(
 	context: vscode.ExtensionContext,
+	downloadDestDir: string,
 	llvmSource?: string,
 	llvmVersion?: string,
 	llvmPath?: string,
 ): Promise<string | undefined> {
-	if (!llvmPath) {
-		vscode.window.showErrorMessage("Missing host LLVM location, please choose where to install it or select an existing one.");
-		return undefined;
-	}
-
 	if (llvmSource === 'local') {
+		if (!llvmPath) {
+			vscode.window.showErrorMessage("Missing host LLVM location, please select an existing LLVM installation.");
+			return undefined;
+		}
 		let candidate = llvmPath;
 		const base = path.basename(candidate).toLowerCase();
 		if (base === 'bin' || base === 'lib') {
@@ -184,15 +185,15 @@ async function resolveRustLlvm(
 		return undefined;
 	}
 
-	const llvmRoot = path.join(llvmPath, topDir);
+	const llvmRoot = path.join(downloadDestDir, topDir);
 	if (isLlvmPath(llvmRoot)) {
 		// Already extracted by a previous import; reuse it.
 		return llvmRoot;
 	}
 
 	try {
-		if (!fs.existsSync(llvmPath)) {
-			fs.mkdirSync(llvmPath, { recursive: true });
+		if (!fs.existsSync(downloadDestDir)) {
+			fs.mkdirSync(downloadDestDir, { recursive: true });
 		}
 	} catch (err: any) {
 		vscode.window.showErrorMessage(`Failed to create folder: ${err.message}`);
@@ -207,10 +208,10 @@ async function resolveRustLlvm(
 	}, async (progress, token) => {
 		try {
 			progress.report({ message: `Download ${downloadUrl}` });
-			const downloadedFileUri = await download(downloadUrl, llvmPath, context, progress, token);
+			const downloadedFileUri = await download(downloadUrl, downloadDestDir, context, progress, token);
 
 			progress.report({ message: `Extracting ${downloadedFileUri}` });
-			await extractTar(downloadedFileUri.fsPath, llvmPath, progress, token);
+			await extractTar(downloadedFileUri.fsPath, downloadDestDir, progress, token);
 
 			if (!isLlvmPath(llvmRoot)) {
 				throw new Error("The extracted folder is not a valid LLVM installation (libclang not found).");
@@ -2572,7 +2573,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 				ImportZephyrSDKPanel.currentPanel?.dispose();
 
-				const llvmRoot = await resolveRustLlvm(context, llvmSource, llvmVersion, llvmPath);
+				// Downloaded LLVM lives beside the rustup-managed toolchains.
+				const llvmRoot = await resolveRustLlvm(context, getManagedRustupRootDir(), llvmSource, llvmVersion, llvmPath);
 				if (!llvmRoot) {
 					return;
 				}
@@ -2630,6 +2632,7 @@ export function activate(context: vscode.ExtensionContext) {
 				llvmSource?: string,
 				llvmVersion?: string,
 				llvmPath?: string,
+				installMingw?: boolean,
 			) => {
 				if (!parentPath) {
 					vscode.window.showErrorMessage("Please provide a destination folder for the Rust toolchain.");
@@ -2686,7 +2689,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 				ImportZephyrSDKPanel.currentPanel?.dispose();
 
-				const llvmRoot = await resolveRustLlvm(context, llvmSource, llvmVersion, llvmPath);
+				// Downloaded LLVM lands in the same Location as the toolchain.
+				const llvmRoot = await resolveRustLlvm(context, parentPath, llvmSource, llvmVersion, llvmPath);
 				if (!llvmRoot) {
 					return;
 				}
@@ -2726,6 +2730,24 @@ export function activate(context: vscode.ExtensionContext) {
 
 						if (!RustToolchainInstallation.isRustPath(installPath)) {
 							throw new Error("The assembled folder is not a valid Rust toolchain.");
+						}
+
+						// Optional Windows host dependencies: a full MinGW-w64 GCC
+						// (gcc, dlltool, ...) bundled inside the toolchain; its bin
+						// is added to PATH automatically once present.
+						if (installMingw && process.platform === 'win32') {
+							try {
+								progress.report({ message: "Installing MinGW-w64 host dependencies..." });
+								await installMingwToolchain(context, installPath, progress, token);
+							} catch (mingwError: any) {
+								if (mingwError.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+									throw mingwError;
+								}
+								vscode.window.showWarningMessage(
+									`MinGW-w64 install failed: ${mingwError?.message ?? mingwError}. `
+									+ `Download it manually from ${WINLIBS_MANUAL_URL} (Win64/UCRT) and extract it to ${path.join(installPath, 'mingw64')}.`
+								);
+							}
 						}
 
 						await registerRustToolchain({

@@ -174,13 +174,6 @@ window.addEventListener("load", () => {
 
   getEl<TextField>("rustFolderName").addEventListener("input", handleRustFolderNameInput);
 
-  const llvmSourceSub = getEl<RadioGroup>("llvmSource");
-  llvmSourceSub.addEventListener("click", modifyLlvmSourceHandler);
-  llvmSourceSub.addEventListener("select", modifyLlvmSourceHandler);
-  getEl<Button>("browseLlvmButton").addEventListener("click", () => {
-    vscode.postMessage({ command: "openLocationDialog", id: "llvmPath" });
-  });
-
   sourceCat.dispatchEvent(new Event("select"));
   modifySdkTypeHandler();
 });
@@ -204,11 +197,6 @@ function setVSCodeMessageListener(): void {
           }
           case "iarPath": {
             (getEl<TextField>("iarPath") as unknown as { value: string }).value =
-              event.data.folderUri;
-            break;
-          }
-          case "llvmPath": {
-            (getEl<TextField>("llvmPath") as unknown as { value: string }).value =
               event.data.folderUri;
             break;
           }
@@ -303,6 +291,11 @@ function modifySrcTypeHandler(): void {
     commonLocationForm.style.display = standalone ? "" : "none";
     getEl("rustupSection").style.display = standalone ? "none" : "";
     getEl("rustFolderRow").style.display = standalone ? "" : "none";
+    // Windows-only row (not rendered on other platforms).
+    const mingwRow = document.getElementById("rustMingwRow");
+    if (mingwRow) {
+      mingwRow.style.display = standalone ? "" : "none";
+    }
     renderRustVersionOptions();
   } else {
     iarForm.style.display = "block";
@@ -1004,11 +997,6 @@ function applyLlvmVersionList(data: LlvmImportData | undefined): void {
   versionInput.setAttribute("data-value", versions[0]);
 }
 
-function modifyLlvmSourceHandler(): void {
-  const source = (getEl<RadioGroup>("llvmSource") as unknown as { value: string }).value;
-  getEl("llvmVersionRow").style.display = source === "download" ? "" : "none";
-}
-
 function toggleLlvmSpinner(show: boolean): void {
   const spinner = document.getElementById("llvmSpinner") as HTMLElement | null;
   if (!spinner) { return; }
@@ -1167,11 +1155,10 @@ function importHandler(): void {
     rustVersion: getEl<HTMLInputElement>("rustVersionInput").getAttribute("data-value") || "",
     rustTargets: isRustMinimalSelected() ? getSelectedRustTargets() : [...availableRustTargets],
     rustFolderName: (getRustFolderField().value || "").trim(),
+    rustInstallMingw: (document.getElementById("rustMingwCheckbox") as unknown as { checked?: boolean } | null)?.checked === true,
     rustCToolchainType: getSelectedRustCToolchain().type,
     rustCToolchainPath: getSelectedRustCToolchain().path,
-    llvmSource: (getEl<RadioGroup>("llvmSource") as unknown as { value: string }).value,
     llvmVersion: getEl<HTMLInputElement>("llvmVersionInput").getAttribute("data-value") || "",
-    llvmPath: ((getEl<TextField>("llvmPath") as unknown as { value: string }).value || "").trim(),
   });
 }
 

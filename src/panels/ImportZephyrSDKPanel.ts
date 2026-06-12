@@ -389,12 +389,12 @@ export class ImportZephyrSDKPanel {
     <div class="grid-group-div">
       <vscode-radio-group id="rustType" orientation="horizontal">
         <label slot="label">Type:</label>
-        <vscode-radio value="full">Full</vscode-radio>
-        <vscode-radio value="minimal" checked>Minimal</vscode-radio>
+        <vscode-radio value="full" checked>Full</vscode-radio>
+        <vscode-radio value="minimal">Minimal</vscode-radio>
       </vscode-radio-group>
     </div>
 
-    <div class="grid-group-div" id="rustTargetsSection">
+    <div class="grid-group-div" id="rustTargetsSection" style="display:none">
       <fieldset class="no-border">
         <label>Embedded targets:</label>
         <div class="toolchains-container" id="rustTargetsContainer">
@@ -408,6 +408,12 @@ export class ImportZephyrSDKPanel {
         Install subfolder:
       </vscode-text-field>
     </div>
+${process.platform === 'win32' ? `
+    <div class="grid-group-div" id="rustMingwRow">
+      <vscode-checkbox id="rustMingwCheckbox" checked>
+        Install MinGW-w64 GCC host tools (gcc, dlltool, ...) into the toolchain and add them to PATH
+      </vscode-checkbox>
+    </div>` : ''}
 
     <div class="grid-group-div">
       <div class="grid-header-div">
@@ -436,17 +442,9 @@ export class ImportZephyrSDKPanel {
       </div>
     </div>
 
-    <div class="grid-group-div">
-      <vscode-radio-group id="llvmSource" orientation="horizontal">
-        <label slot="label">Host LLVM (libclang for bindgen):</label>
-        <vscode-radio value="download" checked>Download</vscode-radio>
-        <vscode-radio value="local">Local</vscode-radio>
-      </vscode-radio-group>
-    </div>
-
     <div class="grid-group-div" id="llvmVersionRow">
       <div class="grid-header-div">
-        <label for="llvmVersionInput">LLVM version:</label>
+        <label for="llvmVersionInput">Host LLVM (libclang for bindgen):</label>
       </div>
 
       <div class="combo-with-spinner">
@@ -474,10 +472,6 @@ export class ImportZephyrSDKPanel {
       </div>
     </div>
 
-    <div class="grid-group-div">
-      <vscode-text-field id="llvmPath" size="50">LLVM location:</vscode-text-field>
-      <vscode-button id="browseLlvmButton" class="browse-input-button">Browse...</vscode-button>
-    </div>
   </form>
 
   <form id="commonLocationForm">
@@ -575,9 +569,10 @@ export class ImportZephyrSDKPanel {
                   workspacePath,
                   msg.rustCToolchainType,
                   msg.rustCToolchainPath,
-                  msg.llvmSource,
+                  "download",
                   msg.llvmVersion,
-                  msg.llvmPath,
+                  undefined,
+                  msg.rustInstallMingw,
                 );
                 break;
 
@@ -588,9 +583,9 @@ export class ImportZephyrSDKPanel {
                   msg.rustTargets,
                   msg.rustCToolchainType,
                   msg.rustCToolchainPath,
-                  msg.llvmSource,
+                  "download",
                   msg.llvmVersion,
-                  msg.llvmPath,
+                  undefined,
                 );
                 break;
 
@@ -785,13 +780,7 @@ export async function checkParameters(msg: any): Promise<boolean> {
       );
       return false;
     }
-    if (!msg.llvmPath) {
-      vscode.window.showErrorMessage(
-        "Missing host LLVM location, please choose where to install it or select an existing one.",
-      );
-      return false;
-    }
-    if (msg.llvmSource === "download" && !msg.llvmVersion) {
+    if (!msg.llvmVersion) {
       vscode.window.showErrorMessage(
         "Missing LLVM version, please choose the LLVM release to download.",
       );
