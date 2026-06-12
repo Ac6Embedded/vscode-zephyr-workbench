@@ -229,6 +229,20 @@ export class CreateWestWorkspacePanel {
               </details>
             </div>
 
+            <div class="grid-group-div" id="advancedOptionsGroup">
+              <details class="advanced-options">
+                <summary>
+                  <button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right advanced-arrow" aria-hidden="true" tabindex="-1"></button>
+                  <span>Advanced options</span>
+                </summary>
+                <div class="advanced-options-content">
+                  <div class="grid-group-div">
+                    <vscode-checkbox id="enableRustCheckbox">Enable Rust&nbsp;&nbsp;<span class="tooltip" data-tooltip="Adds the optional zephyr-lang-rust module: runs 'west config manifest.project-filter -- +zephyr-lang-rust' before west update, so the module is fetched into modules/lang/rust.">?</span></vscode-checkbox>
+                  </div>
+                </div>
+              </details>
+            </div>
+
             <div class="grid-group-div" id="locationGroup">
               <vscode-text-field class="browse-field" size="50" type="text" id="workspacePath" value="">Location:</vscode-text-field>
               <vscode-button id="browseLocationButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
@@ -247,6 +261,7 @@ export class CreateWestWorkspacePanel {
               const templateModeRadios = document.getElementById('templateMode');
               const templatesGroup = document.getElementById('templatesGroup');
               const advancedTemplateGroup = document.getElementById('advancedTemplateGroup');
+              const advancedOptionsGroup = document.getElementById('advancedOptionsGroup');
               const projectsGroup = document.getElementById('projectsGroup');
 
               let currentSrcType = 'template';
@@ -260,6 +275,10 @@ export class CreateWestWorkspacePanel {
                 templatesGroup.style.display = (inTemplateSource && isMinimal) ? 'block' : 'none';
                 if (advancedTemplateGroup) {
                   advancedTemplateGroup.style.display = inTemplateSource ? 'block' : 'none';
+                }
+                if (advancedOptionsGroup) {
+                  // Rust module enabling applies to every flow that runs west update.
+                  advancedOptionsGroup.style.display = (currentSrcType !== 'local') ? 'block' : 'none';
                 }
                 if (projectsGroup) {
                   projectsGroup.style.display = (inTemplateSource && isMinimal) ? 'block' : 'none';
@@ -474,13 +493,13 @@ export class CreateWestWorkspacePanel {
             }
 
             if(srcType === 'remote') {
-              vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath);
+              vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath, message.enableRust === true);
             } else if(srcType === 'local') {
               vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-local", workspacePath);
             } else if(srcType === 'manifest') {
-              vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestPath);
+              vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestPath, message.enableRust === true);
             } else if(srcType === 'template') {
-              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir, pathPrefix, projects);
+              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir, pathPrefix, projects, message.enableRust === true);
             }
             break;
         }

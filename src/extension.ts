@@ -3,7 +3,7 @@
 import path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { westBoardsCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBuildCommand, westConfigCommand, westRebuildCommand, westSpdxGenerateCommand, westSpdxInitCommand } from './commands/WestCommands';
+import { westBoardsCommand, westEnableRustModuleCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBuildCommand, westConfigCommand, westRebuildCommand, westSpdxGenerateCommand, westSpdxInitCommand } from './commands/WestCommands';
 import { WestWorkspace } from './models/WestWorkspace';
 import { ZephyrApplication } from './models/ZephyrApplication';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
@@ -3724,7 +3724,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("west.init", async (srcUrl, srcRev, workspaceDestPath, manifestPath) => {
+		vscode.commands.registerCommand("west.init", async (srcUrl, srcRev, workspaceDestPath, manifestPath, enableRust = false) => {
 			if (workspaceDestPath && !isWorkspaceFolder(workspaceDestPath)) {
 				vscode.window.withProgress({
 					location: vscode.ProgressLocation.Notification,
@@ -3736,6 +3736,13 @@ export function activate(context: vscode.ExtensionContext) {
 						await westInitCommand(srcUrl, srcRev, workspaceDestPath, manifestPath);
 						if (token.isCancellationRequested) {
 							throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
+						}
+						if (enableRust) {
+							progress.report({ increment: 2, message: 'Enabling Rust module...' });
+							await westEnableRustModuleCommand(workspaceDestPath);
+							if (token.isCancellationRequested) {
+								throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
+							}
 						}
 						progress.report({ increment: 5, message: 'Updating projects...' });
 						await westUpdateCommand(workspaceDestPath, progress, token);
@@ -3798,7 +3805,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir?: string, pathPrefix?: string, projects?: string[]) => {
+		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir?: string, pathPrefix?: string, projects?: string[], enableRust = false) => {
 			if (remotePath && remoteBranch && workspacePath && templateHal) {
 				try {
 					// Determine if mode is 'full' or 'minimal'
@@ -3806,7 +3813,7 @@ export function activate(context: vscode.ExtensionContext) {
 					// Generate west.xml from template
 					let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal, isFull, manifestDir, pathPrefix, projects);
 					// Run west init to the newly create manifest
-					vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestFile);
+					vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestFile, enableRust);
 				} catch (error) {
 					vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
 				}

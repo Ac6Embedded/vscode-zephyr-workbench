@@ -79,6 +79,20 @@ export async function westInitCommand(srcUrl: string, srcRev: string, workspaceP
   await execShellCommandWithEnv(`West Init for current workspace`, command, options);
 }
 
+/**
+ * Enable the optional zephyr-lang-rust module in a freshly initialized
+ * workspace, so the following `west update` fetches it (placed under
+ * modules/lang/rust).
+ */
+export async function westEnableRustModuleCommand(workspacePath: string): Promise<void> {
+  const command = 'west config manifest.project-filter -- +zephyr-lang-rust';
+  const options: vscode.ShellExecutionOptions = {
+    env: { ZEPHYR_PROJECT_DIRECTORY: workspacePath },
+    cwd: workspacePath,
+  };
+  await execShellCommandWithEnv('West enable Rust module', command, options);
+}
+
 type NotificationProgress = vscode.Progress<{ message?: string; increment?: number }>;
 
 function stripAnsi(input: string): string {

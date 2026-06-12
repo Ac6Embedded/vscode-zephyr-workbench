@@ -531,6 +531,11 @@ function modifySrcTypeHandler(this: HTMLElement) {
   const srcRemoteBranchGroup = document.getElementById("branchGroup") as HTMLDivElement;
   const manifestGroup = document.getElementById("manifestGroup") as HTMLDivElement;
   const advancedTemplateGroup = document.getElementById("advancedTemplateGroup") as HTMLDivElement | null;
+  const advancedOptionsGroup = document.getElementById("advancedOptionsGroup") as HTMLDivElement | null;
+  // Rust module enabling applies to every flow that runs west update.
+  if (advancedOptionsGroup) {
+    advancedOptionsGroup.style.display = srcTypeRadioGroup.value === 'local' ? 'none' : 'block';
+  }
 
   // Enable/Disable form section depending on user choice
   if(srcTypeRadioGroup.value === 'remote') {
@@ -589,18 +594,19 @@ function modifySrcTypeHandler(this: HTMLElement) {
 }
 
 function wireAdvancedOptions() {
-  const advancedDetails = document.querySelector('.advanced-options') as HTMLDetailsElement | null;
-  const advancedArrow = document.querySelector('.advanced-arrow') as HTMLElement | null;
-  if (!advancedDetails || !advancedArrow) {
-    return;
-  }
-  const sync = () => {
-    const isOpen = advancedDetails.open;
-    advancedArrow.classList.toggle('codicon-chevron-right', !isOpen);
-    advancedArrow.classList.toggle('codicon-chevron-down', isOpen);
-  };
-  advancedDetails.addEventListener('toggle', sync);
-  sync();
+  document.querySelectorAll<HTMLDetailsElement>('.advanced-options').forEach(advancedDetails => {
+    const advancedArrow = advancedDetails.querySelector('.advanced-arrow') as HTMLElement | null;
+    if (!advancedArrow) {
+      return;
+    }
+    const sync = () => {
+      const isOpen = advancedDetails.open;
+      advancedArrow.classList.toggle('codicon-chevron-right', !isOpen);
+      advancedArrow.classList.toggle('codicon-chevron-down', isOpen);
+    };
+    advancedDetails.addEventListener('toggle', sync);
+    sync();
+  });
 }
 
 function browseLocationHandler(this: HTMLElement, ev: MouseEvent) {
@@ -660,7 +666,8 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       pathPrefix: pathPrefixField ? pathPrefixField.value : undefined,
       workspacePath: workspacePath.value,
       templateMode: templateModeValue,
-      projects: projects
+      projects: projects,
+      enableRust: (document.getElementById('enableRustCheckbox') as unknown as { checked?: boolean } | null)?.checked === true
     }
   );
 }
