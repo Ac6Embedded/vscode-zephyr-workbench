@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ArmGnuToolchainInstallation, ToolchainInstallation, IarToolchainInstallation } from '../models/ToolchainInstallations';
-import { getInternalZephyrSdkInstallation, getRegisteredArmGnuToolchainInstallations, getRegisteredZephyrSdkInstallations, getRegisteredIarToolchainInstallations} from '../utils/utils';
+import { ArmGnuToolchainInstallation, RustToolchainInstallation, ToolchainInstallation, IarToolchainInstallation } from '../models/ToolchainInstallations';
+import { getInternalZephyrSdkInstallation, getRegisteredArmGnuToolchainInstallations, getRegisteredRustToolchainInstallations, getRegisteredZephyrSdkInstallations, getRegisteredIarToolchainInstallations} from '../utils/utils';
 
 export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvider<ToolchainInstallationTreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<ToolchainInstallationTreeItem | undefined | void> = new vscode.EventEmitter<ToolchainInstallationTreeItem | undefined | void>();
@@ -20,6 +20,7 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
 	const zephyrSDKs = await getRegisteredZephyrSdkInstallations();
 	const iars = await getRegisteredIarToolchainInstallations();
 	const armGnuToolchains = await getRegisteredArmGnuToolchainInstallations();
+	const rustToolchains = await getRegisteredRustToolchainInstallations();
 	const internal = await getInternalZephyrSdkInstallation();
   
 	if (!element) {
@@ -37,10 +38,19 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
 	  for (const armGnuToolchainInstallation of armGnuToolchains) {
 		items.push(new ToolchainInstallationTreeItem(armGnuToolchainInstallation, false, vscode.TreeItemCollapsibleState.None));
 	  }
-  
+
+	  for (const rustToolchainInstallation of rustToolchains) {
+		const hasLink = !!rustToolchainInstallation.cToolchainPath || !!rustToolchainInstallation.llvmPath;
+		items.push(new ToolchainInstallationTreeItem(
+		  rustToolchainInstallation,
+		  false,
+		  hasLink ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+		));
+	  }
+
 	  return items;
 	}
-  
+
 	// If this is an IAR, show its associated SDK
 	if (element.installation instanceof IarToolchainInstallation) {
 		const zephyrSdkPath = element.installation.zephyrSdkPath;
@@ -52,7 +62,45 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
 		  ];
 		}
 	  }
-  
+
+	// If this is a Rust toolchain, show its linked C toolchain
+	if (element.installation instanceof RustToolchainInstallation) {
+		const children: ToolchainInstallationTreeItem[] = [];
+		const linkedPath = element.installation.cToolchainPath;
+
+		if (element.installation.cToolchainType === 'gnuarmemb') {
+		  const linkedArmGnu = armGnuToolchains.find(t => t.toolchainPath === linkedPath);
+		  if (linkedArmGnu) {
+			children.push(new ToolchainInstallationTreeItem(linkedArmGnu, false, vscode.TreeItemCollapsibleState.None));
+		  }
+		} else {
+		  const linkedSdk = zephyrSDKs.find(s => s.rootUri.fsPath === linkedPath);
+		  if (linkedSdk) {
+			const isInternal = internal?.rootUri.fsPath === linkedSdk.rootUri.fsPath;
+			children.push(new ToolchainInstallationTreeItem(linkedSdk, isInternal, vscode.TreeItemCollapsibleState.None));
+		  }
+		}
+
+		const llvmPath = element.installation.llvmPath;
+		if (llvmPath) {
+		  const llvmItem = new ToolchainInstallationTreeItem(element.installation, false, vscode.TreeItemCollapsibleState.None);
+		  llvmItem.label = path.basename(llvmPath);
+		  llvmItem.description = '[host LLVM]';
+		  llvmItem.tooltip = `Host LLVM (libclang for bindgen) @ ${llvmPath}`
+			+ (element.installation.libclangDirPath
+			  ? `\nLIBCLANG_PATH: ${element.installation.libclangDirPath}`
+			  : '\nWarning: libclang not found in this installation');
+		  llvmItem.contextValue = 'rust-llvm';
+		  llvmItem.iconPath = {
+			light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'llvm_icon_light.svg'),
+			dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'llvm_icon_dark.svg')
+		  };
+		  children.push(llvmItem);
+		}
+
+		return children;
+	  }
+
 	return [];
   }
   
@@ -91,6 +139,21 @@ export class ToolchainInstallationTreeItem extends vscode.TreeItem {
 		this.iconPath = {
 		  light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'arm_gnu_icon_light.svg'),
 		  dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'arm_gnu_icon_dark.svg')
+		};
+	  } else if (installation instanceof RustToolchainInstallation) {
+		this.label = installation.name;
+		this.tooltip = `Rust Toolchain @ ${installation.toolchainPath}`
+		  + (installation.targets.length ? `\nTargets: ${installation.targets.join(', ')}` : '')
+		  + (installation.cToolchainPath
+			? `\nLinked C toolchain: ${installation.cToolchainPath}`
+			: '\nNo linked C toolchain')
+		  + (installation.llvmPath
+			? `\nHost LLVM: ${installation.llvmPath}`
+			: '\nNo linked host LLVM (bindgen needs libclang)');
+		this.contextValue = 'rust-toolchain';
+		this.iconPath = {
+		  light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'rust_icon_light.svg'),
+		  dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'rust_icon_dark.svg')
 		};
 	  } else {
 		this.label = `Zephyr SDK ${installation.version}`;

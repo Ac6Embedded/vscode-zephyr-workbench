@@ -286,6 +286,16 @@ export class ZephyrApplicationToolchainTreeItem extends ZephyrApplicationTreeIte
     } else if (variant === 'gnuarmemb') {
       installationName = project.selectedArmGnuToolchainInstallation?.name;
       detailPath = project.selectedArmGnuToolchainInstallation?.toolchainPath;
+    } else if (variant === 'rust') {
+      const rustInstallation = project.selectedRustToolchainInstallation;
+      if (rustInstallation) {
+        const linkedName = rustInstallation.cToolchainPath
+          ? path.basename(rustInstallation.cToolchainPath)
+          : 'no C toolchain linked';
+        installationName = `${rustInstallation.name} (+ ${linkedName})`;
+        detailPath = rustInstallation.toolchainPath
+          + (rustInstallation.cToolchainPath ? `\nLinked C toolchain: ${rustInstallation.cToolchainPath}` : '');
+      }
     } else {
       // 'zephyr' / 'zephyr/llvm': the SDK installation isn't loaded eagerly,
       // so derive the install folder name from the configured path the same
@@ -312,6 +322,11 @@ export class ZephyrApplicationToolchainTreeItem extends ZephyrApplicationTreeIte
       this.iconPath = {
         light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'arm_gnu_icon_light.svg'),
         dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'arm_gnu_icon_dark.svg'),
+      };
+    } else if (variant === 'rust') {
+      this.iconPath = {
+        light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'rust_icon_light.svg'),
+        dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'rust_icon_dark.svg'),
       };
     } else {
       this.iconPath = {

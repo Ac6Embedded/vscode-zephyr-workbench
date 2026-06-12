@@ -3,7 +3,9 @@ import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getMinimalToolchainsForVersion, getSdkVersion } from "../utils/zephyr/sdkUtils";
 import { fetchArmGnuDownloadCatalog, filterArmGnuCatalogForHost, getArmGnuHostTarget } from "../utils/zephyr/armGnuToolchainUtils";
-import { getRegisteredZephyrSdkInstallations } from "../utils/utils";
+import { getRustupStatus } from "../utils/zephyr/rustupUtils";
+import { fetchLlvmVersions, fetchRustVersions, fetchZephyrRustTargetDetails, RUST_STABLE_CHANNEL } from "../utils/zephyr/rustToolchainUtils";
+import { getRegisteredArmGnuToolchainInstallations, getRegisteredZephyrSdkInstallations } from "../utils/utils";
 
 export class ImportZephyrSDKPanel {
   public static currentPanel: ImportZephyrSDKPanel | undefined;
@@ -23,6 +25,18 @@ export class ImportZephyrSDKPanel {
       this._panel.webview,
       this._extensionUri,
     );
+  }
+
+  private async postRustupStatus(webview: vscode.Webview) {
+    try {
+      const status = await getRustupStatus();
+      webview.postMessage({ command: "rustupStatus", rustup: status });
+    } catch (error) {
+      webview.postMessage({
+        command: "rustupStatus",
+        rustup: { error: getErrorMessage(error) },
+      });
+    }
   }
 
   public openLocationDialog(targetId = "workspacePath") {
@@ -141,6 +155,7 @@ export class ImportZephyrSDKPanel {
         <vscode-radio value="zephyr" checked>Zephyr SDK</vscode-radio>
         <vscode-radio value="arm-gnu">ARM GNU Toolchain</vscode-radio>
         <vscode-radio value="iar">IAR ARM Toolchain</vscode-radio>
+        <vscode-radio value="rust">Rust Toolchain</vscode-radio>
       </vscode-radio-group>
     </div>
 
@@ -312,7 +327,160 @@ export class ImportZephyrSDKPanel {
     </div>
   </form>
 
-  <form>
+  <form id="rust-form" style="display:none">
+    <div class="grid-group-div">
+      <vscode-radio-group id="srcTypeRust" orientation="horizontal">
+        <label slot="label">Install method:</label>
+        <vscode-radio value="rust-standalone" checked>Standalone</vscode-radio>
+        <vscode-radio value="rust-rustup">Rustup</vscode-radio>
+      </vscode-radio-group>
+    </div>
+
+    <div id="rustupSection" style="display:none">
+      <div class="grid-group-div">
+        <fieldset class="no-border">
+          <label>rustup is installed self-contained in .zinstaller/tools/rustup/ (your PATH is not modified):</label>
+          <p id="rustupStatusLine">Checking rustup installation...</p>
+          <p id="rustupUpdateLine" style="display:none;color:var(--vscode-editorWarning-foreground);"></p>
+          <p id="rustupLocationLine"></p>
+          <p id="rustupPrereqLine">Checking prerequisites...</p>
+        </fieldset>
+      </div>
+
+      <div class="grid-group-div" id="rustupInstallRow" style="display:none">
+        <vscode-button id="installRustupButton">Download and install rustup</vscode-button>
+      </div>
+
+      <div class="grid-group-div" id="rustupActionsRow" style="display:none">
+        <vscode-button id="installPrereqButton">Install C++ Build Tools</vscode-button>
+      </div>
+    </div>
+
+    <div class="grid-group-div">
+      <div class="grid-header-div">
+        <label for="rustVersionInput">Version:</label>
+      </div>
+
+      <div class="combo-with-spinner">
+        <div id="listRustVersions" class="combo-dropdown grid-value-div">
+          <input type="text"
+                 id="rustVersionInput"
+                 class="combo-dropdown-control"
+                 placeholder="Looking online for Rust releases..."
+                 data-value="">
+          <div aria-hidden="true" class="indicator" part="indicator">
+            <slot name="indicator">
+              <svg class="select-indicator" width="16" height="16"
+                   viewBox="0 0 16 16" fill="currentColor">
+                <path fill-rule="evenodd" clip-rule="evenodd"
+                      d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"/>
+              </svg>
+            </slot>
+          </div>
+
+          <div id="rustVersionsDropdown" class="dropdown-content" style="display:none;">
+            <div class="dropdown-placeholder">Looking online for Rust releases...</div>
+          </div>
+        </div>
+        <div id="rustSpinner" class="spinner version-spinner" aria-label="Loading Rust releases" style="display:none"></div>
+      </div>
+    </div>
+
+    <div class="grid-group-div">
+      <vscode-radio-group id="rustType" orientation="horizontal">
+        <label slot="label">Type:</label>
+        <vscode-radio value="full">Full</vscode-radio>
+        <vscode-radio value="minimal" checked>Minimal</vscode-radio>
+      </vscode-radio-group>
+    </div>
+
+    <div class="grid-group-div" id="rustTargetsSection">
+      <fieldset class="no-border">
+        <label>Embedded targets:</label>
+        <div class="toolchains-container" id="rustTargetsContainer">
+          <div class="toolchain-placeholder">Loading Zephyr Rust targets...</div>
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="grid-group-div" id="rustFolderRow">
+      <vscode-text-field id="rustFolderName" size="50">
+        Install subfolder:
+      </vscode-text-field>
+    </div>
+
+    <div class="grid-group-div">
+      <div class="grid-header-div">
+        <label for="rustCToolchainInput">Link C toolchain:</label>
+      </div>
+
+      <div id="listRustCToolchains" class="combo-dropdown grid-value-div">
+        <input type="text"
+               id="rustCToolchainInput"
+               class="combo-dropdown-control"
+               placeholder="Choose the C toolchain..."
+               data-value="">
+        <div aria-hidden="true" class="indicator" part="indicator">
+          <slot name="indicator">
+            <svg class="select-indicator" width="16" height="16"
+                 viewBox="0 0 16 16" fill="currentColor">
+              <path fill-rule="evenodd" clip-rule="evenodd"
+                    d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"/>
+            </svg>
+          </slot>
+        </div>
+
+        <div id="rustCToolchainDropdown" class="dropdown-content" style="display:none;">
+          <div class="dropdown-placeholder">Loading toolchains...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-group-div">
+      <vscode-radio-group id="llvmSource" orientation="horizontal">
+        <label slot="label">Host LLVM (libclang for bindgen):</label>
+        <vscode-radio value="download" checked>Download</vscode-radio>
+        <vscode-radio value="local">Local</vscode-radio>
+      </vscode-radio-group>
+    </div>
+
+    <div class="grid-group-div" id="llvmVersionRow">
+      <div class="grid-header-div">
+        <label for="llvmVersionInput">LLVM version:</label>
+      </div>
+
+      <div class="combo-with-spinner">
+        <div id="listLlvmVersions" class="combo-dropdown grid-value-div">
+          <input type="text"
+                 id="llvmVersionInput"
+                 class="combo-dropdown-control"
+                 placeholder="Looking online for LLVM releases..."
+                 data-value="">
+          <div aria-hidden="true" class="indicator" part="indicator">
+            <slot name="indicator">
+              <svg class="select-indicator" width="16" height="16"
+                   viewBox="0 0 16 16" fill="currentColor">
+                <path fill-rule="evenodd" clip-rule="evenodd"
+                      d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"/>
+              </svg>
+            </slot>
+          </div>
+
+          <div id="llvmVersionsDropdown" class="dropdown-content" style="display:none;">
+            <div class="dropdown-placeholder">Looking online for LLVM releases...</div>
+          </div>
+        </div>
+        <div id="llvmSpinner" class="spinner version-spinner" aria-label="Loading LLVM releases" style="display:none"></div>
+      </div>
+    </div>
+
+    <div class="grid-group-div">
+      <vscode-text-field id="llvmPath" size="50">LLVM location:</vscode-text-field>
+      <vscode-button id="browseLlvmButton" class="browse-input-button">Browse...</vscode-button>
+    </div>
+  </form>
+
+  <form id="commonLocationForm">
     <div class="grid-group-div">
       <vscode-text-field id="remotePath" size="50" type="url"
                          value="${defaultSDKUrl}">
@@ -327,7 +495,7 @@ export class ImportZephyrSDKPanel {
     </div>
   </form>
 
-  <div class="grid-group-div">
+  <div class="grid-group-div" id="importButtonRow">
     <vscode-button id="importButton"
                    class="finish-input-button">Import</vscode-button>
   </div>
@@ -398,6 +566,34 @@ export class ImportZephyrSDKPanel {
                 );
                 break;
 
+              case "rust-standalone":
+                vscode.commands.executeCommand(
+                  "zephyr-workbench-sdk-explorer.import-standalone-rust-toolchain",
+                  msg.rustVersion,
+                  msg.rustTargets,
+                  msg.rustFolderName,
+                  workspacePath,
+                  msg.rustCToolchainType,
+                  msg.rustCToolchainPath,
+                  msg.llvmSource,
+                  msg.llvmVersion,
+                  msg.llvmPath,
+                );
+                break;
+
+              case "rust-rustup":
+                vscode.commands.executeCommand(
+                  "zephyr-workbench-sdk-explorer.import-rust-toolchain",
+                  msg.rustVersion,
+                  msg.rustTargets,
+                  msg.rustCToolchainType,
+                  msg.rustCToolchainPath,
+                  msg.llvmSource,
+                  msg.llvmVersion,
+                  msg.llvmPath,
+                );
+                break;
+
               case "iar":
                 vscode.commands.executeCommand(
                   "zephyr-workbench-sdk-explorer.import-iar-sdk",
@@ -437,10 +633,14 @@ export class ImportZephyrSDKPanel {
           }
 
           case "fetchImportSdkData": {
-            const [versionsResult, sdkResult, armGnuResult] = await Promise.allSettled([
+            const [versionsResult, sdkResult, armGnuResult, rustupResult, rustResult, armGnuRegisteredResult, llvmResult] = await Promise.allSettled([
               getSdkVersion(),
               getRegisteredZephyrSdkInstallations(),
               getArmGnuImportData(),
+              getRustupStatus(),
+              getRustImportData(),
+              getRegisteredArmGnuToolchainInstallations(),
+              fetchLlvmVersions(),
             ]);
 
             webview.postMessage({
@@ -466,9 +666,54 @@ export class ImportZephyrSDKPanel {
                     assets: [],
                     error: getErrorMessage(armGnuResult.reason),
                   },
+              rustup: rustupResult.status === "fulfilled"
+                ? rustupResult.value
+                : { error: getErrorMessage(rustupResult.reason) },
+              rust: rustResult.status === "fulfilled"
+                ? rustResult.value
+                : {
+                    versions: [],
+                    targets: [],
+                    error: getErrorMessage(rustResult.reason),
+                  },
+              armGnuRegistered: armGnuRegisteredResult.status === "fulfilled"
+                ? armGnuRegisteredResult.value.map((toolchain) => ({
+                    name: toolchain.name,
+                    path: toolchain.toolchainPath,
+                  }))
+                : [],
+              llvm: llvmResult.status === "fulfilled"
+                ? { versions: llvmResult.value }
+                : { versions: [], error: getErrorMessage(llvmResult.reason) },
             });
             return;
           }
+
+          case "fetchRustupStatus": {
+            await this.postRustupStatus(webview);
+            return;
+          }
+
+          case "installRustup": {
+            try {
+              await vscode.commands.executeCommand("zephyr-workbench-sdk-explorer.install-rustup");
+            } catch (error) {
+              vscode.window.showErrorMessage(getErrorMessage(error));
+            }
+            await this.postRustupStatus(webview);
+            return;
+          }
+
+          case "installRustPrereq": {
+            try {
+              await vscode.commands.executeCommand("zephyr-workbench-sdk-explorer.install-rust-prerequisites");
+            } catch (error) {
+              vscode.window.showErrorMessage(getErrorMessage(error));
+            }
+            await this.postRustupStatus(webview);
+            return;
+          }
+
         }
       },
       undefined,
@@ -482,6 +727,23 @@ function getErrorMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+async function getRustImportData() {
+  // fetchZephyrRustTargetDetails never throws (falls back to a static list);
+  // only a version fetch failure rejects.
+  const [versions, targetDetails] = await Promise.all([
+    fetchRustVersions(),
+    fetchZephyrRustTargetDetails(),
+  ]);
+
+  return {
+    versions: [RUST_STABLE_CHANNEL, ...versions],
+    targets: targetDetails.map(detail => detail.target),
+    targetDescriptions: Object.fromEntries(
+      targetDetails.map(detail => [detail.target, detail.description]),
+    ),
+  };
 }
 
 async function getArmGnuImportData() {
@@ -503,6 +765,55 @@ async function getArmGnuImportData() {
 
 export async function checkParameters(msg: any): Promise<boolean> {
   const { srcType, workspacePath } = msg;
+
+  if (srcType === "rust-standalone" || srcType === "rust-rustup") {
+    if (!msg.rustVersion) {
+      vscode.window.showErrorMessage(
+        "Missing Rust version, please choose a version.",
+      );
+      return false;
+    }
+    if (!Array.isArray(msg.rustTargets) || msg.rustTargets.length === 0) {
+      vscode.window.showErrorMessage(
+        "Select at least one embedded Rust target.",
+      );
+      return false;
+    }
+    if (!msg.rustCToolchainType || !msg.rustCToolchainPath) {
+      vscode.window.showErrorMessage(
+        "Missing linked C toolchain, please select a Zephyr SDK or ARM GNU toolchain.",
+      );
+      return false;
+    }
+    if (!msg.llvmPath) {
+      vscode.window.showErrorMessage(
+        "Missing host LLVM location, please choose where to install it or select an existing one.",
+      );
+      return false;
+    }
+    if (msg.llvmSource === "download" && !msg.llvmVersion) {
+      vscode.window.showErrorMessage(
+        "Missing LLVM version, please choose the LLVM release to download.",
+      );
+      return false;
+    }
+
+    if (srcType === "rust-standalone") {
+      if (!workspacePath) {
+        vscode.window.showErrorMessage(
+          "Missing destination, please enter the toolchain location.",
+        );
+        return false;
+      }
+      if (!msg.rustFolderName) {
+        vscode.window.showErrorMessage(
+          "Missing install subfolder, please enter a folder name for the toolchain.",
+        );
+        return false;
+      }
+    }
+    return true;
+  }
 
   if (!workspacePath) {
     if (srcType === "arm-gnu-local") {

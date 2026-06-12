@@ -10,13 +10,15 @@ export const ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY = 'venv.path';
 export const ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY = 'listSDKs';
 export const ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY = "listIARs";
 export const ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY = 'listArmGnuToolchains';
+export const ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY = 'listRustToolchains';
 
 export const ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY = 'westWorkspace';
 export const ZEPHYR_PROJECT_BOARD_SETTING_KEY = 'board';
 export const ZEPHYR_PROJECT_SDK_SETTING_KEY = 'sdk';
 export const ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY = "toolchain";
-export const ZEPHYR_PROJECT_IAR_SETTING_KEY = "iar"; 
+export const ZEPHYR_PROJECT_IAR_SETTING_KEY = "iar";
 export const ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY = 'gnuarmemb';
+export const ZEPHYR_PROJECT_RUST_SETTING_KEY = 'rust';
 export const ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY = 'build.west-args';
 export const ZEPHYR_WEST_WORKSPACE_APPLICATIONS_SETTING_KEY = 'westWorkspace.applications';
 export const ZEPHYR_WEST_WORKSPACE_SELECTED_APPLICATION_SETTING_KEY = 'westWorkspace.selectedApplication';

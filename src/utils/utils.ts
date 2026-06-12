@@ -6,12 +6,13 @@ import yaml from 'yaml';
 import { WestWorkspace } from "../models/WestWorkspace";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { ZephyrBoard } from "../models/ZephyrBoard";
-import { ArmGnuToolchainInstallation, normalizeArmGnuTargetTriple, ZephyrSdkInstallation, IarToolchainInstallation } from "../models/ToolchainInstallations";
+import { ArmGnuToolchainInstallation, normalizeArmGnuTargetTriple, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from "../models/ToolchainInstallations";
 import { ZephyrAppTemplateKind, ZephyrSample } from "../models/ZephyrSample";
 import { ConfigurationScope, getEnvVarFormat, getOutputChannel, getShell } from "./execUtils";
 import { checkHostTools, checkEnvFile } from "./installUtils";
 import {
   ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY,
+  ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY,
   ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
   ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY,
@@ -372,9 +373,17 @@ export async function getSample(filePath: string): Promise<ZephyrSample> {
 export async function getListSamples(westWorkspace: WestWorkspace): Promise<ZephyrSample[]> {
   let samplesList: ZephyrSample[] = [];
   if (westWorkspace) {
+    // zephyr-lang-rust ships its own samples; when the optional module is
+    // present in the workspace, list them too (parseAppTemplates silently
+    // returns when the directory does not exist).
+    const rustModuleSamplesUri = vscode.Uri.joinPath(
+      westWorkspace.rootUri, 'modules', 'lang', 'rust', 'samples',
+    );
+
     await Promise.all([
       parseAppTemplates(westWorkspace.samplesDirUri, samplesList, '', 'sample'),
       parseAppTemplates(westWorkspace.testsDirUri, samplesList, '', 'test'),
+      parseAppTemplates(rustModuleSamplesUri, samplesList, '', 'sample'),
       // Parse only from Workspace directory
       parseWorkspaceAppTemplates(westWorkspace.rootUri, samplesList),
     ]);
@@ -740,6 +749,44 @@ export async function getRegisteredArmGnuToolchainInstallations(): Promise<ArmGn
   });
 }
 
+export function findRustToolchainInstallation(toolchainPath: string): RustToolchainInstallation | undefined {
+  const list: any[] = vscode.workspace
+    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
+    .get(ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY, []);
+  const hit = list.find(entry => entry.toolchainPath === toolchainPath);
+  if (!hit) { return; }
+  if (!RustToolchainInstallation.isRustPath(hit.toolchainPath)) { return; }
+  return new RustToolchainInstallation(
+    hit.toolchainPath,
+    hit.version ?? '',
+    Array.isArray(hit.targets) ? hit.targets : [],
+    hit.cToolchainType,
+    hit.cToolchainPath,
+    hit.llvmPath,
+  );
+}
+
+export async function getRegisteredRustToolchainInstallations(): Promise<RustToolchainInstallation[]> {
+  return new Promise((resolve) => {
+    const rustToolchains: any[] = vscode.workspace
+      .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
+      .get(ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY) ?? [];
+
+    const valid = rustToolchains.filter(toolchain => RustToolchainInstallation.isRustPath(toolchain.toolchainPath));
+    const toolchainInstallations = valid.map(toolchain => new RustToolchainInstallation(
+      toolchain.toolchainPath,
+      toolchain.version ?? '',
+      Array.isArray(toolchain.targets) && toolchain.targets.length
+        ? toolchain.targets
+        : RustToolchainInstallation.detectInstalledTargets(toolchain.toolchainPath),
+      toolchain.cToolchainType,
+      toolchain.cToolchainPath,
+      toolchain.llvmPath,
+    ));
+    resolve(toolchainInstallations);
+  });
+}
+
 export function getIarToolchainInstallationByPath(iarPath: string): IarToolchainInstallation | undefined {
   const raw = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
@@ -810,6 +857,28 @@ export function getSelectedToolchainVariantEnv(
     return {
       GNUARMEMB_TOOLCHAIN_PATH: armGnuToolchainInstallation.toolchainPath,
       ZEPHYR_TOOLCHAIN_VARIANT: 'gnuarmemb',
+    };
+  }
+
+  if (toolchainVariant === 'rust') {
+    const rustToolchainInstallation = findRustToolchainInstallation(toolchainSelection.rustToolchainPath ?? '');
+    if (!rustToolchainInstallation) {
+      return {};
+    }
+
+    // The C side comes from the linked toolchain; ZEPHYR_TOOLCHAIN_VARIANT is
+    // never 'rust'.
+    if (rustToolchainInstallation.cToolchainType === 'gnuarmemb' && rustToolchainInstallation.cToolchainPath) {
+      return {
+        GNUARMEMB_TOOLCHAIN_PATH: rustToolchainInstallation.cToolchainPath,
+        ZEPHYR_TOOLCHAIN_VARIANT: 'gnuarmemb',
+        ...rustToolchainInstallation.buildEnv,
+      };
+    }
+
+    return {
+      ZEPHYR_TOOLCHAIN_VARIANT: 'zephyr',
+      ...rustToolchainInstallation.buildEnv,
     };
   }
 

@@ -3,7 +3,59 @@ import fs from "fs";
 import path from "path";
 import { fileExists } from '../utils/utils';
 
-export type ToolchainVariantId = 'zephyr' | 'zephyr/llvm' | 'gnuarmemb' | 'iar';
+export type ToolchainVariantId = 'zephyr' | 'zephyr/llvm' | 'gnuarmemb' | 'iar' | 'rust';
+export type RustLinkedCToolchainType = 'zephyr-sdk' | 'gnuarmemb';
+
+/**
+ * Locate the directory containing the libclang shared library inside an
+ * LLVM installation (bin/ on Windows, lib/ elsewhere). This is the value
+ * LIBCLANG_PATH must point to (bindgen finds libclang through it); returns
+ * undefined when no libclang exists.
+ */
+export function findLibclangDir(llvmRoot: string): string | undefined {
+  if (!llvmRoot) {
+    return undefined;
+  }
+
+  const candidates = process.platform === 'win32'
+    ? [path.join(llvmRoot, 'bin'), path.join(llvmRoot, 'lib')]
+    : [path.join(llvmRoot, 'lib'), path.join(llvmRoot, 'bin')];
+  const libclangPattern = process.platform === 'win32'
+    ? /^libclang\.dll$/i
+    : process.platform === 'darwin'
+      ? /^libclang(\.\d+)*\.dylib$/
+      : /^libclang(-\d+)?\.so(\.\d+)*$/;
+
+  for (const dir of candidates) {
+    try {
+      if (fs.readdirSync(dir).some(entry => libclangPattern.test(entry))) {
+        return dir;
+      }
+    } catch {
+      // Missing directory: try the next candidate.
+    }
+  }
+
+  return undefined;
+}
+
+// Make the selected Rust toolchain's cargo resolvable: zephyr-lang-rust
+// invokes plain `cargo`, so PATH is the only discovery mechanism. Always
+// compose with a full fallback because a PATH key in a merged env map
+// replaces the inherited PATH wholesale.
+export function prependRustBinPath(
+  env: Record<string, string>,
+  rustBinPath: string | undefined,
+): Record<string, string> {
+  if (!rustBinPath) {
+    return env;
+  }
+
+  return {
+    ...env,
+    PATH: `${rustBinPath}${path.delimiter}${env.PATH ?? process.env.PATH ?? ''}`,
+  };
+}
 export type ZephyrSdkVariantId = Extract<ToolchainVariantId, 'zephyr' | 'zephyr/llvm'>;
 export type ArmGnuBareMetalTargetTriple = 'arm-none-eabi' | 'aarch64-none-elf';
 
@@ -285,7 +337,77 @@ export class ArmGnuToolchainInstallation {
   }
 }
 
+export class RustToolchainInstallation {
+  constructor(
+    public readonly toolchainPath: string,
+    public readonly version: string = '',
+    public readonly targets: string[] = [],
+    public readonly cToolchainType?: RustLinkedCToolchainType,
+    public readonly cToolchainPath?: string,
+    public readonly llvmPath?: string,
+  ) {}
+
+  get name(): string {
+    return this.version ? `Rust ${this.version}` : 'Rust';
+  }
+
+  get binPath(): string {
+    return path.join(this.toolchainPath, 'bin');
+  }
+
+  get rustcPath(): string {
+    return ensureWindowsExecutableExtension(path.join(this.binPath, 'rustc'));
+  }
+
+  get cargoPath(): string {
+    return ensureWindowsExecutableExtension(path.join(this.binPath, 'cargo'));
+  }
+
+  get libclangDirPath(): string | undefined {
+    return this.llvmPath ? findLibclangDir(this.llvmPath) : undefined;
+  }
+
+  get buildEnv(): Record<string, string> {
+    // RUSTC is the standard cargo variable selecting the compiler (and,
+    // through its sysroot, the std/embedded targets). cargo itself is found
+    // via PATH only (zephyr-lang-rust invokes plain `cargo`); the PATH
+    // prepend is composed at the execution sites via prependRustBinPath.
+    // LIBCLANG_PATH lets bindgen find libclang in the linked host LLVM;
+    // that LLVM is never put on PATH.
+    const libclangDir = this.libclangDirPath;
+    return {
+      RUSTC: this.rustcPath,
+      ...(libclangDir ? { LIBCLANG_PATH: libclangDir } : {}),
+    };
+  }
+
+  static isRustPath(toolchainPath: string): boolean {
+    if (!toolchainPath) {
+      return false;
+    }
+
+    const rustc = ensureWindowsExecutableExtension(path.join(toolchainPath, 'bin', 'rustc'));
+    const cargo = ensureWindowsExecutableExtension(path.join(toolchainPath, 'bin', 'cargo'));
+    return fs.existsSync(rustc) && fs.existsSync(cargo);
+  }
+
+  static detectInstalledTargets(toolchainPath: string): string[] {
+    const rustlibPath = path.join(toolchainPath, 'lib', 'rustlib');
+    if (!fs.existsSync(rustlibPath)) {
+      return [];
+    }
+
+    // Bare-metal triples end with '-none' or contain '-none-' (thumbv*-none-eabi,
+    // riscv*-unknown-none-elf, x86_64-unknown-none); host triples never do.
+    return fs.readdirSync(rustlibPath).filter(entry =>
+      /-none(-|$)/.test(entry)
+      && fs.existsSync(path.join(rustlibPath, entry, 'lib'))
+    );
+  }
+}
+
 export type ToolchainInstallation =
   | ZephyrSdkInstallation
   | IarToolchainInstallation
-  | ArmGnuToolchainInstallation;
+  | ArmGnuToolchainInstallation
+  | RustToolchainInstallation;

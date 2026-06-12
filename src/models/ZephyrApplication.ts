@@ -9,10 +9,12 @@ import {
   tryGetZephyrSdkInstallation,
   findArmGnuToolchainInstallation,
   findIarToolchainInstallation,
+  findRustToolchainInstallation,
 } from '../utils/utils';
 import {
   ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
   ZEPHYR_PROJECT_IAR_SETTING_KEY,
+  ZEPHYR_PROJECT_RUST_SETTING_KEY,
   ZEPHYR_PROJECT_SDK_SETTING_KEY,
   ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY,
   ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY,
@@ -36,7 +38,7 @@ import {
 } from '../utils/execUtils';
 import { loadEnv, resolveStoredEnvValue } from '../utils/env/zephyrEnvUtils';
 import { ZephyrBuildConfig } from './ZephyrBuildConfig';
-import { ArmGnuToolchainInstallation, IarToolchainInstallation } from './ToolchainInstallations';
+import { ArmGnuToolchainInstallation, IarToolchainInstallation, prependRustBinPath, RustToolchainInstallation } from './ToolchainInstallations';
 import { normalizeStoredToolchainVariant } from '../utils/toolchainSelection';
 import { ToolchainVariantId } from './ToolchainInstallations';
 import { WestWorkspace } from './WestWorkspace';
@@ -83,6 +85,7 @@ export class ZephyrApplication {
   venvPath?: string;
   selectedIarToolchainInstallation!: IarToolchainInstallation;
   selectedArmGnuToolchainInstallation!: ArmGnuToolchainInstallation;
+  selectedRustToolchainInstallation?: RustToolchainInstallation;
   buildConfigs: ZephyrBuildConfig[] = [];
 
   envVars: { [key: string]: any } = {
@@ -165,6 +168,28 @@ export class ZephyrApplication {
       };
     }
 
+    if (this.toolchainVariant === 'rust') {
+      const rustToolchainInstallation = this.selectedRustToolchainInstallation;
+      if (!rustToolchainInstallation) {
+        return {};
+      }
+
+      // The C side builds with the linked toolchain; ZEPHYR_TOOLCHAIN_VARIANT
+      // is never 'rust'. The linked SDK path flows through zephyrSdkPath.
+      if (this.selectedArmGnuToolchainInstallation) {
+        return {
+          GNUARMEMB_TOOLCHAIN_PATH: this.selectedArmGnuToolchainInstallation.toolchainPath,
+          ZEPHYR_TOOLCHAIN_VARIANT: 'gnuarmemb',
+          ...rustToolchainInstallation.buildEnv,
+        };
+      }
+
+      return {
+        ZEPHYR_TOOLCHAIN_VARIANT: 'zephyr',
+        ...rustToolchainInstallation.buildEnv,
+      };
+    }
+
     return { ZEPHYR_TOOLCHAIN_VARIANT: this.toolchainVariant };
   }
 
@@ -221,6 +246,40 @@ export class ZephyrApplication {
         this.zephyrSdkPath = '';
       } else {
         this.zephyrSdkPath = '';
+      }
+    } else if (toolchainVariant === 'rust') {
+      const selectedRustPath = getPathSetting(ZEPHYR_PROJECT_RUST_SETTING_KEY) ?? '';
+      const rustToolchainInstallation = findRustToolchainInstallation(selectedRustPath);
+
+      if (rustToolchainInstallation) {
+        this.selectedRustToolchainInstallation = rustToolchainInstallation;
+
+        // Resolve the C side from the link, like IAR resolves its paired SDK,
+        // so re-linking the Rust toolchain propagates without app changes.
+        if (rustToolchainInstallation.cToolchainType === 'gnuarmemb' && rustToolchainInstallation.cToolchainPath) {
+          const linkedArmGnu = findArmGnuToolchainInstallation(rustToolchainInstallation.cToolchainPath);
+          if (linkedArmGnu) {
+            this.zephyrSdkPath = '';
+            this.selectedArmGnuToolchainInstallation = linkedArmGnu;
+          } else {
+            vscode.window.showWarningMessage(
+              `Linked Arm GNU toolchain ${rustToolchainInstallation.cToolchainPath} not found; falling back to SDK setting`
+            );
+            this.zephyrSdkPath = getPathSetting(ZEPHYR_PROJECT_SDK_SETTING_KEY) ?? '';
+          }
+        } else if (rustToolchainInstallation.cToolchainType === 'zephyr-sdk' && rustToolchainInstallation.cToolchainPath) {
+          this.zephyrSdkPath = rustToolchainInstallation.cToolchainPath;
+        } else {
+          vscode.window.showWarningMessage(
+            `Rust toolchain ${selectedRustPath} has no linked C toolchain; falling back to SDK setting. Right-click it in the Toolchains view to link one.`
+          );
+          this.zephyrSdkPath = getPathSetting(ZEPHYR_PROJECT_SDK_SETTING_KEY) ?? '';
+        }
+      } else {
+        vscode.window.showWarningMessage(
+          `Rust toolchain ${selectedRustPath} not found in listRustToolchains; falling back to SDK setting`
+        );
+        this.zephyrSdkPath = getPathSetting(ZEPHYR_PROJECT_SDK_SETTING_KEY) ?? '';
       }
     } else {
       this.zephyrSdkPath = getPathSetting(ZEPHYR_PROJECT_SDK_SETTING_KEY) ?? '';
@@ -408,10 +467,19 @@ export class ZephyrApplication {
 
     const venvPath = application.venvPath;
     const toolchainEnv = application.getToolchainEnv();
+    const rustBinPath = application.selectedRustToolchainInstallation?.binPath;
 
     const groups: TerminalEnvGroup[] = [
       { label: 'Zephyr build system', env: { ...westWorkspace.buildEnv } },
-      { label: 'Toolchain', env: { ...(zephyrSdk?.buildEnv ?? {}), ...toolchainEnv } },
+      {
+        label: 'Toolchain',
+        // Make cargo/rustc usable in the terminal; prependRustBinPath keeps
+        // the inherited PATH since TerminalOptions.env overrides per key.
+        env: prependRustBinPath(
+          { ...(zephyrSdk?.buildEnv ?? {}), ...toolchainEnv },
+          rustBinPath,
+        ),
+      },
       {
         label: 'Helpers',
         env: {

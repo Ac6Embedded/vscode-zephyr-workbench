@@ -103,6 +103,12 @@
             "description": "List of registered Arm GNU Toolchain entries.\nEach entry is an object { \"toolchainPath\": \"...\", \"targetTriple\": \"arm-none-eabi|aarch64-none-elf\", \"version\": \"...\" }",
             "scope": "machine"
           },
+          "zephyr-workbench.listRustToolchains": {
+            "type": "array",
+            "default": [],
+            "description": "List of registered Rust Toolchain entries (installed standalone or through rustup).\nEach entry is an object { \"toolchainPath\": \"...\", \"version\": \"...\", \"targets\": [\"thumbv7em-none-eabi\", ...], \"rustupToolchain\": \"stable|1.87.0 (rustup installs only)\", \"cToolchainType\": \"zephyr-sdk|gnuarmemb\", \"cToolchainPath\": \"...\", \"llvmPath\": \"...\" }\nllvmPath points to a host LLVM installation; its libclang directory is exposed as LIBCLANG_PATH for bindgen.",
+            "scope": "machine"
+          },
           "zephyr-workbench.westWorkspace": {
             "type": "string",
             "default": "",
@@ -148,6 +154,7 @@
               "zephyr/llvm",
               "gnuarmemb",
               "iar",
+              "rust",
               "zephyr_sdk"
             ],
             "enumDescriptions": [
@@ -156,6 +163,7 @@
               "Zephyr SDK: LLVM/Clang toolchain",
               "Arm GNU Toolchain",
               "IAR ARM toolchain",
+              "Rust toolchain group (cargo/rustc plus its linked C toolchain)",
               "Deprecated: use 'zephyr' instead"
             ],
             "default": "zephyr",
@@ -172,6 +180,12 @@
             "type": "string",
             "default": "",
             "description": "Per-workspace override for which IAR toolchain to use.\nMust be one of the objects defined in zephyr-workbench.listIARs.",
+            "scope": "resource"
+          },
+          "zephyr-workbench.rust": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Selected Rust toolchain path for this workspace.\nIts bin directory is prepended to PATH and exposed as RUSTC/CARGO at build time; the C side builds with the linked C toolchain.\nThe value must match a registered entry from `zephyr-workbench.listRustToolchains`.",
             "scope": "resource"
           },
           "zephyr-workbench.env.ARCH_ROOT": {
@@ -773,6 +787,30 @@
         "icon": "$(trash)"
       },
       {
+        "command": "zephyr-workbench-sdk-explorer.remove-rust",
+        "title": "Remove Rust Toolchain",
+        "icon": "$(remove)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench-sdk-explorer.delete-rust",
+        "title": "Delete Rust Toolchain",
+        "category": "Zephyr Workbench",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "zephyr-workbench-sdk-explorer.change-rust-linked-toolchain",
+        "title": "Change Linked C Toolchain",
+        "category": "Zephyr Workbench",
+        "icon": "$(link)"
+      },
+      {
+        "command": "zephyr-workbench-sdk-explorer.change-rust-llvm",
+        "title": "Change Linked LLVM",
+        "category": "Zephyr Workbench",
+        "icon": "$(link)"
+      },
+      {
         "command": "zephyr-workbench-sdk-explorer.refresh",
         "title": "Refresh",
         "icon": "$(refresh)",
@@ -1332,6 +1370,21 @@
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == arm-gnu-toolchain"
         },
         {
+          "command": "zephyr-workbench-sdk-explorer.change-rust-linked-toolchain",
+          "group": "0@view/item/context@0",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == rust-toolchain"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.change-rust-llvm",
+          "group": "0@view/item/context@0",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == rust-toolchain"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.remove-rust",
+          "group": "0@view/item/context@1",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == rust-toolchain"
+        },
+        {
           "command": "zephyr-workbench-sdk-explorer.delete",
           "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
@@ -1347,6 +1400,11 @@
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == arm-gnu-toolchain"
         },
         {
+          "command": "zephyr-workbench-sdk-explorer.delete-rust",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == rust-toolchain"
+        },
+        {
           "command": "zephyr-workbench-sdk-explorer.remove-sdk",
           "group": "inline@0",
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
@@ -1360,6 +1418,11 @@
           "command": "zephyr-workbench-sdk-explorer.remove-arm-gnu",
           "group": "inline@0",
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == arm-gnu-toolchain"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.remove-rust",
+          "group": "inline@0",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == rust-toolchain"
         }
       ],
       "zephyr-workbench-app-explorer.clean": [

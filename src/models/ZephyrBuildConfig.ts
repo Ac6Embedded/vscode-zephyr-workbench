@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import fs from "fs";
 import path from 'path';
 import { ZephyrApplication } from "./ZephyrApplication";
+import { prependRustBinPath } from "./ToolchainInstallations";
 import { getBuildEnv, loadConfigEnv, resolveStoredEnvValue } from "../utils/env/zephyrEnvUtils";
 import {
   buildStartupSetupShellArgs,
@@ -244,10 +245,20 @@ export class ZephyrBuildConfig {
       otherEnv.WEST_ARGS = composedWestArgs;
     }
 
+    const rustBinPath = application.selectedRustToolchainInstallation?.binPath;
+
     const groups: TerminalEnvGroup[] = [
       { label: 'Zephyr build system', env: buildSystemEnv },
       { label: 'Other env variables', env: otherEnv },
-      { label: 'Toolchain', env: { ...(zephyrSdk?.buildEnv ?? {}), ...toolchainEnv } },
+      {
+        label: 'Toolchain',
+        // Make cargo/rustc usable in the terminal; prependRustBinPath keeps
+        // the inherited PATH since TerminalOptions.env overrides per key.
+        env: prependRustBinPath(
+          { ...(zephyrSdk?.buildEnv ?? {}), ...toolchainEnv },
+          rustBinPath,
+        ),
+      },
       {
         label: 'Helpers',
         env: {

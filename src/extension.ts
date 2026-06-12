@@ -8,12 +8,12 @@ import { WestWorkspace } from './models/WestWorkspace';
 import { ZephyrApplication } from './models/ZephyrApplication';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
 import { ZephyrBuildConfig } from './models/ZephyrBuildConfig';
-import { ArmGnuToolchainInstallation, normalizeArmGnuTargetTriple, normalizeZephyrSdkVariant, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
+import { ArmGnuToolchainInstallation, normalizeArmGnuTargetTriple, normalizeZephyrSdkVariant, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
 import { checkAndCreateTasksJson, isReservedTaskLabel, removeCppToolsConfiguration, saveCustomTaskDefinition, setDefaultProjectSettings, setDefaultWorkspaceApplicationSettings, updateCppToolsConfiguration, updateTasks, ZephyrTaskDefinition, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
-import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_APPLICATIONS_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_SELECTED_APPLICATION_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
+import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_APPLICATIONS_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_SELECTED_APPLICATION_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_RUST_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
 import {
 	extractDebugBuildConfigName,
 	getLaunchConfiguration,
@@ -24,7 +24,7 @@ import {
 	removeApplicationLaunchConfigurations,
 } from './utils/debugTools/debugUtils';
 import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
-import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, findManagedVenvDirectory, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
+import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
@@ -47,8 +47,10 @@ import { ToolchainInstallationsDataProvider, ToolchainInstallationTreeItem } fro
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain } from './utils/zephyr/sdkUtils';
 import { registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zephyr/armGnuToolchainUtils';
+import { checkRustPrerequisites, findRustup, installManagedRustup, installMsvcBuildTools, installRustToolchainViaRustup, MSVC_BUILD_TOOLS_MANUAL_URL, resolveRustupToolchainName, uninstallRustToolchainViaRustup } from './utils/zephyr/rustupUtils';
+import { buildLlvmDownloadUrl, buildRustDistUrls, detectRustVersion, getLlvmTopLevelDirName, getRustDistTopLevelDirName, getRustHostTriple, installRustDistComponents, isLlvmPath, registerRustToolchain, unregisterRustToolchain, updateRustToolchainLink, updateRustToolchainLlvm } from './utils/zephyr/rustToolchainUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
-import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
+import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, findRustToolchainInstallation, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
@@ -108,7 +110,123 @@ function hasApplicationToolchainChanged(project: ZephyrApplication, pick: Toolch
 		return (project.selectedIarToolchainInstallation?.iarPath ?? '') !== (pick.iarToolchainPath ?? '');
 	}
 
+	if (pick.selectedVariant === 'rust') {
+		return (project.selectedRustToolchainInstallation?.toolchainPath ?? '') !== (pick.rustToolchainPath ?? '');
+	}
+
 	return (project.zephyrSdkPath ?? '') !== (pick.zephyrSdkPath ?? '');
+}
+
+// A Rust toolchain only works alongside a C toolchain (Zephyr SDK or Arm
+// GNU); the wizard must always provide a valid link.
+function isValidRustCToolchainLink(cToolchainType?: string, cToolchainPath?: string): boolean {
+	if (!cToolchainType || !cToolchainPath) {
+		vscode.window.showErrorMessage("Missing linked C toolchain, please select a Zephyr SDK or ARM GNU toolchain.");
+		return false;
+	}
+
+	if (cToolchainType === 'zephyr-sdk') {
+		if (!ZephyrSdkInstallation.isSdkPath(cToolchainPath)) {
+			vscode.window.showErrorMessage(`The linked Zephyr SDK is not valid: ${cToolchainPath}`);
+			return false;
+		}
+		return true;
+	}
+
+	if (cToolchainType === 'gnuarmemb') {
+		if (!ArmGnuToolchainInstallation.isArmGnuPath(cToolchainPath)) {
+			vscode.window.showErrorMessage(`The linked Arm GNU toolchain is not valid: ${cToolchainPath}`);
+			return false;
+		}
+		return true;
+	}
+
+	vscode.window.showErrorMessage(`Unknown linked C toolchain type: ${cToolchainType}`);
+	return false;
+}
+
+// Resolve the host LLVM linked to a Rust toolchain: validate a local
+// installation or download/extract a release from llvm-project. Returns the
+// LLVM root (containing libclang) or undefined when resolution failed.
+async function resolveRustLlvm(
+	context: vscode.ExtensionContext,
+	llvmSource?: string,
+	llvmVersion?: string,
+	llvmPath?: string,
+): Promise<string | undefined> {
+	if (!llvmPath) {
+		vscode.window.showErrorMessage("Missing host LLVM location, please choose where to install it or select an existing one.");
+		return undefined;
+	}
+
+	if (llvmSource === 'local') {
+		let candidate = llvmPath;
+		const base = path.basename(candidate).toLowerCase();
+		if (base === 'bin' || base === 'lib') {
+			candidate = path.dirname(candidate);
+		}
+		if (!isLlvmPath(candidate)) {
+			vscode.window.showErrorMessage("The folder is not a valid LLVM installation (libclang not found).");
+			return undefined;
+		}
+		return candidate;
+	}
+
+	if (!llvmVersion) {
+		vscode.window.showErrorMessage("Missing LLVM version, please choose the LLVM release to download.");
+		return undefined;
+	}
+
+	const downloadUrl = buildLlvmDownloadUrl(llvmVersion);
+	const topDir = getLlvmTopLevelDirName(llvmVersion);
+	if (!downloadUrl || !topDir) {
+		vscode.window.showErrorMessage("LLVM download is not supported on this platform; select a local LLVM instead.");
+		return undefined;
+	}
+
+	const llvmRoot = path.join(llvmPath, topDir);
+	if (isLlvmPath(llvmRoot)) {
+		// Already extracted by a previous import; reuse it.
+		return llvmRoot;
+	}
+
+	try {
+		if (!fs.existsSync(llvmPath)) {
+			fs.mkdirSync(llvmPath, { recursive: true });
+		}
+	} catch (err: any) {
+		vscode.window.showErrorMessage(`Failed to create folder: ${err.message}`);
+		return undefined;
+	}
+
+	let resolved: string | undefined;
+	await vscode.window.withProgress({
+		location: vscode.ProgressLocation.Notification,
+		title: "Importing host LLVM",
+		cancellable: true,
+	}, async (progress, token) => {
+		try {
+			progress.report({ message: `Download ${downloadUrl}` });
+			const downloadedFileUri = await download(downloadUrl, llvmPath, context, progress, token);
+
+			progress.report({ message: `Extracting ${downloadedFileUri}` });
+			await extractTar(downloadedFileUri.fsPath, llvmPath, progress, token);
+
+			if (!isLlvmPath(llvmRoot)) {
+				throw new Error("The extracted folder is not a valid LLVM installation (libclang not found).");
+			}
+			await cleanupDownloadDir(context);
+			resolved = llvmRoot;
+		} catch (e: any) {
+			if (e.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+				vscode.window.showInformationMessage("Download cancelled");
+			} else {
+				vscode.window.showErrorMessage(`LLVM import failed [${downloadUrl}]: ${e?.message ?? e}`);
+			}
+		}
+	});
+
+	return resolved;
 }
 
 function inferArmGnuToolchainVersion(toolchainPath: string): string {
@@ -1322,6 +1440,7 @@ export function activate(context: vscode.ExtensionContext) {
 						[ZEPHYR_PROJECT_SDK_SETTING_KEY]: pick.zephyrSdkPath,
 						[ZEPHYR_PROJECT_IAR_SETTING_KEY]: undefined,
 						[ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY]: undefined,
+						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: undefined,
 					});
 
 					if (pick.zephyrSdkPath) {
@@ -1358,6 +1477,7 @@ export function activate(context: vscode.ExtensionContext) {
 						[ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY]: armGnuToolchainInstallation.toolchainPath,
 						[ZEPHYR_PROJECT_SDK_SETTING_KEY]: undefined,
 						[ZEPHYR_PROJECT_IAR_SETTING_KEY]: undefined,
+						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: undefined,
 						[ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY]: "gnuarmemb",
 					});
 
@@ -1370,6 +1490,64 @@ export function activate(context: vscode.ExtensionContext) {
 					} catch {
 						// Keep the toolchain change even if the compiler path cannot be refreshed yet.
 					}
+				} else if (pick.selectedVariant === 'rust') {
+					const rustToolchainInstallation = pick.rustToolchainPath ? findRustToolchainInstallation(pick.rustToolchainPath) : undefined;
+					if (!rustToolchainInstallation) {
+						vscode.window.showErrorMessage("The selected Rust toolchain could not be found.");
+						return;
+					}
+
+					const linkedSdkPath = rustToolchainInstallation.cToolchainType === 'zephyr-sdk'
+						? rustToolchainInstallation.cToolchainPath
+						: undefined;
+					const linkedArmGnuPath = rustToolchainInstallation.cToolchainType === 'gnuarmemb'
+						? rustToolchainInstallation.cToolchainPath
+						: undefined;
+
+					if (!rustToolchainInstallation.cToolchainPath) {
+						vscode.window.showWarningMessage(
+							"This Rust toolchain has no linked C toolchain; right-click it in the Toolchains view to link one."
+						);
+					}
+
+					await updateApplicationSettings(node.project, {
+						[ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY]: "rust",
+						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: rustToolchainInstallation.toolchainPath,
+						[ZEPHYR_PROJECT_SDK_SETTING_KEY]: linkedSdkPath,
+						[ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY]: linkedArmGnuPath,
+						[ZEPHYR_PROJECT_IAR_SETTING_KEY]: undefined,
+					});
+
+					try {
+						if (isSelectedIntelliSenseApplication(node.project)) {
+							if (linkedArmGnuPath) {
+								const linkedArmGnu = findArmGnuToolchainInstallation(linkedArmGnuPath);
+								if (linkedArmGnu) {
+									await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
+										compilerPath: linkedArmGnu.compilerPath,
+									});
+								}
+							} else if (linkedSdkPath) {
+								const activeConfig = node.project.buildConfigs.find(config => config.active) ?? node.project.buildConfigs[0];
+								if (activeConfig?.boardIdentifier) {
+									const zephyrSdkInstallation = getZephyrSdkInstallation(linkedSdkPath);
+									const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
+									const board = await getBoardFromIdentifier(
+										activeConfig.boardIdentifier,
+										westWorkspace,
+										node.project,
+										activeConfig
+									);
+									const socToolchainName = activeConfig.getKConfigValue(node.project, 'SOC_TOOLCHAIN_NAME');
+									await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
+										compilerPath: zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName),
+									});
+								}
+							}
+						}
+					} catch {
+						// Keep the toolchain change even if the compiler path cannot be refreshed yet.
+					}
 				} else {
 					const iarToolchainInstallation = pick.iarToolchainPath ? findIarToolchainInstallation(pick.iarToolchainPath) : undefined;
 					await updateApplicationSettings(node.project, {
@@ -1377,6 +1555,7 @@ export function activate(context: vscode.ExtensionContext) {
 						[ZEPHYR_PROJECT_IAR_SETTING_KEY]: pick.iarToolchainPath,
 						[ZEPHYR_PROJECT_SDK_SETTING_KEY]: iarToolchainInstallation?.zephyrSdkPath,
 						[ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY]: undefined,
+						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: undefined,
 					});
 					if (pick.iarToolchainPath) {
 						try {
@@ -2311,11 +2490,286 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.install-rustup", async () => {
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: "Installing rustup",
+				cancellable: true,
+			}, async (progress, token) => {
+				try {
+					await installManagedRustup(context, progress, token);
+					vscode.window.showInformationMessage("rustup installed.");
+				} catch (e: any) {
+					if (e.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+						vscode.window.showInformationMessage("Download cancelled");
+					} else {
+						vscode.window.showErrorMessage(`rustup installation failed: ${e?.message ?? e}`);
+					}
+				}
+			});
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.install-rust-prerequisites", async () => {
+			if (process.platform !== 'win32') {
+				vscode.window.showInformationMessage(
+					"Install the prerequisites with your platform tools (Linux: a C compiler such as build-essential; macOS: xcode-select --install)."
+				);
+				return;
+			}
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: "Installing Visual Studio C++ Build Tools",
+				cancellable: false,
+			}, async (progress, token) => {
+				try {
+					await installMsvcBuildTools(context, progress, token);
+					vscode.window.showInformationMessage("Visual Studio C++ Build Tools installed (a restart may be required before they are detected).");
+				} catch (e: any) {
+					const openManualItem = 'Open download page';
+					const choice = await vscode.window.showErrorMessage(`${e?.message ?? e}`, openManualItem);
+					if (choice === openManualItem) {
+						vscode.env.openExternal(vscode.Uri.parse(MSVC_BUILD_TOOLS_MANUAL_URL));
+					}
+				}
+			});
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench-sdk-explorer.import-rust-toolchain",
+			async (
+				versionOrChannel: string,
+				targets: string[],
+				cToolchainType?: string,
+				cToolchainPath?: string,
+				llvmSource?: string,
+				llvmVersion?: string,
+				llvmPath?: string,
+			) => {
+				if (!versionOrChannel || !Array.isArray(targets) || targets.length === 0) {
+					vscode.window.showErrorMessage("Missing Rust selection, please choose a version and at least one embedded target.");
+					return;
+				}
+
+				if (!isValidRustCToolchainLink(cToolchainType, cToolchainPath)) {
+					return;
+				}
+
+				const rustup = await findRustup();
+				if (!rustup) {
+					vscode.window.showErrorMessage("rustup is not installed. Use the 'Download and install rustup' button first.");
+					return;
+				}
+
+				// On Windows without the MSVC Build Tools, fall back to the
+				// self-contained GNU host so builds work without Visual Studio.
+				const prereq = await checkRustPrerequisites();
+				const toolchainName = resolveRustupToolchainName(versionOrChannel, prereq.ok);
+
+				ImportZephyrSDKPanel.currentPanel?.dispose();
+
+				const llvmRoot = await resolveRustLlvm(context, llvmSource, llvmVersion, llvmPath);
+				if (!llvmRoot) {
+					return;
+				}
+
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: "Installing Rust Toolchain",
+					cancellable: true,
+				}, async (progress, token) => {
+					try {
+						const toolchainPath = await installRustToolchainViaRustup(rustup, toolchainName, targets, progress, token);
+						const version = await detectRustVersion(toolchainPath);
+						const detectedTargets = RustToolchainInstallation.detectInstalledTargets(toolchainPath);
+
+						await registerRustToolchain({
+							toolchainPath,
+							version,
+							targets: detectedTargets.length ? detectedTargets : targets,
+							rustupToolchain: toolchainName,
+							cToolchainType: cToolchainType as 'zephyr-sdk' | 'gnuarmemb',
+							cToolchainPath,
+							llvmPath: llvmRoot,
+						});
+
+						if (process.platform === 'win32' && !prereq.ok) {
+							vscode.window.showWarningMessage(
+								"Visual Studio C++ Build Tools were not found: the self-contained GNU host toolchain was installed instead."
+							);
+						}
+
+						toolchainInstallationsProvider.refresh();
+						vscode.window.showInformationMessage(`Rust toolchain ${toolchainName} installed.`);
+					} catch (e: any) {
+						if (e.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+							vscode.window.showInformationMessage("Installation cancelled");
+						} else {
+							vscode.window.showErrorMessage(`Rust toolchain installation failed: ${e?.message ?? e}`);
+						}
+					}
+				});
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench-sdk-explorer.import-standalone-rust-toolchain",
+			async (
+				version: string,
+				targets: string[],
+				folderName: string,
+				parentPath?: string,
+				cToolchainType?: string,
+				cToolchainPath?: string,
+				llvmSource?: string,
+				llvmVersion?: string,
+				llvmPath?: string,
+			) => {
+				if (!parentPath) {
+					vscode.window.showErrorMessage("Please provide a destination folder for the Rust toolchain.");
+					return;
+				}
+
+				if (!version || !Array.isArray(targets) || targets.length === 0 || !folderName) {
+					vscode.window.showErrorMessage("Missing Rust download information.");
+					return;
+				}
+
+				if (!isValidRustCToolchainLink(cToolchainType, cToolchainPath)) {
+					return;
+				}
+
+				const hostTriple = getRustHostTriple();
+				if (!hostTriple) {
+					vscode.window.showErrorMessage("Standalone Rust toolchain import is not supported on this platform.");
+					return;
+				}
+
+				const trimmedFolderName = folderName.trim();
+				if (
+					!trimmedFolderName ||
+					trimmedFolderName === '.' ||
+					trimmedFolderName === '..' ||
+					path.basename(trimmedFolderName) !== trimmedFolderName
+				) {
+					vscode.window.showErrorMessage("Please provide a valid Rust install subfolder name.");
+					return;
+				}
+
+				const installPath = path.join(parentPath, trimmedFolderName);
+
+				try {
+					if (!fs.existsSync(parentPath)) {
+						fs.mkdirSync(parentPath, { recursive: true });
+					}
+					if (fs.existsSync(installPath)) {
+						const existingItems = fs.readdirSync(installPath);
+						if (existingItems.length > 0) {
+							vscode.window.showErrorMessage(`The destination folder already exists and is not empty: ${installPath}`);
+							return;
+						}
+					} else {
+						fs.mkdirSync(installPath, { recursive: true });
+					}
+				} catch (err: any) {
+					vscode.window.showErrorMessage(`Failed to create folder: ${err.message}`);
+					return;
+				}
+
+				const urls = buildRustDistUrls(version, hostTriple, targets);
+
+				ImportZephyrSDKPanel.currentPanel?.dispose();
+
+				const llvmRoot = await resolveRustLlvm(context, llvmSource, llvmVersion, llvmPath);
+				if (!llvmRoot) {
+					return;
+				}
+
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: "Importing Rust Toolchain",
+					cancellable: true,
+				}, async (progress, token) => {
+					// Staging lives inside the install folder so component moves
+					// stay on the same volume.
+					const stagingPath = path.join(installPath, '.zw-rust-staging');
+					let currentUrl = '';
+					try {
+						fs.mkdirSync(stagingPath, { recursive: true });
+						const incrementPerComponent = 90 / urls.length;
+
+						for (const url of urls) {
+							if (token.isCancellationRequested) {
+								throw Object.assign(new Error('Download cancelled'), { code: 'ERR_STREAM_PREMATURE_CLOSE' });
+							}
+							currentUrl = url;
+							progress.report({ message: `Download ${url}` });
+							const downloadedFileUri = await download(url, parentPath, context, progress, token);
+
+							progress.report({ message: `Extracting ${downloadedFileUri}` });
+							await extractTar(downloadedFileUri.fsPath, stagingPath, progress, token);
+
+							const extractedDir = path.join(stagingPath, getRustDistTopLevelDirName(url));
+							progress.report({
+								message: `Installing ${path.basename(extractedDir)}`,
+								increment: incrementPerComponent,
+							});
+							await installRustDistComponents(extractedDir, installPath);
+							deleteFolder(extractedDir);
+						}
+
+						if (!RustToolchainInstallation.isRustPath(installPath)) {
+							throw new Error("The assembled folder is not a valid Rust toolchain.");
+						}
+
+						await registerRustToolchain({
+							toolchainPath: installPath,
+							version,
+							targets,
+							hostTriple,
+							cToolchainType: cToolchainType as 'zephyr-sdk' | 'gnuarmemb',
+							cToolchainPath,
+							llvmPath: llvmRoot,
+						});
+						await cleanupDownloadDir(context);
+
+						progress.report({
+							message: "Importing Rust Toolchain done",
+							increment: 10,
+						});
+						toolchainInstallationsProvider.refresh();
+						vscode.window.showInformationMessage("Rust toolchain imported.");
+					} catch (e: any) {
+						// A partially assembled install is unusable and would block a
+						// retry because the destination must be empty.
+						deleteFolder(installPath);
+						if (e.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+							vscode.window.showInformationMessage("Download cancelled");
+						} else if (e.code === 'TAR_BAD_ARCHIVE') {
+							vscode.window.showErrorMessage(`Extracting Rust toolchain failed${currentUrl ? ` [${currentUrl}]` : ''}`);
+						} else {
+							vscode.window.showErrorMessage(`Rust toolchain import failed${currentUrl ? ` [${currentUrl}]` : ''}: ${e?.message ?? e}`);
+						}
+					} finally {
+						deleteFolder(stagingPath);
+					}
+				});
+			}
+		)
+	);
+
+	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.import-official-sdk", async (sdkType, sdkVersion, listToolchains, parentPath, includeLlvm = false) => {
 			if (!parentPath) {
 				vscode.window.showErrorMessage("No folder path was provided.");
 				return;
-			}	
+			}
 			try {
 				if (!fs.existsSync(parentPath)) {
 					fs.mkdirSync(parentPath, { recursive: true });
@@ -2769,6 +3223,183 @@ export function activate(context: vscode.ExtensionContext) {
 						toolchainInstallationsProvider.refresh();
 					}
 				);
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench-sdk-explorer.remove-rust",
+			async (node: ToolchainInstallationTreeItem) => {
+				if (!node.installation || !(node.installation instanceof RustToolchainInstallation)) {return;}
+
+				if (await showConfirmMessage(`Remove ${node.installation.name} from workspace?`)) {
+					await unregisterRustToolchain(node.installation.toolchainPath);
+					toolchainInstallationsProvider.refresh();
+				}
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench-sdk-explorer.delete-rust",
+			async (node: ToolchainInstallationTreeItem) => {
+				if (!node.installation || !(node.installation instanceof RustToolchainInstallation)) {
+					vscode.window.showWarningMessage("No Rust toolchain selected.");
+					return;
+				}
+
+				if (!(await showConfirmMessage(`Delete ${node.installation.name} permanently?`))) {
+					return;
+				}
+
+				const toolchainPath = node.installation.toolchainPath;
+				const registeredEntries = vscode.workspace
+					.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
+					.get<any[]>(ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY, []);
+				const rustupToolchain = registeredEntries.find(entry => entry.toolchainPath === toolchainPath)?.rustupToolchain;
+
+				vscode.window.withProgress(
+					{
+						location: vscode.ProgressLocation.Notification,
+						title: "Deleting Rust Toolchain",
+						cancellable: false,
+					},
+					async () => {
+						let uninstalled = false;
+						if (rustupToolchain) {
+							try {
+								uninstalled = await uninstallRustToolchainViaRustup(toolchainPath, rustupToolchain);
+							} catch (error: any) {
+								vscode.window.showWarningMessage(`rustup uninstall failed, deleting the folder instead: ${error?.message ?? error}`);
+							}
+						}
+						if (!uninstalled) {
+							deleteFolder(toolchainPath);
+						}
+						await unregisterRustToolchain(toolchainPath);
+						toolchainInstallationsProvider.refresh();
+					}
+				);
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench-sdk-explorer.change-rust-linked-toolchain",
+			async (node: ToolchainInstallationTreeItem) => {
+				if (!node.installation || !(node.installation instanceof RustToolchainInstallation)) {return;}
+
+				type LinkPickItem = vscode.QuickPickItem & {
+					cToolchainType: 'zephyr-sdk' | 'gnuarmemb';
+					cToolchainPath: string;
+				};
+				const items: LinkPickItem[] = [];
+				for (const sdk of await getRegisteredZephyrSdkInstallations()) {
+					items.push({
+						label: `Zephyr SDK ${sdk.version.trim()}`,
+						description: sdk.rootUri.fsPath,
+						cToolchainType: 'zephyr-sdk',
+						cToolchainPath: sdk.rootUri.fsPath,
+					});
+				}
+				for (const armGnuToolchain of await getRegisteredArmGnuToolchainInstallations()) {
+					items.push({
+						label: armGnuToolchain.name,
+						description: armGnuToolchain.toolchainPath,
+						cToolchainType: 'gnuarmemb',
+						cToolchainPath: armGnuToolchain.toolchainPath,
+					});
+				}
+
+				if (items.length === 0) {
+					vscode.window.showErrorMessage("No Zephyr SDK or Arm GNU toolchain registered to link. Add one first.");
+					return;
+				}
+
+				const pick = await vscode.window.showQuickPick(items, {
+					title: "Link C Toolchain",
+					placeHolder: "Select the C toolchain used alongside this Rust toolchain",
+				});
+				if (!pick) {return;}
+
+				try {
+					await updateRustToolchainLink(node.installation.toolchainPath, pick.cToolchainType, pick.cToolchainPath);
+				} catch (error: any) {
+					vscode.window.showErrorMessage(error?.message ?? String(error));
+					return;
+				}
+				toolchainInstallationsProvider.refresh();
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench-sdk-explorer.change-rust-llvm",
+			async (node: ToolchainInstallationTreeItem) => {
+				if (!node.installation || !(node.installation instanceof RustToolchainInstallation)) {return;}
+
+				type LlvmPickItem = vscode.QuickPickItem & { action: 'browse' | 'remove' };
+				const items: LlvmPickItem[] = [
+					{
+						label: "Select LLVM folder...",
+						description: "Pick a local LLVM installation containing libclang",
+						action: 'browse',
+					},
+				];
+				if (node.installation.llvmPath) {
+					items.push({
+						label: "Remove linked LLVM",
+						description: node.installation.llvmPath,
+						action: 'remove',
+					});
+				}
+
+				const pick = await vscode.window.showQuickPick(items, {
+					title: "Link Host LLVM (libclang)",
+					placeHolder: "LIBCLANG_PATH for bindgen is derived from this installation",
+				});
+				if (!pick) {return;}
+
+				if (pick.action === 'remove') {
+					try {
+						await updateRustToolchainLlvm(node.installation.toolchainPath, undefined);
+					} catch (error: any) {
+						vscode.window.showErrorMessage(error?.message ?? String(error));
+						return;
+					}
+					toolchainInstallationsProvider.refresh();
+					return;
+				}
+
+				const uris = await vscode.window.showOpenDialog({
+					canSelectFiles: false,
+					canSelectFolders: true,
+					canSelectMany: false,
+					openLabel: "Select LLVM folder",
+				});
+				if (!uris?.length) {return;}
+
+				let candidate = uris[0].fsPath;
+				const base = path.basename(candidate).toLowerCase();
+				if (base === 'bin' || base === 'lib') {
+					candidate = path.dirname(candidate);
+				}
+				if (!isLlvmPath(candidate)) {
+					vscode.window.showErrorMessage("The folder is not a valid LLVM installation (libclang not found).");
+					return;
+				}
+
+				try {
+					await updateRustToolchainLlvm(node.installation.toolchainPath, candidate);
+				} catch (error: any) {
+					vscode.window.showErrorMessage(error?.message ?? String(error));
+					return;
+				}
+				toolchainInstallationsProvider.refresh();
 			}
 		)
 	);
@@ -3565,6 +4196,10 @@ async function updateCompileSetting(project: ZephyrApplication, configName: stri
 			let compilerPath: string | undefined;
 			if (toolchainVariantId === 'gnuarmemb') {
 				compilerPath = project.selectedArmGnuToolchainInstallation?.compilerPath;
+			} else if (toolchainVariantId === 'rust' && project.selectedArmGnuToolchainInstallation) {
+				// Rust group linked to an Arm GNU toolchain; SDK-linked groups
+				// fall through to the SDK branch via zephyrSdkPath.
+				compilerPath = project.selectedArmGnuToolchainInstallation.compilerPath;
 			} else if (zephyrSdkInstallation) {
 				compilerPath = zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, toolchainVariant);
 			}

@@ -8,6 +8,7 @@ import { Openocd } from "../../debug/runners/Openocd";
 import { WestRunner } from "../../debug/runners/WestRunner";
 import { checkPyOCDTarget, concatCommands, expandEnvVariables, getConfiguredWorkbenchPath, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from '../execUtils';
 import { ZephyrApplication } from "../../models/ZephyrApplication";
+import { prependRustBinPath } from '../../models/ToolchainInstallations';
 import { findBoardByHierarchicalIdentifier, getSupportedBoards } from '../zephyr/boardDiscovery';
 import { findArmGnuToolchainInstallation, getWestWorkspace, deleteFolder, fileExists, tryGetZephyrSdkInstallation } from '../utils';
 import { STM32CubeProgrammer } from '../../debug/runners/STM32CubeProgrammer';
@@ -652,10 +653,10 @@ export function createWestWrapper(project: ZephyrApplication, buildConfigName?: 
       break;
   }
 
-  let envVars = {
+  let envVars = prependRustBinPath({
     ...westWorkspace.buildEnv,
     ...project.getToolchainEnv(),
-  };
+  }, project.selectedRustToolchainInstallation?.binPath);
 
   if(buildConfig) {
     envVars = { ...envVars, ...buildConfig.envVars };
@@ -1001,7 +1002,9 @@ export async function createLaunchConfiguration(
   const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
   const toolchainVariant = project.toolchainVariant;
   const zephyrSdkInstallation = tryGetZephyrSdkInstallation(project.zephyrSdkPath);
-  const armGnuToolchainInstallation = toolchainVariant === 'gnuarmemb'
+  // 'rust' may resolve an Arm GNU toolchain too (when the Rust group is
+  // linked to one); SDK-linked Rust groups flow through zephyrSdkInstallation.
+  const armGnuToolchainInstallation = (toolchainVariant === 'gnuarmemb' || toolchainVariant === 'rust')
     ? findArmGnuToolchainInstallation(project.selectedArmGnuToolchainInstallation?.toolchainPath ?? '')
     : undefined;
   let buildConfig: ZephyrBuildConfig | undefined = undefined;

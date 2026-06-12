@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import path from 'path';
 import * as vscode from 'vscode';
 import { WestWorkspace } from '../models/WestWorkspace';
+import { prependRustBinPath } from '../models/ToolchainInstallations';
 import { ZephyrApplication } from '../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
@@ -372,12 +373,12 @@ export async function westTmpBuildCmakeOnlyCommand(
 
   const options: vscode.ShellExecutionOptions = {
     cwd        : zephyrProject.appRootPath,
-    env        : {
+    env        : prependRustBinPath({
       ...buildConfig.envVars,
       ...(activeZephyrSdkInstallation?.buildEnv ?? {}),
       ...westWorkspace.buildEnv,
       ...zephyrProject.getToolchainEnv(),
-    },
+    }, zephyrProject.selectedRustToolchainInstallation?.binPath),
     executable : getShellExe(),
     shellArgs  : getShellArgs(classifyShell(getShellExe()))
   };
@@ -669,13 +670,13 @@ export function execWestCommandWithEnv(
     const zephyrSdkInstallation = tryGetZephyrSdkInstallation(parent.zephyrSdkPath);
     const ws = getWestWorkspace(parent.westWorkspaceRootPath);
     options.cwd = parent.appRootPath;
-    options.env = {
+    options.env = prependRustBinPath({
       ...options.env,
       ...(zephyrSdkInstallation?.buildEnv ?? {}),
       ...ws.buildEnv,
       ...parent.getToolchainEnv(),
       ...parent.getBuildConfiguration,
-    };
+    }, parent.selectedRustToolchainInstallation?.binPath);
   } else {
     const ws = parent as WestWorkspace;
     options.cwd = ws.rootUri.fsPath;
@@ -761,13 +762,13 @@ export function execWestCommandWithEnvAsync(
     const buildEnv = project.getBuildConfiguration;
 
     options.cwd = project.appRootPath;
-    options.env = {
+    options.env = prependRustBinPath({
       ...options.env,
       ...(activeZephyrSdkInstallation?.buildEnv ?? {}),
       ...westWorkspace.buildEnv,
       ...project.getToolchainEnv(),
       ...buildEnv
-    };
+    }, project.selectedRustToolchainInstallation?.binPath);
   } else {
     const westWorkspace = parent as WestWorkspace;
     options.cwd = westWorkspace.rootUri.fsPath;

@@ -53,6 +53,51 @@ type ArmGnuAssetEntry = {
   url: string;
 };
 
+type RustupStatusData = {
+  installed?: boolean;
+  managed?: boolean;
+  rustupPath?: string;
+  version?: string;
+  latestVersion?: string;
+  updateAvailable?: boolean;
+  managedRootDir?: string;
+  toolchainsDir?: string;
+  prereqOk?: boolean;
+  prereqMessage?: string;
+  prereqInstallable?: boolean;
+  error?: string;
+};
+
+type RustImportData = {
+  versions?: string[];
+  targets?: string[];
+  targetDescriptions?: Record<string, string>;
+  error?: string;
+};
+
+type RegisteredArmGnuEntry = {
+  name: string;
+  path: string;
+};
+
+type LlvmImportData = {
+  versions?: string[];
+  error?: string;
+};
+
+// rustup channel offered on top of numbered versions (rustup method only;
+// standalone dist archives exist for numbered releases).
+const RUST_STABLE_CHANNEL = "stable";
+
+// Pre-checked in Minimal mode: the Cortex-M4 (thumbv7em) and Cortex-M33
+// (thumbv8m.main) compilers, soft and hard float ABIs.
+const RUST_MINIMAL_PRESELECTED_TARGETS = [
+  "thumbv7em-none-eabi",
+  "thumbv7em-none-eabihf",
+  "thumbv8m.main-none-eabi",
+  "thumbv8m.main-none-eabihf",
+];
+
 function getEl<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) { throw new Error(`Missing #${id} in Webview DOM`); }
@@ -69,12 +114,19 @@ let versionLoadError = "";
 let armGnuAssets: ArmGnuAssetEntry[] = [];
 let armGnuReleases: ArmGnuReleaseEntry[] = [];
 let lastSuggestedArmGnuFolderName = "";
+let availableRustTargets: string[] = [];
+let availableRustTargetDescriptions: Record<string, string> = {};
+let availableRustVersions: string[] = [];
+let lastSuggestedRustFolderName = "";
 
 window.addEventListener("load", () => {
   setVSCodeMessageListener();
   initVersionsDropdown();
   initSdkAssociationDropdown("sdkInput", "sdkDropdown");
+  initSdkAssociationDropdown("rustCToolchainInput", "rustCToolchainDropdown");
   initArmGnuVersionDropdown();
+  initRustVersionDropdown();
+  initLlvmVersionDropdown();
   requestImportSdkData();
 
   const sourceCat = getEl<RadioGroup>("sourceCategory");
@@ -106,6 +158,29 @@ window.addEventListener("load", () => {
   getEl<Button>("importButton")
     .addEventListener("click", importHandler);
 
+  getEl<Button>("installRustupButton")
+    .addEventListener("click", installRustupHandler);
+
+  getEl<Button>("installPrereqButton")
+    .addEventListener("click", installPrereqHandler);
+
+  const rustTypeSub = getEl<RadioGroup>("rustType");
+  rustTypeSub.addEventListener("click", modifyRustTypeHandler);
+  rustTypeSub.addEventListener("select", modifyRustTypeHandler);
+
+  const rustMethodSub = getEl<RadioGroup>("srcTypeRust");
+  rustMethodSub.addEventListener("click", modifySrcTypeHandler);
+  rustMethodSub.addEventListener("select", modifySrcTypeHandler);
+
+  getEl<TextField>("rustFolderName").addEventListener("input", handleRustFolderNameInput);
+
+  const llvmSourceSub = getEl<RadioGroup>("llvmSource");
+  llvmSourceSub.addEventListener("click", modifyLlvmSourceHandler);
+  llvmSourceSub.addEventListener("select", modifyLlvmSourceHandler);
+  getEl<Button>("browseLlvmButton").addEventListener("click", () => {
+    vscode.postMessage({ command: "openLocationDialog", id: "llvmPath" });
+  });
+
   sourceCat.dispatchEvent(new Event("select"));
   modifySdkTypeHandler();
 });
@@ -132,6 +207,11 @@ function setVSCodeMessageListener(): void {
               event.data.folderUri;
             break;
           }
+          case "llvmPath": {
+            (getEl<TextField>("llvmPath") as unknown as { value: string }).value =
+              event.data.folderUri;
+            break;
+          }
         }
         break;
 
@@ -139,6 +219,14 @@ function setVSCodeMessageListener(): void {
         applyVersionList(event.data.versions ?? [], event.data.versionError);
         applyIarSdkList(event.data.sdks ?? [], event.data.sdkError);
         applyArmGnuImportData(event.data.armGnu);
+        applyRustupStatus(event.data.rustup);
+        applyRustImportData(event.data.rust);
+        applyRustLinkOptions(event.data.sdks ?? [], event.data.armGnuRegistered ?? []);
+        applyLlvmVersionList(event.data.llvm);
+        break;
+
+      case "rustupStatus":
+        applyRustupStatus(event.data.rustup);
         break;
 
       case "toolchainList":
@@ -162,6 +250,7 @@ function requestImportSdkData(): void {
   renderVersionLoading();
   renderIarSdkLoading();
   renderArmGnuVersionLoading();
+  renderRustImportLoading();
   vscode.postMessage({ command: "fetchImportSdkData" });
 }
 
@@ -183,38 +272,39 @@ function modifySrcTypeHandler(): void {
   const remotePath = getEl<TextField>("remotePath");
   const armGnuForm = getEl("arm-gnu-form");
   const iarForm = getEl("iar-form");
+  const rustForm = getEl("rust-form");
+  const commonLocationForm = getEl("commonLocationForm");
+  const importButtonRow = getEl("importButtonRow");
+
+  officialForm.style.display = "none";
+  remotePath.setAttribute("disabled", "");
+  remotePath.style.display = "none";
+  armGnuForm.style.display = "none";
+  iarForm.style.display = "none";
+  rustForm.style.display = "none";
+  commonLocationForm.style.display = "";
+  importButtonRow.style.display = "";
 
   if (catRadio.value === "zephyr") {
     if (zephyrGroup.value === "official") {
       officialForm.style.display = "block";
-      remotePath.setAttribute("disabled", "");
-      remotePath.style.display = "none";
-      armGnuForm.style.display = "none";
-      iarForm.style.display = "none";
     } else if (zephyrGroup.value === "remote") {
-      officialForm.style.display = "none";
       remotePath.removeAttribute("disabled");
       remotePath.style.display = "block";
-      armGnuForm.style.display = "none";
-      iarForm.style.display = "none";
-    } else {
-      officialForm.style.display = "none";
-      remotePath.setAttribute("disabled", "");
-      remotePath.style.display = "none";
-      armGnuForm.style.display = "none";
-      iarForm.style.display = "none";
     }
   } else if (catRadio.value === "arm-gnu") {
-    officialForm.style.display = "none";
-    remotePath.setAttribute("disabled", "");
-    remotePath.style.display = "none";
     armGnuForm.style.display = armGnuGroup.value === "arm-gnu" ? "block" : "none";
-    iarForm.style.display = "none";
+  } else if (catRadio.value === "rust") {
+    rustForm.style.display = "block";
+    const rustMethod = (getEl<RadioGroup>("srcTypeRust") as unknown as { value: string }).value;
+    const standalone = rustMethod !== "rust-rustup";
+    // Standalone assembles dist archives into a chosen Location; rustup
+    // installs into the fixed managed location instead.
+    commonLocationForm.style.display = standalone ? "" : "none";
+    getEl("rustupSection").style.display = standalone ? "none" : "";
+    getEl("rustFolderRow").style.display = standalone ? "" : "none";
+    renderRustVersionOptions();
   } else {
-    officialForm.style.display = "none";
-    remotePath.setAttribute("disabled", "");
-    remotePath.style.display = "none";
-    armGnuForm.style.display = "none";
     iarForm.style.display = "block";
   }
 }
@@ -622,6 +712,425 @@ function updateArmGnuRecommendation(): void {
   updateArmGnuFolderName(getSuggestedArmGnuFolderName(selectedAsset.filename), folderField.value);
 }
 
+let rustupInstallInProgress = false;
+
+function applyRustupStatus(status: RustupStatusData | undefined): void {
+  rustupInstallInProgress = false;
+  rustPrereqInstallInProgress = false;
+  const statusLine = getEl("rustupStatusLine");
+  const updateLine = getEl("rustupUpdateLine");
+  const locationLine = getEl("rustupLocationLine");
+  const prereqLine = getEl("rustupPrereqLine");
+  const installRow = getEl("rustupInstallRow");
+  const installButton = getEl<Button>("installRustupButton");
+  const installPrereqButton = getEl<Button>("installPrereqButton");
+
+  installButton.removeAttribute("disabled");
+  installButton.textContent = "Download and install rustup";
+  installPrereqButton.removeAttribute("disabled");
+  installPrereqButton.textContent = "Install C++ Build Tools";
+
+  if (!status || status.error) {
+    statusLine.textContent = `Unable to check rustup: ${status?.error ?? "unknown error"}`;
+    updateLine.style.display = "none";
+    locationLine.textContent = "";
+    prereqLine.textContent = "";
+    installRow.style.display = "none";
+    getEl("rustupActionsRow").style.display = "none";
+    return;
+  }
+
+  if (status.installed) {
+    const isLatest = !!status.version && !!status.latestVersion && !status.updateAvailable
+      ? " (latest)"
+      : "";
+    const version = status.version ? ` ${status.version}${isLatest}` : "";
+    const origin = status.managed ? "managed by Zephyr Workbench" : "found on PATH";
+    statusLine.textContent = `rustup${version} is installed (${origin}): ${status.rustupPath ?? ""}`;
+    installRow.style.display = "none";
+  } else {
+    const latest = status.latestVersion ? ` Latest version: ${status.latestVersion}.` : "";
+    statusLine.textContent = `rustup is not installed.${latest}`;
+    installRow.style.display = "";
+  }
+
+  if (status.installed && status.toolchainsDir) {
+    locationLine.textContent = `Toolchains location: ${status.toolchainsDir}`;
+  } else {
+    locationLine.textContent = `Install location: ${status.managedRootDir ?? ""}`;
+  }
+
+  if (status.updateAvailable && status.latestVersion) {
+    updateLine.textContent = `Warning: a newer rustup version is available (${status.latestVersion}, installed ${status.version}).`;
+    updateLine.style.display = "";
+  } else {
+    updateLine.style.display = "none";
+  }
+
+  prereqLine.textContent = status.prereqMessage ?? "";
+  prereqLine.style.color = status.prereqOk === false
+    ? "var(--vscode-editorWarning-foreground)"
+    : "";
+  getEl("rustupActionsRow").style.display = status.prereqInstallable ? "" : "none";
+}
+
+let rustPrereqInstallInProgress = false;
+
+function installPrereqHandler(): void {
+  if (rustPrereqInstallInProgress) {
+    return;
+  }
+  rustPrereqInstallInProgress = true;
+
+  const installPrereqButton = getEl<Button>("installPrereqButton");
+  installPrereqButton.setAttribute("disabled", "");
+  installPrereqButton.textContent = "Installing C++ Build Tools...";
+
+  vscode.postMessage({ command: "installRustPrereq" });
+}
+
+function initRustVersionDropdown(): void {
+  const versionInput = getEl<HTMLInputElement>("rustVersionInput");
+  const versionsDropdown = getEl("rustVersionsDropdown");
+
+  ["focusin", "click"].forEach(evt => {
+    versionInput.addEventListener(evt, () => {
+      versionsDropdown.style.display = "block";
+    });
+  });
+  versionInput.addEventListener("focusout", () => {
+    setTimeout(() => { versionsDropdown.style.display = "none"; }, 80);
+  });
+
+  addDropdownItemListeners(versionsDropdown, versionInput, updateRustFolderSuggestion);
+}
+
+function renderRustImportLoading(): void {
+  const versionInput = getEl<HTMLInputElement>("rustVersionInput");
+  const versionsDropdown = getEl("rustVersionsDropdown");
+
+  versionInput.value = "";
+  versionInput.setAttribute("data-value", "");
+  versionInput.placeholder = "Looking online for Rust releases...";
+  versionInput.setAttribute("disabled", "");
+  versionsDropdown.innerHTML = `<div class="dropdown-placeholder">Looking online for Rust releases...</div>`;
+  availableRustVersions = [];
+  availableRustTargets = [];
+  availableRustTargetDescriptions = {};
+  renderRustTargetsPlaceholder("Loading Zephyr Rust targets...");
+  setRustFolderNameState("", false);
+  toggleRustSpinner(true);
+
+  const linkInput = getEl<HTMLInputElement>("rustCToolchainInput");
+  const linkDropdown = getEl("rustCToolchainDropdown");
+  linkInput.value = "";
+  linkInput.setAttribute("data-value", "");
+  linkInput.placeholder = "Loading toolchains...";
+  linkInput.setAttribute("disabled", "");
+  linkDropdown.innerHTML = `<div class="dropdown-placeholder">Loading toolchains...</div>`;
+
+  renderLlvmLoading();
+}
+
+function applyRustImportData(data: RustImportData | undefined): void {
+  const versionInput = getEl<HTMLInputElement>("rustVersionInput");
+  const versionsDropdown = getEl("rustVersionsDropdown");
+  toggleRustSpinner(false);
+
+  const versions = data?.versions ?? [];
+
+  if (data?.error || !versions.length) {
+    const message = data?.error ?? "No Rust releases available.";
+    versionInput.value = "";
+    versionInput.setAttribute("data-value", "");
+    versionInput.placeholder = data?.error
+      ? "Unable to load Rust versions"
+      : "No Rust releases available";
+    versionInput.setAttribute("disabled", "");
+    versionsDropdown.innerHTML = `<div class="dropdown-placeholder">${escapeHtml(message)}</div>`;
+    availableRustVersions = [];
+    availableRustTargets = [];
+    availableRustTargetDescriptions = {};
+    renderRustTargetsPlaceholder(message);
+    setRustFolderNameState("", false);
+    return;
+  }
+
+  availableRustVersions = versions;
+  availableRustTargets = data?.targets ?? [];
+  availableRustTargetDescriptions = data?.targetDescriptions ?? {};
+
+  renderRustVersionOptions();
+  modifyRustTypeHandler();
+}
+
+function isRustStandaloneSelected(): boolean {
+  return (getEl<RadioGroup>("srcTypeRust") as unknown as { value: string }).value !== "rust-rustup";
+}
+
+// The 'stable' channel only exists for the rustup method; standalone dist
+// archives are published per numbered release.
+function renderRustVersionOptions(): void {
+  if (!availableRustVersions.length) {
+    return;
+  }
+
+  const versionInput = getEl<HTMLInputElement>("rustVersionInput");
+  const versionsDropdown = getEl("rustVersionsDropdown");
+  const versions = isRustStandaloneSelected()
+    ? availableRustVersions.filter(version => version !== RUST_STABLE_CHANNEL)
+    : availableRustVersions;
+
+  versionInput.removeAttribute("disabled");
+  versionInput.placeholder = "Choose the Rust version...";
+  versionsDropdown.innerHTML = versions.map(version => `
+    <div class="dropdown-item"
+         data-value="${escapeHtml(version)}"
+         data-label="${escapeHtml(version)}">${escapeHtml(version)}</div>
+  `).join("");
+
+  const current = versionInput.getAttribute("data-value") ?? "";
+  const preferred = current && versions.includes(current) ? current : versions[0];
+  versionInput.value = preferred;
+  versionInput.setAttribute("data-value", preferred);
+
+  updateRustFolderSuggestion();
+  setRustFolderNameEnabled(true);
+}
+
+function updateRustFolderSuggestion(): void {
+  const version = getEl<HTMLInputElement>("rustVersionInput").getAttribute("data-value") ?? "";
+  const folderField = getRustFolderField();
+  updateRustFolderName(version ? `rust-${version}` : "", folderField.value);
+}
+
+function handleRustFolderNameInput(): void {
+  const folderField = getRustFolderField();
+  const trimmed = folderField.value.trim();
+  folderField.value = trimmed;
+  folderField.setAttribute("data-dirty", trimmed !== "" && trimmed !== lastSuggestedRustFolderName ? "true" : "false");
+}
+
+function updateRustFolderName(suggestedName: string, currentValue: string): void {
+  const folderField = getRustFolderField();
+  const isDirty = folderField.getAttribute("data-dirty") === "true";
+  const trimmedCurrentValue = currentValue.trim();
+
+  if (!isDirty || trimmedCurrentValue === "" || trimmedCurrentValue === lastSuggestedRustFolderName) {
+    folderField.value = suggestedName;
+    folderField.setAttribute("data-dirty", "false");
+  }
+
+  lastSuggestedRustFolderName = suggestedName;
+}
+
+function setRustFolderNameState(value: string, enabled: boolean): void {
+  const folderField = getRustFolderField();
+  folderField.value = value;
+  folderField.setAttribute("data-dirty", "false");
+  lastSuggestedRustFolderName = value;
+  setRustFolderNameEnabled(enabled);
+}
+
+function setRustFolderNameEnabled(enabled: boolean): void {
+  const folderField = getRustFolderField();
+  if (enabled) {
+    folderField.removeAttribute("disabled");
+  } else {
+    folderField.setAttribute("disabled", "");
+  }
+}
+
+function getRustFolderField(): HTMLElement & { value: string } {
+  return getEl<TextField>("rustFolderName") as unknown as HTMLElement & { value: string };
+}
+
+function initLlvmVersionDropdown(): void {
+  const versionInput = getEl<HTMLInputElement>("llvmVersionInput");
+  const versionsDropdown = getEl("llvmVersionsDropdown");
+
+  ["focusin", "click"].forEach(evt => {
+    versionInput.addEventListener(evt, () => {
+      versionsDropdown.style.display = "block";
+    });
+  });
+  versionInput.addEventListener("focusout", () => {
+    setTimeout(() => { versionsDropdown.style.display = "none"; }, 80);
+  });
+
+  addDropdownItemListeners(versionsDropdown, versionInput);
+}
+
+function renderLlvmLoading(): void {
+  const versionInput = getEl<HTMLInputElement>("llvmVersionInput");
+  const versionsDropdown = getEl("llvmVersionsDropdown");
+
+  versionInput.value = "";
+  versionInput.setAttribute("data-value", "");
+  versionInput.placeholder = "Looking online for LLVM releases...";
+  versionInput.setAttribute("disabled", "");
+  versionsDropdown.innerHTML = `<div class="dropdown-placeholder">Looking online for LLVM releases...</div>`;
+  toggleLlvmSpinner(true);
+}
+
+function applyLlvmVersionList(data: LlvmImportData | undefined): void {
+  const versionInput = getEl<HTMLInputElement>("llvmVersionInput");
+  const versionsDropdown = getEl("llvmVersionsDropdown");
+  toggleLlvmSpinner(false);
+
+  const versions = data?.versions ?? [];
+
+  if (data?.error || !versions.length) {
+    const message = data?.error ?? "No LLVM releases available.";
+    versionInput.value = "";
+    versionInput.setAttribute("data-value", "");
+    versionInput.placeholder = data?.error
+      ? "Unable to load LLVM versions"
+      : "No LLVM releases available";
+    versionInput.setAttribute("disabled", "");
+    versionsDropdown.innerHTML = `<div class="dropdown-placeholder">${escapeHtml(message)}</div>`;
+    return;
+  }
+
+  versionInput.removeAttribute("disabled");
+  versionInput.placeholder = "Choose the LLVM version...";
+  versionsDropdown.innerHTML = versions.map(version => `
+    <div class="dropdown-item"
+         data-value="${escapeHtml(version)}"
+         data-label="${escapeHtml(version)}">${escapeHtml(version)}</div>
+  `).join("");
+
+  versionInput.value = versions[0];
+  versionInput.setAttribute("data-value", versions[0]);
+}
+
+function modifyLlvmSourceHandler(): void {
+  const source = (getEl<RadioGroup>("llvmSource") as unknown as { value: string }).value;
+  getEl("llvmVersionRow").style.display = source === "download" ? "" : "none";
+}
+
+function toggleLlvmSpinner(show: boolean): void {
+  const spinner = document.getElementById("llvmSpinner") as HTMLElement | null;
+  if (!spinner) { return; }
+  spinner.style.display = show ? "inline-block" : "none";
+}
+
+function isRustMinimalSelected(): boolean {
+  return (getEl<RadioGroup>("rustType") as unknown as { value: string }).value === "minimal";
+}
+
+function modifyRustTypeHandler(): void {
+  const minimal = isRustMinimalSelected();
+  getEl("rustTargetsSection").style.display = minimal ? "" : "none";
+  if (minimal && availableRustTargets.length) {
+    renderRustTargets(availableRustTargets);
+  }
+}
+
+function renderRustTargets(targets: string[]): void {
+  if (!targets.length) {
+    renderRustTargetsPlaceholder("No Zephyr Rust targets available.");
+    return;
+  }
+
+  const container = getEl("rustTargetsContainer");
+  container.innerHTML = targets.map(target => {
+    const description = availableRustTargetDescriptions[target] ?? "";
+    return `
+    <div>
+      <vscode-checkbox class="rust-target-checkbox"
+                       value="${escapeHtml(target)}"
+                       current-value="${escapeHtml(target)}"
+                       ${description ? `title="${escapeHtml(description)}"` : ""}
+                       ${RUST_MINIMAL_PRESELECTED_TARGETS.includes(target) ? "checked" : ""}>${escapeHtml(target)}</vscode-checkbox>
+    </div>
+  `;
+  }).join("");
+}
+
+function renderRustTargetsPlaceholder(message: string): void {
+  const container = getEl("rustTargetsContainer");
+  container.innerHTML = `<div class="toolchain-placeholder">${escapeHtml(message)}</div>`;
+}
+
+function getSelectedRustTargets(): string[] {
+  const cbs = document.getElementsByClassName("rust-target-checkbox") as HTMLCollectionOf<Checkbox>;
+  return Array.from(cbs)
+    .filter(cb => (cb as unknown as { checked: boolean }).checked)
+    .map(cb => (cb as unknown as { value: string }).value || "")
+    .filter(Boolean);
+}
+
+function applyRustLinkOptions(sdks: IarSdkEntry[], armGnuRegistered: RegisteredArmGnuEntry[]): void {
+  const linkInput = getEl<HTMLInputElement>("rustCToolchainInput");
+  const linkDropdown = getEl("rustCToolchainDropdown");
+
+  const items = [
+    ...sdks.map(sdk => ({
+      value: `zephyr-sdk|${sdk.path}`,
+      label: sdk.name,
+      description: sdk.version,
+    })),
+    ...armGnuRegistered.map(toolchain => ({
+      value: `gnuarmemb|${toolchain.path}`,
+      label: toolchain.name,
+      description: "",
+    })),
+  ];
+
+  if (!items.length) {
+    linkInput.value = "";
+    linkInput.setAttribute("data-value", "");
+    linkInput.placeholder = "No registered SDK or Arm GNU toolchain";
+    linkInput.setAttribute("disabled", "");
+    linkDropdown.innerHTML = `<div class="dropdown-placeholder">No registered Zephyr SDK or Arm GNU toolchain found. Add one first.</div>`;
+    return;
+  }
+
+  linkInput.removeAttribute("disabled");
+  linkInput.placeholder = "Choose the C toolchain...";
+  linkDropdown.innerHTML = items.map(item => `
+    <div class="dropdown-item"
+         data-value="${escapeHtml(item.value)}"
+         data-label="${escapeHtml(item.label)}">
+      ${escapeHtml(item.label)}
+      <span class="description">${escapeHtml(item.description)}</span>
+    </div>
+  `).join("");
+}
+
+function getSelectedRustCToolchain(): { type: string; path: string } {
+  const raw = getEl<HTMLInputElement>("rustCToolchainInput").getAttribute("data-value") ?? "";
+  const separatorIndex = raw.indexOf("|");
+  if (separatorIndex <= 0) {
+    return { type: "", path: "" };
+  }
+  return {
+    type: raw.slice(0, separatorIndex),
+    path: raw.slice(separatorIndex + 1),
+  };
+}
+
+function toggleRustSpinner(show: boolean): void {
+  const spinner = document.getElementById("rustSpinner") as HTMLElement | null;
+  if (!spinner) { return; }
+  spinner.style.display = show ? "inline-block" : "none";
+}
+
+function installRustupHandler(): void {
+  if (rustupInstallInProgress) {
+    return;
+  }
+  rustupInstallInProgress = true;
+
+  const installButton = getEl<Button>("installRustupButton");
+  installButton.setAttribute("disabled", "");
+  installButton.textContent = "Installing rustup...";
+  getEl("rustupStatusLine").textContent = "Installing rustup into .zinstaller/tools/rustup/ ...";
+
+  vscode.postMessage({ command: "installRustup" });
+}
+
 function importHandler(): void {
   const sourceCategory = (getEl<RadioGroup>("sourceCategory") as unknown as { value: string }).value;
   let srcType = "iar";
@@ -629,6 +1138,8 @@ function importHandler(): void {
     srcType = (getEl<RadioGroup>("srcTypeZephyr") as unknown as { value: string }).value;
   } else if (sourceCategory === "arm-gnu") {
     srcType = (getEl<RadioGroup>("srcTypeArmGnu") as unknown as { value: string }).value;
+  } else if (sourceCategory === "rust") {
+    srcType = (getEl<RadioGroup>("srcTypeRust") as unknown as { value: string }).value;
   }
 
   const armGnuVersion = getEl<HTMLInputElement>("armGnuVersionInput").getAttribute("data-value") || "";
@@ -653,6 +1164,14 @@ function importHandler(): void {
     armGnuTarget,
     armGnuUrl: armGnuSelection?.url ?? "",
     armGnuFolderName,
+    rustVersion: getEl<HTMLInputElement>("rustVersionInput").getAttribute("data-value") || "",
+    rustTargets: isRustMinimalSelected() ? getSelectedRustTargets() : [...availableRustTargets],
+    rustFolderName: (getRustFolderField().value || "").trim(),
+    rustCToolchainType: getSelectedRustCToolchain().type,
+    rustCToolchainPath: getSelectedRustCToolchain().path,
+    llvmSource: (getEl<RadioGroup>("llvmSource") as unknown as { value: string }).value,
+    llvmVersion: getEl<HTMLInputElement>("llvmVersionInput").getAttribute("data-value") || "",
+    llvmPath: ((getEl<TextField>("llvmPath") as unknown as { value: string }).value || "").trim(),
   });
 }
 

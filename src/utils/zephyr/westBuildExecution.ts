@@ -12,6 +12,7 @@ import {
   normalizePathForShell,
   RawEnvVars,
 } from '../execUtils';
+import { prependRustBinPath } from '../../models/ToolchainInstallations';
 import { tryGetZephyrSdkInstallation } from '../utils';
 import { getWestBuildSourceDirArgValue, hasWestBuildSourceDirArg, splitWestBuildArgs } from './westArgUtils';
 import { getWestBuildStatePath, WestBuildState } from './westBuildState';
@@ -89,15 +90,27 @@ export function prepareWestBuildExecution(
   const baseEnv = { ...sdkEnv, ...workspaceEnv, ...toolchainEnv };
   const configureEnv = needsConfigure ? normEnvVars : {};
 
-  const env = venvPath && sysbuildEnabled
-    ? {
-        ...configureEnv,
-        ...baseEnv,
-        PATH: process.platform === 'win32'
-          ? `${path.join(venvPath, 'Scripts')};${baseEnv.PATH ?? ''}`
-          : `${path.join(venvPath, 'bin')}:${baseEnv.PATH ?? ''}`
-      }
-    : { ...configureEnv, ...baseEnv };
+  const rustBinPath = zephyrProject.selectedRustToolchainInstallation?.binPath;
+  const venvBinPath = venvPath && sysbuildEnabled
+    ? path.join(venvPath, process.platform === 'win32' ? 'Scripts' : 'bin')
+    : undefined;
+
+  let env: Record<string, string>;
+  if (rustBinPath) {
+    // cargo must be reachable on PATH for rust_cargo_application().
+    env = prependRustBinPath({ ...configureEnv, ...baseEnv }, rustBinPath);
+    if (venvBinPath) {
+      env.PATH = `${venvBinPath}${path.delimiter}${env.PATH}`;
+    }
+  } else if (venvBinPath) {
+    env = {
+      ...configureEnv,
+      ...baseEnv,
+      PATH: `${venvBinPath}${path.delimiter}${baseEnv.PATH ?? ''}`,
+    };
+  } else {
+    env = { ...configureEnv, ...baseEnv };
+  }
 
   const command =
     `west build` +

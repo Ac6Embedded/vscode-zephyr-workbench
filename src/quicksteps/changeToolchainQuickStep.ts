@@ -1,13 +1,15 @@
 import vscode, { ExtensionContext, QuickPickItem } from "vscode";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { ToolchainVariantId, ZephyrSdkVariantId } from "../models/ToolchainInstallations";
-import { getRegisteredArmGnuToolchainInstallations, getRegisteredZephyrSdkInstallations, getRegisteredIarToolchainInstallations } from "../utils/utils";
+import { getRegisteredArmGnuToolchainInstallations, getRegisteredRustToolchainInstallations, getRegisteredZephyrSdkInstallations, getRegisteredIarToolchainInstallations } from "../utils/utils";
+import path from "path";
 
 export interface ToolchainVariantPick {
     selectedVariant: ToolchainVariantId;
     zephyrSdkPath?: string;
     iarToolchainPath?: string;
     armGnuToolchainPath?: string;
+    rustToolchainPath?: string;
 }
 
 type ToolchainVariantQuickPickItem = QuickPickItem & ToolchainVariantPick;
@@ -44,6 +46,18 @@ export async function changeToolchainQuickStep(
             description: armGnuToolchain.toolchainPath,
             selectedVariant: "gnuarmemb",
             armGnuToolchainPath: armGnuToolchain.toolchainPath,
+        });
+    }
+
+    for (const rustToolchain of await getRegisteredRustToolchainInstallations()) {
+        const linkedName = rustToolchain.cToolchainPath
+            ? path.basename(rustToolchain.cToolchainPath)
+            : 'no C toolchain linked';
+        items.push({
+            label: rustToolchain.name,
+            description: `+ ${linkedName}`,
+            selectedVariant: "rust",
+            rustToolchainPath: rustToolchain.toolchainPath,
         });
     }
 

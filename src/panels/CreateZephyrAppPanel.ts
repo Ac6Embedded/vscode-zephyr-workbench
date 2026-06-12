@@ -1,14 +1,15 @@
 import * as vscode from "vscode";
 import path from "path";
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from "../constants";
-import { normalizeZephyrSdkVariant, ZephyrSdkVariantId } from "../models/ToolchainInstallations";
+import { normalizeZephyrSdkVariant, RustToolchainInstallation, ZephyrSdkVariantId } from "../models/ToolchainInstallations";
 import { WestWorkspace } from "../models/WestWorkspace";
 import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
 import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
-import { describeZephyrApplicationDetectionFailure, fileExists, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getListSamples, getRegisteredZephyrSdkInstallations, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
+import { describeZephyrApplicationDetectionFailure, fileExists, findRustToolchainInstallation, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredRustToolchainInstallations, getListSamples, getRegisteredZephyrSdkInstallations, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
+import { isPathWithin as isPathWithinWorkspaceApplication } from "../utils/zephyr/workspaceApplications";
 
 type CreateAppDiscoveryTarget = 'board' | 'sample';
 type CreateAppDiscoveryIssueCode = 'invalid-workspace' | 'missing-workspace-content' | 'env-script' | 'invalid-venv' | 'generic';
@@ -103,6 +104,14 @@ export class CreateZephyrAppPanel {
 
     for (const armGnuToolchain of await getRegisteredArmGnuToolchainInstallations()) {
       sdkHTML += `<div class="dropdown-item" data-type="gnuarmemb" data-value="${armGnuToolchain.toolchainPath}" data-label="${armGnuToolchain.name}">${armGnuToolchain.name}<span class="description">${armGnuToolchain.toolchainPath}</span></div>`;
+    }
+
+    for (const rustToolchain of await getRegisteredRustToolchainInstallations()) {
+      const linkedName = rustToolchain.cToolchainPath
+        ? path.basename(rustToolchain.cToolchainPath)
+        : 'no C toolchain linked';
+      const label = `${rustToolchain.name} (+ ${linkedName})`;
+      sdkHTML += `<div class="dropdown-item" data-type="rust" data-value="${rustToolchain.toolchainPath}" data-label="${label}">${label}<span class="description">${rustToolchain.toolchainPath}</span></div>`;
     }
 
     return /*html*/ `
@@ -510,7 +519,8 @@ async function handleCreateMessage(message: any) {
     const board = getBoard(message.boardYamlPath, message.boardIdentifier);
     const sample = await getSample(message.samplePath);
     const toolchainInstallation =
-      getArmGnuToolchainInstallationByPath(toolchainInstallationPath)
+      findRustToolchainInstallation(toolchainInstallationPath)
+      ?? getArmGnuToolchainInstallationByPath(toolchainInstallationPath)
       ?? getIarToolchainInstallationByPath(toolchainInstallationPath)
       ?? getZephyrSdkInstallation(vscode.Uri.parse(toolchainInstallationPath, true).fsPath);
 
@@ -524,7 +534,7 @@ async function handleCreateMessage(message: any) {
       toolchainInstallation,
       message.venv,
       message.debugPreset,
-      toolchainVariant,
+      toRequestedVariantFor(toolchainInstallation, toolchainVariant),
       getSettingsPathMode(message.settingsPathMode),
       applicationType,
     );
@@ -589,7 +599,8 @@ async function handleCreateMessage(message: any) {
   const board = hasBoard ? getBoard(message.boardYamlPath, message.boardIdentifier) : undefined;
   const toolchainInstallation = hasToolchainInstallation
     ? (
-        getArmGnuToolchainInstallationByPath(toolchainInstallationPath)
+        findRustToolchainInstallation(toolchainInstallationPath)
+        ?? getArmGnuToolchainInstallationByPath(toolchainInstallationPath)
         ?? getIarToolchainInstallationByPath(toolchainInstallationPath)
         ?? getZephyrSdkInstallation(vscode.Uri.parse(toolchainInstallationPath, true).fsPath)
       )
@@ -602,7 +613,7 @@ async function handleCreateMessage(message: any) {
     board,
     toolchainInstallation,
     message.venv,
-    toolchainVariant,
+    toRequestedVariantFor(toolchainInstallation, toolchainVariant),
     getSettingsPathMode(message.settingsPathMode),
   );
   CreateZephyrAppPanel.currentPanel?.dispose();
@@ -618,6 +629,18 @@ function getWorkspaceApplicationParentPath(westWorkspaceRootPath: string, applic
 
 function getRequestedToolchainVariant(rawVariant: unknown): ZephyrSdkVariantId {
   return normalizeZephyrSdkVariant(typeof rawVariant === 'string' ? rawVariant : undefined);
+}
+
+// The webview's SDK Variant radio always speaks 'zephyr' / 'zephyr/llvm';
+// a Rust group stores the 'rust' variant instead.
+function toRequestedVariantFor(
+  toolchainInstallation: unknown,
+  toolchainVariant: ZephyrSdkVariantId,
+): string {
+  if (toolchainInstallation instanceof RustToolchainInstallation) {
+    return 'rust';
+  }
+  return toolchainVariant;
 }
 
 function getSettingsPathMode(rawMode: unknown): 'relative' | 'absolute' {
@@ -682,14 +705,31 @@ async function buildSamplesDiscoveryState(westWorkspace: WestWorkspace): Promise
     }
     return 0;
   };
+
+  // Templates coming from the zephyr-lang-rust module get their own section
+  // on top so Rust users find them immediately.
+  const rustModuleRoot = path.join(westWorkspace.rootUri.fsPath, 'modules', 'lang', 'rust');
+  const isRustTemplate = (template: typeof appTemplates[number]) =>
+    isPathWithinWorkspaceApplication(rustModuleRoot, template.rootDir.fsPath);
+
+  const rustSamples = appTemplates
+    .filter(template => template.kind === 'sample' && isRustTemplate(template))
+    .sort(sortTemplates);
   const samples = appTemplates
-    .filter(template => template.kind === 'sample')
+    .filter(template => template.kind === 'sample' && !isRustTemplate(template))
     .sort(sortTemplates);
   const tests = appTemplates
     .filter(template => template.kind === 'test')
     .sort(sortTemplates);
 
   let html = '';
+  if (rustSamples.length > 0) {
+    html += '<div class="dropdown-header">RUST SAMPLES</div>';
+    for (const sample of rustSamples) {
+      html += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${getAppTemplateDisplayPath(sample.rootDir.fsPath, westWorkspace)}</span></div>`;
+    }
+  }
+
   if (samples.length > 0) {
     html += '<div class="dropdown-header">SAMPLES</div>';
     for (const sample of samples) {

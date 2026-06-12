@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import {
   ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
   ZEPHYR_PROJECT_IAR_SETTING_KEY,
+  ZEPHYR_PROJECT_RUST_SETTING_KEY,
   ZEPHYR_PROJECT_SDK_SETTING_KEY,
   ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY,
 } from '../constants';
@@ -13,6 +14,7 @@ export interface ToolchainSelection {
   zephyrSdkPath?: string;
   iarToolchainPath?: string;
   armGnuToolchainPath?: string;
+  rustToolchainPath?: string;
 }
 
 export function normalizeStoredToolchainVariant(
@@ -29,6 +31,7 @@ export function normalizeStoredToolchainVariant(
     || rawVariant === 'zephyr/llvm'
     || rawVariant === 'gnuarmemb'
     || rawVariant === 'iar'
+    || rawVariant === 'rust'
   ) {
     return rawVariant;
   }
@@ -50,6 +53,7 @@ export function readToolchainSelection(
     zephyrSdkPath: getConfiguredWorkbenchPath(ZEPHYR_PROJECT_SDK_SETTING_KEY, scope) ?? '',
     iarToolchainPath: getConfiguredWorkbenchPath(ZEPHYR_PROJECT_IAR_SETTING_KEY, scope) ?? '',
     armGnuToolchainPath: getConfiguredWorkbenchPath(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, scope) ?? '',
+    rustToolchainPath: getConfiguredWorkbenchPath(ZEPHYR_PROJECT_RUST_SETTING_KEY, scope) ?? '',
   };
 }
 
@@ -64,6 +68,7 @@ export async function writeToolchainSelection(
     await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, selection.iarToolchainPath, vscode.ConfigurationTarget.WorkspaceFolder);
     await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY, selection.zephyrSdkPath, vscode.ConfigurationTarget.WorkspaceFolder);
     await cfg.update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+    await cfg.update(ZEPHYR_PROJECT_RUST_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
     return;
   }
 
@@ -71,10 +76,20 @@ export async function writeToolchainSelection(
     await cfg.update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, selection.armGnuToolchainPath, vscode.ConfigurationTarget.WorkspaceFolder);
     await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
     await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+    await cfg.update(ZEPHYR_PROJECT_RUST_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+    return;
+  }
+
+  if (selection.variant === 'rust') {
+    await cfg.update(ZEPHYR_PROJECT_RUST_SETTING_KEY, selection.rustToolchainPath, vscode.ConfigurationTarget.WorkspaceFolder);
+    await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY, selection.zephyrSdkPath, vscode.ConfigurationTarget.WorkspaceFolder);
+    await cfg.update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, selection.armGnuToolchainPath, vscode.ConfigurationTarget.WorkspaceFolder);
+    await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
     return;
   }
 
   await cfg.update(ZEPHYR_PROJECT_SDK_SETTING_KEY, selection.zephyrSdkPath, vscode.ConfigurationTarget.WorkspaceFolder);
   await cfg.update(ZEPHYR_PROJECT_IAR_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
   await cfg.update(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+  await cfg.update(ZEPHYR_PROJECT_RUST_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
 }
