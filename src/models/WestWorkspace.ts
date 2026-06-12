@@ -140,6 +140,13 @@ export class WestWorkspace {
     return vscode.Uri.joinPath(this.rootUri, this.zephyrBase);
   }
 
+  get rustModuleUri(): vscode.Uri {
+    /* Modules are imported as siblings of the zephyr base (a path-prefix in the
+       manifest applies to both), e.g. base deps/zephyr puts the module under
+       deps/modules/lang/rust. */
+    return vscode.Uri.joinPath(this.kernelUri, '..', 'modules', 'lang', 'rust');
+  }
+
   get manifestUri(): vscode.Uri {
     return vscode.Uri.joinPath(this.rootUri, this.manifestPath, this.manifestFile);
   }

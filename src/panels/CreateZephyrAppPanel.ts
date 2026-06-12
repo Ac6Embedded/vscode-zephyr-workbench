@@ -708,7 +708,7 @@ async function buildSamplesDiscoveryState(westWorkspace: WestWorkspace): Promise
 
   // Templates coming from the zephyr-lang-rust module get their own section
   // on top so Rust users find them immediately.
-  const rustModuleRoot = path.join(westWorkspace.rootUri.fsPath, 'modules', 'lang', 'rust');
+  const rustModuleRoot = westWorkspace.rustModuleUri.fsPath;
   const isRustTemplate = (template: typeof appTemplates[number]) =>
     isPathWithinWorkspaceApplication(rustModuleRoot, template.rootDir.fsPath);
 

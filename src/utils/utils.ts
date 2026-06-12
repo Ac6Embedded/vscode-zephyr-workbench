@@ -376,9 +376,7 @@ export async function getListSamples(westWorkspace: WestWorkspace): Promise<Zeph
     // zephyr-lang-rust ships its own samples; when the optional module is
     // present in the workspace, list them too (parseAppTemplates silently
     // returns when the directory does not exist).
-    const rustModuleSamplesUri = vscode.Uri.joinPath(
-      westWorkspace.rootUri, 'modules', 'lang', 'rust', 'samples',
-    );
+    const rustModuleSamplesUri = vscode.Uri.joinPath(westWorkspace.rustModuleUri, 'samples');
 
     await Promise.all([
       parseAppTemplates(westWorkspace.samplesDirUri, samplesList, '', 'sample'),
