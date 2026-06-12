@@ -17,6 +17,11 @@ type WestManifestData = Record<string, any> & {
 
 const upstreamManifestCache = new Map<string, WestManifestData>();
 
+/* Optional module defined in zephyr/submanifests/optional.yaml (groups: [optional],
+   inactive by default). Enabling Rust requires BOTH importing it (manifest allowlist
+   when one is used) and activating it (manifest.project-filter in .west/config). */
+export const ZEPHYR_LANG_RUST_PROJECT_NAME = 'zephyr-lang-rust';
+
 export const listHals: any[] = [
   { label: "Analog Devices", name: "hal_adi" },
   { label: "Altera", name: "hal_altera" },
@@ -163,8 +168,12 @@ function setProjectAllowlist(
  *   - undefined / 'deps' → projects imported under <workspace>/deps/ (default)
  *   - any other non-empty string → imported under <workspace>/<value>/
  *   - empty string → no `path-prefix` (modules imported at workspace root)
+ *
+ * `enableRust` adds zephyr-lang-rust to the minimal manifest's name-allowlist so the
+ * project survives the import filter (the full manifest imports everything, so only
+ * the project-filter activation set by west.init is needed there).
  */
-export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isFull: boolean, manifestSubfolder?: string, pathPrefix?: string, projects?: string[]) {
+export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isFull: boolean, manifestSubfolder?: string, pathPrefix?: string, projects?: string[], enableRust = false) {
   const prefix = (pathPrefix ?? 'deps').trim();
 
   let manifestYaml: WestManifestData;
@@ -201,11 +210,13 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
       } else {
         delete importBlock['path-prefix'];
       }
-      if (Array.isArray(projects)) {
-        setProjectAllowlist(manifest.projects![0], projects);
-      } else {
-        setProjectAllowlist(manifest.projects![0], [...getProjectAllowlist(manifest.projects![0]), templateHal]);
+      const allowlist = Array.isArray(projects)
+        ? [...projects]
+        : [...getProjectAllowlist(manifest.projects![0]), templateHal];
+      if (enableRust) {
+        allowlist.push(ZEPHYR_LANG_RUST_PROJECT_NAME);
       }
+      setProjectAllowlist(manifest.projects![0], allowlist);
     }
   }
 

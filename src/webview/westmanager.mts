@@ -68,6 +68,17 @@ function main() {
     renderProjects();
   });
 
+  const rustEnabledCheckbox = document.getElementById('rustEnabledCheckbox') as Checkbox | null;
+  rustEnabledCheckbox?.addEventListener('change', () => {
+    // Apply forces the module into the name-allowlist; mirror that in the list.
+    if (rustEnabledCheckbox.checked
+      && currentDetails?.availableProjects.includes('zephyr-lang-rust')
+      && !selectedProjects.has('zephyr-lang-rust')) {
+      selectedProjects.add('zephyr-lang-rust');
+      renderProjects();
+    }
+  });
+
   const applyButton = document.getElementById('applyButton') as Button | null;
   applyButton?.addEventListener('click', event => {
     event.preventDefault();

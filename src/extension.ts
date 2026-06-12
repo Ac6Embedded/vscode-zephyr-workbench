@@ -3811,7 +3811,7 @@ export function activate(context: vscode.ExtensionContext) {
 					// Determine if mode is 'full' or 'minimal'
 					const isFull = templateMode === 'full';
 					// Generate west.xml from template
-					let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal, isFull, manifestDir, pathPrefix, projects);
+					let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal, isFull, manifestDir, pathPrefix, projects, enableRust === true);
 					// Run west init to the newly create manifest
 					vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestFile, enableRust);
 				} catch (error) {

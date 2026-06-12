@@ -7,6 +7,7 @@ import { getNonce } from '../utilities/getNonce';
 import { WestWorkspace } from '../models/WestWorkspace';
 import { westBoardsCommand, westUpdateCommand } from '../commands/WestCommands';
 import { getGitBranches, getGitTags } from '../utils/execUtils';
+import { ZEPHYR_LANG_RUST_PROJECT_NAME } from '../utils/zephyr/manifestUtils';
 
 type WestManifestProject = Record<string, any> & {
   name?: string;
@@ -50,7 +51,7 @@ interface WestManagerApplyState {
   rustEnabled: boolean;
 }
 
-const ZEPHYR_LANG_RUST_PROJECT_FILTER = '+zephyr-lang-rust';
+const ZEPHYR_LANG_RUST_PROJECT_FILTER = `+${ZEPHYR_LANG_RUST_PROJECT_NAME}`;
 
 interface WestConfigProjectFilter {
   /* Line index where a new project-filter entry can be inserted (end of the
@@ -334,6 +335,11 @@ function applyWorkspaceState(state: WestManagerApplyState): WestManagerWorkspace
 
   const availableProjects = getAvailableProjects(getProjectSourcePaths(westWorkspace.kernelUri.fsPath));
   const selectedProjects = uniqueProjectNames(state.selectedProjects);
+  /* The Rust module must survive the import name-allowlist on top of the
+     project-filter activation, otherwise west never resolves the project. */
+  if (state.rustEnabled === true && !selectedProjects.includes(ZEPHYR_LANG_RUST_PROJECT_NAME)) {
+    selectedProjects.push(ZEPHYR_LANG_RUST_PROJECT_NAME);
+  }
   if (availableProjects.length > 0) {
     const selectedAllProjects = availableProjects.every(projectName => selectedProjects.includes(projectName));
     let importBlock = zephyrProject.import;
@@ -520,7 +526,7 @@ export class WestManagerPanel {
                 </div>
 
                 <div class="grid-group-div">
-                  <vscode-checkbox id="rustEnabledCheckbox">Enable Rust&nbsp;&nbsp;<span class="tooltip" data-tooltip="Reflects the manifest.project-filter entry in .west/config: checked when +zephyr-lang-rust is present. Apply writes the change; run Update afterwards to fetch or prune the module (modules/lang/rust).">?</span></vscode-checkbox>
+                  <vscode-checkbox id="rustEnabledCheckbox">Enable Rust&nbsp;&nbsp;<span class="tooltip" data-tooltip="Checked when +zephyr-lang-rust is in manifest.project-filter (.west/config). Apply activates the optional zephyr-lang-rust module and keeps it in the manifest projects allowlist; run Update afterwards to fetch it into modules/lang/rust.">?</span></vscode-checkbox>
                 </div>
               </section>
 

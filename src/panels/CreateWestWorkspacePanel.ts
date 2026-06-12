@@ -237,7 +237,7 @@ export class CreateWestWorkspacePanel {
                 </summary>
                 <div class="advanced-options-content">
                   <div class="grid-group-div">
-                    <vscode-checkbox id="enableRustCheckbox">Enable Rust&nbsp;&nbsp;<span class="tooltip" data-tooltip="Adds the optional zephyr-lang-rust module: runs 'west config manifest.project-filter -- +zephyr-lang-rust' before west update, so the module is fetched into modules/lang/rust.">?</span></vscode-checkbox>
+                    <vscode-checkbox id="enableRustCheckbox">Enable Rust&nbsp;&nbsp;<span class="tooltip" data-tooltip="Adds the optional zephyr-lang-rust module: includes it in the manifest projects allowlist when one is generated and activates it via 'west config manifest.project-filter -- +zephyr-lang-rust' before west update, so it is fetched into modules/lang/rust.">?</span></vscode-checkbox>
                   </div>
                 </div>
               </details>

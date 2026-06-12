@@ -10,6 +10,7 @@ import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTI
 import { concatCommands, executeTask, execShellCommandWithEnv, getConfiguredVenvPath, getConfiguredWorkbenchPath, getOutputChannel, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars, spawnCommandWithEnv } from '../utils/execUtils';
 import { fileExists, getWestWorkspace, normalizePath, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { composeWestBuildArgs, hasWestBuildSourceDirArg } from '../utils/zephyr/westArgUtils';
+import { ZEPHYR_LANG_RUST_PROJECT_NAME } from '../utils/zephyr/manifestUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
 import { buildDirectTask, createCppPropertiesCompileCommandsRefresh } from '../providers/ZephyrTaskProvider';
 
@@ -80,12 +81,15 @@ export async function westInitCommand(srcUrl: string, srcRev: string, workspaceP
 }
 
 /**
- * Enable the optional zephyr-lang-rust module in a freshly initialized
+ * Activate the optional zephyr-lang-rust module in a freshly initialized
  * workspace, so the following `west update` fetches it (placed under
- * modules/lang/rust).
+ * modules/lang/rust). The module is declared in zephyr/submanifests/optional.yaml
+ * with groups: [optional]; the project-filter overrides that inactivity. Manifests
+ * importing zephyr through a name-allowlist must also list the project
+ * (generateWestManifest handles this for template workspaces).
  */
 export async function westEnableRustModuleCommand(workspacePath: string): Promise<void> {
-  const command = 'west config manifest.project-filter -- +zephyr-lang-rust';
+  const command = `west config manifest.project-filter -- +${ZEPHYR_LANG_RUST_PROJECT_NAME}`;
   const options: vscode.ShellExecutionOptions = {
     env: { ZEPHYR_PROJECT_DIRECTORY: workspacePath },
     cwd: workspacePath,
