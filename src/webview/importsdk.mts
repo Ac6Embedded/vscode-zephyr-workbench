@@ -1057,12 +1057,12 @@ function applyRustLinkOptions(sdks: IarSdkEntry[], armGnuRegistered: RegisteredA
     ...sdks.map(sdk => ({
       value: `zephyr-sdk|${sdk.path}`,
       label: sdk.name,
-      description: sdk.version,
+      description: sdk.version ? `${sdk.version} - ${sdk.path}` : sdk.path,
     })),
     ...armGnuRegistered.map(toolchain => ({
       value: `gnuarmemb|${toolchain.path}`,
       label: toolchain.name,
-      description: "",
+      description: toolchain.path,
     })),
   ];
 
