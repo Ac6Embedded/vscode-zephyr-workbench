@@ -50,7 +50,7 @@ import { registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zeph
 import { checkRustPrerequisites, findRustup, getManagedRustupRootDir, installManagedRustup, installMsvcBuildTools, installRustToolchainViaRustup, MSVC_BUILD_TOOLS_MANUAL_URL, resolveRustupToolchainName, uninstallRustToolchainViaRustup } from './utils/zephyr/rustupUtils';
 import { buildLlvmDownloadUrl, buildRustDistUrls, detectRustVersion, getLlvmTopLevelDirName, getRustDistTopLevelDirName, getRustHostTriple, installMingwToolchain, installRustDistComponents, isLlvmPath, registerRustToolchain, unregisterRustToolchain, updateRustToolchainLink, updateRustToolchainLlvm, WINLIBS_MANUAL_URL } from './utils/zephyr/rustToolchainUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
-import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, findRustToolchainInstallation, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
+import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
@@ -102,16 +102,18 @@ function hasApplicationToolchainChanged(project: ZephyrApplication, pick: Toolch
 		return true;
 	}
 
+	// The Rust toolchain rides on top of the C variant, so a pick can change
+	// it without changing the C side.
+	if ((project.selectedRustToolchainInstallation?.toolchainPath ?? '') !== (pick.rustToolchainPath ?? '')) {
+		return true;
+	}
+
 	if (pick.selectedVariant === 'gnuarmemb') {
 		return (project.selectedArmGnuToolchainInstallation?.toolchainPath ?? '') !== (pick.armGnuToolchainPath ?? '');
 	}
 
 	if (pick.selectedVariant === 'iar') {
 		return (project.selectedIarToolchainInstallation?.iarPath ?? '') !== (pick.iarToolchainPath ?? '');
-	}
-
-	if (pick.selectedVariant === 'rust') {
-		return (project.selectedRustToolchainInstallation?.toolchainPath ?? '') !== (pick.rustToolchainPath ?? '');
 	}
 
 	return (project.zephyrSdkPath ?? '') !== (pick.zephyrSdkPath ?? '');
@@ -1441,7 +1443,7 @@ export function activate(context: vscode.ExtensionContext) {
 						[ZEPHYR_PROJECT_SDK_SETTING_KEY]: pick.zephyrSdkPath,
 						[ZEPHYR_PROJECT_IAR_SETTING_KEY]: undefined,
 						[ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY]: undefined,
-						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: undefined,
+						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: pick.rustToolchainPath,
 					});
 
 					if (pick.zephyrSdkPath) {
@@ -1478,7 +1480,7 @@ export function activate(context: vscode.ExtensionContext) {
 						[ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY]: armGnuToolchainInstallation.toolchainPath,
 						[ZEPHYR_PROJECT_SDK_SETTING_KEY]: undefined,
 						[ZEPHYR_PROJECT_IAR_SETTING_KEY]: undefined,
-						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: undefined,
+						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: pick.rustToolchainPath,
 						[ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY]: "gnuarmemb",
 					});
 
@@ -1487,64 +1489,6 @@ export function activate(context: vscode.ExtensionContext) {
 							await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
 								compilerPath: armGnuToolchainInstallation.compilerPath,
 							});
-						}
-					} catch {
-						// Keep the toolchain change even if the compiler path cannot be refreshed yet.
-					}
-				} else if (pick.selectedVariant === 'rust') {
-					const rustToolchainInstallation = pick.rustToolchainPath ? findRustToolchainInstallation(pick.rustToolchainPath) : undefined;
-					if (!rustToolchainInstallation) {
-						vscode.window.showErrorMessage("The selected Rust toolchain could not be found.");
-						return;
-					}
-
-					const linkedSdkPath = rustToolchainInstallation.cToolchainType === 'zephyr-sdk'
-						? rustToolchainInstallation.cToolchainPath
-						: undefined;
-					const linkedArmGnuPath = rustToolchainInstallation.cToolchainType === 'gnuarmemb'
-						? rustToolchainInstallation.cToolchainPath
-						: undefined;
-
-					if (!rustToolchainInstallation.cToolchainPath) {
-						vscode.window.showWarningMessage(
-							"This Rust toolchain has no linked C toolchain; right-click it in the Toolchains view to link one."
-						);
-					}
-
-					await updateApplicationSettings(node.project, {
-						[ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY]: "rust",
-						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: rustToolchainInstallation.toolchainPath,
-						[ZEPHYR_PROJECT_SDK_SETTING_KEY]: linkedSdkPath,
-						[ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY]: linkedArmGnuPath,
-						[ZEPHYR_PROJECT_IAR_SETTING_KEY]: undefined,
-					});
-
-					try {
-						if (isSelectedIntelliSenseApplication(node.project)) {
-							if (linkedArmGnuPath) {
-								const linkedArmGnu = findArmGnuToolchainInstallation(linkedArmGnuPath);
-								if (linkedArmGnu) {
-									await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
-										compilerPath: linkedArmGnu.compilerPath,
-									});
-								}
-							} else if (linkedSdkPath) {
-								const activeConfig = node.project.buildConfigs.find(config => config.active) ?? node.project.buildConfigs[0];
-								if (activeConfig?.boardIdentifier) {
-									const zephyrSdkInstallation = getZephyrSdkInstallation(linkedSdkPath);
-									const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
-									const board = await getBoardFromIdentifier(
-										activeConfig.boardIdentifier,
-										westWorkspace,
-										node.project,
-										activeConfig
-									);
-									const socToolchainName = activeConfig.getKConfigValue(node.project, 'SOC_TOOLCHAIN_NAME');
-									await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
-										compilerPath: zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName),
-									});
-								}
-							}
 						}
 					} catch {
 						// Keep the toolchain change even if the compiler path cannot be refreshed yet.
@@ -4225,10 +4169,6 @@ async function updateCompileSetting(project: ZephyrApplication, configName: stri
 			let compilerPath: string | undefined;
 			if (toolchainVariantId === 'gnuarmemb') {
 				compilerPath = project.selectedArmGnuToolchainInstallation?.compilerPath;
-			} else if (toolchainVariantId === 'rust' && project.selectedArmGnuToolchainInstallation) {
-				// Rust group linked to an Arm GNU toolchain; SDK-linked groups
-				// fall through to the SDK branch via zephyrSdkPath.
-				compilerPath = project.selectedArmGnuToolchainInstallation.compilerPath;
 			} else if (zephyrSdkInstallation) {
 				compilerPath = zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, toolchainVariant);
 			}

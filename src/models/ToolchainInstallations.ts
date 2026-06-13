@@ -3,7 +3,9 @@ import fs from "fs";
 import path from "path";
 import { fileExists } from '../utils/utils';
 
-export type ToolchainVariantId = 'zephyr' | 'zephyr/llvm' | 'gnuarmemb' | 'iar' | 'rust';
+// The stored toolchain variant always describes the C toolchain; Rust is an
+// orthogonal per-app setting (zephyr-workbench.rust), never a variant value.
+export type ToolchainVariantId = 'zephyr' | 'zephyr/llvm' | 'gnuarmemb' | 'iar';
 export type RustLinkedCToolchainType = 'zephyr-sdk' | 'gnuarmemb';
 
 /**

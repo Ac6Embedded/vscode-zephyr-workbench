@@ -496,7 +496,17 @@ function resolveStoredToolchainVariant(
     return 'gnuarmemb';
   }
   if (toolchainInstallation instanceof RustToolchainInstallation) {
-    return 'rust';
+    // The stored variant always describes the C toolchain: derive it from the
+    // Rust entry's link ('rust' is never a variant value).
+    if (toolchainInstallation.cToolchainType === 'gnuarmemb') {
+      return 'gnuarmemb';
+    }
+    return normalizeZephyrSdkVariant(
+      requestedVariant,
+      toolchainInstallation.cToolchainPath
+        ? tryGetZephyrSdkInstallation(toolchainInstallation.cToolchainPath)
+        : undefined,
+    );
   }
   return 'iar';
 }
@@ -545,7 +555,11 @@ function getDefaultCompilerPath(
     }
     if (toolchainInstallation.cToolchainType === 'zephyr-sdk' && toolchainInstallation.cToolchainPath) {
       return tryGetZephyrSdkInstallation(toolchainInstallation.cToolchainPath)
-        ?.getCompilerPath(zephyrBoard.arch) ?? '';
+        ?.getCompilerPath(
+          zephyrBoard.arch,
+          undefined,
+          resolveStoredToolchainVariant(toolchainInstallation, requestedVariant),
+        ) ?? '';
     }
     return '';
   }
@@ -589,8 +603,8 @@ function buildDefaultApplicationSettings(
     values[ZEPHYR_PROJECT_SDK_SETTING_KEY] = formatPath(toolchainInstallation.zephyrSdkPath);
     deleteKeys.push(ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_RUST_SETTING_KEY);
   } else if (toolchainInstallation instanceof RustToolchainInstallation) {
-    // Rust group: store the rust variant + toolchain and mirror the linked C
-    // toolchain the same way the change-toolchain command does.
+    // Rust entry: store the C variant derived from the link plus the rust
+    // path; the C toolchain settings mirror the link like a direct pick.
     values[ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY] = toolchainVariant;
     values[ZEPHYR_PROJECT_RUST_SETTING_KEY] = formatPath(toolchainInstallation.toolchainPath);
     if (toolchainInstallation.cToolchainType === 'gnuarmemb' && toolchainInstallation.cToolchainPath) {
@@ -1071,16 +1085,14 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     const toolchainEnv = project.getToolchainEnv();
 
     if (
-      (toolchainVariant === 'iar' || toolchainVariant === 'gnuarmemb' || toolchainVariant === 'rust')
+      (toolchainVariant === 'iar' || toolchainVariant === 'gnuarmemb')
       && Object.keys(toolchainEnv).length === 0
     ) {
       const missingPathKey = toolchainVariant === 'iar'
         ? ZEPHYR_PROJECT_IAR_SETTING_KEY
-        : toolchainVariant === 'rust'
-          ? ZEPHYR_PROJECT_RUST_SETTING_KEY
-          : ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY;
+        : ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY;
       const missingPath = getConfiguredWorkbenchPath(missingPathKey, folder ?? project.appWorkspaceFolder) ?? '';
-      const label = toolchainVariant === 'iar' ? 'IAR' : toolchainVariant === 'rust' ? 'Rust' : 'Arm GNU';
+      const label = toolchainVariant === 'iar' ? 'IAR' : 'Arm GNU';
       vscode.window.showWarningMessage(
         `${label} toolchain "${missingPath}" not found; tasks will run with the default Zephyr SDK.`,
       );

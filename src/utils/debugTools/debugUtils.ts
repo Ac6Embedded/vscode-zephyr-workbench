@@ -1002,9 +1002,7 @@ export async function createLaunchConfiguration(
   const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
   const toolchainVariant = project.toolchainVariant;
   const zephyrSdkInstallation = tryGetZephyrSdkInstallation(project.zephyrSdkPath);
-  // 'rust' may resolve an Arm GNU toolchain too (when the Rust group is
-  // linked to one); SDK-linked Rust groups flow through zephyrSdkInstallation.
-  const armGnuToolchainInstallation = (toolchainVariant === 'gnuarmemb' || toolchainVariant === 'rust')
+  const armGnuToolchainInstallation = toolchainVariant === 'gnuarmemb'
     ? findArmGnuToolchainInstallation(project.selectedArmGnuToolchainInstallation?.toolchainPath ?? '')
     : undefined;
   let buildConfig: ZephyrBuildConfig | undefined = undefined;

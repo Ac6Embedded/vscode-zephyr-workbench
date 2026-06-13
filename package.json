@@ -154,7 +154,6 @@
               "zephyr/llvm",
               "gnuarmemb",
               "iar",
-              "rust",
               "zephyr_sdk"
             ],
             "enumDescriptions": [
@@ -163,7 +162,6 @@
               "Zephyr SDK: LLVM/Clang toolchain",
               "Arm GNU Toolchain",
               "IAR ARM toolchain",
-              "Rust toolchain group (cargo/rustc plus its linked C toolchain)",
               "Deprecated: use 'zephyr' instead"
             ],
             "default": "zephyr",
@@ -185,7 +183,7 @@
           "zephyr-workbench.rust": {
             "type": "string",
             "default": "",
-            "markdownDescription": "Selected Rust toolchain path for this workspace.\nIts bin directory is prepended to PATH and exposed as RUSTC/CARGO at build time; the C side builds with the linked C toolchain.\nThe value must match a registered entry from `zephyr-workbench.listRustToolchains`.",
+            "markdownDescription": "Optional Rust toolchain path for this workspace, independent of the C toolchain selection.\nWhen set, its bin directory is prepended to PATH and exposed as RUSTC (plus LIBCLANG_PATH from the linked LLVM) at build time; when unset, the rust available on the system PATH is used.\nUsually a registered entry from `zephyr-workbench.listRustToolchains`.",
             "scope": "resource"
           },
           "zephyr-workbench.env.ARCH_ROOT": {

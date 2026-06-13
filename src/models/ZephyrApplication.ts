@@ -138,6 +138,11 @@ export class ZephyrApplication {
   }
 
   getToolchainEnv(): Record<string, string> {
+    // Rust is orthogonal to the C toolchain: when the app pins a Rust
+    // toolchain, its env (RUSTC, LIBCLANG_PATH) rides on top of whichever C
+    // variant is selected; otherwise the system rust on PATH is used.
+    const rustEnv = this.selectedRustToolchainInstallation?.buildEnv ?? {};
+
     if (this.toolchainVariant === 'iar') {
       const iarToolchainInstallation = this.selectedIarToolchainInstallation;
       if (!iarToolchainInstallation) {
@@ -153,6 +158,7 @@ export class ZephyrApplication {
         IAR_TOOLCHAIN_PATH: armSubdir,
         ZEPHYR_TOOLCHAIN_VARIANT: 'iar',
         IAR_LMS_BEARER_TOKEN: iarToolchainInstallation.token ?? '',
+        ...rustEnv,
       };
     }
 
@@ -165,32 +171,11 @@ export class ZephyrApplication {
       return {
         GNUARMEMB_TOOLCHAIN_PATH: armGnuToolchainInstallation.toolchainPath,
         ZEPHYR_TOOLCHAIN_VARIANT: 'gnuarmemb',
+        ...rustEnv,
       };
     }
 
-    if (this.toolchainVariant === 'rust') {
-      const rustToolchainInstallation = this.selectedRustToolchainInstallation;
-      if (!rustToolchainInstallation) {
-        return {};
-      }
-
-      // The C side builds with the linked toolchain; ZEPHYR_TOOLCHAIN_VARIANT
-      // is never 'rust'. The linked SDK path flows through zephyrSdkPath.
-      if (this.selectedArmGnuToolchainInstallation) {
-        return {
-          GNUARMEMB_TOOLCHAIN_PATH: this.selectedArmGnuToolchainInstallation.toolchainPath,
-          ZEPHYR_TOOLCHAIN_VARIANT: 'gnuarmemb',
-          ...rustToolchainInstallation.buildEnv,
-        };
-      }
-
-      return {
-        ZEPHYR_TOOLCHAIN_VARIANT: 'zephyr',
-        ...rustToolchainInstallation.buildEnv,
-      };
-    }
-
-    return { ZEPHYR_TOOLCHAIN_VARIANT: this.toolchainVariant };
+    return { ZEPHYR_TOOLCHAIN_VARIANT: this.toolchainVariant, ...rustEnv };
   }
 
   // Populate the runtime model from workspace-scoped settings while keeping
@@ -247,42 +232,26 @@ export class ZephyrApplication {
       } else {
         this.zephyrSdkPath = '';
       }
-    } else if (toolchainVariant === 'rust') {
-      const selectedRustPath = getPathSetting(ZEPHYR_PROJECT_RUST_SETTING_KEY) ?? '';
-      const rustToolchainInstallation = findRustToolchainInstallation(selectedRustPath);
-
-      if (rustToolchainInstallation) {
-        this.selectedRustToolchainInstallation = rustToolchainInstallation;
-
-        // Resolve the C side from the link, like IAR resolves its paired SDK,
-        // so re-linking the Rust toolchain propagates without app changes.
-        if (rustToolchainInstallation.cToolchainType === 'gnuarmemb' && rustToolchainInstallation.cToolchainPath) {
-          const linkedArmGnu = findArmGnuToolchainInstallation(rustToolchainInstallation.cToolchainPath);
-          if (linkedArmGnu) {
-            this.zephyrSdkPath = '';
-            this.selectedArmGnuToolchainInstallation = linkedArmGnu;
-          } else {
-            vscode.window.showWarningMessage(
-              `Linked Arm GNU toolchain ${rustToolchainInstallation.cToolchainPath} not found; falling back to SDK setting`
-            );
-            this.zephyrSdkPath = getPathSetting(ZEPHYR_PROJECT_SDK_SETTING_KEY) ?? '';
-          }
-        } else if (rustToolchainInstallation.cToolchainType === 'zephyr-sdk' && rustToolchainInstallation.cToolchainPath) {
-          this.zephyrSdkPath = rustToolchainInstallation.cToolchainPath;
-        } else {
-          vscode.window.showWarningMessage(
-            `Rust toolchain ${selectedRustPath} has no linked C toolchain; falling back to SDK setting. Right-click it in the Toolchains view to link one.`
-          );
-          this.zephyrSdkPath = getPathSetting(ZEPHYR_PROJECT_SDK_SETTING_KEY) ?? '';
-        }
-      } else {
-        vscode.window.showWarningMessage(
-          `Rust toolchain ${selectedRustPath} not found in listRustToolchains; falling back to SDK setting`
-        );
-        this.zephyrSdkPath = getPathSetting(ZEPHYR_PROJECT_SDK_SETTING_KEY) ?? '';
-      }
     } else {
       this.zephyrSdkPath = getPathSetting(ZEPHYR_PROJECT_SDK_SETTING_KEY) ?? '';
+    }
+
+    // Rust toolchain (orthogonal to the C toolchain): resolve the per-app
+    // setting when present; when unset the system rust on PATH is used.
+    this.selectedRustToolchainInstallation = undefined;
+    const selectedRustPath = getPathSetting(ZEPHYR_PROJECT_RUST_SETTING_KEY) ?? '';
+    if (selectedRustPath) {
+      const rustToolchainInstallation = findRustToolchainInstallation(selectedRustPath)
+        ?? (RustToolchainInstallation.isRustPath(selectedRustPath)
+          ? new RustToolchainInstallation(selectedRustPath)
+          : undefined);
+      if (rustToolchainInstallation) {
+        this.selectedRustToolchainInstallation = rustToolchainInstallation;
+      } else {
+        vscode.window.showWarningMessage(
+          `Rust toolchain ${selectedRustPath} not found; builds will use the rust available on PATH.`
+        );
+      }
     }
     this.venvPath = getPathSetting(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
 

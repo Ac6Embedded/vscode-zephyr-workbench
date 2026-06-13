@@ -6,7 +6,7 @@ import { WestWorkspace } from "../models/WestWorkspace";
 import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
 import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
-import { describeZephyrApplicationDetectionFailure, fileExists, findRustToolchainInstallation, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredRustToolchainInstallations, getListSamples, getRegisteredZephyrSdkInstallations, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
+import { describeZephyrApplicationDetectionFailure, fileExists, findRustToolchainInstallation, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredRustToolchainInstallations, getListSamples, getRegisteredZephyrSdkInstallations, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, tryGetZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { isPathWithin as isPathWithinWorkspaceApplication } from "../utils/zephyr/workspaceApplications";
@@ -111,7 +111,12 @@ export class CreateZephyrAppPanel {
         ? path.basename(rustToolchain.cToolchainPath)
         : 'no C toolchain linked';
       const label = `${rustToolchain.name} (+ ${linkedName})`;
-      sdkHTML += `<div class="dropdown-item" data-type="rust" data-value="${rustToolchain.toolchainPath}" data-label="${label}">${label}<span class="description">${rustToolchain.toolchainPath}</span></div>`;
+      // SDK-linked entries expose the linked SDK's LLVM so the same GNU/LLVM
+      // radio applies as when picking the SDK directly.
+      const linkedSdk = rustToolchain.cToolchainType === 'zephyr-sdk' && rustToolchain.cToolchainPath
+        ? tryGetZephyrSdkInstallation(rustToolchain.cToolchainPath)
+        : undefined;
+      sdkHTML += `<div class="dropdown-item" data-type="rust" data-value="${rustToolchain.toolchainPath}" data-label="${label}" data-has-llvm="${linkedSdk?.hasLlvmToolchain() ? 'true' : 'false'}">${label}<span class="description">${rustToolchain.toolchainPath}</span></div>`;
     }
 
     return /*html*/ `
@@ -631,14 +636,16 @@ function getRequestedToolchainVariant(rawVariant: unknown): ZephyrSdkVariantId {
   return normalizeZephyrSdkVariant(typeof rawVariant === 'string' ? rawVariant : undefined);
 }
 
-// The webview's SDK Variant radio always speaks 'zephyr' / 'zephyr/llvm';
-// a Rust group stores the 'rust' variant instead.
+// The webview's SDK Variant radio always speaks 'zephyr' / 'zephyr/llvm'.
+// A Rust entry stores the C variant derived from its linked toolchain (the
+// radio applies to SDK links); the rust path itself is stored separately.
 function toRequestedVariantFor(
   toolchainInstallation: unknown,
   toolchainVariant: ZephyrSdkVariantId,
 ): string {
-  if (toolchainInstallation instanceof RustToolchainInstallation) {
-    return 'rust';
+  if (toolchainInstallation instanceof RustToolchainInstallation
+    && toolchainInstallation.cToolchainType === 'gnuarmemb') {
+    return 'gnuarmemb';
   }
   return toolchainVariant;
 }

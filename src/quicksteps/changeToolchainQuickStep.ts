@@ -53,10 +53,15 @@ export async function changeToolchainQuickStep(
         const linkedName = rustToolchain.cToolchainPath
             ? path.basename(rustToolchain.cToolchainPath)
             : 'no C toolchain linked';
+        // A Rust pick is a normal C toolchain pick (derived from the link)
+        // that additionally pins the app's Rust toolchain path; SDK links go
+        // through the same GNU/LLVM sub-step as picking the SDK directly.
         items.push({
             label: rustToolchain.name,
             description: `+ ${linkedName}`,
-            selectedVariant: "rust",
+            selectedVariant: rustToolchain.cToolchainType === 'gnuarmemb' ? 'gnuarmemb' : 'zephyr',
+            zephyrSdkPath: rustToolchain.cToolchainType === 'zephyr-sdk' ? rustToolchain.cToolchainPath : undefined,
+            armGnuToolchainPath: rustToolchain.cToolchainType === 'gnuarmemb' ? rustToolchain.cToolchainPath : undefined,
             rustToolchainPath: rustToolchain.toolchainPath,
         });
     }
@@ -65,6 +70,13 @@ export async function changeToolchainQuickStep(
         title: "Change Toolchain Variant",
         placeHolder: "Select a toolchain installation"
     });
+
+    if (selection?.rustToolchainPath && !selection.zephyrSdkPath && !selection.armGnuToolchainPath) {
+        vscode.window.showErrorMessage(
+            "This Rust toolchain has no linked C toolchain; right-click it in the Toolchains view to link one."
+        );
+        return undefined;
+    }
 
     if (!selection || selection.selectedVariant !== "zephyr" || !selection.zephyrSdkPath) {
         return selection;

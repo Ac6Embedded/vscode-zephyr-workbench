@@ -286,16 +286,6 @@ export class ZephyrApplicationToolchainTreeItem extends ZephyrApplicationTreeIte
     } else if (variant === 'gnuarmemb') {
       installationName = project.selectedArmGnuToolchainInstallation?.name;
       detailPath = project.selectedArmGnuToolchainInstallation?.toolchainPath;
-    } else if (variant === 'rust') {
-      const rustInstallation = project.selectedRustToolchainInstallation;
-      if (rustInstallation) {
-        const linkedName = rustInstallation.cToolchainPath
-          ? path.basename(rustInstallation.cToolchainPath)
-          : 'no C toolchain linked';
-        installationName = `${rustInstallation.name} (+ ${linkedName})`;
-        detailPath = rustInstallation.toolchainPath
-          + (rustInstallation.cToolchainPath ? `\nLinked C toolchain: ${rustInstallation.cToolchainPath}` : '');
-      }
     } else {
       // 'zephyr' / 'zephyr/llvm': the SDK installation isn't loaded eagerly,
       // so derive the install folder name from the configured path the same
@@ -306,11 +296,17 @@ export class ZephyrApplicationToolchainTreeItem extends ZephyrApplicationTreeIte
       }
     }
 
+    // A pinned Rust toolchain rides on top of the C toolchain; surface it
+    // next to the C variant instead of replacing it.
+    const rustInstallation = project.selectedRustToolchainInstallation;
     this.label = installationName ?? 'toolchain';
-    this.description = installationName ? `[${variant}]` : '[not set]';
+    this.description = installationName
+      ? (rustInstallation ? `[${variant} + rust]` : `[${variant}]`)
+      : '[not set]';
+    const rustDetail = rustInstallation ? `\nRust toolchain: ${rustInstallation.toolchainPath}` : '';
     this.tooltip = detailPath
-      ? `${installationName} (${variant})\n${detailPath}`
-      : `Toolchain not set (${variant})`;
+      ? `${installationName} (${variant})\n${detailPath}${rustDetail}`
+      : `Toolchain not set (${variant})${rustDetail}`;
     // Mirror the Toolchains sidebar's icon-per-vendor convention so the row
     // tells the user which toolchain family is in use at a glance:
     //   - IAR uses the IAR logo (raster, no theme variants).
@@ -323,7 +319,7 @@ export class ZephyrApplicationToolchainTreeItem extends ZephyrApplicationTreeIte
         light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'arm_gnu_icon_light.svg'),
         dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'arm_gnu_icon_dark.svg'),
       };
-    } else if (variant === 'rust') {
+    } else if (rustInstallation) {
       this.iconPath = {
         light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'rust_icon_light.svg'),
         dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'rust_icon_dark.svg'),

@@ -827,6 +827,11 @@ export function getSelectedToolchainVariantEnv(
 ): Record<string, string> {
   const toolchainSelection = readToolchainSelection(cfg, scope);
   const toolchainVariant = toolchainSelection.variant;
+  // Rust rides on top of whichever C variant is selected; when no rust path
+  // is configured, the system rust on PATH is used (no extra env).
+  const rustEnv = (toolchainSelection.rustToolchainPath
+    ? findRustToolchainInstallation(toolchainSelection.rustToolchainPath)?.buildEnv
+    : undefined) ?? {};
 
   if (toolchainVariant === 'iar') {
     const iarToolchainInstallation = findIarToolchainInstallation(toolchainSelection.iarToolchainPath ?? '');
@@ -843,6 +848,7 @@ export function getSelectedToolchainVariantEnv(
       IAR_TOOLCHAIN_PATH: armSubdir,
       ZEPHYR_TOOLCHAIN_VARIANT: 'iar',
       IAR_LMS_BEARER_TOKEN: iarToolchainInstallation.token ?? '',
+      ...rustEnv,
     };
   }
 
@@ -855,32 +861,11 @@ export function getSelectedToolchainVariantEnv(
     return {
       GNUARMEMB_TOOLCHAIN_PATH: armGnuToolchainInstallation.toolchainPath,
       ZEPHYR_TOOLCHAIN_VARIANT: 'gnuarmemb',
+      ...rustEnv,
     };
   }
 
-  if (toolchainVariant === 'rust') {
-    const rustToolchainInstallation = findRustToolchainInstallation(toolchainSelection.rustToolchainPath ?? '');
-    if (!rustToolchainInstallation) {
-      return {};
-    }
-
-    // The C side comes from the linked toolchain; ZEPHYR_TOOLCHAIN_VARIANT is
-    // never 'rust'.
-    if (rustToolchainInstallation.cToolchainType === 'gnuarmemb' && rustToolchainInstallation.cToolchainPath) {
-      return {
-        GNUARMEMB_TOOLCHAIN_PATH: rustToolchainInstallation.cToolchainPath,
-        ZEPHYR_TOOLCHAIN_VARIANT: 'gnuarmemb',
-        ...rustToolchainInstallation.buildEnv,
-      };
-    }
-
-    return {
-      ZEPHYR_TOOLCHAIN_VARIANT: 'zephyr',
-      ...rustToolchainInstallation.buildEnv,
-    };
-  }
-
-  return { ZEPHYR_TOOLCHAIN_VARIANT: toolchainVariant };
+  return { ZEPHYR_TOOLCHAIN_VARIANT: toolchainVariant, ...rustEnv };
 }
 
 export async function getInternalZephyrSdkInstallation(): Promise<ZephyrSdkInstallation | undefined> {
