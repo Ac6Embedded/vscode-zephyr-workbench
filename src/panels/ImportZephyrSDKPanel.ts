@@ -569,9 +569,7 @@ ${process.platform === 'win32' ? `
                   workspacePath,
                   msg.rustCToolchainType,
                   msg.rustCToolchainPath,
-                  "download",
                   msg.llvmVersion,
-                  undefined,
                   msg.rustInstallMingw,
                 );
                 break;
@@ -583,9 +581,7 @@ ${process.platform === 'win32' ? `
                   msg.rustTargets,
                   msg.rustCToolchainType,
                   msg.rustCToolchainPath,
-                  "download",
                   msg.llvmVersion,
-                  undefined,
                 );
                 break;
 

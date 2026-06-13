@@ -151,30 +151,14 @@ function isValidRustCToolchainLink(cToolchainType?: string, cToolchainPath?: str
 // installation or download/extract a release from llvm-project into the
 // same folder the Rust toolchain uses (no separate location is asked).
 // Returns the LLVM root (containing libclang) or undefined on failure.
+// The Add Toolchain wizard always downloads the host LLVM; linking a local
+// LLVM is a separate right-click action (change-rust-llvm). This resolves the
+// requested release, reusing an already-extracted copy when present.
 async function resolveRustLlvm(
 	context: vscode.ExtensionContext,
 	downloadDestDir: string,
-	llvmSource?: string,
 	llvmVersion?: string,
-	llvmPath?: string,
 ): Promise<string | undefined> {
-	if (llvmSource === 'local') {
-		if (!llvmPath) {
-			vscode.window.showErrorMessage("Missing host LLVM location, please select an existing LLVM installation.");
-			return undefined;
-		}
-		let candidate = llvmPath;
-		const base = path.basename(candidate).toLowerCase();
-		if (base === 'bin' || base === 'lib') {
-			candidate = path.dirname(candidate);
-		}
-		if (!isLlvmPath(candidate)) {
-			vscode.window.showErrorMessage("The folder is not a valid LLVM installation (libclang not found).");
-			return undefined;
-		}
-		return candidate;
-	}
-
 	if (!llvmVersion) {
 		vscode.window.showErrorMessage("Missing LLVM version, please choose the LLVM release to download.");
 		return undefined;
@@ -2491,9 +2475,7 @@ export function activate(context: vscode.ExtensionContext) {
 				targets: string[],
 				cToolchainType?: string,
 				cToolchainPath?: string,
-				llvmSource?: string,
 				llvmVersion?: string,
-				llvmPath?: string,
 			) => {
 				if (!versionOrChannel || !Array.isArray(targets) || targets.length === 0) {
 					vscode.window.showErrorMessage("Missing Rust selection, please choose a version and at least one embedded target.");
@@ -2518,7 +2500,7 @@ export function activate(context: vscode.ExtensionContext) {
 				ImportZephyrSDKPanel.currentPanel?.dispose();
 
 				// Downloaded LLVM lives beside the rustup-managed toolchains.
-				const llvmRoot = await resolveRustLlvm(context, getManagedRustupRootDir(), llvmSource, llvmVersion, llvmPath);
+				const llvmRoot = await resolveRustLlvm(context, getManagedRustupRootDir(), llvmVersion);
 				if (!llvmRoot) {
 					return;
 				}
@@ -2573,9 +2555,7 @@ export function activate(context: vscode.ExtensionContext) {
 				parentPath?: string,
 				cToolchainType?: string,
 				cToolchainPath?: string,
-				llvmSource?: string,
 				llvmVersion?: string,
-				llvmPath?: string,
 				installMingw?: boolean,
 			) => {
 				if (!parentPath) {
@@ -2634,7 +2614,7 @@ export function activate(context: vscode.ExtensionContext) {
 				ImportZephyrSDKPanel.currentPanel?.dispose();
 
 				// Downloaded LLVM lands in the same Location as the toolchain.
-				const llvmRoot = await resolveRustLlvm(context, parentPath, llvmSource, llvmVersion, llvmPath);
+				const llvmRoot = await resolveRustLlvm(context, parentPath, llvmVersion);
 				if (!llvmRoot) {
 					return;
 				}
