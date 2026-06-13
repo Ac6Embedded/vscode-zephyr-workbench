@@ -8,7 +8,7 @@ import { ZephyrApplication } from "../models/ZephyrApplication";
 import { ZephyrBoard } from "../models/ZephyrBoard";
 import { ArmGnuToolchainInstallation, normalizeArmGnuTargetTriple, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from "../models/ToolchainInstallations";
 import { ZephyrAppTemplateKind, ZephyrSample } from "../models/ZephyrSample";
-import { ConfigurationScope, getEnvVarFormat, getOutputChannel, getShell } from "./execUtils";
+import { getEnvVarFormat, getOutputChannel, getShell } from "./execUtils";
 import { checkHostTools, checkEnvFile } from "./installUtils";
 import {
   ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY,
@@ -20,7 +20,6 @@ import {
 } from '../constants';
 import { buildDirectTask, checkOrCreateTask, isDirectTask, resolveFlashRunnerSelection, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
 import { readInstalledZinstallerVersion, versionAtLeast } from './env/zinstallerVersionUtils';
-import { readToolchainSelection } from './toolchainSelection';
 import {
   findContainingWorkspaceApplicationEntry,
   getEffectiveWorkspaceApplicationEntry,
@@ -819,53 +818,6 @@ export function getArmGnuToolchainInstallationByPath(toolchainPath: string): Arm
     normalizeArmGnuTargetTriple(hit.targetTriple, hit.toolchainPath),
     hit.version,
   );
-}
-
-export function getSelectedToolchainVariantEnv(
-  cfg: vscode.WorkspaceConfiguration,
-  scope?: ConfigurationScope,
-): Record<string, string> {
-  const toolchainSelection = readToolchainSelection(cfg, scope);
-  const toolchainVariant = toolchainSelection.variant;
-  // Rust rides on top of whichever C variant is selected; when no rust path
-  // is configured, the system rust on PATH is used (no extra env).
-  const rustEnv = (toolchainSelection.rustToolchainPath
-    ? findRustToolchainInstallation(toolchainSelection.rustToolchainPath)?.buildEnv
-    : undefined) ?? {};
-
-  if (toolchainVariant === 'iar') {
-    const iarToolchainInstallation = findIarToolchainInstallation(toolchainSelection.iarToolchainPath ?? '');
-    if (!iarToolchainInstallation) {
-      return {};
-    }
-
-    const armSubdir =
-      process.platform === 'win32'
-        ? path.join(iarToolchainInstallation.iarPath, 'arm')
-        : path.posix.join(iarToolchainInstallation.iarPath, 'arm');
-
-    return {
-      IAR_TOOLCHAIN_PATH: armSubdir,
-      ZEPHYR_TOOLCHAIN_VARIANT: 'iar',
-      IAR_LMS_BEARER_TOKEN: iarToolchainInstallation.token ?? '',
-      ...rustEnv,
-    };
-  }
-
-  if (toolchainVariant === 'gnuarmemb') {
-    const armGnuToolchainInstallation = findArmGnuToolchainInstallation(toolchainSelection.armGnuToolchainPath ?? '');
-    if (!armGnuToolchainInstallation) {
-      return {};
-    }
-
-    return {
-      GNUARMEMB_TOOLCHAIN_PATH: armGnuToolchainInstallation.toolchainPath,
-      ZEPHYR_TOOLCHAIN_VARIANT: 'gnuarmemb',
-      ...rustEnv,
-    };
-  }
-
-  return { ZEPHYR_TOOLCHAIN_VARIANT: toolchainVariant, ...rustEnv };
 }
 
 export async function getInternalZephyrSdkInstallation(): Promise<ZephyrSdkInstallation | undefined> {

@@ -46,7 +46,7 @@ export const RUST_STABLE_CHANNEL = 'stable';
 
 // Snapshot of _rust_map_target() in zephyr-lang-rust, used when the online
 // fetch fails.
-export const ZEPHYR_RUST_FALLBACK_TARGETS: string[] = [
+const ZEPHYR_RUST_FALLBACK_TARGETS: string[] = [
   'thumbv6m-none-eabi',
   'thumbv7m-none-eabi',
   'thumbv7em-none-eabi',
@@ -62,7 +62,7 @@ export const ZEPHYR_RUST_FALLBACK_TARGETS: string[] = [
 
 // Zephyr usage context per triple, derived from the CPU conditions in the
 // module's _rust_map_target() CMake function.
-export const ZEPHYR_RUST_TARGET_INFO: Record<string, string> = {
+const ZEPHYR_RUST_TARGET_INFO: Record<string, string> = {
   'thumbv6m-none-eabi': 'Cortex-M0/M0+/M1',
   'thumbv7m-none-eabi': 'Cortex-M3',
   'thumbv7em-none-eabi': 'Cortex-M4/M7 (soft-float ABI)',
@@ -201,7 +201,7 @@ export async function fetchLlvmVersions(): Promise<string[]> {
 // Release asset per host (verified against llvmorg-20.x/21.x):
 // Windows x64 ships as clang+llvm-<v>-x86_64-pc-windows-msvc.tar.xz, the
 // other hosts as LLVM-<v>-<OS>-<ARCH>.tar.xz. macOS x64 has no 20+ asset.
-export function getLlvmAssetName(version: string): string | undefined {
+function getLlvmAssetName(version: string): string | undefined {
   if (process.platform === 'win32' && process.arch === 'x64') {
     return `clang+llvm-${version}-x86_64-pc-windows-msvc.tar.xz`;
   }
@@ -236,7 +236,7 @@ export function isLlvmPath(llvmRoot: string): boolean {
 const WINLIBS_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/brechtsanders/winlibs_mingw/releases/latest';
 export const WINLIBS_MANUAL_URL = 'https://winlibs.com/';
 
-export function getMingwBinDirPath(toolchainPath: string): string {
+function getMingwBinDirPath(toolchainPath: string): string {
   return path.join(toolchainPath, 'mingw64', 'bin');
 }
 

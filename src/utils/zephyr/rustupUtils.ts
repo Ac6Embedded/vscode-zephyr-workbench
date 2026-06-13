@@ -20,8 +20,8 @@ export interface RustupStatus {
   version?: string;
   latestVersion?: string;
   updateAvailable?: boolean;
-  // Where the workbench installs rustup (configurable) and where the active
-  // rustup actually stores its toolchains.
+  // Where the workbench installs rustup (.zinstaller/tools/rustup, fixed) and
+  // where the active rustup actually stores its toolchains.
   managedRootDir: string;
   toolchainsDir?: string;
   prereqOk: boolean;
@@ -41,7 +41,7 @@ export function getManagedRustupHome(): string {
   return path.join(getManagedRustupRootDir(), 'rustup-home');
 }
 
-export function getManagedCargoHome(): string {
+function getManagedCargoHome(): string {
   return path.join(getManagedRustupRootDir(), 'cargo-home');
 }
 
@@ -441,7 +441,7 @@ export async function uninstallRustToolchainViaRustup(toolchainPath: string, rus
     ? (fs.existsSync(getManagedRustupBinPath())
         ? { rustupPath: getManagedRustupBinPath(), managed: true }
         : undefined)
-    : (found && !found.managed ? found : found);
+    : found;
 
   if (!rustup) {
     return false;
