@@ -71,3 +71,22 @@ export async function ensurePowershellExecutionPolicy(): Promise<boolean> {
   }
   return false;
 }
+
+/**
+ * Quote a filesystem path so it survives being passed to `powershell.exe -Command`.
+ *
+ * Install commands run through a string ShellExecution as `powershell.exe -Command <cmd>`,
+ * where <cmd> is appended verbatim. The outer PowerShell parses its own command line
+ * (splitting on whitespace and dropping surrounding double quotes), then rebuilds the
+ * -Command text by joining the tokens with single spaces, without re-quoting. Plain
+ * double quotes are therefore lost, so a path containing spaces (e.g. a home directory
+ * like "C:\\Users\\First Last") gets split and the command fails with
+ * "... does not have a 'ps1' extension".
+ *
+ * Escaped double quotes (\") survive that round-trip as literal quote characters and are
+ * honored when the inner command is finally parsed, including after the stop-parsing
+ * token `--%`. Use this for any path interpolated into a PowerShell install command.
+ */
+export function quotePathForPwshCommand(p: string): string {
+  return `\\"${p}\\"`;
+}
