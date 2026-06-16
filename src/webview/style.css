@@ -20,6 +20,9 @@ body {
 form {
   margin-top: 5px;
   margin-bottom: 10px;
+  /* body is a column flexbox; without this, a wide table's min-content width
+     makes the form refuse to shrink and overflow horizontally. */
+  min-width: 0;
 }
 
 .help-link {
@@ -134,6 +137,59 @@ form {
 
 .debug-tools-table th:nth-child(4), .debug-tools-table td:nth-child(4) {
   width: 16%;
+}
+
+/* Host Tools table only: widen the "Source" column for the two radios and take the
+   space back from the empty trailing columns, so the total stays <= 100% (the table
+   uses table-layout: fixed, so overshooting 100% causes horizontal overflow). */
+.host-tools-table th:nth-child(4), .host-tools-table td:nth-child(4) {
+  width: 24%;
+}
+.host-tools-table th:nth-child(5), .host-tools-table td:nth-child(5) {
+  width: 6%;
+}
+.host-tools-table th:nth-child(6), .host-tools-table td:nth-child(6) {
+  width: 8%;
+}
+
+/* In-view confirmation dialog (used instead of a native modal so it works
+   consistently in remote / devcontainer setups). */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+}
+.confirm-dialog {
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  color: var(--vscode-editor-foreground);
+  border: 1px solid var(--vscode-widget-border, var(--vscode-tab-border));
+  border-radius: 4px;
+  padding: 16px 18px;
+  max-width: 420px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.confirm-message {
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Host Tools "Source" cell: two radios (Zinstaller / System) shown on the row. */
+.tool-source-cell {
+  text-align: left;
+}
+.tool-source-cell .set-default-radio {
+  margin-left: 0;
+  margin-right: 14px;
+  font-size: calc(var(--type-ramp-base-font-size) - 1px);
 }
 
 .debug-tools-table th:nth-child(5), .debug-tools-table td:nth-child(5) {

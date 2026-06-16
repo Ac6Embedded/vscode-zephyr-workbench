@@ -213,20 +213,31 @@ export class HostToolsPanel {
     for (const toolId of tools) {
       const version = this.getToolVersion(toolId);
       const pathDisplay = this.getToolPathDisplay(toolId);
-      const addToPathChecked = this.getToolAddToPathChecked(toolId) ? "checked" : "";
+      const useZinstaller = this.getToolAddToPathChecked(toolId);
+      const zinstallerChecked = useZinstaller ? "checked" : "";
+      const systemChecked = useZinstaller ? "" : "checked";
 
       html += `<tr id="row-${toolId}">
         <td><button type="button" class="inline-icon-button expand-button codicon codicon-chevron-right" data-tool="${toolId}" aria-label="Expand/Collapse"></button></td>
         <td id="name-${toolId}">${toolId}</td>
         <td id="version-${toolId}">${version}</td>
-        <td></td>
+        <td id="source-${toolId}" class="tool-source-cell" data-current-mode="${useZinstaller ? 'zinstaller' : 'system'}">
+          <label class="set-default-radio">
+            <input type="radio" class="set-default-radio-input tool-source-radio" name="source-${toolId}" data-tool="${toolId}" data-mode="zinstaller" ${zinstallerChecked}>
+            <span>Zinstaller</span>
+          </label>
+          <label class="set-default-radio">
+            <input type="radio" class="set-default-radio-input tool-source-radio" name="source-${toolId}" data-tool="${toolId}" data-mode="system" ${systemChecked}>
+            <span>System</span>
+          </label>
+        </td>
         <td id="buttons-${toolId}"></td>
         <td></td>
       </tr>`;
 
       const pathHtml = `
         <div class="grid-group-div">
-          <vscode-text-field id="details-path-input-${toolId}" class="details-path-field" 
+          <vscode-text-field id="details-path-input-${toolId}" class="details-path-field"
             placeholder="Path(s), separate multiple with ;" value="${pathDisplay}" size="50" disabled>Path:</vscode-text-field>
           <vscode-button id="browse-path-button-${toolId}" class="browse-input-button" appearance="secondary" disabled>
             <span class="codicon codicon-folder"></span>
@@ -239,9 +250,7 @@ export class HostToolsPanel {
         <td>
           <vscode-button appearance="primary" class="save-path-button" data-tool="${toolId}">Edit</vscode-button>
         </td>
-        <td>
-          <vscode-checkbox class="add-to-path" data-tool="${toolId}" ${addToPathChecked} disabled/> Add to PATH</vscode-checkbox>
-        </td>
+        <td></td>
         <td></td>
         <td></td>
       </tr>`;
@@ -341,14 +350,14 @@ export class HostToolsPanel {
             <h2>Host Tools
               <span id="ht-spinner" class="codicon codicon-loading codicon-modifier-spin hidden" title="Checking versions"></span>
             </h2>
-            <table class="debug-tools-table">
+            <table class="debug-tools-table host-tools-table">
               <tr>
                 <th></th>
                 <th>Name</th>
                 <th>Version
                   <button id="btn-refresh-versions" type="button" class="inline-icon-button codicon codicon-refresh" title="Refresh versions" aria-label="Refresh versions"></button>
                 </th>
-                <th></th>
+                <th>Source</th>
                 <th></th>
                 <th></th>
               </tr>
@@ -391,6 +400,15 @@ export class HostToolsPanel {
               ${extraToolsHTML}
             </table>
           </form>
+          <div id="confirm-overlay" class="confirm-overlay hidden" role="presentation">
+            <div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-message">
+              <div id="confirm-message" class="confirm-message"></div>
+              <div class="confirm-actions">
+                <vscode-button id="confirm-cancel" appearance="secondary">Cancel</vscode-button>
+                <vscode-button id="confirm-ok" appearance="primary">Switch</vscode-button>
+              </div>
+            </div>
+          </div>
           <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
         </body>
       </html>`;
@@ -457,9 +475,28 @@ export class HostToolsPanel {
             }
             break;
           }
-          case "toggle-add-to-path": {
-            const { tool, addToPath } = message;
-            webview.postMessage({ command: "add-to-path-updated", tool, doNotUse: !addToPath });
+          case "request-set-tool-source": {
+            // The webview already showed an in-view confirmation, so just persist here.
+            const tool = String(message.tool ?? "");
+            const mode = String(message.mode ?? ""); // 'zinstaller' | 'system'
+            const currentDoNotUse = !this.getToolAddToPathChecked(tool);
+            if (!tool || (mode !== "zinstaller" && mode !== "system")) {
+              webview.postMessage({ command: "tool-source-updated", tool, doNotUse: currentDoNotUse });
+              break;
+            }
+            const desiredDoNotUse = mode === "system";
+            const ok = await this.saveDoNotUse(tool, desiredDoNotUse);
+            // Echo back the authoritative state so the webview reflects/reverts the radio.
+            webview.postMessage({ command: "tool-source-updated", tool, doNotUse: ok ? desiredDoNotUse : currentDoNotUse });
+            if (ok) {
+              // Re-check versions so the displayed version reflects the now-active binary.
+              try {
+                this._panel.webview.postMessage({ command: 'toggle-spinner', show: true });
+                await this.checkAndPublishToolVersions();
+              } finally {
+                this._panel.webview.postMessage({ command: 'toggle-spinner', show: false });
+              }
+            }
             break;
           }
           case "add-env-var": {

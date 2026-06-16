@@ -6,6 +6,52 @@ const webviewApi = acquireVsCodeApi();
 
 window.addEventListener("load", main);
 
+// --- In-view confirmation for switching a tool's source (Zinstaller / System) ---
+// Pending change awaiting confirmation; null when the dialog is closed.
+let pendingToolSource: { tool: string; mode: string; prevMode: string } | null = null;
+
+function showToolSourceConfirm(tool: string, mode: string, prevMode: string, message: string) {
+  pendingToolSource = { tool, mode, prevMode };
+  const msg = document.getElementById('confirm-message');
+  if (msg) { msg.textContent = message; }
+  const overlay = document.getElementById('confirm-overlay');
+  if (overlay) { overlay.classList.remove('hidden'); }
+  const ok = document.getElementById('confirm-ok') as HTMLElement | null;
+  if (ok) { ok.focus(); }
+}
+
+function hideToolSourceConfirm() {
+  const overlay = document.getElementById('confirm-overlay');
+  if (overlay) { overlay.classList.add('hidden'); }
+}
+
+function revertToolSourceRadio(tool: string, mode: string) {
+  const radio = document.querySelector(
+    `.tool-source-radio[data-tool="${tool}"][data-mode="${mode}"]`
+  ) as HTMLInputElement | null;
+  if (radio) { radio.checked = true; }
+}
+
+function confirmToolSourceSwitch() {
+  if (pendingToolSource) {
+    webviewApi.postMessage({
+      command: 'request-set-tool-source',
+      tool: pendingToolSource.tool,
+      mode: pendingToolSource.mode,
+    });
+  }
+  pendingToolSource = null;
+  hideToolSourceConfirm();
+}
+
+function cancelToolSourceSwitch() {
+  if (pendingToolSource) {
+    revertToolSourceRadio(pendingToolSource.tool, pendingToolSource.prevMode);
+  }
+  pendingToolSource = null;
+  hideToolSourceConfirm();
+}
+
 function main() {
   setVSCodeMessageListener();
 
@@ -63,20 +109,17 @@ function main() {
     if (tool) {
       const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
       const browseBtn = document.getElementById(`browse-path-button-${tool}`) as HTMLButtonElement | null;
-      const checkbox = document.querySelector(`.add-to-path[data-tool="${tool}"]`) as HTMLInputElement | null;
-      if (!input || !browseBtn || !checkbox) return;
+      if (!input || !browseBtn) return;
       if (btn.textContent === 'Edit') {
         input.disabled = false;
         browseBtn.disabled = false;
-        checkbox.disabled = false;
         input.focus();
         btn.textContent = 'Done';
       } else if (btn.textContent === 'Done') {
         input.disabled = true;
         browseBtn.disabled = true;
-        checkbox.disabled = true;
         btn.textContent = 'Edit';
-        webviewApi.postMessage({ command: 'update-path', tool, newPath: input.value, addToPath: checkbox.checked });
+        webviewApi.postMessage({ command: 'update-path', tool, newPath: input.value });
         // Refresh versions when Done is pressed
         document.querySelectorAll('td[id^="version-"]').forEach((el) => {
           (el as HTMLElement).textContent = '';
@@ -195,21 +238,45 @@ function main() {
       const id = (btn as HTMLElement).id;
       const tool = id.replace('browse-path-button-', '');
       if (!tool) return;
-      const checkbox = document.querySelector(`.add-to-path[data-tool="${tool}"]`) as HTMLInputElement | null;
-      const addToPath = checkbox ? checkbox.checked : undefined;
-      webviewApi.postMessage({ command: 'browse-path', tool, addToPath });
+      webviewApi.postMessage({ command: 'browse-path', tool });
     });
   });
 
-  // Toggle Add to PATH (frontend only until save)
+  // Tool source (Zinstaller / System): show an in-view confirmation before persisting.
+  // On confirm we post 'request-set-tool-source'; the backend echoes back the
+  // authoritative do_not_use via 'tool-source-updated', which re-applies the radio.
   document.addEventListener('change', (ev) => {
-    const target = ev.target as any;
-    if (!target) return;
-    if (!target.classList.contains('add-to-path')) return;
+    const target = ev.target as HTMLInputElement | null;
+    if (!target || !target.classList.contains('tool-source-radio')) return;
+    if (!target.checked) return;
     const tool = target.getAttribute('data-tool');
-    if (!tool) return;
-    const addToPath = target.checked;
-    webviewApi.postMessage({ command: 'toggle-add-to-path', tool, addToPath });
+    const mode = target.getAttribute('data-mode');
+    if (!tool || !mode) return;
+    const cell = document.getElementById(`source-${tool}`) as HTMLElement | null;
+    const currentMode = cell?.dataset.currentMode ?? 'zinstaller';
+    if (mode === currentMode) return; // no actual change
+    const label = mode === 'system' ? 'System' : 'Zinstaller';
+    showToolSourceConfirm(
+      tool,
+      mode,
+      currentMode,
+      `Switch "${tool}" to ${label}? This changes which ${tool} is used by the Zephyr environment.`
+    );
+  });
+
+  // In-view confirmation dialog buttons / dismissal.
+  const confirmOk = document.getElementById('confirm-ok');
+  if (confirmOk) { confirmOk.addEventListener('click', confirmToolSourceSwitch); }
+  const confirmCancel = document.getElementById('confirm-cancel');
+  if (confirmCancel) { confirmCancel.addEventListener('click', cancelToolSourceSwitch); }
+  const confirmOverlay = document.getElementById('confirm-overlay');
+  if (confirmOverlay) {
+    confirmOverlay.addEventListener('click', (e) => {
+      if (e.target === confirmOverlay) { cancelToolSourceSwitch(); }
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && pendingToolSource) { cancelToolSourceSwitch(); }
   });
 
   // Extra Tools: add via backend and auto-open the new row
@@ -271,26 +338,28 @@ function setVSCodeMessageListener() {
         break;
       }
       case 'path-updated': {
-        const { tool, path, FromBrowse, success } = event.data;
+        const { tool, path } = event.data;
         const input = document.getElementById(`details-path-input-${tool}`) as HTMLInputElement | null;
         const browseBtn = document.getElementById(`browse-path-button-${tool}`) as HTMLButtonElement | null;
-        const checkbox = document.querySelector(`.add-to-path[data-tool="${tool}"]`) as HTMLInputElement | null;
         if (input) { input.value = path ?? ''; input.disabled = true; }
         if (browseBtn) { browseBtn.disabled = true; }
-        if (checkbox) {
-          checkbox.disabled = true;
-          if (FromBrowse) {
-            webviewApi.postMessage({ command: 'update-path', tool, newPath: path, addToPath: checkbox.checked });
-          }
-        }
         const btn = document.querySelector(`.save-path-button[data-tool="${tool}"]`) as HTMLButtonElement | null;
         if (btn) { btn.textContent = 'Edit'; btn.removeAttribute('disabled'); }
         break;
       }
-      case 'add-to-path-updated': {
+      case 'tool-source-updated': {
         const { tool, doNotUse } = event.data;
-        const cb = document.querySelector(`.add-to-path[data-tool="${tool}"]`) as HTMLInputElement | null;
-        if (cb) cb.checked = !doNotUse;
+        const useZinstaller = doNotUse !== true;
+        const zRadio = document.querySelector(`.tool-source-radio[data-tool="${tool}"][data-mode="zinstaller"]`) as HTMLInputElement | null;
+        const sRadio = document.querySelector(`.tool-source-radio[data-tool="${tool}"][data-mode="system"]`) as HTMLInputElement | null;
+        if (zRadio) { zRadio.checked = useZinstaller; }
+        if (sRadio) { sRadio.checked = !useZinstaller; }
+        // Record the now-authoritative mode so the next toggle compares against it.
+        const cell = document.getElementById(`source-${tool}`) as HTMLElement | null;
+        if (cell) { cell.dataset.currentMode = useZinstaller ? 'zinstaller' : 'system'; }
+        // Clear the version cell; the follow-up update-tool-versions repopulates it.
+        const vcell = document.getElementById(`version-${tool}`);
+        if (vcell) { vcell.textContent = ''; }
         break;
       }
       case 'extra-path-updated': {
