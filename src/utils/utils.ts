@@ -1178,12 +1178,16 @@ export async function checkZinstallerVersion(
     const hasEnv = await checkEnvFile();
     if (!hasTools || !hasEnv) {
       const installHostToolsItem = 'Install Host Tools';
+      const advancedItem = 'Advanced';
       const choice = await vscode.window.showErrorMessage(
         'Host tools are missing, please install them first',
-        installHostToolsItem
+        installHostToolsItem,
+        advancedItem
       );
       if (choice === installHostToolsItem) {
         try { await vscode.commands.executeCommand('zephyr-workbench.install-host-tools.open-manager'); } catch {}
+      } else if (choice === advancedItem) {
+        try { await vscode.commands.executeCommand('zephyr-workbench.install-host-tools.advanced'); } catch {}
       }
       return;
     }

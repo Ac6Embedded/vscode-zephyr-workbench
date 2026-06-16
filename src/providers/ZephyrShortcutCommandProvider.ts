@@ -31,6 +31,16 @@ const installHostToolsMenuItem = new MenuItem(
   }
 );
 
+const advancedInstallHostToolsMenuItem = new MenuItem(
+  'Install Host Tools (Advanced)',
+  vscode.TreeItemCollapsibleState.None,
+  'settings-gear',
+  {
+    command: 'zephyr-workbench.install-host-tools.advanced',
+    title: 'Install Host Tools (Advanced)',
+  }
+);
+
 const newAppMenuItem = new MenuItem(
   'Add Application',
   vscode.TreeItemCollapsibleState.None,
@@ -126,6 +136,7 @@ export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<Me
     if(element === undefined) {
       if(!await checkHostTools()) {
         items.push(installHostToolsMenuItem);
+        items.push(advancedInstallHostToolsMenuItem);
       }
 
       items.push(newAppMenuItem);

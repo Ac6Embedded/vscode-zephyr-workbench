@@ -32,6 +32,7 @@ import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
 import { WestManagerPanel } from './panels/WestManagerPanel';
 import { HostToolsPanel } from './panels/HostToolsPanel';
+import { AdvancedHostToolsPanel } from './panels/AdvancedHostToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { EclairManagerPanel } from './panels/EclairManagerPanel';
 import { ZephyrDashboardViewProvider } from './panels/ZephyrDashboardViewProvider';
@@ -616,9 +617,12 @@ export function activate(context: vscode.ExtensionContext) {
 				CreateWestWorkspacePanel.render(context.extensionUri);
 			} else {
 				const installHostToolsItem = 'Install Host Tools';
-				const choice = await vscode.window.showErrorMessage("Host tools are missing, please install them first", installHostToolsItem);
+				const advancedItem = 'Advanced';
+				const choice = await vscode.window.showErrorMessage("Host tools are missing, please install them first", installHostToolsItem, advancedItem);
 				if (choice === installHostToolsItem) {
 					vscode.commands.executeCommand('zephyr-workbench.install-host-tools.open-manager');
+				} else if (choice === advancedItem) {
+					vscode.commands.executeCommand('zephyr-workbench.install-host-tools.advanced');
 				}
 				return;
 			}
@@ -2194,9 +2198,17 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 
 				if (force) {
-					const yes = await showConfirmMessage(
-						"Are you sure you want to reinstall the host tools ?");
-					if (!yes) { return; }
+					const reinstallItem = 'Reinstall';
+					const advancedItem = 'Advanced';
+					const choice = await vscode.window.showWarningMessage(
+						"Are you sure you want to reinstall the host tools ?",
+						reinstallItem,
+						advancedItem
+					);
+					if (choice === advancedItem) {
+						return vscode.commands.executeCommand('zephyr-workbench.install-host-tools.advanced');
+					}
+					if (choice !== reinstallItem) { return; }
 				}
 
 				return vscode.commands.executeCommand(
@@ -2213,6 +2225,15 @@ export function activate(context: vscode.ExtensionContext) {
 			"zephyr-workbench.host-tools-manager",
 			async () => {
 				HostToolsPanel.render(context.extensionUri);
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench.install-host-tools.advanced",
+			async () => {
+				AdvancedHostToolsPanel.render(context.extensionUri);
 			}
 		)
 	);
@@ -2406,12 +2427,16 @@ export function activate(context: vscode.ExtensionContext) {
 				ImportZephyrSDKPanel.render(context.extensionUri);
 			} else {
 				const installHostToolsItem = 'Install Host Tools';
+				const advancedItem = 'Advanced';
 				const choice = await vscode.window.showErrorMessage(
 					"Host tools are missing, please install them first",
-					installHostToolsItem
+					installHostToolsItem,
+					advancedItem
 				);
 				if (choice === installHostToolsItem) {
 					vscode.commands.executeCommand('zephyr-workbench.install-host-tools.open-manager');
+				} else if (choice === advancedItem) {
+					vscode.commands.executeCommand('zephyr-workbench.install-host-tools.advanced');
 				}
 				return;
 			}
