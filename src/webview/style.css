@@ -635,6 +635,24 @@ vscode-button {
   padding: 6px 8px;
 }
 
+.dropdown-show-all {
+  position: sticky;
+  bottom: 0;
+  color: var(--vscode-textLink-foreground);
+  background: var(--input-background);
+  font-family: inherit;
+  font-size: calc(var(--type-ramp-base-font-size) - 1px);
+  padding: 5px 4px;
+  cursor: pointer;
+  border-top: 1px solid var(--vscode-tab-border);
+  user-select: none;
+}
+
+.dropdown-show-all:hover {
+  background-color: var(--vscode-inputOption-hoverBackground);
+  text-decoration: underline;
+}
+
 .description {
   color: var(--vscode-editorInlayHint-foreground);
   font-size: calc(var(--type-ramp-base-font-size) - 2px);

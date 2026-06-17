@@ -84,7 +84,9 @@ const LLVM_REPO_URL = 'https://github.com/llvm/llvm-project';
 // bindgen (used by zephyr-lang-rust to generate the zephyr-sys bindings)
 // locates libclang via LIBCLANG_PATH; the host LLVM exists only for that.
 const LLVM_MINIMUM_MAJOR = 20;
-const LLVM_MAX_VERSION_COUNT = 20;
+// Curated default keeps every major.minor series but only its newest few
+// patches, so the dropdown isn't flooded by older point releases.
+const LLVM_SUGGESTED_PATCHES_PER_MINOR = 2;
 
 export function getRustHostTriple(): RustHostTriple | undefined {
   if (process.platform === 'win32' && process.arch === 'x64') {
@@ -187,15 +189,45 @@ function mergeMove(src: string, dest: string): void {
   }
 }
 
-export async function fetchLlvmVersions(): Promise<string[]> {
+export interface LlvmVersionOptions {
+  // Curated subset: every major.minor series for major >= LLVM_MINIMUM_MAJOR,
+  // capped at LLVM_SUGGESTED_PATCHES_PER_MINOR latest patches each.
+  suggested: string[];
+  // Every release with major >= LLVM_MINIMUM_MAJOR, newest first.
+  all: string[];
+}
+
+export async function fetchLlvmVersions(): Promise<LlvmVersionOptions> {
   const tags = await getGitTags(LLVM_REPO_URL);
 
-  return tags
+  const all = tags
     .map(tag => /^llvmorg-(\d+\.\d+\.\d+)$/.exec(tag)?.[1])
     .filter((version): version is string => !!version)
     .filter(version => Number(version.split('.')[0]) >= LLVM_MINIMUM_MAJOR)
-    .sort((a, b) => compareVersions(b, a))
-    .slice(0, LLVM_MAX_VERSION_COUNT);
+    .sort((a, b) => compareVersions(b, a));
+
+  return { suggested: selectSuggestedLlvmVersions(all), all };
+}
+
+// `all` must be sorted newest-first: walking it in order, the first patches we
+// meet for each major.minor series are its latest, so capping the count per
+// series yields the newest LLVM_SUGGESTED_PATCHES_PER_MINOR patches of every Y.
+function selectSuggestedLlvmVersions(all: string[]): string[] {
+  const patchesPerMinor = new Map<string, number>();
+  const suggested: string[] = [];
+
+  for (const version of all) {
+    const [major, minor] = version.split('.');
+    const minorKey = `${major}.${minor}`;
+    const seen = patchesPerMinor.get(minorKey) ?? 0;
+    if (seen >= LLVM_SUGGESTED_PATCHES_PER_MINOR) {
+      continue;
+    }
+    patchesPerMinor.set(minorKey, seen + 1);
+    suggested.push(version);
+  }
+
+  return suggested;
 }
 
 // Release asset per host (verified against llvmorg-20.x/21.x):

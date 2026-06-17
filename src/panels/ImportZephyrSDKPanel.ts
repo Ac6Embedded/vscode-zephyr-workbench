@@ -402,12 +402,6 @@ export class ImportZephyrSDKPanel {
         </div>
       </fieldset>
     </div>
-
-    <div class="grid-group-div" id="rustFolderRow">
-      <vscode-text-field id="rustFolderName" size="50">
-        Install subfolder:
-      </vscode-text-field>
-    </div>
 ${process.platform === 'win32' ? `
     <div class="grid-group-div" id="rustMingwRow">
       <vscode-checkbox id="rustMingwCheckbox" checked>
@@ -470,6 +464,12 @@ ${process.platform === 'win32' ? `
         </div>
         <div id="llvmSpinner" class="spinner version-spinner" aria-label="Loading LLVM releases" style="display:none"></div>
       </div>
+    </div>
+
+    <div class="grid-group-div" id="rustFolderRow">
+      <vscode-text-field id="rustFolderName" size="50">
+        Install subfolder:
+      </vscode-text-field>
     </div>
 
   </form>
@@ -674,8 +674,8 @@ ${process.platform === 'win32' ? `
                   }))
                 : [],
               llvm: llvmResult.status === "fulfilled"
-                ? { versions: llvmResult.value }
-                : { versions: [], error: getErrorMessage(llvmResult.reason) },
+                ? { versions: llvmResult.value.suggested, allVersions: llvmResult.value.all }
+                : { versions: [], allVersions: [], error: getErrorMessage(llvmResult.reason) },
             });
             return;
           }
