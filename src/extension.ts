@@ -3678,7 +3678,6 @@ export function activate(context: vscode.ExtensionContext) {
 						if (token.isCancellationRequested) {
 							throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
 						}
-						CreateWestWorkspacePanel.currentPanel?.dispose();
 						await addWorkspaceFolder(workspaceDestPath);
 
 						// Update settings.json to avoid CMake automatic scan after importing west workspace
@@ -3715,7 +3714,6 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-local", async (workspaceDestPath) => {
 			if (workspaceDestPath && !isWorkspaceFolder(workspaceDestPath)) {
-				CreateWestWorkspacePanel.currentPanel?.dispose();
 				if (WestWorkspace.isWestWorkspacePath(workspaceDestPath)) {
 					await addWorkspaceFolder(workspaceDestPath);
 					await westBoardsCommand(workspaceDestPath);

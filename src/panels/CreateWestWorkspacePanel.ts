@@ -501,6 +501,9 @@ export class CreateWestWorkspacePanel {
             } else if(srcType === 'template') {
               vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir, pathPrefix, projects, message.enableRust === true);
             }
+            // Close the wizard as soon as the import is dispatched, so it can't
+            // be submitted again while the (long-running) import is in flight.
+            this.dispose();
             break;
         }
       },
