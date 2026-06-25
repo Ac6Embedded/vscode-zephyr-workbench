@@ -11,6 +11,52 @@ declare function acquireVsCodeApi(): {
 
 const webviewApi = acquireVsCodeApi();
 
+// --- J-Link terms-acceptance modal ---------------------------------------
+// Clicking J-Link's install button opens an in-view modal with a checkbox; the
+// "Download & Install" button stays disabled until the user accepts the terms.
+let pendingJlinkInstall = false;
+
+function showJlinkTerms() {
+  pendingJlinkInstall = true;
+  const checkbox = document.getElementById('jlink-terms-checkbox') as any;
+  if (checkbox) { checkbox.checked = false; }
+  const ok = document.getElementById('jlink-terms-ok') as any;
+  if (ok) { ok.disabled = true; }
+  document.getElementById('jlink-terms-overlay')?.classList.remove('hidden');
+}
+
+function hideJlinkTerms() {
+  pendingJlinkInstall = false;
+  document.getElementById('jlink-terms-overlay')?.classList.add('hidden');
+}
+
+function confirmJlinkInstall() {
+  if (pendingJlinkInstall) {
+    const progress = document.getElementById('progress-jlink') as HTMLElement | null;
+    if (progress) { progress.style.display = 'block'; }
+    webviewApi.postMessage({ command: 'install', tool: 'jlink' });
+  }
+  hideJlinkTerms();
+}
+
+function setupJlinkTermsModal() {
+  const checkbox = document.getElementById('jlink-terms-checkbox');
+  if (checkbox) {
+    checkbox.addEventListener('change', (e) => {
+      const checked = (e.target as any)?.checked === true;
+      const ok = document.getElementById('jlink-terms-ok') as any;
+      if (ok) { ok.disabled = !checked; }
+    });
+  }
+  document.getElementById('jlink-terms-ok')?.addEventListener('click', confirmJlinkInstall);
+  document.getElementById('jlink-terms-cancel')?.addEventListener('click', hideJlinkTerms);
+  const overlay = document.getElementById('jlink-terms-overlay');
+  overlay?.addEventListener('click', (e) => { if (e.target === overlay) { hideJlinkTerms(); } });
+  document.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Escape' && pendingJlinkInstall) { hideJlinkTerms(); }
+  });
+}
+
 window.addEventListener("load", main);
 
 function main() {
@@ -21,6 +67,12 @@ function main() {
   installButtons.forEach(button => {
     button.addEventListener('click', () => {
       const tool = button.getAttribute('data-tool');
+      // J-Link requires accepting the SEGGER terms first: show the in-view modal
+      // and defer the install until the user confirms.
+      if (tool === 'jlink') {
+        showJlinkTerms();
+        return;
+      }
       const progress = document.getElementById(`progress-${tool}`) as HTMLElement;
       progress.style.display = 'block';
       webviewApi.postMessage({
@@ -29,6 +81,8 @@ function main() {
       });
     });
   });
+
+  setupJlinkTermsModal();
 
   const installPackButtons = document.querySelectorAll('.install-pack-button');
   installPackButtons.forEach(button => {

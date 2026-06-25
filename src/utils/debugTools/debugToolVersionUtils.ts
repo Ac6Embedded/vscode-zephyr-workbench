@@ -12,6 +12,7 @@ import {
   preserveDetectPatterns,
 } from './debugToolPathUtils';
 import { getInternalDirRealPath } from '../utils';
+import { getDebugToolsYamlPath } from './debugToolSelectionUtils';
 
 /*
  * Shared debug-tool version probing.
@@ -248,10 +249,6 @@ function resolveExecutablePathFromBase(basePath: string, executableName: string)
   }
 
   return normalizePathSlashes(path.posix.join(normalizedBase, 'bin', executableName));
-}
-
-function getDebugToolsYamlPath(): string {
-  return path.resolve(__dirname, '..', '..', 'scripts', 'runners', 'debug-tools.yml');
 }
 
 function loadDebugToolsManifest(): DebugToolsManifest {
@@ -538,6 +535,29 @@ async function executeVersionProbe(probe: ProbeConfig): Promise<{ installed: boo
   });
 }
 
+/**
+ * Build the version probe for a tool/alias and run it. Returns `installed` (whether the
+ * probe ran, or matched a version) and the parsed version, if any; `installed: false` when
+ * there is nothing to probe. Single source of truth shared by {@link probeDebugToolVersion}
+ * (manifest + tool, used by the Install Runners panel) and {@link probeInstalledVersion}
+ * (by tool/alias id, used by runners).
+ */
+async function runVersionProbe(
+  probeOwner: DebugToolEntry | DebugToolAliasEntry | undefined,
+  tool: DetectableToolLike | undefined,
+  executablePath: string | undefined,
+  executableName: string | undefined,
+  envData: any,
+  ziBaseDir: string,
+  platform: DetectPlatform,
+): Promise<{ installed: boolean; version?: string }> {
+  const probe = buildProbeConfig(probeOwner, tool, executablePath, executableName, envData, ziBaseDir, platform);
+  if (!probe || (!probe.pathValue && !probe.filePath && !probe.command?.trim())) {
+    return { installed: false };
+  }
+  return executeVersionProbe(probe);
+}
+
 export async function probeDebugToolVersion(options: {
   manifest: DebugToolsManifest;
   tool: DebugToolEntry;
@@ -573,16 +593,7 @@ export async function probeDebugToolVersion(options: {
     return { installed: false, updateAvailable: false };
   }
 
-  const probe = buildProbeConfig(probeOwner, tool, executablePath, executableName, envData, ziBaseDir, platform);
-
-  if (!probe || (!probe.pathValue && !probe.filePath && !probe.command?.trim())) {
-    return {
-      installed: installedFromDetect ?? false,
-      updateAvailable: false,
-    };
-  }
-
-  const result = await executeVersionProbe(probe);
+  const result = await runVersionProbe(probeOwner, tool, executablePath, executableName, envData, ziBaseDir, platform);
   const installed = installedFromDetect ?? result.installed;
 
   return {
@@ -595,7 +606,7 @@ export async function probeDebugToolVersion(options: {
   };
 }
 
-async function probeInstalledVersion(
+export async function probeInstalledVersion(
   toolOrAliasId: string,
   executablePath?: string,
 ): Promise<{ installed: boolean; version?: string }> {
@@ -603,20 +614,15 @@ async function probeInstalledVersion(
   const tool = findDebugTool(manifest, toolOrAliasId);
   const alias = tool ? undefined : findDebugToolAlias(manifest, toolOrAliasId);
   const probeOwner = tool ? resolveProbeOwner(manifest, tool) : alias;
-  const probe = buildProbeConfig(
+  return runVersionProbe(
     probeOwner,
     tool,
     executablePath,
     executablePath ? path.basename(executablePath) : undefined,
     undefined,
     getInternalDirRealPath(),
+    getDetectPlatform(),
   );
-
-  if (!probe || (!probe.pathValue && !probe.filePath && !probe.command?.trim())) {
-    return { installed: false };
-  }
-
-  return executeVersionProbe(probe);
 }
 
 export async function detectRunnerVersion(toolOrAliasId: string, executablePath?: string): Promise<string | undefined> {
