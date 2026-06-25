@@ -181,7 +181,8 @@ debug_tools:
     darwin: false
 - tool: jlink
   name: J-Link Software
-  version: 9.42
+  # J-Link pinned to V9.54. To bump: change this version and the segger-sources URLs below.
+  version: 9.54
   version-command:
     windows: JLinkGDBServerCL.exe --version
     linux: JLinkGDBServerCLExe --version || JLinkGDBServerCL --version || JLinkExe --version || JLink --version || jlink --version
@@ -191,7 +192,21 @@ debug_tools:
   vendor: Segger
   type: debug_server
   group: Common
-  root: false
+  # root: true so the system installers (.deb via dpkg, .pkg via installer) run elevated.
+  root: true
+  # All platforms are script-only (SCRIPT_ONLY): each per-runner jlink script
+  # (Common/jlink.sh, Common/jlink-mac.sh, Common/jlink.ps1) self-downloads its
+  # artifact from segger-sources below and installs it. Linux prefers the .deb
+  # (dpkg) and falls back to the portable .tgz.
+  os:
+    windows: true
+    linux: true
+    darwin: true
+  segger-sources:
+    windows: https://www.segger.com/downloads/jlink/JLink_Windows_V954_x86_64.exe
+    linux-deb: https://www.segger.com/downloads/jlink/JLink_Linux_V954_x86_64.deb
+    linux-tgz: https://www.segger.com/downloads/jlink/JLink_Linux_V954_x86_64.tgz
+    darwin: https://www.segger.com/downloads/jlink/JLink_MacOSX_V954_universal.pkg
   auto-detect:
     windows:
       - "C:/Program Files/SEGGER/JLink*"
@@ -199,6 +214,7 @@ debug_tools:
     linux:
       - "/opt/SEGGER/JLink*"
       - "/usr/local/SEGGER/JLink*"
+      - "${zi_base_dir}/tools/SEGGER/JLink*"
     darwin:
       - "/Applications/SEGGER/JLink*"
       - "/Applications/JLink*"

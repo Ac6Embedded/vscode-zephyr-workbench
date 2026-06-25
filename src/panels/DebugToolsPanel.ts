@@ -610,6 +610,19 @@ export class DebugToolsPanel {
               ${extraToolsHTML}
             </table>
           </form>
+          <div id="jlink-terms-overlay" class="confirm-overlay hidden" role="presentation">
+            <div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="jlink-terms-message">
+              <div id="jlink-terms-message" class="confirm-message">
+                J-Link Software is distributed under the SEGGER J-Link terms of use. Review them at
+                <a href="https://www.segger.com/downloads/jlink/">segger.com/downloads/jlink</a> before installing.
+              </div>
+              <vscode-checkbox id="jlink-terms-checkbox">I have read and accept the SEGGER J-Link terms</vscode-checkbox>
+              <div class="confirm-actions">
+                <vscode-button id="jlink-terms-cancel" appearance="secondary">Cancel</vscode-button>
+                <vscode-button id="jlink-terms-ok" appearance="primary" disabled>Download &amp; Install</vscode-button>
+              </div>
+            </div>
+          </div>
           <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
         </body>
       </html>

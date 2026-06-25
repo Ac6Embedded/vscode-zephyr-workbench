@@ -105,38 +105,30 @@ function Download-FileWithHashCheck {
         # Using Invoke-WebRequest for downloading
         & {
             $ProgressPreference = 'SilentlyContinue'
-            if ($Tool -eq "jlink") {
-                $postParams = @{
-                    accept_license_agreement = 'accepted'
-                    submit = 'Download software'
-                }
-                Invoke-WebRequest -Uri $SourceUrl -Method POST -Body $postParams -OutFile $FilePath -ErrorAction Stop
-            } else {
-                $req = [System.Net.HttpWebRequest]::Create($SourceUrl)
+            $req = [System.Net.HttpWebRequest]::Create($SourceUrl)
+            $req.AllowAutoRedirect = $true
+            $req.MaximumAutomaticRedirections = 10
+            $req.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            $resp = $req.GetResponse()
+
+            # Some servers (e.g. Infineon) return the actual download URL as plain text
+            # instead of redirecting — detect this and follow the URL
+            $actualUrl = $SourceUrl
+            if ($resp.ContentType -like "text/plain*" -and $resp.ContentLength -lt 512) {
+                $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
+                $actualUrl = $reader.ReadToEnd().Trim()
+                $resp.Close()
+                $req = [System.Net.HttpWebRequest]::Create($actualUrl)
                 $req.AllowAutoRedirect = $true
-                $req.MaximumAutomaticRedirections = 10
                 $req.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                 $resp = $req.GetResponse()
-
-                # Some servers (e.g. Infineon) return the actual download URL as plain text
-                # instead of redirecting — detect this and follow the URL
-                $actualUrl = $SourceUrl
-                if ($resp.ContentType -like "text/plain*" -and $resp.ContentLength -lt 512) {
-                    $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
-                    $actualUrl = $reader.ReadToEnd().Trim()
-                    $resp.Close()
-                    $req = [System.Net.HttpWebRequest]::Create($actualUrl)
-                    $req.AllowAutoRedirect = $true
-                    $req.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                    $resp = $req.GetResponse()
-                }
-
-                $stream = $resp.GetResponseStream()
-                $fs = [System.IO.File]::Create($FilePath)
-                $stream.CopyTo($fs)
-                $fs.Close()
-                $resp.Close()
             }
+
+            $stream = $resp.GetResponseStream()
+            $fs = [System.IO.File]::Create($FilePath)
+            $stream.CopyTo($fs)
+            $fs.Close()
+            $resp.Close()
         }
     }
 
