@@ -948,6 +948,51 @@ export async function execShellCommand(
 }
 
 /**
+ * Runs a `vscode.Task` and resolves with the process exit code (undefined if the task's
+ * process never started, e.g. shell resolution failure). Unlike `executeTask`, which only
+ * waits for the task to end, this listens to `onDidEndTaskProcess` so callers can detect
+ * failure by exit code. Mirrors the pattern used for `west update` in WestCommands.ts.
+ */
+export async function executeTaskWithExitCode(task: vscode.Task): Promise<number | undefined> {
+  const execution = await vscode.tasks.executeTask(task);
+  return new Promise(resolve => {
+    const disp = vscode.tasks.onDidEndTaskProcess(e => {
+      if (e.execution === execution) {
+        disp.dispose();
+        resolve(e.exitCode);
+      }
+    });
+  });
+}
+
+/**
+ * Like `execShellCommand` but returns the process exit code instead of ignoring it.
+ * Does NOT source the Zephyr env script. Use when you need to know whether the command
+ * succeeded (e.g. an interactive `sudo` step) rather than just that the task ended.
+ */
+export async function execShellCommandCapturingExit(
+  cmdName: string,
+  cmd: string,
+  options: vscode.ShellExecutionOptions
+): Promise<number | undefined> {
+  if (!cmd) {
+    throw new Error('Missing command to execute');
+  }
+
+  logShellCommand(cmdName, cmd, options.cwd);
+  const shExec = new vscode.ShellExecution(cmd, options);
+  const task = new vscode.Task(
+    { label: cmdName, type: 'zephyr-workbench-shell' },
+    vscode.TaskScope.Workspace,
+    cmdName,
+    'Zephyr Workbench',
+    shExec
+  );
+  task.presentationOptions.echo = true;
+  return executeTaskWithExitCode(task);
+}
+
+/**
  * Run a shell command in a VS Code task, sourcing the Zephyr env script first so `west`,
  * the toolchain, and the venv are on PATH. Awaits completion.
  *
