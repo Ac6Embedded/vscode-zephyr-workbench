@@ -200,9 +200,18 @@ export class CreateZephyrAppPanel {
                     <div class="combo-dropdown-controls">
                       <div id="boardDropdownSpinner" class="spinner" aria-label="Loading boards"></div>
                     </div>
-                    <div id="boardDropdown" class="dropdown-content"></div>
+                    <div id="boardDropdown" class="dropdown-content">
+                      <div id="boardDropdownItems"></div>
+                      <div id="boardCustomItem" class="dropdown-item dropdown-item-custom" data-custom-board="true">Enter custom board...<span class="description">Type a board identifier manually</span></div>
+                    </div>
                   </div>
                   <div id="boardStatus" class="combo-status" role="status" aria-live="polite" hidden></div>
+                </div>
+
+                <div id="customBoardRow" class="grid-group-div" hidden>
+                  <div class="grid-value-div">
+                    <vscode-text-field size="60" type="text" id="customBoardInput" placeholder="board[@revision][/soc[/cluster][/variant]]">Custom board:</vscode-text-field>
+                  </div>
                 </div>
 
                 <div class="grid-group-div">
@@ -521,7 +530,7 @@ async function handleCreateMessage(message: any) {
     const westWorkspace = getWestWorkspace(
       vscode.Uri.parse(westWorkspaceRootPath, true).fsPath
     );
-    const board = getBoard(message.boardYamlPath, message.boardIdentifier);
+    const board = resolveBoardFromMessage(message);
     const sample = await getSample(message.samplePath);
     const toolchainInstallation =
       findRustToolchainInstallation(toolchainInstallationPath)
@@ -566,11 +575,17 @@ async function handleCreateMessage(message: any) {
     return;
   }
 
-  const hasBoard = !!message.boardYamlPath?.length;
+  const board = resolveBoardFromMessage(message);
+  const hasBoard = !!board;
   const hasToolchainInstallation = toolchainInstallationPath.length > 0;
   const hasWorkspace = westWorkspaceRootPath.length > 0;
 
-  if (!hasBoard && !hasToolchainInstallation && !hasWorkspace) {
+  // A bare folder import with nothing else reuses the existing project config. A
+  // hand-typed board alone cannot configure anything without a workspace and
+  // toolchain, so it does not keep us out of this path (matching the prior
+  // board-path-only behavior).
+  const hasSelectedBoardPath = getStringValue(message.boardYamlPath).length > 0;
+  if (!hasSelectedBoardPath && !hasToolchainInstallation && !hasWorkspace) {
     await vscode.commands.executeCommand(
       "zephyr-workbench-app-explorer.import-local",
       projectLoc,
@@ -601,7 +616,6 @@ async function handleCreateMessage(message: any) {
   const westWorkspace = hasWorkspace
     ? getWestWorkspace(vscode.Uri.parse(westWorkspaceRootPath, true).fsPath)
     : undefined;
-  const board = hasBoard ? getBoard(message.boardYamlPath, message.boardIdentifier) : undefined;
   const toolchainInstallation = hasToolchainInstallation
     ? (
         findRustToolchainInstallation(toolchainInstallationPath)
@@ -622,6 +636,25 @@ async function handleCreateMessage(message: any) {
     getSettingsPathMode(message.settingsPathMode),
   );
   CreateZephyrAppPanel.currentPanel?.dispose();
+}
+
+/**
+ * Resolve the board the user chose from the webview message. A normal selection
+ * carries a board.yml path (and identifier); a manually entered custom board
+ * carries only an identifier with no path on disk. Returns undefined when neither
+ * is provided so the caller can treat the board as absent.
+ */
+function resolveBoardFromMessage(message: any): ReturnType<typeof getBoard> | undefined {
+  const boardYamlPath = getStringValue(message.boardYamlPath);
+  const boardIdentifier = getStringValue(message.boardIdentifier);
+
+  if (boardYamlPath.length > 0) {
+    return getBoard(boardYamlPath, boardIdentifier.length > 0 ? boardIdentifier : undefined);
+  }
+  if (boardIdentifier.length > 0) {
+    return getBoard('', boardIdentifier);
+  }
+  return undefined;
 }
 
 function getWorkspaceApplicationParentPath(westWorkspaceRootPath: string, applicationsSubfolder: string): string {
@@ -684,7 +717,9 @@ async function buildBoardsDiscoveryState(westWorkspace: WestWorkspace): Promise<
 
   return {
     html,
-    message: html.length === 0 ? 'No boards were found for this workspace.' : undefined,
+    message: html.length === 0
+      ? 'No boards were found for this workspace. Choose "Enter custom board..." to type one.'
+      : undefined,
   };
 }
 
@@ -1087,7 +1122,9 @@ function checkCreateParameters(message: any, projectParentPath: string) {
     return showPathSpaceError('The application path');
   }
 
-  if (isMissingValue(message.boardYamlPath)) {
+  // A board can be picked from the list (boardYamlPath) or typed by hand
+  // (boardIdentifier only); accept either.
+  if (isMissingValue(message.boardYamlPath) && isMissingValue(message.boardIdentifier)) {
     vscode.window.showErrorMessage('Missing target board');
     return false;
   }

@@ -584,9 +584,64 @@ function parseWestBoardList(stdout: string): WestBoardInfo[] {
     .filter(board => board.name.length > 0 && board.dir.length > 0);
 }
 
+// `west boards --format` exposes a different field set depending on the Zephyr
+// hardware model version of the workspace:
+//   {name} and {dir}                always available
+//   {qualifiers}                    added with hardware model v2 (Zephyr 3.7)
+//   {revision_default}/{revisions}  added in Zephyr 4.2
+// Referencing a field the running Zephyr does not provide raises a KeyError
+// inside west and aborts the whole command, so probe from the richest format
+// down to the universal one to keep board discovery working on every version.
+const WEST_BOARDS_FORMATS = [
+  '{name}|{dir}|{qualifiers}|{revision_default}|{revisions}',
+  '{name}|{dir}|{qualifiers}',
+  '{name}|{dir}',
+];
+
+// Remember the format that worked per workspace so older Zephyr versions only
+// pay the probing cost once instead of on every board lookup.
+const westBoardsFormatCache = new Map<string, string>();
+
+function getWestBoardsCacheKey(parent: ZephyrApplication | WestWorkspace): string {
+  return parent instanceof WestWorkspace ? parent.rootUri.fsPath : parent.westWorkspaceRootPath;
+}
+
 export async function getWestBoards(parent: ZephyrApplication | WestWorkspace, boardRoots?: string[]): Promise<WestBoardInfo[]> {
+  const cacheKey = getWestBoardsCacheKey(parent);
+  const cachedFormat = cacheKey ? westBoardsFormatCache.get(cacheKey) : undefined;
+
+  // Try the previously successful format first, but still keep the full probe
+  // order behind it so a stale cache entry can never wedge board discovery.
+  const formats = cachedFormat
+    ? [cachedFormat, ...WEST_BOARDS_FORMATS.filter(format => format !== cachedFormat)]
+    : WEST_BOARDS_FORMATS;
+
+  let firstError: unknown;
+  let hasError = false;
+  for (const format of formats) {
+    try {
+      const boards = await runWestBoardsList(parent, format, boardRoots);
+      if (cacheKey) {
+        westBoardsFormatCache.set(cacheKey, format);
+      }
+      return boards;
+    } catch (error) {
+      if (!hasError) {
+        firstError = error;
+        hasError = true;
+      }
+    }
+  }
+  throw firstError;
+}
+
+function runWestBoardsList(
+  parent: ZephyrApplication | WestWorkspace,
+  format: string,
+  boardRoots?: string[],
+): Promise<WestBoardInfo[]> {
   return new Promise((resolve, reject) => {
-    let cmd = 'west boards -f "{name}|{dir}|{qualifiers}|{revision_default}|{revisions}"';
+    let cmd = `west boards -f "${format}"`;
     if (boardRoots) {
       for (let boardRoot of boardRoots) {
         if (boardRoot.length > 0) {
@@ -596,14 +651,13 @@ export async function getWestBoards(parent: ZephyrApplication | WestWorkspace, b
         }
       }
     }
-    execWestCommandWithEnv(cmd, parent, async (error: any, stdout: string, stderr: any) => {
+    execWestCommandWithEnv(cmd, parent, (error: any, stdout: string, stderr: any) => {
       if (error) {
         reject(`Error: ${stderr}`);
         return;
       }
 
-      const boards = parseWestBoardList(stdout);
-      resolve(boards);
+      resolve(parseWestBoardList(stdout));
     });
   });
 }

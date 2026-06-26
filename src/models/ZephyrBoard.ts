@@ -75,6 +75,34 @@ export class ZephyrBoard {
     }
   }
 
+  /**
+   * Build a board from a manually entered identifier that has no on-disk
+   * definition (a custom board that discovery did not surface). rootPath is left
+   * empty so path-derived getters do not bind to an unrelated directory; west
+   * resolves the identifier against the board roots at build time.
+   */
+  public static fromIdentifier(identifier: string): ZephyrBoard {
+    const board = Object.assign(
+      Object.create(ZephyrBoard.prototype) as ZephyrBoard,
+      {
+        rootPath: '',
+        yamlFileUri: undefined,
+        identifier,
+        boardName: '',
+        rev: '',
+        soc: '',
+        cpuCluster: '',
+        variant: '',
+      },
+    );
+    try {
+      board.parseBoardTerm();
+    } catch {
+      // Keep the raw identifier; west validates it when the build runs.
+    }
+    return board;
+  }
+
   public withIdentifier(identifier: string): ZephyrBoard {
     const clone = Object.assign(
       Object.create(Object.getPrototypeOf(this)) as ZephyrBoard,
