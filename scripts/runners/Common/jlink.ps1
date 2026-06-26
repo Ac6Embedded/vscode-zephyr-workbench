@@ -27,12 +27,19 @@ if (-not (Get-Command $Yq -ErrorAction SilentlyContinue)) {
 }
 
 # --- Read the Windows installer URL from the yaml (no hardcoding) ---
-$ExeUrl = & $Yq eval -r '.debug_tools[] | select(.tool == "jlink") | .["segger-sources"].windows' $YamlFile
-$ExeUrl = ($ExeUrl | Select-Object -First 1).ToString().Trim()
+# Pass the tool name and the hyphenated key through env vars (strenv) instead of
+# embedding double-quoted literals in the expression. Windows PowerShell mangles
+# embedded double quotes when handing the argument to yq.exe, which made yq see
+# `== jlink` unquoted and abort with "invalid input text".
+$env:ZW_JLINK_TOOL = 'jlink'
+$env:ZW_JLINK_KEY = 'segger-sources'
+$ExeUrl = & $Yq eval -r '.debug_tools[] | select(.tool == strenv(ZW_JLINK_TOOL)) | .[strenv(ZW_JLINK_KEY)].windows' $YamlFile
+$ExeUrl = $ExeUrl | Select-Object -First 1
 if (-not $ExeUrl -or $ExeUrl -eq "" -or $ExeUrl -eq "null") {
     Write-Output "ERROR: no jlink segger-sources.windows URL found in $YamlFile"
     exit 2
 }
+$ExeUrl = $ExeUrl.ToString().Trim()
 
 # --- Download the installer (SEGGER requires accepting the license via POST) ---
 New-Item -Path $TmpDir -ItemType Directory -Force > $null 2>&1
@@ -51,12 +58,14 @@ if (-not (Test-Path $ExeFile)) {
 }
 
 # --- Run the SEGGER installer (it self-elevates via UAC) ---
-Write-Output "Running J-Link installer: $ExeFile"
-$proc = Start-Process -FilePath $ExeFile -PassThru -Wait
+# /S runs the SEGGER (NSIS) installer silently. It still self-elevates via UAC
+# because its manifest requires admin, so no interactive wizard is shown.
+Write-Output "Running J-Link installer (silent): $ExeFile"
+$proc = Start-Process -FilePath $ExeFile -ArgumentList '/S' -PassThru -Wait
 if ($proc.ExitCode -ne 0) {
-    Write-Output "ERROR: J-Link installer exited with code $($proc.ExitCode)"
+    Write-Output "J-Link installer exited with code $($proc.ExitCode)"
     exit $proc.ExitCode
 }
 
-Write-Output "J-Link installed."
+Write-Output "J-Link done."
 exit 0
