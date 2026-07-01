@@ -1,3 +1,4 @@
+import { probeInstalledVersion } from "../../utils/debugTools/debugToolVersionUtils";
 import { RunnerType, WestRunner } from "./WestRunner";
 
 export class JLink extends WestRunner {
@@ -11,6 +12,18 @@ export class JLink extends WestRunner {
     if(!exec) {
       return process.platform === 'win32' ? 'JLinkGDBServerCL.exe' : 'JLinkGDBServerCL';
     }
+  }
+
+  /**
+   * Detect installation like the Install Runners panel: run J-Link's `version-command`
+   * from debug-tools.yml in the env-sourced shell and use the `installed` flag. Reuses
+   * the same by-id probe `detectVersion()` already uses (`probeInstalledVersion`); the
+   * base `detect()` instead runs a single `${executable} --version` which fails for
+   * J-Link (its real Linux/macOS binary is `JLinkGDBServerCLExe`, not `JLinkGDBServerCL`)
+   * and which treats a non-zero exit as not-installed even when the command ran.
+   */
+  override async detect(): Promise<boolean> {
+    return (await probeInstalledVersion(this.name)).installed;
   }
 
   /**

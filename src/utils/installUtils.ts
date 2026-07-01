@@ -9,7 +9,8 @@ import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
 import yaml from 'yaml';
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
-import { execShellCommand, execShellCommandWithEnv, getConfiguredWorkbenchPath, getShellArgs, getShellExe, execCommandWithEnv, resolveConfiguredPath, toPortableWorkspaceFolderPath } from "./execUtils";
+import { execShellCommand, execShellCommandCapturingExit, execShellCommandWithEnv, getConfiguredWorkbenchPath, getShellArgs, getShellExe, execCommandWithEnv, resolveConfiguredPath, toPortableWorkspaceFolderPath } from "./execUtils";
+import { detectGuiSudoAvailability } from "./environmentUtils";
 import { syncAutoDetectEnv } from "./debugTools/autoDetectSyncUtils";
 import { fileExists, findDefaultEnvScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSdkInstallation, getWestWorkspace } from "./utils";
 import { getRunner } from "./debugTools/debugUtils";
@@ -214,6 +215,7 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
 
   } else {
     progress.report({ message: "Installing host tools has failed", increment: 100 });
+    reportInstallError('Host tools installation failed', new Error('Host tools not found after installation'));
   }
 }
 
@@ -244,6 +246,7 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
 
   } else {
     progress.report({ message: "Installing host tools has failed", increment: 100 });
+    reportInstallError('Host tools installation failed', new Error('Host tools not found after installation'));
   }
 }
 
@@ -344,56 +347,108 @@ function splitDebugToolsByPrivilege(context: vscode.ExtensionContext, listTools:
   }
 }
 
-async function runElevatedDebugToolsCommand(command: string): Promise<void> {
-  const options = {
-    name: 'Zephyr Workbench Installer',
-  };
+/**
+ * Single place install/elevation failures surface to the user: append the error to the
+ * "Installing Host Tools" output channel, auto-reveal that channel, and show a dismissable
+ * error notification with an "Open log" action. Replaces the previous silent catches and
+ * the vanishing "...has failed" progress messages.
+ */
+export function reportInstallError(title: string, error: unknown): void {
+  const msg = error instanceof Error ? error.message : String(error);
+  output.appendLine(`ERROR: ${title}: ${msg}`);
+  output.show(true);
+  vscode.window.showErrorMessage(`${title}: ${msg}`, 'Open log').then(selection => {
+    if (selection === 'Open log') {
+      output.show();
+    }
+  });
+}
 
-  const toText = (content?: string | Buffer): string | undefined => {
-    if (typeof content === 'undefined') {
-      return undefined;
-    }
-    return typeof content === 'string' ? content : content.toString('utf8');
-  };
+/** Append a captured stdout/stderr block to the output channel, skipping empty content. */
+function appendElevatedBlock(header: string, content?: string | Buffer): void {
+  const text = typeof content === 'undefined'
+    ? undefined
+    : (typeof content === 'string' ? content : content.toString('utf8'));
+  const trimmed = text?.trim();
+  if (!trimmed) {
+    return;
+  }
+  output.appendLine(`--- ${header} ---`);
+  for (const line of trimmed.split(/\r?\n/)) {
+    output.appendLine(line);
+  }
+}
 
-  const appendBlock = (header: string, content?: string | Buffer) => {
-    const text = toText(content);
-    if (!text) {
-      return;
-    }
-    const trimmed = text.trim();
-    if (!trimmed) {
-      return;
-    }
-    output.appendLine(`--- ${header} ---`);
-    for (const line of trimmed.split(/\r?\n/)) {
-      output.appendLine(line);
-    }
-  };
-
+/**
+ * Run `command` with root privileges. Resolves on success and throws on failure (callers
+ * report via reportInstallError).
+ *
+ * Strategy:
+ *  - Where a graphical sudo prompt can plausibly work (desktop Linux, macOS), try
+ *    sudo-prompt first. If it fails (e.g. no polkit agent on the extension host), fall
+ *    through to the terminal path transparently.
+ *  - In WSL, remote, or headless Linux, skip straight to an interactive terminal running
+ *    `sudo <command>`, where sudo prompts on stdin and all output is visible live.
+ *
+ * The terminal path resolves only when the task process exits 0; a non-zero exit throws.
+ */
+async function runElevatedCommand(
+  command: string,
+  opts: { taskName: string; shellOpts: vscode.ShellExecutionOptions }
+): Promise<void> {
   await focusInstallerOutputChannel();
-  output.appendLine('Installing root-required runners... This might take a while. Root logs will appear once the step completes.');
+  const availability = detectGuiSudoAvailability();
 
-  await new Promise<void>((resolve, reject) => {
-    sudo.exec(command, options, (error, stdout, stderr) => {
-      appendBlock('root stdout', stdout);
-      appendBlock('root stderr', stderr);
+  if (availability.available) {
+    try {
+      await runSudoPromptGui(command, opts.taskName);
+      return;
+    } catch (guiError) {
+      const msg = guiError instanceof Error ? guiError.message : String(guiError);
+      output.appendLine(`Graphical sudo unavailable (${msg}); falling back to terminal sudo.`);
+    }
+  } else {
+    const why = availability.reason === 'remote' ? 'remote/WSL session' : 'no graphical session';
+    output.appendLine(`${opts.taskName}: ${why} detected; using terminal sudo.`);
+  }
+
+  // Interactive terminal fallback: sudo prompts for the password on the terminal's stdin.
+  output.appendLine('You will be prompted for your sudo password in the integrated terminal.');
+  vscode.window.showInformationMessage(`${opts.taskName}: enter your sudo password in the terminal.`);
+  const exitCode = await execShellCommandCapturingExit(opts.taskName, `sudo ${command}`, opts.shellOpts);
+  if (exitCode !== 0) {
+    throw new Error(`${opts.taskName} failed (exit code ${exitCode ?? 'unknown'}). See terminal/log for details.`);
+  }
+}
+
+/**
+ * Elevate `command` via sudo-prompt's graphical password dialog. Captures stdout/stderr
+ * into the output channel and rejects on error WITHOUT showing its own dialog, so that
+ * runElevatedCommand can fall back to the terminal transparently.
+ */
+function runSudoPromptGui(command: string, taskName: string): Promise<void> {
+  output.appendLine(`${taskName} (graphical elevation). This might take a while; root logs appear once the step completes.`);
+  return new Promise<void>((resolve, reject) => {
+    sudo.exec(command, { name: 'Zephyr Workbench Installer' }, (error, stdout, stderr) => {
+      appendElevatedBlock('root stdout', stdout);
+      appendElevatedBlock('root stderr', stderr);
 
       if (error) {
-        output.appendLine(`Error executing installer: ${error.message}`);
-        vscode.window.showErrorMessage(`Error executing installer: ${error.message}`, 'Open log').then(selection => {
-          if (selection === 'Open log') {
-            output.show();
-          }
-        });
         reject(error);
         return;
       }
 
-      output.appendLine('Root runners step finished.');
+      output.appendLine(`${taskName} finished.`);
       resolve();
     });
   });
+}
+
+async function runElevatedDebugToolsCommand(
+  command: string,
+  shellOpts: vscode.ShellExecutionOptions
+): Promise<void> {
+  await runElevatedCommand(command, { taskName: 'Installing root-required runners', shellOpts });
 }
 
 export async function installHostTools(context: vscode.ExtensionContext, listTools: string = "") {
@@ -458,76 +513,18 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
     };
     
     if(process.platform === 'linux') {
-      const options = {
-        name: 'Zephyr Workbench Installer',
-      };
       const rootCommand = `${installCmd} --only-root${installArgs}`;
       const nonRootCommand = `${installCmd} --only-without-root${installArgs}`;
 
-      await focusInstallerOutputChannel();
-      output.appendLine('Installing sudo host tools... This might take a while. Root logs will appear once the step completes.');
-      const toText = (content?: string | Buffer): string | undefined => {
-        if (typeof content === 'undefined') {
-          return undefined;
-        }
-        return typeof content === 'string' ? content : content.toString('utf8');
-      };
+      // Root step: GUI prompt where possible, otherwise interactive terminal sudo.
+      // Failures propagate so the caller reports them (no more silent catch).
+      await runElevatedCommand(rootCommand, { taskName: 'Installing sudo host tools', shellOpts });
 
-      const appendBlock = (header: string, content?: string | Buffer) => {
-        const text = toText(content);
-        if (!text) {
-          return;
-        }
-        const trimmed = text.trim();
-        if (!trimmed) {
-          return;
-        }
-        output.appendLine(`--- ${header} ---`);
-        for (const line of trimmed.split(/\r?\n/)) {
-          output.appendLine(line);
-        }
-      };
-
-      const logOutputs = (stdout?: string | Buffer, stderr?: string | Buffer) => {
-        appendBlock('root stdout', stdout);
-        appendBlock('root stderr', stderr);
-      };
-
-      try {
-        await new Promise<void>((resolve, reject) => {
-          sudo.exec(rootCommand, options, (error, stdout, stderr) => {
-            if (error) {
-              output.appendLine(`Error executing installer: ${error.message}`);
-              logOutputs(stdout, stderr);
-              vscode.window.showErrorMessage(`Error executing installer: ${error.message}`, 'Open log').then(selection => {
-                if (selection === 'Open log') {
-                  output.show();
-                }
-              });
-              reject(error);
-              return;
-            }
-
-            logOutputs(stdout, stderr);
-            output.appendLine('Root host tools step finished.');
-            vscode.window.showInformationMessage('Host tools root step finished.', 'Open log').then(selection => {
-              if (selection === 'Open log') {
-                output.show();
-              }
-            });
-            resolve();
-          });
-        });
-      } catch {
-        return;
-      }
-
+      // Brief pause so the root step's effects settle before the non-root step.
       await new Promise<void>(resolve => setTimeout(resolve, 2000));
-      try {
-        await runNonRootHostToolsCommand(nonRootCommand, shellOpts);
-      } catch {
-        return;
-      }
+
+      // Non-root step runs without sudo and already works in every environment.
+      await runNonRootHostToolsCommand(nonRootCommand, shellOpts);
     } else {
       await execShellCommand('Installing Host tools', installCmd + " " + installArgs, shellOpts);
     }
@@ -714,7 +711,7 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
     const { rootTools, nonRootTools } = splitDebugToolsByPrivilege(context, listTools);
 
     if ((process.platform === 'linux' || process.platform === 'darwin') && rootTools.length > 0) {
-      await runElevatedDebugToolsCommand(buildInstallCommand(rootTools));
+      await runElevatedDebugToolsCommand(buildInstallCommand(rootTools), shellOpts);
 
       if (nonRootTools.length > 0) {
         await execShellCommandWithEnv('Installing Host debug tools', buildInstallCommand(nonRootTools), shellOpts);

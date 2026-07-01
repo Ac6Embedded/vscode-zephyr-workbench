@@ -204,6 +204,11 @@ export class ZephyrSdkInstallation {
     const compilerPrefix = arch === 'xtensa' && socToolchain
       ? ZephyrSdkInstallation.getCompilerPrefix(arch, socToolchain)
       : ZephyrSdkInstallation.getCompilerPrefix(arch);
+    // No usable prefix (e.g. an unknown/empty arch) means no resolvable compiler;
+    // bail out instead of letting path.join throw on an undefined segment.
+    if (!compilerPrefix) {
+      return '';
+    }
     return ensureWindowsExecutableExtension(
       path.join(this.gnuToolchainsRootPath, compilerPrefix, 'bin', `${compilerPrefix}-gcc`)
     );

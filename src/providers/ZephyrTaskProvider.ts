@@ -548,6 +548,13 @@ function getDefaultCompilerPath(
   zephyrBoard: ZephyrBoard,
   requestedVariant?: string,
 ): string {
+  // A hand-typed custom board has no known arch, so there is no toolchain-specific
+  // compiler path to resolve. IntelliSense recovers it from compile_commands after
+  // the first build.
+  if (!zephyrBoard.arch) {
+    return '';
+  }
+
   if (toolchainInstallation instanceof RustToolchainInstallation) {
     // IntelliSense follows the linked C toolchain of the Rust group.
     if (toolchainInstallation.cToolchainType === 'gnuarmemb' && toolchainInstallation.cToolchainPath) {

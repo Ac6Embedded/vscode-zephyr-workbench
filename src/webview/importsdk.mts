@@ -81,7 +81,8 @@ type RegisteredArmGnuEntry = {
 };
 
 type LlvmImportData = {
-  versions?: string[];
+  versions?: string[];      // curated suggestions, shown by default
+  allVersions?: string[];   // full list, revealed by the "Show all" toggle
   error?: string;
 };
 
@@ -118,6 +119,9 @@ let availableRustTargets: string[] = [];
 let availableRustTargetDescriptions: Record<string, string> = {};
 let availableRustVersions: string[] = [];
 let lastSuggestedRustFolderName = "";
+let llvmSuggestedVersions: string[] = [];
+let llvmAllVersions: string[] = [];
+let llvmShowAllVersions = false;
 
 window.addEventListener("load", () => {
   setVSCodeMessageListener();
@@ -893,8 +897,12 @@ function renderRustVersionOptions(): void {
 
 function updateRustFolderSuggestion(): void {
   const version = getEl<HTMLInputElement>("rustVersionInput").getAttribute("data-value") ?? "";
+  const llvmVersion = getEl<HTMLInputElement>("llvmVersionInput").getAttribute("data-value") ?? "";
   const folderField = getRustFolderField();
-  updateRustFolderName(version ? `rust-${version}` : "", folderField.value);
+  const suggested = version
+    ? (llvmVersion ? `rust-${version}-llvm-${llvmVersion}` : `rust-${version}`)
+    : "";
+  updateRustFolderName(suggested, folderField.value);
 }
 
 function handleRustFolderNameInput(): void {
@@ -951,7 +959,8 @@ function initLlvmVersionDropdown(): void {
     setTimeout(() => { versionsDropdown.style.display = "none"; }, 80);
   });
 
-  addDropdownItemListeners(versionsDropdown, versionInput);
+  // Picking an LLVM version feeds the Rust install-subfolder suggestion.
+  addDropdownItemListeners(versionsDropdown, versionInput, updateRustFolderSuggestion);
 }
 
 function renderLlvmLoading(): void {
@@ -971,9 +980,11 @@ function applyLlvmVersionList(data: LlvmImportData | undefined): void {
   const versionsDropdown = getEl("llvmVersionsDropdown");
   toggleLlvmSpinner(false);
 
-  const versions = data?.versions ?? [];
+  llvmSuggestedVersions = data?.versions ?? [];
+  llvmAllVersions = data?.allVersions ?? [];
+  llvmShowAllVersions = false;
 
-  if (data?.error || !versions.length) {
+  if (data?.error || !llvmSuggestedVersions.length) {
     const message = data?.error ?? "No LLVM releases available.";
     versionInput.value = "";
     versionInput.setAttribute("data-value", "");
@@ -987,14 +998,49 @@ function applyLlvmVersionList(data: LlvmImportData | undefined): void {
 
   versionInput.removeAttribute("disabled");
   versionInput.placeholder = "Choose the LLVM version...";
-  versionsDropdown.innerHTML = versions.map(version => `
+  versionInput.value = llvmSuggestedVersions[0];
+  versionInput.setAttribute("data-value", llvmSuggestedVersions[0]);
+
+  renderLlvmVersionOptions();
+  // Fold the default LLVM version into the install-subfolder suggestion; the
+  // Rust data (and its initial suggestion) is applied before the LLVM list.
+  updateRustFolderSuggestion();
+}
+
+// Renders the curated list, or the full list once expanded. The expand/collapse
+// control is a non-item row so the delegated dropdown-item handler (bound in
+// initLlvmVersionDropdown) ignores it; its own pointerdown is wired per render.
+function renderLlvmVersionOptions(): void {
+  const versionsDropdown = getEl("llvmVersionsDropdown");
+  const versions = llvmShowAllVersions ? llvmAllVersions : llvmSuggestedVersions;
+
+  const items = versions.map(version => `
     <div class="dropdown-item"
          data-value="${escapeHtml(version)}"
          data-label="${escapeHtml(version)}">${escapeHtml(version)}</div>
   `).join("");
 
-  versionInput.value = versions[0];
-  versionInput.setAttribute("data-value", versions[0]);
+  const hasMore = llvmAllVersions.length > llvmSuggestedVersions.length;
+  const toggle = hasMore
+    ? `<div class="dropdown-show-all" data-action="toggle-llvm-versions">${
+        llvmShowAllVersions
+          ? "Show fewer versions"
+          : `Show all ${llvmAllVersions.length} versions`
+      }</div>`
+    : "";
+
+  versionsDropdown.innerHTML = items + toggle;
+
+  const toggleEl = versionsDropdown.querySelector<HTMLElement>(
+    '[data-action="toggle-llvm-versions"]',
+  );
+  toggleEl?.addEventListener("pointerdown", (event) => {
+    // Keep focus on the input so its focusout handler leaves the dropdown open.
+    event.preventDefault();
+    llvmShowAllVersions = !llvmShowAllVersions;
+    renderLlvmVersionOptions();
+    versionsDropdown.style.display = "block";
+  });
 }
 
 function toggleLlvmSpinner(show: boolean): void {

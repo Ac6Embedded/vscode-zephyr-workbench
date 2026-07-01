@@ -119,14 +119,7 @@ download_and_check_hash() {
 
     pr_info "Downloading: $filename ..."
 
-    # Detect if the download is a SEGGER J-Link package
-    if [[ "$source" == *"segger.com/downloads/jlink/"* ]]; then
-        pr_info "Detected SEGGER J-Link download, adding license acceptance..."
-        wget --post-data "accept_license_agreement=accepted&non_emb_ctr=confirmed" \
-             --no-check-certificate \
-             --content-disposition \
-             -q "$source" -O "$file_path"
-    elif [[ "$source" == *"softwaretools-hosting.infineon.com"* ]]; then
+    if [[ "$source" == *"softwaretools-hosting.infineon.com"* ]]; then
         actual_url=$(wget -q -O - "$source" 2>/dev/null)
         if [[ "$actual_url" =~ ^https?:// ]]; then
             wget -q "$actual_url" -O "$file_path"
@@ -140,14 +133,6 @@ download_and_check_hash() {
     # Check if the download was successful
     if [ ! -f "$file_path" ]; then
         pr_error 1 "Failed to download the file."
-        exit 1
-    fi
-
-    # Check if we accidentally downloaded an HTML license page instead of the binary
-    if file "$file_path" | grep -qi "html"; then
-        pr_error 1 "SEGGER server returned a license page instead of the binary."
-        echo "Manual download may be required. Open:"
-        echo "  https://www.segger.com/downloads/jlink/"
         exit 1
     fi
 

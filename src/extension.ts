@@ -24,7 +24,7 @@ import {
 	removeApplicationLaunchConfigurations,
 } from './utils/debugTools/debugUtils';
 import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
-import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently } from './utils/installUtils';
+import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
@@ -2116,6 +2116,7 @@ export function activate(context: vscode.ExtensionContext) {
 					async (progress, token) => {
 						// Close deprecated SDK Manager panel if open (no-op as panel removed)
 
+                        try {
                         if (!force) {
                             await runInstallHostTools(
                                 context, listToolchains, progress, token);
@@ -2170,6 +2171,9 @@ export function activate(context: vscode.ExtensionContext) {
                                 setTimeout(() => { try { sbi.dispose(); } catch {} }, 10000);
                             } catch {}
                         } catch {}
+                        } catch (installError) {
+                            reportInstallError('Host tools installation failed', installError);
+                        }
 					}
 				);
 			}
@@ -2398,6 +2402,7 @@ export function activate(context: vscode.ExtensionContext) {
 				title: "Download and install debug host tools",
 				cancellable: false,
 			}, async (progress, token) => {
+				try {
 				await installHostDebugTools(context, listTools);
 
 				// Auto detect tools after installation
@@ -2416,6 +2421,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 				// Notify webview that the whole install batch has finished (single or pack)
 				panel.webview.postMessage({ command: 'exec-install-finished' });
+				} catch (installError) {
+					reportInstallError('Debug tools installation failed', installError);
+				}
 			});
 		})
 	);
@@ -3703,7 +3711,6 @@ export function activate(context: vscode.ExtensionContext) {
 						if (token.isCancellationRequested) {
 							throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
 						}
-						CreateWestWorkspacePanel.currentPanel?.dispose();
 						await addWorkspaceFolder(workspaceDestPath);
 
 						// Update settings.json to avoid CMake automatic scan after importing west workspace
@@ -3740,7 +3747,6 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-local", async (workspaceDestPath) => {
 			if (workspaceDestPath && !isWorkspaceFolder(workspaceDestPath)) {
-				CreateWestWorkspacePanel.currentPanel?.dispose();
 				if (WestWorkspace.isWestWorkspacePath(workspaceDestPath)) {
 					await addWorkspaceFolder(workspaceDestPath);
 					await westBoardsCommand(workspaceDestPath);

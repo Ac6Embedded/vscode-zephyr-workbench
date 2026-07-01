@@ -9,7 +9,7 @@
     "url": "https://github.com/Ac6Embedded/vscode-zephyr-workbench"
   },
   "homepage": "https://z-workbench.com",
-  "version": "3.1.4",
+  "version": "3.2.2",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -882,42 +882,48 @@
           "name": "Workbench for Zephyr",
           "contextualTitle": "Workbench for Zephyr",
           "icon": "$(project)",
-          "type": "tree"
+          "type": "tree",
+          "initialSize": 25
         },
         {
           "id": "zephyr-workbench-app-explorer",
           "name": "Applications",
           "contextualTitle": "Zephyr user applications",
           "icon": "$(extensions-view-icon)",
-          "type": "tree"
+          "type": "tree",
+          "initialSize": 25
         },
         {
           "id": "zephyr-workbench-west-workspace",
           "name": "West workspaces",
           "contextualTitle": "west workspaces with Zephyr sources and modules",
           "icon": "$(extensions-view-icon)",
-          "type": "tree"
+          "type": "tree",
+          "initialSize": 15
         },
         {
           "id": "zephyr-workbench-sdk-explorer",
           "name": "Toolchains",
           "contextualTitle": "Toolchains",
           "icon": "$(extensions-view-icon)",
-          "type": "tree"
+          "type": "tree",
+          "initialSize": 15
         },
         {
           "id": "zephyr-workbench-tools-explorer",
           "name": "Host tools",
           "contextualTitle": "Toolchains",
           "icon": "$(extensions-view-icon)",
-          "type": "tree"
+          "type": "tree",
+          "initialSize": 10
         },
         {
           "id": "zephyr-workbench-other-resources",
           "name": "Other resources",
           "contextualTitle": "Other resources",
           "icon": "$(extensions-view-icon)",
-          "type": "tree"
+          "type": "tree",
+          "initialSize": 10
         }
       ],
       "zephyr-workbench-dashboard-panel": [

@@ -4,6 +4,32 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [3.2.1]
+
+### Board selection
+- Board discovery now works across all supported Zephyr versions, including older hardware models that do not expose the newer `west boards` fields (previously no boards were detected on those versions).
+- Added an **Enter custom board** option in the Change Board picker and the New Application panel, so a board that discovery cannot find, or any time the search fails or returns nothing, can be entered by hand.
+
+### Runners and debug tools
+- Added one-click **J-Link install** from the Runners view, with J-Link detection in the Debug Manager.
+- Fixed J-Link setup on Windows.
+- Made host tools elevation reliable and surfaced installation errors instead of failing silently.
+
+### Other
+- Curated the LLVM version suggestions with a show-all toggle.
+- The Add West Workspace wizard now closes automatically when the import starts.
+
+## [3.2.0]
+
+### Rust toolchain support (new)
+- Added Rust toolchain support, installable via standalone download or rustup, with an **Enable Rust** option in the West Manager and the west workspace import wizard (it imports the `zephyr-lang-rust` module).
+- Made the Rust toolchain selection orthogonal to the C toolchain, and showed the linked C toolchain location in the Rust link picker.
+
+### Host Tools
+- Added a Zinstaller / System source selector to the Host Tools Manager.
+- Bundled MinGW host tools.
+- Fixed Host Tools install failing when the user path contains spaces.
+
 ## [3.1.0]
 
 ### Devicetree Manager (new)

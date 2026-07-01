@@ -17,6 +17,9 @@ const discoveryTargets = {
     wrapperId: 'listBoards',
     inputId: 'boardInput',
     dropdownId: 'boardDropdown',
+    // Board items live in their own scroll container so the custom-board footer
+    // can sit below them without overlapping.
+    itemsId: 'boardDropdownItems',
     spinnerId: 'boardDropdownSpinner',
     statusId: 'boardStatus',
     emptyMessage: 'No boards were found for this workspace.',
@@ -25,6 +28,7 @@ const discoveryTargets = {
     wrapperId: 'listSamples',
     inputId: 'sampleInput',
     dropdownId: 'samplesDropdown',
+    itemsId: 'samplesDropdown',
     spinnerId: 'samplesDropdownSpinner',
     statusId: 'sampleStatus',
     emptyMessage: 'No sample or test projects were found for this workspace.',
@@ -166,11 +170,20 @@ function main() {
   });
 
   boardInput.addEventListener('keyup', () => {
+    // Editing reopens the list: selecting a board closes it while keeping focus,
+    // so without this, clearing the field would filter an invisible (closed) list.
+    if (boardDropdown) {
+      boardDropdown.style.display = 'block';
+    }
     filterFunction(boardInput, boardDropdown);
   });
 
   boardInput.addEventListener('input', () => {
     clearSelectedValueIfEdited(boardInput);
+    // Using the board combo (selecting or typing) abandons any custom-board entry.
+    if (isCustomBoardActive()) {
+      deactivateCustomBoard();
+    }
     webviewApi.postMessage(
       {
         command: 'boardChanged',
@@ -186,6 +199,17 @@ function main() {
   boardDropdown.addEventListener('mouseup', function (event) {
     event.preventDefault();
   });
+
+  // The custom-board footer is a fixed entry below the scrollable list; clicking
+  // it reveals the dedicated custom-board field.
+  const boardCustomItem = document.getElementById('boardCustomItem');
+  if (boardCustomItem) {
+    boardCustomItem.addEventListener('pointerdown', function (event) {
+      event.preventDefault();
+      activateCustomBoard();
+      boardDropdown.style.display = 'none';
+    });
+  }
 
   sampleInput.addEventListener('focusin', function () {
     if (samplesDropdown) {
@@ -340,7 +364,11 @@ function main() {
 }
 
 function addDropdownItemEventListeners(dropdown: HTMLElement,
-  input: HTMLInputElement) {
+  input: HTMLInputElement,
+  // The popup to close when an item is picked. Defaults to the item container,
+  // but for the board list the items live in an inner scroll container while the
+  // popup to hide is the outer dropdown, so they differ.
+  popup: HTMLElement = dropdown) {
 
   Array.from(dropdown.getElementsByClassName("dropdown-item"))
     .forEach(itemEl => {
@@ -374,7 +402,7 @@ function addDropdownItemEventListeners(dropdown: HTMLElement,
           input.removeAttribute("data-path");
         }
         input.dispatchEvent(new Event("input"));
-        dropdown.style.display = "none";
+        popup.style.display = "none";
       });
     });
 }
@@ -395,6 +423,51 @@ function resetComboInput(input: HTMLInputElement) {
   input.setAttribute('data-selected-label', '');
   input.removeAttribute('data-has-llvm');
   input.removeAttribute('data-board-identifier');
+}
+
+function getCustomBoardElements() {
+  return {
+    row: document.getElementById('customBoardRow') as HTMLElement | null,
+    input: document.getElementById('customBoardInput') as TextField | null,
+  };
+}
+
+function isCustomBoardActive(): boolean {
+  const { row } = getCustomBoardElements();
+  return !!row && !row.hidden;
+}
+
+/**
+ * Reveal the dedicated custom-board field and drop any concrete board pick, so
+ * the typed identifier is the single source of truth. A selected board and a
+ * custom board are mutually exclusive.
+ */
+function activateCustomBoard() {
+  const { row, input } = getCustomBoardElements();
+  if (!row || !input) {
+    return;
+  }
+  const boardInput = document.getElementById('boardInput') as HTMLInputElement;
+  const boardDropdown = document.getElementById('boardDropdown') as HTMLElement | null;
+
+  resetComboInput(boardInput);
+  if (boardDropdown) {
+    boardDropdown.style.display = 'none';
+  }
+  updateBoardImage('noImg');
+
+  row.hidden = false;
+  input.focus();
+}
+
+/** Hide and clear the custom-board field, leaving no residual value behind. */
+function deactivateCustomBoard() {
+  const { row, input } = getCustomBoardElements();
+  if (!row || !input) {
+    return;
+  }
+  row.hidden = true;
+  input.value = '';
 }
 
 function updateToolchainVariantVisibility() {
@@ -419,6 +492,11 @@ function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i] as HTMLElement;
+    // The custom-board escape hatch stays visible regardless of the filter.
+    if (item.dataset.customBoard === 'true') {
+      item.style.display = '';
+      continue;
+    }
     const textValue = item.textContent || item.innerText;
     if (textValue.toUpperCase().indexOf(filter) > -1) {
       item.style.display = '';
@@ -489,6 +567,9 @@ function getDiscoveryElements(target: DiscoveryTarget) {
     wrapper: document.getElementById(config.wrapperId) as HTMLElement,
     input: document.getElementById(config.inputId) as HTMLInputElement,
     dropdown: document.getElementById(config.dropdownId) as HTMLElement,
+    // The container that holds the scrollable item list (the dropdown itself for
+    // targets without a separate footer).
+    items: document.getElementById(config.itemsId) as HTMLElement,
     spinner: document.getElementById(config.spinnerId) as HTMLElement,
     status: document.getElementById(config.statusId) as HTMLElement,
     emptyMessage: config.emptyMessage,
@@ -512,10 +593,10 @@ function setDiscoveryStatus(target: DiscoveryTarget, message: string, tone: 'inf
 }
 
 function resetDiscoveryState(target: DiscoveryTarget, message: string) {
-  const { input, dropdown, spinner } = getDiscoveryElements(target);
+  const { input, items, dropdown, spinner } = getDiscoveryElements(target);
   resetComboInput(input);
   input.disabled = true;
-  dropdown.innerHTML = '';
+  items.innerHTML = '';
   dropdown.style.display = 'none';
   spinner.style.display = 'none';
   spinner.style.visibility = 'hidden';
@@ -523,42 +604,67 @@ function resetDiscoveryState(target: DiscoveryTarget, message: string) {
 }
 
 function setDiscoveryLoadingState(target: DiscoveryTarget, message: string) {
-  const { input, dropdown, spinner } = getDiscoveryElements(target);
+  const { input, items, dropdown, spinner } = getDiscoveryElements(target);
   resetComboInput(input);
   input.disabled = true;
-  dropdown.innerHTML = '';
+  items.innerHTML = '';
   dropdown.style.display = 'none';
   spinner.style.display = 'block';
   spinner.style.visibility = 'visible';
   setDiscoveryStatus(target, message);
+
+  // Hide any open custom-board field the instant a reload starts, not only when
+  // it finishes, so a switch never shows a stale entry mid-load.
+  if (target === 'board') {
+    deactivateCustomBoard();
+  }
 }
 
 function setDiscoveryReadyState(target: DiscoveryTarget, html: string, message?: string) {
-  const { input, dropdown, spinner, emptyMessage } = getDiscoveryElements(target);
+  const { input, items, dropdown, spinner, emptyMessage } = getDiscoveryElements(target);
   const hasItems = html.trim().length > 0;
 
   resetComboInput(input);
-  dropdown.innerHTML = html;
-  addDropdownItemEventListeners(dropdown, input);
+  items.innerHTML = html;
+  // Items live in `items`; selecting one closes the outer `dropdown` popup (the
+  // two differ for the board list, which has a footer outside its scroll area).
+  addDropdownItemEventListeners(items, input, dropdown);
   dropdown.style.display = 'none';
   spinner.style.display = 'none';
   spinner.style.visibility = 'hidden';
   input.disabled = !hasItems;
   setDiscoveryStatus(target, message ?? (hasItems ? '' : emptyMessage));
+
+  // A board can always be provided by hand (the custom footer is always present),
+  // so keep the input enabled even when none were discovered, and reset the custom
+  // field so a workspace switch never leaves a stale entry.
+  if (target === 'board') {
+    deactivateCustomBoard();
+    input.disabled = false;
+  }
 }
 
 function setDiscoveryErrorState(target: DiscoveryTarget, message: string) {
-  const { input, dropdown, spinner } = getDiscoveryElements(target);
+  const { input, items, dropdown, spinner } = getDiscoveryElements(target);
   resetComboInput(input);
   input.disabled = true;
-  dropdown.innerHTML = '';
+  items.innerHTML = '';
   dropdown.style.display = 'none';
   spinner.style.display = 'none';
   spinner.style.visibility = 'hidden';
   setDiscoveryStatus(target, message, 'error');
+
+  // Even when board discovery fails, the custom-board footer must stay reachable:
+  // keep the combo input enabled so its dropdown (which holds that footer) can
+  // still be opened, and clear any stale custom field.
+  if (target === 'board') {
+    deactivateCustomBoard();
+    input.disabled = false;
+  }
 }
 
 function resetWorkspaceDiscoveryControls() {
+  deactivateCustomBoard();
   resetDiscoveryState('board', 'Choose a west workspace from the list to load boards.');
   resetDiscoveryState('sample', 'Choose a west workspace from the list to load sample and test projects.');
   updateBoardImage('noImg');
@@ -626,6 +732,13 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const applicationsSubfolderField = document.getElementById('applicationsSubfolder') as TextField | null;
   const debugPresetCheckbox = document.getElementById('debugPresetCheckbox') as HTMLInputElement | null;
 
+  // A custom board (dedicated field) overrides the dropdown selection: it has no
+  // board.yml path, only the typed identifier.
+  const customBoardInput = document.getElementById('customBoardInput') as TextField | null;
+  const customBoardId = isCustomBoardActive() ? (customBoardInput?.value?.trim() ?? '') : '';
+  const boardYamlPath = customBoardId ? '' : (boardInput.getAttribute('data-value') ?? '');
+  const boardIdentifier = customBoardId || (boardInput.getAttribute('data-board-identifier') ?? '');
+
   webviewApi.postMessage(
     {
       command:            "create",
@@ -635,8 +748,8 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       toolchainVariant:   sdkInput.getAttribute("data-has-llvm") === 'true'
         ? toolchainVariantGroup.value
         : 'zephyr',
-	      boardYamlPath:      boardInput.getAttribute('data-value') ?? '',
-	      boardIdentifier:    boardInput.getAttribute('data-board-identifier') ?? '',
+	      boardYamlPath:      boardYamlPath,
+	      boardIdentifier:    boardIdentifier,
 	      samplePath:         sampleInput.getAttribute('data-value') ?? '',
 	      projectName:        projectNameText.value,
 	      projectParentPath:  projectParentPathText.value,

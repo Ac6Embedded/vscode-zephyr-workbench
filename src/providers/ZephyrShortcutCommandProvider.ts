@@ -87,9 +87,7 @@ const debugManagerMenuItem = new MenuItem(
   }
 );
 
-// Devicetree Manager — listed right after the Debug Manager so the
-// pin + DT configuration steps are discoverable in the same place
-// users already look for build / debug entry points.
+// Devicetree Manager
 //
 // Icon: the project-shipped SVG pair
 // (res/icons/{light,dark}/dt-icon.svg) so menu, command
@@ -142,9 +140,9 @@ export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<Me
       items.push(newAppMenuItem);
       items.push(newWestWorkspaceMenuItem);
       items.push(newSDKMenuItem);
-      items.push(westManagerMenuItem);
-      items.push(debugManagerMenuItem);
       items.push(devicetreeManagerMenuItem);
+      items.push(debugManagerMenuItem);
+      items.push(westManagerMenuItem);
     }
     return items;
   }

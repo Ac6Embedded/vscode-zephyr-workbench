@@ -346,6 +346,11 @@ export function removeWorkspaceFolder(workspaceFolder: vscode.WorkspaceFolder) {
 
 
 export function getBoard(boardYamlPath: string, identifierOverride?: string): ZephyrBoard {
+  // A custom board entered by hand has no board definition path on disk; build it
+  // from the identifier alone instead of scanning a bogus directory.
+  if ((!boardYamlPath || boardYamlPath.length === 0) && identifierOverride) {
+    return ZephyrBoard.fromIdentifier(identifierOverride);
+  }
   return new ZephyrBoard(vscode.Uri.file(boardYamlPath), identifierOverride);
 }
 

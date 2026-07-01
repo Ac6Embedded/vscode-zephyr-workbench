@@ -635,6 +635,41 @@ vscode-button {
   padding: 6px 8px;
 }
 
+.dropdown-show-all {
+  position: sticky;
+  bottom: 0;
+  color: var(--vscode-textLink-foreground);
+  background: var(--input-background);
+  font-family: inherit;
+  font-size: calc(var(--type-ramp-base-font-size) - 1px);
+  padding: 5px 4px;
+  cursor: pointer;
+  border-top: 1px solid var(--vscode-tab-border);
+  user-select: none;
+}
+
+/* Keep the "Enter custom board..." escape hatch as a fixed footer below the
+   scrolling board list: the list scrolls inside #boardDropdownItems while the
+   footer stays put, so it is always reachable and never overlaps the rows. */
+#boardDropdown {
+  max-height: none;
+  overflow: visible;
+}
+#boardDropdownItems {
+  max-height: var(--dropdown-list-max-height);
+  overflow-y: auto;
+}
+.dropdown-item-custom {
+  background: var(--input-background);
+  border-top: 1px solid var(--vscode-tab-border);
+  color: var(--vscode-textLink-foreground);
+}
+
+.dropdown-show-all:hover {
+  background-color: var(--vscode-inputOption-hoverBackground);
+  text-decoration: underline;
+}
+
 .description {
   color: var(--vscode-editorInlayHint-foreground);
   font-size: calc(var(--type-ramp-base-font-size) - 2px);
