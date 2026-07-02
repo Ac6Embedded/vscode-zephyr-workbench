@@ -24,7 +24,7 @@ import {
 	removeApplicationLaunchConfigurations,
 } from './utils/debugTools/debugUtils';
 import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
-import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
+import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
@@ -2105,7 +2105,8 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand(
 			"zephyr-workbench.install-host-tools",
 			async (force = false,
-				listToolchains = "") => {
+				listToolchains = "",
+				pythonOpts?: HostToolsPythonOptions) => {
 
 				return vscode.window.withProgress(
 					{
@@ -2120,10 +2121,10 @@ export function activate(context: vscode.ExtensionContext) {
                         let installOk = false;
                         if (!force) {
                             installOk = await runInstallHostTools(
-                                context, listToolchains, progress, token);
+                                context, listToolchains, progress, token, undefined, pythonOpts);
                         } else {
                             installOk = await forceInstallHostTools(
-                                context, listToolchains, progress, token);
+                                context, listToolchains, progress, token, pythonOpts);
                         }
 
                         toolchainInstallationsProvider.refresh();
@@ -2244,6 +2245,42 @@ export function activate(context: vscode.ExtensionContext) {
 			"zephyr-workbench.install-host-tools.advanced",
 			async () => {
 				AdvancedHostToolsPanel.render(context.extensionUri);
+			}
+		)
+	);
+
+	// Selective host-tools install/repair (Windows): runs install.ps1 with a
+	// -Tools subset. Not surfaced in menus; entry point for the future
+	// Advanced Host Tools UI and for programmatic repairs. Deliberately does
+	// not chain the OpenOCD-runner install like the full install command does.
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench.install-host-tools.select",
+			async (parts: string[], pythonOpts?: HostToolsPythonOptions) => {
+				if (!Array.isArray(parts) || parts.length === 0) {
+					vscode.window.showErrorMessage("No host tools parts selected to install");
+					return;
+				}
+				return vscode.window.withProgress(
+					{
+						location: vscode.ProgressLocation.Notification,
+						title: "Installing selected host tools",
+						cancellable: true,
+					},
+					async (progress, token) => {
+						try {
+							await runInstallHostTools(context, "", progress, token, parts, pythonOpts);
+
+							toolchainInstallationsProvider.refresh();
+							zephyrShortcutProvider.refresh();
+							zephyrToolsCommandProvider.refresh();
+							// If Host Tools Manager is open, refresh its content
+							try { HostToolsPanel.currentPanel?.refresh(); } catch {}
+						} catch (installError) {
+							reportInstallError('Host tools installation failed', installError);
+						}
+					}
+				);
 			}
 		)
 	);

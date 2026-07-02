@@ -212,8 +212,10 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
                                             message?: string | undefined;
                                             increment?: number | undefined;
                                           }>,
-                                          token: vscode.CancellationToken): Promise<boolean> {
-  return installHostToolsWithOutcome(context, listToolchains, progress, false);
+                                          token: vscode.CancellationToken,
+                                          selectTools?: string[],
+                                          pythonOpts?: HostToolsPythonOptions): Promise<boolean> {
+  return installHostToolsWithOutcome(context, listToolchains, progress, false, selectTools, pythonOpts);
 }
 
 export async function forceInstallHostTools(context: vscode.ExtensionContext,
@@ -222,26 +224,36 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
                                             message?: string | undefined;
                                             increment?: number | undefined;
                                           }>,
-                                          token: vscode.CancellationToken): Promise<boolean> {
-  return installHostToolsWithOutcome(context, listToolchains, progress, true);
+                                          token: vscode.CancellationToken,
+                                          pythonOpts?: HostToolsPythonOptions): Promise<boolean> {
+  return installHostToolsWithOutcome(context, listToolchains, progress, true, undefined, pythonOpts);
 }
 
 async function installHostToolsWithOutcome(
   context: vscode.ExtensionContext,
   listToolchains: string,
   progress: vscode.Progress<{ message?: string | undefined; increment?: number | undefined }>,
-  force: boolean
+  force: boolean,
+  selectTools?: string[],
+  pythonOpts?: HostToolsPythonOptions
 ): Promise<boolean> {
   const activeTerminal = await getZephyrTerminal();
   activeTerminal.show();
 
   // To implement: token.onCancellationRequested()
 
+  // A selection means "repair these parts": it never wipes the install like
+  // force does, and it must bypass the already-installed short-circuit.
+  const selection = sanitizeSelectedHostTools(selectTools);
+
   let result: HostToolsInstallResult = { ran: false };
   if (force) {
     removeHostTools();
     progress.report({ message: "Reinstalling host tools into user directory" });
-    result = await installHostTools(context, listToolchains);
+    result = await installHostTools(context, listToolchains, undefined, pythonOpts);
+  } else if (selection.length > 0) {
+    progress.report({ message: "Installing selected host tools parts" });
+    result = await installHostTools(context, listToolchains, selection, pythonOpts);
   } else {
     progress.report({ message: "Installing host tools into user directory" });
     // The tools directory alone is not proof of a completed install: the script
@@ -252,12 +264,12 @@ async function installHostToolsWithOutcome(
     if (await checkHostTools() && await checkEnvFile() && fileExists(getZinstallerVersionStampPath())) {
       progress.report({ message: "Host tools already installed", increment: 100 });
     } else {
-      result = await installHostTools(context, listToolchains);
+      result = await installHostTools(context, listToolchains, undefined, pythonOpts);
     }
   }
 
   progress.report({ message: "Check if environment is well set up", increment: 80 });
-  return reportHostToolsInstallOutcome(context, result, progress);
+  return reportHostToolsInstallOutcome(context, result, progress, selection.length > 0);
 }
 
 /**
@@ -274,7 +286,8 @@ async function installHostToolsWithOutcome(
 async function reportHostToolsInstallOutcome(
   context: vscode.ExtensionContext,
   result: HostToolsInstallResult,
-  progress: vscode.Progress<{ message?: string | undefined; increment?: number | undefined }>
+  progress: vscode.Progress<{ message?: string | undefined; increment?: number | undefined }>,
+  selective: boolean = false
 ): Promise<boolean> {
   const toolsOk = await checkHostTools();
   const envOk = await checkEnvFile();
@@ -315,7 +328,13 @@ async function reportHostToolsInstallOutcome(
   }
 
   progress.report({ message: "Successfully Installing host tools", increment: 90 });
-  vscode.window.showInformationMessage("Setup Zephyr environment successful");
+  if (selective) {
+    // A parts install can succeed without the whole tool set being present;
+    // do not overclaim a fully set up environment.
+    vscode.window.showInformationMessage("Selected host tools parts installed successfully");
+  } else {
+    vscode.window.showInformationMessage("Setup Zephyr environment successful");
+  }
   // Host tools done; OpenOCD runner install handled separately with its own progress.
   progress.report({ message: "Auto-detect environment file", increment: 100 });
   return true;
@@ -535,7 +554,34 @@ export interface HostToolsInstallResult {
   exitCode?: number;
 }
 
-export async function installHostTools(context: vscode.ExtensionContext, listTools: string = ""): Promise<HostToolsInstallResult> {
+/**
+ * Selectable host-tools parts, mirroring the selectable step names in
+ * install.ps1. Used to whitelist -Tools values before they enter a shell
+ * command line.
+ */
+export const HOST_TOOLS_SELECTABLE_PARTS = ['gperf', 'cmake', 'ninja', 'dtc', 'git', 'python', 'venv'] as const;
+
+/**
+ * Python source options for the host-tools installer: use the PATH-detected
+ * system Python or a specific one instead of downloading the portable
+ * WinPython. Mutually exclusive; useSystemPython wins when both are set.
+ */
+export interface HostToolsPythonOptions {
+  useSystemPython?: boolean;
+  pythonExePath?: string;
+}
+
+function sanitizeSelectedHostTools(selectTools?: string[]): string[] {
+  if (!selectTools || selectTools.length === 0) {
+    return [];
+  }
+  const valid = new Set<string>(HOST_TOOLS_SELECTABLE_PARTS);
+  return selectTools
+    .map(t => String(t ?? '').trim().toLowerCase())
+    .filter(t => valid.has(t));
+}
+
+export async function installHostTools(context: vscode.ExtensionContext, listTools: string = "", selectTools?: string[], pythonOpts?: HostToolsPythonOptions): Promise<HostToolsInstallResult> {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   if(installDirUri) {
     let installScript: string = "";
@@ -569,9 +615,24 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
         installScript = 'install.ps1';
         installCmd = `powershell --% -File ${quotePathForPwshCommand(vscode.Uri.joinPath(installDirUri, installScript).fsPath)}`;
         installArgs += ` -InstallDir ${quotePathForPwshCommand(destDir)}`;
+        {
+          // Selective install: append -Tools a,b (whitelisted names only, no
+          // spaces, so no quoting is needed after the --% verbatim token).
+          const selected = sanitizeSelectedHostTools(selectTools);
+          if (selected.length > 0) {
+            installArgs += ` -Tools ${selected.join(',')}`;
+          }
+          // Python source: system PATH python or a specific one instead of
+          // the portable download (quoted like -InstallDir above).
+          if (pythonOpts?.useSystemPython) {
+            installArgs += ' -UseSystemPython';
+          } else if (pythonOpts?.pythonExePath && pythonOpts.pythonExePath.trim().length > 0) {
+            installArgs += ` -PythonExePath ${quotePathForPwshCommand(pythonOpts.pythonExePath.trim())}`;
+          }
+        }
         shell = 'powershell.exe';
         // TODO: check if powershell 7 is installed and used by default then use pwsh.exe instead
-        break; 
+        break;
       }
       case 'darwin': {
         installScript = 'install-mac.sh';

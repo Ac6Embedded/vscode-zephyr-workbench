@@ -4,6 +4,9 @@ param (
     [switch]$ReinstallVenv,
     [switch]$CreateVenv,
     [string]$VenvPath,
+    [string]$Tools = "",
+    [switch]$UseSystemPython,
+    [string]$PythonExePath = "",
     [switch]$Help,
     [switch]$Version
 )
@@ -31,6 +34,16 @@ Options:
   -ReinstallVenv         Remove the venv folder (see -VenvPath), create a new one and install Python requirements
   -CreateVenv            Create a Python venv (see -VenvPath) and install Python requirements; does not remove existing venv
   -VenvPath              Optional. Full path to the Python virtual environment to create/use. Defaults to '<InstallDir>\.zinstaller\.venv'
+  -Tools                 Optional. Comma-separated subset of parts to install: gperf,cmake,ninja,dtc,git,python,venv.
+                         Base tools (yq, wget, 7-Zip) and the environment files are always processed.
+                         Ignored with -OnlyCheck, -CreateVenv and -ReinstallVenv.
+                         Note: selecting python without venv replaces the portable Python; an existing venv keeps
+                         pointing at the old base interpreter, so select venv together with python to rebuild it.
+  -UseSystemPython       Optional. Use the Python detected on PATH instead of downloading the portable one.
+  -PythonExePath         Optional. Use a specific Python: path to python.exe or to a directory containing it.
+                         Cannot be combined with -UseSystemPython.
+                         Note: switching the Python source does not rebuild an existing venv (it stays bound to
+                         its previous base interpreter); also select venv (-Tools python,venv) or use -ReinstallVenv.
 
 Arguments:
   InstallDir             Optional. The directory where the Zephyr environment will be installed. Defaults to '$env:USERPROFILE\.zinstaller'
@@ -43,6 +56,9 @@ Examples:
   install.ps1 -CreateVenv -VenvPath "D:\zw\.venv"
   install.ps1 "C:\my\install\path" -ReinstallVenv -VenvPath "C:\my\install\path\.zinstaller\.venv"
   install.ps1 "C:\my\install\path" -OnlyCheck
+  install.ps1 -Tools cmake,ninja
+  install.ps1 -UseSystemPython
+  install.ps1 -PythonExePath "C:\Python313" -Tools python,venv
 "@
     Write-Host $helpText
 }
@@ -56,6 +72,57 @@ if ($Help) {
 if ($Version) {
     Write-Output "${ZinstallerVersion}+${ZinstallerMd5}"
     exit
+}
+
+# ---------------------------------------------------------------------------
+# Selective install (-Tools): only the listed parts run; the base tools
+# (yq, wget, 7-Zip) and the environment files are always processed. Defined at
+# top level so the final exit/stamp logic can always read the selection.
+# ---------------------------------------------------------------------------
+$script:SelectableSteps = @('gperf', 'cmake', 'ninja', 'dtc', 'git', 'python', 'venv')
+$script:SelectedSteps = @($Tools -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ -ne '' })
+
+if ($script:SelectedSteps.Count -gt 0 -and ($OnlyCheck -or $CreateVenv -or $ReinstallVenv)) {
+    # A warning line cannot match the 'name [version]' pattern the Host Tools
+    # Manager parses from -OnlyCheck output, so this is safe to print.
+    Write-Output "WARN: -Tools is ignored with -OnlyCheck, -CreateVenv and -ReinstallVenv"
+    $script:SelectedSteps = @()
+}
+
+if ($script:SelectedSteps.Count -gt 0) {
+    $unknownSteps = @($script:SelectedSteps | Where-Object { $script:SelectableSteps -notcontains $_ })
+    if ($unknownSteps.Count -gt 0) {
+        Write-Output "ERROR: Unknown value(s) for -Tools: $($unknownSteps -join ', '). Valid values: $($script:SelectableSteps -join ', ')"
+        exit 1
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Python source selection: portable (default, downloaded), system
+# (-UseSystemPython, resolved from PATH) or custom (-PythonExePath).
+# Downstream code always calls bare 'python'; the chosen source is put on the
+# process PATH once, before any python use.
+# ---------------------------------------------------------------------------
+$script:PythonMode = 'portable'
+$script:CustomPythonDir = ""
+
+if ($UseSystemPython -and $PythonExePath) {
+    Write-Output "ERROR: -UseSystemPython and -PythonExePath cannot be combined"
+    exit 1
+}
+if ($UseSystemPython) {
+    $script:PythonMode = 'system'
+} elseif ($PythonExePath) {
+    $resolvedPythonExe = $PythonExePath
+    if (Test-Path -Path $PythonExePath -PathType Container) {
+        $resolvedPythonExe = Join-Path -Path $PythonExePath -ChildPath "python.exe"
+    }
+    if (-not (Test-Path -Path $resolvedPythonExe -PathType Leaf)) {
+        Write-Output "ERROR: -PythonExePath does not point to a python executable: $PythonExePath"
+        exit 1
+    }
+    $script:PythonMode = 'custom'
+    $script:CustomPythonDir = Split-Path -Parent ([System.IO.Path]::GetFullPath($resolvedPythonExe))
 }
 
 # Check if an install directory argument is provided
@@ -236,10 +303,18 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     New-Item -Path $WorkDirectory -ItemType Directory -Force > $null 2>&1
     New-Item -Path $ToolsDirectory -ItemType Directory -Force > $null 2>&1
     
-    # Ensure portable Python is available on PATH early (for reinstall venv)
+    # Resolve the Python source on PATH once (also covers the venv-only modes
+    # below). In system/custom mode a leftover portable Python must never
+    # shadow the chosen interpreter, so its entries are stripped.
     $PortablePythonBin = Join-Path $ToolsDirectory "python\python"
     $PortablePythonScripts = Join-Path $ToolsDirectory "python\python\Scripts"
-    if (Test-Path -Path $PortablePythonBin) {
+    if ($script:PythonMode -eq 'custom') {
+        $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -and -not $_.StartsWith($PortablePythonBin, [System.StringComparison]::OrdinalIgnoreCase) }) -join ';'
+        $CustomPythonScriptsDir = Join-Path $script:CustomPythonDir "Scripts"
+        $env:PATH = "$($script:CustomPythonDir);$CustomPythonScriptsDir;" + $env:PATH
+    } elseif ($script:PythonMode -eq 'system') {
+        $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -and -not $_.StartsWith($PortablePythonBin, [System.StringComparison]::OrdinalIgnoreCase) }) -join ';'
+    } elseif (Test-Path -Path $PortablePythonBin) {
         $env:PATH = "$PortablePythonBin;$PortablePythonScripts;" + $env:PATH
     }
     
@@ -359,11 +434,29 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     # Step runner: every tool section below runs as a "step". A step failure
     # is recorded and the installation CONTINUES with the remaining steps
     # instead of aborting the whole install. Steps whose prerequisites failed
-    # are skipped with a reason. A summary is printed at the end and the
-    # script exits 0 only when no step failed.
+    # are skipped with a reason, and steps deselected via -Tools are marked
+    # 'not selected'. A summary is printed at the end and the script exits 0
+    # only when no step failed and nothing selected ended up skipped.
     # ----------------------------------------------------------------------
     $script:StepResults = New-Object System.Collections.ArrayList
     $script:CurrentStepWarnings = $null
+
+    # Presence probes: when a required step was deselected (-Tools), the
+    # dependency still counts as satisfied if the artifact of a previous run is
+    # present on disk. Only the venv -> python edge needs one today.
+    $script:StepPresenceProbes = @{
+        python = {
+            if (Test-Path -Path "$ToolsDirectory\python\python\python.exe") { return $true }
+            # A system or custom Python satisfies the dependency too (installs
+            # done with -UseSystemPython/-PythonExePath): functional probe, the
+            # Microsoft Store alias stub exits non-zero.
+            try {
+                & python --version > $null 2>&1
+                if ($LASTEXITCODE -eq 0) { return $true }
+            } catch {}
+            return $false
+        }
+    }
 
     function Add-StepWarning {
         param([string]$Message)
@@ -394,11 +487,31 @@ if (! $OnlyCheck -or $ReinstallVenv) {
             [Parameter(Mandatory)][scriptblock]$Body
         )
         if (-not $Label) { $Label = $Name }
+        # Selection filter first: a deselected step reports 'not selected' even
+        # when its prerequisites failed (the exit signal comes from those).
+        if ($script:SelectedSteps.Count -gt 0 -and $script:SelectableSteps -contains $Name -and $script:SelectedSteps -notcontains $Name) {
+            $null = $script:StepResults.Add([ordered]@{ name = $Name; label = $Label; status = 'not-selected'; error = $null; reason = 'not selected'; warnings = @() })
+            return
+        }
         foreach ($req in $Requires) {
             $reqResult = Get-StepResult -Name $req
-            if (-not $reqResult -or $reqResult.status -eq 'failed' -or $reqResult.status -eq 'skipped') {
+            $reqSatisfied = $false
+            $skipReason = "requires '$req'"
+            if ($reqResult -and ($reqResult.status -eq 'success' -or $reqResult.status -eq 'warning')) {
+                $reqSatisfied = $true
+            } elseif ($reqResult -and $reqResult.status -eq 'not-selected') {
+                # Deselected prerequisite: fall back to the on-disk artifact of
+                # a previous run.
+                $probe = $script:StepPresenceProbes[$req]
+                if ($probe -and (& $probe)) {
+                    $reqSatisfied = $true
+                } else {
+                    $skipReason = "requires '$req' (not selected and not installed)"
+                }
+            }
+            if (-not $reqSatisfied) {
                 Print-Warning "Skipping ${Label}: required step '$req' did not succeed"
-                $null = $script:StepResults.Add([ordered]@{ name = $Name; label = $Label; status = 'skipped'; error = $null; reason = "requires '$req'"; warnings = @() })
+                $null = $script:StepResults.Add([ordered]@{ name = $Name; label = $Label; status = 'skipped'; error = $null; reason = $skipReason; warnings = @() })
                 return
             }
         }
@@ -738,8 +851,41 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     }
     }
 
-    Invoke-Step -Name 'python' -Label 'Python' -Requires @('yq') -Body {
+    # In system/custom mode the python step validates the chosen interpreter
+    # instead of downloading the portable one, so it needs no manifest (yq).
+    $PythonStepRequires = @('yq')
+    if ($script:PythonMode -ne 'portable') { $PythonStepRequires = @() }
+
+    Invoke-Step -Name 'python' -Label 'Python' -Requires $PythonStepRequires -Body {
     Print-Title "Python"
+    if ($script:PythonMode -ne 'portable') {
+        # System or custom Python: verify it actually runs (the Microsoft
+        # Store alias stub resolves as 'python' but exits non-zero) and record
+        # its version for the environment manifest.
+        $pythonWorks = $false
+        try {
+            & python --version > $null 2>&1
+            if ($LASTEXITCODE -eq 0) { $pythonWorks = $true }
+        } catch {}
+        if (-not $pythonWorks) {
+            if ($script:PythonMode -eq 'custom') {
+                throw "Custom Python requested (-PythonExePath) but it does not run: $($script:CustomPythonDir)"
+            }
+            throw "System Python requested (-UseSystemPython) but no working python executable was found on PATH"
+        }
+        $ResolvedPython = (Get-Command python).Source
+        $PythonVersionOutput = "$(& python --version 2>&1 | Select-Object -First 1)"
+        if ($PythonVersionOutput -match 'Python (\d+)\.(\d+)') {
+            $script:pythonVersion = ($PythonVersionOutput -replace '^Python\s+', '').Trim()
+            $pythonMajor = [int]$matches[1]
+            $pythonMinor = [int]$matches[2]
+            if ($pythonMajor -lt 3 -or ($pythonMajor -eq 3 -and $pythonMinor -lt 10)) {
+                Add-StepWarning "Python $($script:pythonVersion) is older than 3.10, the minimum required by current Zephyr requirements"
+            }
+        }
+        Write-Output "Using $($script:PythonMode) Python: $ResolvedPython ($PythonVersionOutput)"
+        return
+    }
     $WinPythonSetupFilename = "Winpython64.exe"
 
     Download-FileWithHashCheck $python_portable_array[0] $python_portable_array[1] $WinPythonSetupFilename
@@ -774,9 +920,16 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     $GitPath = "$ToolsDirectory\git\bin"
     $WgetPath = "$ToolsDirectory\wget"
     $PythonPath = "$ToolsDirectory\python\python;$ToolsDirectory\python\python\Scripts"
+    if ($script:PythonMode -ne 'portable') {
+        # The system/custom Python was resolved earlier; re-prepending the
+        # portable paths would shadow it for the venv step and the final check.
+        $PythonPath = ""
+    }
     # $SevenZPath already defined previously based on portable or global
 
-    $env:PATH = "$CmakePath;$DtcPath;$GperfPath;$NinjaPath;$PythonPath;$WgetPath;$GitPath;$SevenZPath;" + $env:PATH
+    $PathPrefix = "$CmakePath;$DtcPath;$GperfPath;$NinjaPath;"
+    if ($PythonPath) { $PathPrefix = "$PathPrefix$PythonPath;" }
+    $env:PATH = "$PathPrefix$WgetPath;$GitPath;$SevenZPath;" + $env:PATH
 
 
     # Requires the python STEP (not just any python on PATH): a failed portable
@@ -1103,6 +1256,21 @@ $InstallDirectorySlashFormat = $InstallDirectory -replace '\\', '/'
 $ToolsDirectorySlashFormat = $ToolsDirectory -replace '\\', '/'
 $SevenZPathSlashFormat = $SevenZPath -replace '\\', '/'
 
+# Python entry per source mode. 'do_not_use: true' is the Host Tools Manager's
+# existing "System" source semantics: env.py then adds no python path and the
+# panel shows Source=System. A custom python gets its real paths written so
+# sourced shells resolve it.
+$PythonPathYamlFirst = "$ToolsDirectorySlashFormat/python/python"
+$PythonPathYamlSecond = "$ToolsDirectorySlashFormat/python/python/Scripts"
+$PythonDoNotUse = "false"
+if ($script:PythonMode -eq 'system') {
+    $PythonDoNotUse = "true"
+} elseif ($script:PythonMode -eq 'custom') {
+    $CustomPythonDirSlashFormat = $script:CustomPythonDir -replace '\\', '/'
+    $PythonPathYamlFirst = $CustomPythonDirSlashFormat
+    $PythonPathYamlSecond = "$CustomPythonDirSlashFormat/Scripts"
+}
+
 $envYaml = @"
 # env.yml
 # ZInstaller Workspace Environment Manifest
@@ -1120,10 +1288,10 @@ env:
 tools:
   python:
     path:
-      - "$ToolsDirectorySlashFormat/python/python"
-      - "$ToolsDirectorySlashFormat/python/python/Scripts"
+      - "$PythonPathYamlFirst"
+      - "$PythonPathYamlSecond"
     version: ${pythonVersion}
-    do_not_use: false
+    do_not_use: $PythonDoNotUse
 
   cmake:
     path: "`${zi_tools_dir}/cmake/bin"
@@ -1162,14 +1330,16 @@ python:
 	# env.yml carries user data (custom env vars, extra tool/runner paths, tool
 	# source overrides). A failed run used to abort before this point, leaving the
 	# file untouched; keep that behavior and only regenerate it from the template
-	# when no step failed or when the file does not exist yet.
+	# when a full run had no failed step, or when the file does not exist yet.
+	# Selective runs (-Tools) never overwrite an existing env.yml either: a
+	# targeted repair must not wipe the user's customizations.
 	$priorFailedSteps = @($script:StepResults | Where-Object { $_.status -eq 'failed' }).Count
-	if ($priorFailedSteps -eq 0 -or -not (Test-Path -Path $EnvYamlPath)) {
+	if ((-not (Test-Path -Path $EnvYamlPath)) -or ($priorFailedSteps -eq 0 -and $script:SelectedSteps.Count -eq 0)) {
 		$envYaml | Out-File -FilePath $EnvYamlPath -Encoding UTF8
 
 		Write-Output "Created environment manifest: $EnvYamlPath"
 	} else {
-		Print-Warning "Keeping existing environment manifest (some steps failed): $EnvYamlPath"
+		Print-Warning "Keeping existing environment manifest (failed steps or selective install): $EnvYamlPath"
 	}
 
 # --------------------------------------------------------------------------
@@ -1464,18 +1634,6 @@ if __name__ == "__main__":
     $script:SkippedSteps = @($script:StepResults | Where-Object { $_.status -eq 'skipped' })
     $script:WarningSteps = @($script:StepResults | Where-Object { $_.status -eq 'warning' })
 
-    # Version stamp: only written when every step succeeded, so a broken install
-    # keeps prompting for reinstallation instead of reporting "Up to date".
-    if ($script:FailedSteps.Count -eq 0) {
-@"
-Script Version: $ZinstallerVersion
-Script MD5: $ZinstallerMd5
-tools.yml MD5: $ToolsYmlMd5
-"@ | Out-File -FilePath "$InstallDirectory\zinstaller_version" -Encoding ASCII
-    } else {
-        Print-Warning "Version stamp not written because some steps failed; the install keeps being reported as needing reinstallation."
-    }
-
     Print-Title "Clean up"
     Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -1487,10 +1645,11 @@ tools.yml MD5: $ToolsYmlMd5
         $tag = '[ OK ]'
         if ($step.status -eq 'warning') { $tag = '[WARN]' }
         elseif ($step.status -eq 'skipped') { $tag = '[SKIP]' }
+        elseif ($step.status -eq 'not-selected') { $tag = '[SKIP]' }
         elseif ($step.status -eq 'failed') { $tag = '[FAIL]' }
         $line = "$tag $($step.label)"
         if ($step.status -eq 'failed' -and $step.error) { $line = "$line : $($step.error)" }
-        if ($step.status -eq 'skipped' -and $step.reason) { $line = "$line : $($step.reason)" }
+        if (($step.status -eq 'skipped' -or $step.status -eq 'not-selected') -and $step.reason) { $line = "$line : $($step.reason)" }
         Write-Output $line
         foreach ($stepWarning in @($step.warnings)) {
             Write-Output "         - $stepWarning"
@@ -1575,14 +1734,33 @@ if ($OnlyCheck) {
     exit $returnCode
 }
 
-# Install mode: the exit code reflects step failures, not the package check.
+# Install mode: the exit code reflects step results, not the package check.
 # (A system-wide tool on PATH can mask a broken zinstaller copy and vice versa.)
-# Callers get a boolean signal: 0 = no step failed, 1 = at least one step failed.
+# Callers get a boolean signal: 0 = everything requested succeeded, 1 = at
+# least one step failed or an explicitly selected step ended up skipped.
 $installFailedCount = 0
+$selectedSkippedCount = 0
 if ($script:StepResults) {
     $installFailedCount = @($script:StepResults | Where-Object { $_.status -eq 'failed' }).Count
+    $selectedSkippedCount = @($script:StepResults | Where-Object { $_.status -eq 'skipped' -and $script:SelectedSteps -contains $_.name }).Count
 }
-if ($installFailedCount -gt 0) {
+
+# Version stamp: marks "the install is complete". Written when nothing failed,
+# nothing requested was skipped, and (for selective runs) the package check
+# confirms the whole tool set is present, so a targeted repair that completes
+# the set clears the partial-install marker while an incomplete selection
+# keeps it (the extension re-runs the installer while the stamp is missing).
+if ($script:StepResults -and $installFailedCount -eq 0 -and $selectedSkippedCount -eq 0 -and ($script:SelectedSteps.Count -eq 0 -or $returnCode -eq 0)) {
+@"
+Script Version: $ZinstallerVersion
+Script MD5: $ZinstallerMd5
+tools.yml MD5: $ToolsYmlMd5
+"@ | Out-File -FilePath "$InstallDirectory\zinstaller_version" -Encoding ASCII
+} elseif ($script:StepResults) {
+    Print-Warning "Version stamp not written (failed or skipped steps, or an incomplete selective install); the install keeps being reported as needing reinstallation."
+}
+
+if ($installFailedCount -gt 0 -or $selectedSkippedCount -gt 0) {
     exit 1
 }
 exit 0
