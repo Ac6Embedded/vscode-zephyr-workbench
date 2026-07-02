@@ -139,17 +139,19 @@ form {
   width: 16%;
 }
 
-/* Host Tools table only: widen the "Source" column for the two radios and take the
-   space back from the empty trailing columns, so the total stays <= 100% (the table
-   uses table-layout: fixed, so overshooting 100% causes horizontal overflow). */
+/* Host Tools table: widen the "Source" column so the two radios (Zinstaller /
+   System) fit on one line. Take that width from the over-wide Name column
+   (col 2) rather than from the trailing columns. Leaving cols 5-6 at their
+   table defaults keeps the first (chevron) column the same width it has in the
+   Install Runners table, so the expanded Path row lines up identically in both
+   panels. Columns 2-6 sum to 93% (28+18+24+10+13), matching the Runners table,
+   which leaves the chevron column the same ~7% remainder under table-layout:
+   fixed. */
+.host-tools-table th:nth-child(2), .host-tools-table td:nth-child(2) {
+  width: 28%;
+}
 .host-tools-table th:nth-child(4), .host-tools-table td:nth-child(4) {
   width: 24%;
-}
-.host-tools-table th:nth-child(5), .host-tools-table td:nth-child(5) {
-  width: 6%;
-}
-.host-tools-table th:nth-child(6), .host-tools-table td:nth-child(6) {
-  width: 8%;
 }
 
 /* In-view confirmation dialog (used instead of a native modal so it works
