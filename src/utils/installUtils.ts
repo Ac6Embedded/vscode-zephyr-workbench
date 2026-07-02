@@ -35,6 +35,15 @@ export async function checkHostTools(): Promise<boolean> {
   }
 }
 
+/**
+ * Path of the stamp file the installer writes only when every install step
+ * succeeded. Its absence next to an existing tools/ directory marks a partial
+ * install that must be re-run.
+ */
+export function getZinstallerVersionStampPath(): string {
+  return path.join(getInternalDirRealPath(), 'zinstaller_version');
+}
+
 export function removeHostTools() {
   const tmpPath = path.join(getInternalDirRealPath(), 'tmp');
   const hostToolsPath = path.join(getInternalDirRealPath(), 'tools');
@@ -56,6 +65,18 @@ export function removeHostTools() {
   tryRemoveDir(tmpPath);
   tryRemoveDir(hostToolsPath);
   tryRemoveDir(venvPath);
+
+  // Remove the completion stamp too: it is rewritten by a fully-successful
+  // install, so a failed reinstall must not keep advertising the old install
+  // as complete (the stamp gates the "already installed" short-circuit).
+  try {
+    const stampPath = getZinstallerVersionStampPath();
+    if (fs.existsSync(stampPath)) {
+      fs.unlinkSync(stampPath);
+    }
+  } catch (error) {
+    failed.push({ path: getZinstallerVersionStampPath(), error });
+  }
 
   if (failed.length > 0) {
     try {
@@ -181,73 +202,123 @@ export async function verifyInstallScript(): Promise<void> {
 
 /**
  * TODO: better progress tracking and support cancel token
- * @param context 
+ * @param context
+ * @returns true when the host tools setup ended up fully usable (no failed
+ *          install step and the environment file exists), false otherwise.
  */
-export async function runInstallHostTools(context: vscode.ExtensionContext, 
+export async function runInstallHostTools(context: vscode.ExtensionContext,
                                           listToolchains: string,
-                                          progress: vscode.Progress<{ 
+                                          progress: vscode.Progress<{
                                             message?: string | undefined;
                                             increment?: number | undefined;
-                                          }>, 
-                                          token: vscode.CancellationToken) {
+                                          }>,
+                                          token: vscode.CancellationToken): Promise<boolean> {
+  return installHostToolsWithOutcome(context, listToolchains, progress, false);
+}
+
+export async function forceInstallHostTools(context: vscode.ExtensionContext,
+                                            listToolchains: string,
+                                            progress: vscode.Progress<{
+                                            message?: string | undefined;
+                                            increment?: number | undefined;
+                                          }>,
+                                          token: vscode.CancellationToken): Promise<boolean> {
+  return installHostToolsWithOutcome(context, listToolchains, progress, true);
+}
+
+async function installHostToolsWithOutcome(
+  context: vscode.ExtensionContext,
+  listToolchains: string,
+  progress: vscode.Progress<{ message?: string | undefined; increment?: number | undefined }>,
+  force: boolean
+): Promise<boolean> {
   const activeTerminal = await getZephyrTerminal();
   activeTerminal.show();
 
   // To implement: token.onCancellationRequested()
 
-  progress.report({ message: "Installing host tools into user directory" });
-  if(await checkHostTools()) {
-    progress.report({ message: "Host tools already installed", increment: 100 });
+  let result: HostToolsInstallResult = { ran: false };
+  if (force) {
+    removeHostTools();
+    progress.report({ message: "Reinstalling host tools into user directory" });
+    result = await installHostTools(context, listToolchains);
   } else {
-    await installHostTools(context, listToolchains);
+    progress.report({ message: "Installing host tools into user directory" });
+    // The tools directory alone is not proof of a completed install: the script
+    // creates it before installing anything. The version stamp is written only
+    // when every step succeeded, so "tools present but stamp missing" means a
+    // partial install and the installer must run again. The env-file check heals
+    // a manually removed env script the same way (the installer regenerates it).
+    if (await checkHostTools() && await checkEnvFile() && fileExists(getZinstallerVersionStampPath())) {
+      progress.report({ message: "Host tools already installed", increment: 100 });
+    } else {
+      result = await installHostTools(context, listToolchains);
+    }
   }
 
   progress.report({ message: "Check if environment is well set up", increment: 80 });
-  if(await checkHostTools()) {
-    progress.report({ message: "Successfully Installing host tools", increment: 90 });
-    if(await checkEnvFile()) {
-      autoSetHostToolsSettings();
-      await syncAutoDetectEnv(context);
-      vscode.window.showInformationMessage("Setup Zephyr environment successful");
-      // Host tools done; OpenOCD runner install handled separately with its own progress.
-      progress.report({ message: "Auto-detect environment file", increment: 100 });
-    }
-
-  } else {
-    progress.report({ message: "Installing host tools has failed", increment: 100 });
-    reportInstallError('Host tools installation failed', new Error('Host tools not found after installation'));
-  }
+  return reportHostToolsInstallOutcome(context, result, progress);
 }
 
-export async function forceInstallHostTools(context: vscode.ExtensionContext, 
-                                            listToolchains: string,
-                                            progress: vscode.Progress<{ 
-                                            message?: string | undefined;
-                                            increment?: number | undefined;
-                                          }>, 
-                                          token: vscode.CancellationToken) {
-  const activeTerminal = await getZephyrTerminal();
-  activeTerminal.show();
+/**
+ * Single place the install result is turned into user feedback for both the
+ * install and force-reinstall flows.
+ *
+ * The folder checks alone cannot detect a partial failure: the installer
+ * creates the tools directory before installing anything, so checkHostTools()
+ * is true after any run. On Windows the captured exit code is therefore the
+ * authoritative signal (0 = no step failed, 1 = at least one step failed; the
+ * script prints a per-step summary in the terminal and keeps going on
+ * individual failures).
+ */
+async function reportHostToolsInstallOutcome(
+  context: vscode.ExtensionContext,
+  result: HostToolsInstallResult,
+  progress: vscode.Progress<{ message?: string | undefined; increment?: number | undefined }>
+): Promise<boolean> {
+  const toolsOk = await checkHostTools();
+  const envOk = await checkEnvFile();
 
-  removeHostTools();
-  progress.report({ message: "Reinstalling host tools into user directory" });
-  await installHostTools(context, listToolchains);
+  // Keep whatever DID install usable, even when some steps failed.
+  if (envOk) {
+    autoSetHostToolsSettings();
+    await syncAutoDetectEnv(context);
+  }
 
-  progress.report({ message: "Check if environment is well set up", increment: 80 });
-  if(await checkHostTools()) {
-    progress.report({ message: "Successfully Installing host tools", increment: 90 });
-    if(await checkEnvFile()) {
-      autoSetHostToolsSettings();
-      await syncAutoDetectEnv(context);
-      vscode.window.showInformationMessage("Setup Zephyr environment successful");
-      // Host tools done; OpenOCD runner install handled separately with its own progress.
-      progress.report({ message: "Auto-detect environment file", increment: 100 });
-    }
+  if (result.ran && typeof result.exitCode === 'number' && result.exitCode !== 0) {
+    progress.report({ message: "Host tools installed with some failures", increment: 100 });
+    vscode.window.showWarningMessage(
+      "Zephyr host tools: some installation steps failed. See the terminal output for the per-step summary, " +
+      "then re-run 'Install Host Tools' to retry the failed steps.");
+    return false;
+  }
 
-  } else {
+  if (result.ran && result.exitCode === undefined && process.platform === 'win32') {
+    // The task ended without an exit code: the installer process never started
+    // or was killed before finishing. Do not report success on folder checks.
+    progress.report({ message: "Installing host tools has failed", increment: 100 });
+    reportInstallError('Host tools installation failed', new Error('The installer did not complete (no exit code); it may have been cancelled.'));
+    return false;
+  }
+
+  if (!toolsOk) {
     progress.report({ message: "Installing host tools has failed", increment: 100 });
     reportInstallError('Host tools installation failed', new Error('Host tools not found after installation'));
+    return false;
   }
+
+  if (!envOk) {
+    // Previously a silent dead zone: tools folder present but no env script.
+    progress.report({ message: "Installing host tools has failed", increment: 100 });
+    reportInstallError('Host tools installation incomplete', new Error('Environment file missing after installation. The installer likely stopped before generating it; re-run "Install Host Tools".'));
+    return false;
+  }
+
+  progress.report({ message: "Successfully Installing host tools", increment: 90 });
+  vscode.window.showInformationMessage("Setup Zephyr environment successful");
+  // Host tools done; OpenOCD runner install handled separately with its own progress.
+  progress.report({ message: "Auto-detect environment file", increment: 100 });
+  return true;
 }
 
 async function runNonRootHostToolsCommand(
@@ -451,7 +522,20 @@ async function runElevatedDebugToolsCommand(
   await runElevatedCommand(command, { taskName: 'Installing root-required runners', shellOpts });
 }
 
-export async function installHostTools(context: vscode.ExtensionContext, listTools: string = "") {
+/**
+ * Result of launching the host-tools install script.
+ * `ran` is false when the script was never started (unsupported platform,
+ * blocked execution policy, missing script). `exitCode` is only populated on
+ * win32, where the installer never aborts on a single failed step and exits
+ * 0 (no step failed) or 1 (at least one step failed); the per-step summary is
+ * printed in the terminal by the script itself.
+ */
+export interface HostToolsInstallResult {
+  ran: boolean;
+  exitCode?: number;
+}
+
+export async function installHostTools(context: vscode.ExtensionContext, listTools: string = ""): Promise<HostToolsInstallResult> {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   if(installDirUri) {
     let installScript: string = "";
@@ -480,7 +564,7 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
                 try { await vscode.commands.executeCommand('zephyr-workbench.install-host-tools.open-manager', false); } catch {}
               }
             });
-          return;
+          return { ran: false };
         }
         installScript = 'install.ps1';
         installCmd = `powershell --% -File ${quotePathForPwshCommand(vscode.Uri.joinPath(installDirUri, installScript).fsPath)}`;
@@ -501,7 +585,7 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
       }
       default: {
         vscode.window.showErrorMessage("Platform not supported !");
-        return;
+        return { ran: false };
       }
     }
 
@@ -511,7 +595,7 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
       executable: shell,
       shellArgs: getShellArgs(shell),
     };
-    
+
     if(process.platform === 'linux') {
       const rootCommand = `${installCmd} --only-root${installArgs}`;
       const nonRootCommand = `${installCmd} --only-without-root${installArgs}`;
@@ -525,11 +609,20 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
 
       // Non-root step runs without sudo and already works in every environment.
       await runNonRootHostToolsCommand(nonRootCommand, shellOpts);
+      return { ran: true };
+    } else if (process.platform === 'win32') {
+      // Capture the exit code: the hardened installer never aborts on a single
+      // failed step; it exits 1 when at least one step failed and prints the
+      // per-step summary in the terminal.
+      const exitCode = await execShellCommandCapturingExit('Installing Host tools', installCmd + " " + installArgs, shellOpts);
+      return { ran: true, exitCode };
     } else {
       await execShellCommand('Installing Host tools', installCmd + " " + installArgs, shellOpts);
+      return { ran: true };
     }
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");
+    return { ran: false };
   }
 }
 
@@ -582,7 +675,13 @@ export async function installVenv(context: vscode.ExtensionContext) {
     if(process.platform === 'linux' || process.platform === 'darwin') {
       await execShellCommand('Installing Venv', installCmd + " --reinstall-venv " + installArgs, shellOpts);
     } else {
-      await execShellCommand('Installing Venv', installCmd + " -ReinstallVenv " + installArgs, shellOpts);
+      // The script refuses to delete the venv when it cannot rebuild it
+      // (network canary failed, no working python) and exits 1: surface that
+      // instead of silently completing the progress notification.
+      const exitCode = await execShellCommandCapturingExit('Installing Venv', installCmd + " -ReinstallVenv " + installArgs, shellOpts);
+      if (exitCode !== 0) {
+        vscode.window.showErrorMessage('Reinstalling the virtual environment failed. See the terminal output for details.');
+      }
     }
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");

@@ -2117,11 +2117,12 @@ export function activate(context: vscode.ExtensionContext) {
 						// Close deprecated SDK Manager panel if open (no-op as panel removed)
 
                         try {
+                        let installOk = false;
                         if (!force) {
-                            await runInstallHostTools(
+                            installOk = await runInstallHostTools(
                                 context, listToolchains, progress, token);
                         } else {
-                            await forceInstallHostTools(
+                            installOk = await forceInstallHostTools(
                                 context, listToolchains, progress, token);
                         }
 
@@ -2131,8 +2132,12 @@ export function activate(context: vscode.ExtensionContext) {
                         // If Host Tools Manager is open, refresh its content
                         try { HostToolsPanel.currentPanel?.refresh(); } catch {}
 
-                        // After host tools progress ends, start a new progress for OpenOCD installation
+                        // After host tools progress ends, start a new progress for OpenOCD installation.
+                        // Skipped when the install reported failures: chaining
+                        // "install more runners" right after a failure message
+                        // would be confusing and OpenOCD would likely fail too.
                         try {
+                            if (installOk) {
                             let didOpenOCD = false;
                             if (await checkHostTools() && await checkEnvFile()) {
                                 await vscode.window.withProgress(
@@ -2170,6 +2175,7 @@ export function activate(context: vscode.ExtensionContext) {
                                 sbi.show();
                                 setTimeout(() => { try { sbi.dispose(); } catch {} }, 10000);
                             } catch {}
+                            }
                         } catch {}
                         } catch (installError) {
                             reportInstallError('Host tools installation failed', installError);

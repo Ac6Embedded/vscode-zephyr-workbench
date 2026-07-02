@@ -102,16 +102,6 @@ function Print-Title {
     }
 }
 
-function Print-Error {
-    param (
-        [int]$Index,
-        [string]$Message
-    )
-
-    Write-Output "ERROR: $Message"
-    return $Index
-}
-
 function Print-Warning {
     param (
         [string]$Message
@@ -124,6 +114,11 @@ function Install-PythonVenv {
     param (
         [string]$VenvPath
     )
+
+    # Reset per-run list of pip packages that failed to install. A failed
+    # package is recorded and the loop continues; only an unusable venv or
+    # missing base requirements abort this function (via throw).
+    $script:VenvPackageFailures = @()
 
     Print-Title "Zephyr Python-Requirements"
     $RequirementsBaseUrl = "https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
@@ -159,20 +154,38 @@ function Install-PythonVenv {
         Write-Output "Using downloaded requirements: $RequirementsFile"
     }
 
+    if ((Test-Path -Path $VenvPath) -and -not (Test-Path -Path "$VenvPath\Scripts\Activate.ps1")) {
+        # Half-created venv (e.g. a previous run was killed mid-creation):
+        # recreate it instead of failing on the same broken folder forever.
+        Print-Warning "Existing virtual environment at $VenvPath is incomplete; recreating it"
+        Remove-Item -Path $VenvPath -Recurse -Force
+    }
     if (-not (Test-Path -Path $VenvPath)) {
         python -m venv "$VenvPath"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to create Python virtual environment at $VenvPath (exit code $LASTEXITCODE)"
+        }
+    }
+    if (-not (Test-Path -Path "$VenvPath\Scripts\Activate.ps1")) {
+        throw "Python virtual environment at $VenvPath is unusable: Scripts\Activate.ps1 not found"
     }
     . "$VenvPath\Scripts\Activate.ps1"
     $ParserScript = Join-Path $ScriptDirectory "parse_python_packages.py"
-    
+
     Write-Output "Upgrading pip to the latest version..."
     python -m pip install --upgrade pip --quiet
+    if ($LASTEXITCODE -ne 0) {
+        Add-StepWarning "Failed to upgrade pip (exit code $LASTEXITCODE); continuing with the current version"
+    }
 
     # Ensure PyYAML is available before parsing tools.yml within the venv.
     & python -c "import yaml" 2>$null 1>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Output "Installing PyYAML into the virtual environment..."
         & python -m pip install PyYAML --quiet
+        if ($LASTEXITCODE -ne 0) {
+            Add-StepWarning "Failed to install PyYAML; python_packages from tools.yml may be skipped"
+        }
     }
 
     $pythonPackageSpecs = @()
@@ -191,10 +204,25 @@ function Install-PythonVenv {
         if ([string]::IsNullOrWhiteSpace($spec)) { continue }
         Write-Output "Installing Python package: $spec"
         & python -m pip install $spec --quiet
+        if ($LASTEXITCODE -ne 0) {
+            # One bad package must not stop the others: record and continue.
+            Print-Warning "Failed to install Python package: $spec"
+            $script:VenvPackageFailures += $spec
+        }
     }
 
     Write-Output "Installing Zephyr's base requirements..."
     & python -m pip install -r "$RequirementsFile" --quiet
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to install Zephyr base requirements from $RequirementsFile (exit code $LASTEXITCODE)"
+    }
+
+    # Every package was attempted above (one bad package never stops the
+    # others), but the packages in tools.yml are not optional (west, ...):
+    # report the run as failed so a plain re-run repairs the missing ones.
+    if ($script:VenvPackageFailures.Count -gt 0) {
+        throw "Failed to install $($script:VenvPackageFailures.Count) Python package(s): $($script:VenvPackageFailures -join ', ')"
+    }
 }
 
 
@@ -223,39 +251,20 @@ if (! $OnlyCheck -or $ReinstallVenv) {
             [string]$ExpectedHash,
             [string]$Filename
         )
-    
-        # Full path where the file will be saved
+
+        # Same download path as unchecked downloads, plus hash verification.
+        Download-WithoutCheck $SourceUrl $Filename
+
         $FilePath = Join-Path -Path $DownloadDirectory -ChildPath $Filename
-    
-        Write-Output "Downloading: $Filename ..."
-    
-        if ($UseWget) {
-            # Using wget for downloading
-            & $Wget -q $SourceUrl -O $FilePath
-        } else {
-            # Using Invoke-WebRequest for downloading, make it silent, if not it will be very slow
-            & {
-                 $ProgressPreference = 'SilentlyContinue'
-                 Invoke-WebRequest -Uri $SourceUrl -OutFile $FilePath -ErrorAction Stop
-            }
-        }   
-        # Check if the download was successful
-        if (-Not (Test-Path -Path $FilePath)) {
-            Print-Error 1 "Error: Failed to download the file."
-            exit 1
-        }
-    
+
         # Compute the SHA-256 hash of the downloaded file
         $ComputedHash = Get-FileHash -Path $FilePath -Algorithm SHA256 | Select-Object -ExpandProperty Hash
-    
+
         # Compare the computed hash with the expected hash
         if ($ComputedHash -eq $ExpectedHash) {
             Write-Output "DL: $Filename downloaded successfully"
         } else {
-            Print-Error 2 "Error: Hash mismatch."
-            Print-Error 2 "Expected: $ExpectedHash"
-            Print-Error 2 "Computed: $ComputedHash"
-            exit 2
+            throw "Hash mismatch for ${Filename}: expected $ExpectedHash, computed $ComputedHash"
         }
     }
 	
@@ -273,29 +282,32 @@ if (! $OnlyCheck -or $ReinstallVenv) {
         if ($UseWget) {
             # Using wget for downloading
             & $Wget -q $SourceUrl -O $FilePath
+            if ($LASTEXITCODE -ne 0) {
+                # wget -O leaves a zero-byte file behind on failure
+                Remove-Item -Path $FilePath -Force -ErrorAction SilentlyContinue
+                throw "Failed to download $Filename from $SourceUrl (wget exit code $LASTEXITCODE)"
+            }
         } else {
             # Using Invoke-WebRequest for downloading, make it silent, if not it will be very slow
             & {
                  $ProgressPreference = 'SilentlyContinue'
                  Invoke-WebRequest -Uri $SourceUrl -OutFile $FilePath -ErrorAction Stop
             }
-        }   
+        }
         # Check if the download was successful
         if (-Not (Test-Path -Path $FilePath)) {
-            Print-Error 1 "Error: Failed to download the file."
-            exit 1
+            throw "Failed to download $Filename from $SourceUrl"
         }
-    
+
     }
     
     function Test-FileExistence {
         param (
             [string]$FilePath  # Path to the file to check
         )
-        
+
         if (-Not (Test-Path -Path $FilePath)) {
-            Print-Error 3 "File does not exist: $FilePath"
-            exit 3
+            throw "File does not exist: $FilePath"
         }
         else {
             Write-Output "File exists: $FilePath"
@@ -313,9 +325,11 @@ if (! $OnlyCheck -or $ReinstallVenv) {
         $Sha256 = & $Yq eval ".*_content[] | select(.tool == `"`"`"$Tool`"`"`") | .os.$OperatingSystem.sha256" $YamlFilePath
     
         # Check if the source and sha256 are not null (meaning the tool supports the OS)
+        # Entries are written to script scope because the manifest is dot-sourced
+        # inside a step scriptblock and later steps must still see the arrays.
         if ($Source -ne 'null' -and $Sha256 -ne 'null') {
             $ManifestEntry = @"
-`$${Tool}_array =  @('$Source','$Sha256')
+`$script:${Tool}_array =  @('$Source','$Sha256')
 
 "@
             Add-Content $ManifestFilePath $ManifestEntry
@@ -333,14 +347,87 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     
         # Extract the file silently
         & $SevenZ x "$ZipFilePath" -o"$DestinationDirectory" -y -bso0 -bsp0
-    
+
         if ($LastExitCode -eq 0) {
             Write-Output "Extraction successful: $ZipFilePath"
         } else {
-            Print-Error $LastExitCode "Failed to extract $ZipFilePath"
+            throw "Failed to extract $ZipFilePath (7z exit code $LastExitCode)"
         }
     }
     
+    # ----------------------------------------------------------------------
+    # Step runner: every tool section below runs as a "step". A step failure
+    # is recorded and the installation CONTINUES with the remaining steps
+    # instead of aborting the whole install. Steps whose prerequisites failed
+    # are skipped with a reason. A summary is printed at the end and the
+    # script exits 0 only when no step failed.
+    # ----------------------------------------------------------------------
+    $script:StepResults = New-Object System.Collections.ArrayList
+    $script:CurrentStepWarnings = $null
+
+    function Add-StepWarning {
+        param([string]$Message)
+        Print-Warning $Message
+        if ($null -ne $script:CurrentStepWarnings) {
+            $null = $script:CurrentStepWarnings.Add($Message)
+        }
+    }
+
+    function Assert-Exe {
+        # Native executables do not throw on failure; call this right after one.
+        param([string]$What)
+        if ($LASTEXITCODE -ne 0) {
+            throw "$What failed with exit code $LASTEXITCODE"
+        }
+    }
+
+    function Get-StepResult {
+        param([string]$Name)
+        return $script:StepResults | Where-Object { $_.name -eq $Name } | Select-Object -First 1
+    }
+
+    function Invoke-Step {
+        param(
+            [Parameter(Mandatory)][string]$Name,
+            [string]$Label = "",
+            [string[]]$Requires = @(),
+            [Parameter(Mandatory)][scriptblock]$Body
+        )
+        if (-not $Label) { $Label = $Name }
+        foreach ($req in $Requires) {
+            $reqResult = Get-StepResult -Name $req
+            if (-not $reqResult -or $reqResult.status -eq 'failed' -or $reqResult.status -eq 'skipped') {
+                Print-Warning "Skipping ${Label}: required step '$req' did not succeed"
+                $null = $script:StepResults.Add([ordered]@{ name = $Name; label = $Label; status = 'skipped'; error = $null; reason = "requires '$req'"; warnings = @() })
+                return
+            }
+        }
+        $script:CurrentStepWarnings = New-Object System.Collections.ArrayList
+        $global:LASTEXITCODE = 0
+        try {
+            & $Body
+            $status = 'success'
+            if ($script:CurrentStepWarnings.Count -gt 0) { $status = 'warning' }
+            $null = $script:StepResults.Add([ordered]@{ name = $Name; label = $Label; status = $status; error = $null; reason = $null; warnings = @($script:CurrentStepWarnings) })
+        } catch {
+            Write-Output "ERROR: Step '$Label' failed: $($_.Exception.Message)"
+            $null = $script:StepResults.Add([ordered]@{ name = $Name; label = $Label; status = 'failed'; error = "$($_.Exception.Message)"; reason = $null; warnings = @($script:CurrentStepWarnings) })
+        } finally {
+            $script:CurrentStepWarnings = $null
+        }
+    }
+
+    # Hoisted values used by the env.yml manifest so it can always be
+    # generated, even when the corresponding install step failed or was skipped.
+    $script:wgetVersion = "1.21.4"
+    $script:pythonVersion = "3.13.5"
+    # Default 7-Zip location; the 7z step overwrites these when it resolves or
+    # installs one. A preset default keeps env.yml from ever containing an empty
+    # path (env.py would normalize "" to "." and prepend the cwd to PATH).
+    $script:SevenZ = "C:\Program Files\7-Zip\7z.exe"
+    $script:SevenZPath = "C:\Program Files\7-Zip"
+
+    Invoke-Step -Name 'yq' -Label 'yq (YAML parser)' -Body {
     # Download and verify yq
     Print-Title "YQ"
     $YqExecutable = "yq.exe"
@@ -385,230 +472,328 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     Test-FileExistence -FilePath $YqPath
 
     # Use the persistent copy
-    $Yq = $YqPath
-    
+    $script:Yq = $YqPath
+
     Print-Title "Parse YAML and generate manifest"
     "# Automatically generated by Zinstaller on Powershell" | Out-File -FilePath $ManifestFilePath
-    
+
     # List all tools from the YAML file
     $ToolsList = & $Yq eval '.*_content[].tool' $YamlFilePath
-    
+    Assert-Exe "yq parsing of tools.yml"
+
     # Loop through each tool and generate the entries
     foreach ($Tool in $ToolsList) {
         New-ManifestEntry $Tool $SelectedOperatingSystem
     }
-    
-    # Source manifest to get the array of elements
+
+    # Source manifest to get the array of elements (script scope, see New-ManifestEntry)
     . $ManifestFilePath
-    
-. $ManifestFilePath
+    }
+
+    Invoke-Step -Name 'wget' -Label 'wget' -Requires @('yq') -Body {
     Print-Title "Wget"
     $WgetExecutableName = "wget.exe"
-    $wgetVersion = "1.21.4"
     Download-FileWithHashCheck $wget_array[0] $wget_array[1] $WgetExecutableName
     Test-FileExistence -FilePath "$DownloadDirectory\$WgetExecutableName"
-    
+
     New-Item -Path "$ToolsDirectory\wget" -ItemType Directory -Force > $null 2>&1
-    Copy-Item -Path "$DownloadDirectory\$WgetExecutableName" -Destination "$ToolsDirectory\wget\$WgetExecutableName"
-    
-    $Wget = "$ToolsDirectory\wget\$WgetExecutableName"
-    
-    $UseWget = $true
-    
+    Copy-Item -Path "$DownloadDirectory\$WgetExecutableName" -Destination "$ToolsDirectory\wget\$WgetExecutableName" -ErrorAction Stop
+
+    $script:Wget = "$ToolsDirectory\wget\$WgetExecutableName"
+
+    # From here on downloads go through wget; when this step fails, UseWget
+    # stays false and later downloads fall back to Invoke-WebRequest.
+    $script:UseWget = $true
+    }
+
+    # No -Requires here: detecting an already-installed 7-Zip works without the
+    # manifest; only the download-and-install branch needs the yq step.
+    Invoke-Step -Name '7z' -Label '7-Zip' -Body {
     Print-Title "7-Zip"
-    
-    $SevenZInstalled = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object { $_.DisplayName -like "*7-Zip*" }
-    
+
+    $SevenZInstalled = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*7-Zip*" }
+
     if ($SevenZInstalled) {
         Write-Host "7-Zip is already installed."
-		$SevenZ = "C:\Program Files\7-Zip\7z.exe"
-		$SevenZPath = "C:\Program Files\7-Zip"
+        $script:SevenZ = "C:\Program Files\7-Zip\7z.exe"
+        $script:SevenZPath = "C:\Program Files\7-Zip"
 
-		if (-Not (Test-Path -Path $SevenZ)) {
-			#maybe 7z 32 bits installed
-		    $SevenZ = "C:\Program Files (x86)\7-Zip\7z.exe"
-		    $SevenZPath = "C:\Program Files (x86)\7-Zip"
+        if (-Not (Test-Path -Path $SevenZ)) {
+            #maybe 7z 32 bits installed
+            $script:SevenZ = "C:\Program Files (x86)\7-Zip\7z.exe"
+            $script:SevenZPath = "C:\Program Files (x86)\7-Zip"
         }
-		
-		Test-FileExistence -FilePath $SevenZ
-		#if 7z installed in a non default place it will fail, you should use the portable version without -Global
+
+        Test-FileExistence -FilePath $SevenZ
+        #if 7z installed in a non default place it will fail, you should use the portable version without -Global
     } else {
         Write-Host "7-Zip is not installed."
+        if (-not $script:seven_z_array) {
+            throw "7-Zip is not installed and its installer cannot be downloaded because the manifest is unavailable (step 'yq' did not succeed)"
+        }
         Write-Host "Installing now 7z Global..."
         $SevenZInstallerName = "7z-installer.exe"
         Download-FileWithHashCheck $seven_z_array[0] $seven_z_array[1] $SevenZInstallerName
-    
+
         $SevenZInstallerPath = Join-Path -Path $DownloadDirectory -ChildPath $SevenZInstallerName
-    
-        Start-Process -FilePath $SevenZInstallerPath -ArgumentList "/S" -Wait
+
+        $SevenZProcess = Start-Process -FilePath $SevenZInstallerPath -ArgumentList "/S" -Wait -PassThru
+        if ($SevenZProcess.ExitCode -ne 0) {
+            throw "7-Zip installer exited with code $($SevenZProcess.ExitCode)"
+        }
         Write-Host "7-Zip installation completed."
-        $SevenZInstalled = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object { $_.DisplayName -like "*7-Zip*" }
+        $SevenZInstalled = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*7-Zip*" }
         if ($SevenZInstalled) {
             Write-Host "7-Zip was installed successfully"
         } else {
-            Print-Error 4 "7-Zip was not installed ! Stop here !!"
-            exit 4
+            throw "7-Zip was not installed"
         }
-        $SevenZ = "C:\Program Files\7-Zip\7z.exe"
-        $SevenZPath = "C:\Program Files\7-Zip"
+        $script:SevenZ = "C:\Program Files\7-Zip\7z.exe"
+        $script:SevenZPath = "C:\Program Files\7-Zip"
         Test-FileExistence -FilePath $SevenZ
-		Write-Host "7-Zip installation completed."
+        Write-Host "7-Zip installation completed."
+    }
     }
 
 	if ($CreateVenv) {
 		Print-Title "Creating Python VENV"
-		if (Test-Path -Path $VenvPath) {
-			Write-Output "VENV already exists at: $VenvPath"
-		} else {
-			Install-PythonVenv -VenvPath $VenvPath
+		$venvExitCode = 0
+		try {
+			if ((Test-Path -Path $VenvPath) -and (Test-Path -Path "$VenvPath\Scripts\Activate.ps1")) {
+				Write-Output "VENV already exists at: $VenvPath"
+			} else {
+				# Missing or half-created venv: Install-PythonVenv recreates it.
+				Install-PythonVenv -VenvPath $VenvPath
+			}
+		} catch {
+			Write-Output "ERROR: Creating Python venv failed: $($_.Exception.Message)"
+			$venvExitCode = 1
+		} finally {
+			Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
 		}
-		Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
-		exit
+		exit $venvExitCode
 	}
 
 	if ($ReinstallVenv) {
 		Print-Title "Reinstalling Python VENV"
-		if (Test-Path -Path $VenvPath) {
-            Remove-Item -Path $VenvPath -Recurse -Force
-		}
+		$venvExitCode = 0
+		try {
+			# Never delete the existing venv when this run cannot plausibly
+			# rebuild it. The yq/wget steps are the canary for GitHub being
+			# reachable (the Zephyr requirements download needs it); other step
+			# failures (e.g. 7-Zip) do not affect the venv and do not block.
+			$failedNetworkSteps = @($script:StepResults | Where-Object { ($_.name -eq 'yq' -or $_.name -eq 'wget') -and $_.status -eq 'failed' })
+			if ($failedNetworkSteps.Count -gt 0) {
+				$failedLabels = ($failedNetworkSteps | ForEach-Object { $_.label }) -join ', '
+				throw "Not reinstalling the venv because prerequisite step(s) failed: $failedLabels. Existing venv left untouched."
+			}
+			# A functional probe, not Get-Command: the Microsoft Store
+			# app-execution alias resolves as 'python' but only prints an
+			# installation hint and exits non-zero.
+			$pythonWorks = $false
+			try {
+				& python --version > $null 2>&1
+				if ($LASTEXITCODE -eq 0) { $pythonWorks = $true }
+			} catch {}
+			if (-not $pythonWorks) {
+				throw "No working python executable found on PATH; existing venv left untouched."
+			}
+			if (Test-Path -Path $VenvPath) {
+				Remove-Item -Path $VenvPath -Recurse -Force
+			}
 
-		Install-PythonVenv -VenvPath $VenvPath
-	    Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
-		exit
+			Install-PythonVenv -VenvPath $VenvPath
+		} catch {
+			Write-Output "ERROR: Reinstalling Python venv failed: $($_.Exception.Message)"
+			$venvExitCode = 1
+		} finally {
+			Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
+		}
+		exit $venvExitCode
 	}
-	
+
+    Invoke-Step -Name 'gperf' -Label 'gperf' -Requires @('yq','7z') -Body {
     Print-Title "Gperf"
     $GperfVersion = "3.0.1"
     $GperfZipName = "gperf-${GperfVersion}-bin.zip"
     $GperfInstallDirectory = "$ToolsDirectory\gperf"
     Download-FileWithHashCheck $gperf_array[0] $gperf_array[1] $GperfZipName
-    
+
     New-Item -Path $GperfInstallDirectory -ItemType Directory -Force > $null 2>&1
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$GperfZipName" -DestinationDirectory $GperfInstallDirectory
-    
+    }
+
+    Invoke-Step -Name 'cmake' -Label 'CMake' -Requires @('yq','7z') -Body {
     Print-Title "CMake"
     $CmakeVersion = "4.1.2"
     $CmakeZipName = "cmake-${CmakeVersion}-windows-x86_64.zip"
     $CmakeFolderName = "cmake-${CmakeVersion}-windows-x86_64"
     Download-FileWithHashCheck $cmake_array[0] $cmake_array[1] $CmakeZipName
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$CmakeZipName" -DestinationDirectory $ToolsDirectory
-	if (Test-Path -Path $ToolsDirectory\cmake) {
-       Remove-Item -Path $ToolsDirectory\cmake -Recurse -Force
+    # Only replace an existing cmake once the new one is fully extracted, so a
+    # failed extraction cannot destroy a working install.
+    if (-not (Test-Path -Path "$ToolsDirectory\$CmakeFolderName")) {
+        throw "CMake extraction did not produce $CmakeFolderName"
     }
-    Rename-Item -Path "$ToolsDirectory\$CmakeFolderName" -NewName "cmake"
-    
+    if (Test-Path -Path $ToolsDirectory\cmake) {
+        Remove-Item -Path $ToolsDirectory\cmake -Recurse -Force -ErrorAction Stop
+    }
+    Rename-Item -Path "$ToolsDirectory\$CmakeFolderName" -NewName "cmake" -ErrorAction Stop
+    }
+
+    Invoke-Step -Name 'ninja' -Label 'Ninja' -Requires @('yq','7z') -Body {
     Print-Title "Ninja"
     $NinjaZipName = "ninja-win.zip"
     $NinjaVersion = "1.13.1"
     Download-FileWithHashCheck $ninja_array[0] $ninja_array[1] $NinjaZipName
-    
+
     $NinjaFolderPath = "$ToolsDirectory\ninja"
     New-Item -Path $NinjaFolderPath -ItemType Directory -Force > $null 2>&1
-    
+
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$NinjaZipName" -DestinationDirectory $NinjaFolderPath
-    
+    }
+
+    # Composite step: dtc needs zstd (decompression) plus the msys2 runtime and
+    # libyaml DLLs grafted into its bin folder before its self-test can pass.
+    Invoke-Step -Name 'dtc' -Label 'Device Tree Compiler' -Requires @('yq','7z') -Body {
     Print-Title "Zstd"
     $ZstdZipName = "zstd-v1.5.7-win64.zip"
     Download-FileWithHashCheck $zstd_array[0] $zstd_array[1] $ZstdZipName
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$ZstdZipName" -DestinationDirectory $DownloadDirectory
-    
+
     $ZstdFolderName = "zstd-v1.5.7-win64"
     $ZstdExecutable = "$DownloadDirectory\$ZstdFolderName\zstd.exe"
-    
+
     Print-Title "DTC"
     $DtcVersion = "1.7.2-1"
     $DtcZstName = "dtc-${DtcVersion}-x86_64.pkg.tar.zst"
     $DtcZstTarName = "dtc-${DtcVersion}-x86_64.pkg.tar"
     Download-FileWithHashCheck $dtc_array[0] $dtc_array[1] $DtcZstName
-    
-    & $ZstdExecutable --quiet -d "$DownloadDirectory\$DtcZstName" -o "$DownloadDirectory\$DtcZstTarName"
-    
+
+    # -f: overwrite a leftover .tar from a previously killed run
+    & $ZstdExecutable --quiet -d -f "$DownloadDirectory\$DtcZstName" -o "$DownloadDirectory\$DtcZstTarName"
+    Assert-Exe "zstd decompression of $DtcZstName"
+
     $DtcFolderPath = "$ToolsDirectory\dtc"
     New-Item -Path $DtcFolderPath -ItemType Directory -Force > $null 2>&1
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$DtcZstTarName" -DestinationDirectory $DtcFolderPath
-    
+
     Print-Title "msys2"
     $Msys2ZstName = "msys2-runtime-3.6.5-1-x86_64.pkg.tar.zst"
     $Msys2ZstTarName = "msys2-runtime-3.6.5-1-x86_64.pkg.tar"
     Download-FileWithHashCheck $msys2_runtime_array[0] $msys2_runtime_array[1] $Msys2ZstName
-    
-    & $ZstdExecutable --quiet -d "$DownloadDirectory\$Msys2ZstName" -o "$DownloadDirectory\$Msys2ZstTarName"
-    
+
+    & $ZstdExecutable --quiet -d -f "$DownloadDirectory\$Msys2ZstName" -o "$DownloadDirectory\$Msys2ZstTarName"
+    Assert-Exe "zstd decompression of $Msys2ZstName"
+
     $Msys2FolderPath = "$DownloadDirectory\msys2"
     New-Item -Path $Msys2FolderPath -ItemType Directory -Force > $null 2>&1
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$Msys2ZstTarName" -DestinationDirectory $Msys2FolderPath
-    
-    Copy-Item -Path "$Msys2FolderPath\usr\bin\msys-2.0.dll" -Destination "$DtcFolderPath\usr\bin\msys-2.0.dll"
-    
+
+    Copy-Item -Path "$Msys2FolderPath\usr\bin\msys-2.0.dll" -Destination "$DtcFolderPath\usr\bin\msys-2.0.dll" -ErrorAction Stop
+
     Print-Title "libyaml"
     $LibyamlName = "libyaml-0.2.5-2-x86_64"
     $LibyamlZstName = "$LibyamlName.pkg.tar.zst"
     $LibyamlZstTarName = "$LibyamlName.pkg.tar"
     Download-FileWithHashCheck $libyaml_array[0] $libyaml_array[1] $LibyamlZstName
-    
-    & $ZstdExecutable --quiet -d "$DownloadDirectory\$LibyamlZstName" -o "$DownloadDirectory\$LibyamlZstTarName"
-    
+
+    & $ZstdExecutable --quiet -d -f "$DownloadDirectory\$LibyamlZstName" -o "$DownloadDirectory\$LibyamlZstTarName"
+    Assert-Exe "zstd decompression of $LibyamlZstName"
+
     $LibyamlFolderPath = "$DownloadDirectory\libyaml"
     New-Item -Path $LibyamlFolderPath -ItemType Directory -Force > $null 2>&1
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$LibyamlZstTarName" -DestinationDirectory $LibyamlFolderPath
-    
-    Copy-Item -Path "$LibyamlFolderPath\usr\bin\msys-yaml-0-2.dll" -Destination "$DtcFolderPath\usr\bin\msys-yaml-0-2.dll"
-    
+
+    Copy-Item -Path "$LibyamlFolderPath\usr\bin\msys-yaml-0-2.dll" -Destination "$DtcFolderPath\usr\bin\msys-yaml-0-2.dll" -ErrorAction Stop
+
     Print-Title "Check DTC"
-    
+
     $DtcExecutable = "$DtcFolderPath\usr\bin\dtc.exe"
     & $DtcExecutable --version
-    
+
     if ($LastExitCode -eq 0) {
         Write-Output "Device tree compiler was successfully installed"
     } else {
-        Print-Error $LastExitCode "Failed to install device tree compiler"
+        throw "Device tree compiler self-test failed (exit code $LastExitCode)"
     }
-    
+    }
+
+    Invoke-Step -Name 'git' -Label 'Git' -Requires @('yq') -Body {
     Print-Title "Git"
     $GitVersion = "2.51.2"
     $GitSetupFilename = "PortableGit-${GitVersion}-64-bit.7z.exe"
     Download-FileWithHashCheck $git_array[0] $git_array[1] $GitSetupFilename
-    
+
     $GitInstallDirectory = "$ToolsDirectory\git"
-    
-    # Extract and wait
-    Start-Process -FilePath "$DownloadDirectory\$GitSetupFilename" -ArgumentList "-o`"$ToolsDirectory\git`" -y" -Wait
-    
+
+    # Extract and wait (PortableGit is a self-extractor, no 7-Zip needed)
+    $GitProcess = Start-Process -FilePath "$DownloadDirectory\$GitSetupFilename" -ArgumentList "-o`"$ToolsDirectory\git`" -y" -Wait -PassThru
+    if ($GitProcess.ExitCode -ne 0) {
+        throw "PortableGit self-extraction failed (exit code $($GitProcess.ExitCode))"
+    }
+    # Self-extractors can return 0 on partial extraction; verify the payload.
+    if (-not (Test-Path -Path "$GitInstallDirectory\bin\git.exe")) {
+        throw "Git extraction did not produce $GitInstallDirectory\bin\git.exe"
+    }
+    }
+
+    Invoke-Step -Name 'python' -Label 'Python' -Requires @('yq') -Body {
     Print-Title "Python"
     $WinPythonSetupFilename = "Winpython64.exe"
-    $pythonVersion = "3.13.5"
-    
+
     Download-FileWithHashCheck $python_portable_array[0] $python_portable_array[1] $WinPythonSetupFilename
 
     $PythonInstallDirectory = "$ToolsDirectory\python"
 
-    # Extract and wait
-    Start-Process -FilePath "$DownloadDirectory\$WinPythonSetupFilename" -ArgumentList "-o`"$ToolsDirectory`" -y" -Wait
+    # Extract and wait (WinPython is a self-extractor, no 7-Zip needed)
+    $PythonProcess = Start-Process -FilePath "$DownloadDirectory\$WinPythonSetupFilename" -ArgumentList "-o`"$ToolsDirectory`" -y" -Wait -PassThru
+    if ($PythonProcess.ExitCode -ne 0) {
+        throw "WinPython self-extraction failed (exit code $($PythonProcess.ExitCode))"
+    }
+    $WinPythonFolder = Get-ChildItem -Directory -Filter "WPy64-*" -Path $ToolsDirectory | Select-Object -First 1
+    if (-not $WinPythonFolder) {
+        throw "WinPython extraction did not produce a WPy64-* folder"
+    }
+    # Only replace an existing python once the new one is fully extracted, so a
+    # failed extraction cannot destroy a working install.
     if (Test-Path -Path $ToolsDirectory\python) {
-        Remove-Item -Path $ToolsDirectory\python -Recurse -Force
+        Remove-Item -Path $ToolsDirectory\python -Recurse -Force -ErrorAction Stop
     }
     #Rename the folder that starts with WPy64- to python
-    Rename-Item -Path (Get-ChildItem -Directory -Filter "WPy64-*" -Path $ToolsDirectory | Select-Object -First 1).FullName -NewName "python"
-    Copy-Item -Path "$ToolsDirectory\python\python\python.exe" -Destination "$ToolsDirectory\python\python\python3.exe"
-    $PythonPath = "$ToolsDirectory\python\python;$ToolsDirectory\python\python\Scripts"
+    Rename-Item -Path $WinPythonFolder.FullName -NewName "python" -ErrorAction Stop
+    Copy-Item -Path "$ToolsDirectory\python\python\python.exe" -Destination "$ToolsDirectory\python\python\python3.exe" -ErrorAction Stop
+    }
 
-    # Update path
+    # Update path (kept outside the steps: the final package check and the venv
+    # creation need whatever tools DID install to be reachable)
     $CmakePath = "$ToolsDirectory\cmake\bin"
     $DtcPath = "$ToolsDirectory\dtc\usr\bin"
     $GperfPath = "$ToolsDirectory\gperf\bin"
     $NinjaPath = "$ToolsDirectory\ninja"
     $GitPath = "$ToolsDirectory\git\bin"
     $WgetPath = "$ToolsDirectory\wget"
-    # $PythonPath & $SevenZPath already defined previously based on portable or global
+    $PythonPath = "$ToolsDirectory\python\python;$ToolsDirectory\python\python\Scripts"
+    # $SevenZPath already defined previously based on portable or global
 
     $env:PATH = "$CmakePath;$DtcPath;$GperfPath;$NinjaPath;$PythonPath;$WgetPath;$GitPath;$SevenZPath;" + $env:PATH
-      
-	  
-    Print-Title "Python VENV"
-    Install-PythonVenv -VenvPath $VenvPath
 
-# bat script  
+
+    # Requires the python STEP (not just any python on PATH): a failed portable
+    # install with a system Python present would otherwise silently build a
+    # venv against the wrong interpreter.
+    Invoke-Step -Name 'venv' -Label 'Python virtual environment' -Requires @('python') -Body {
+    Print-Title "Python VENV"
+    # Failed pip packages make Install-PythonVenv throw at the end (after every
+    # package was attempted), so they fail this step instead of hiding as
+    # warnings that would let the version stamp mark the install as complete.
+    Install-PythonVenv -VenvPath $VenvPath
+    }
+
+    # Env files are always generated, even after failures, so the tools that DID
+    # install remain usable and the Host Tools Manager can show the real state.
+    Invoke-Step -Name 'env-files' -Label 'Environment files' -Body {
+# bat script
 @"
 @echo off
 
@@ -906,12 +1091,6 @@ if (Test-Path (Join-Path `$VenvBinPath "python.exe")) {
 }
 "@ | Out-File -FilePath "$InstallDirectory\env.ps1" -Encoding ASCII
 
-@"
-Script Version: $ZinstallerVersion
-Script MD5: $ZinstallerMd5
-tools.yml MD5: $ToolsYmlMd5
-"@ | Out-File -FilePath "$InstallDirectory\zinstaller_version" -Encoding ASCII
-
     Write-Output "using cmd: $InstallDirectory\env.bat"
     Write-Output "using powershell: $InstallDirectory\env.ps1"
 
@@ -980,9 +1159,18 @@ python:
 
 "@
 
-	$envYaml | Out-File -FilePath $EnvYamlPath -Encoding UTF8
+	# env.yml carries user data (custom env vars, extra tool/runner paths, tool
+	# source overrides). A failed run used to abort before this point, leaving the
+	# file untouched; keep that behavior and only regenerate it from the template
+	# when no step failed or when the file does not exist yet.
+	$priorFailedSteps = @($script:StepResults | Where-Object { $_.status -eq 'failed' }).Count
+	if ($priorFailedSteps -eq 0 -or -not (Test-Path -Path $EnvYamlPath)) {
+		$envYaml | Out-File -FilePath $EnvYamlPath -Encoding UTF8
 
-	Write-Output "Created environment manifest: $EnvYamlPath"
+		Write-Output "Created environment manifest: $EnvYamlPath"
+	} else {
+		Print-Warning "Keeping existing environment manifest (some steps failed): $EnvYamlPath"
+	}
 
 # --------------------------------------------------------------------------
 # Create python script to parse environement yml (env.py)
@@ -1270,9 +1458,45 @@ if __name__ == "__main__":
 	$envPy | Out-File -FilePath $EnvPyPath -Encoding ASCII
 
 	Write-Output "Created py script to parse yml: $EnvPyPath"
+    }
+
+    $script:FailedSteps = @($script:StepResults | Where-Object { $_.status -eq 'failed' })
+    $script:SkippedSteps = @($script:StepResults | Where-Object { $_.status -eq 'skipped' })
+    $script:WarningSteps = @($script:StepResults | Where-Object { $_.status -eq 'warning' })
+
+    # Version stamp: only written when every step succeeded, so a broken install
+    # keeps prompting for reinstallation instead of reporting "Up to date".
+    if ($script:FailedSteps.Count -eq 0) {
+@"
+Script Version: $ZinstallerVersion
+Script MD5: $ZinstallerMd5
+tools.yml MD5: $ToolsYmlMd5
+"@ | Out-File -FilePath "$InstallDirectory\zinstaller_version" -Encoding ASCII
+    } else {
+        Print-Warning "Version stamp not written because some steps failed; the install keeps being reported as needing reinstallation."
+    }
 
     Print-Title "Clean up"
     Remove-Item -Path $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
+
+    # NOTE: summary lines are printed only in install mode (never with -OnlyCheck)
+    # and deliberately use a "[TAG] name" shape that cannot match the
+    # "name [version]" lines the Host Tools Manager parses from -OnlyCheck output.
+    Print-Title "Installation Summary"
+    foreach ($step in $script:StepResults) {
+        $tag = '[ OK ]'
+        if ($step.status -eq 'warning') { $tag = '[WARN]' }
+        elseif ($step.status -eq 'skipped') { $tag = '[SKIP]' }
+        elseif ($step.status -eq 'failed') { $tag = '[FAIL]' }
+        $line = "$tag $($step.label)"
+        if ($step.status -eq 'failed' -and $step.error) { $line = "$line : $($step.error)" }
+        if ($step.status -eq 'skipped' -and $step.reason) { $line = "$line : $($step.reason)" }
+        Write-Output $line
+        foreach ($stepWarning in @($step.warnings)) {
+            Write-Output "         - $stepWarning"
+        }
+    }
+    Write-Output "$($script:FailedSteps.Count) step(s) failed, $($script:SkippedSteps.Count) skipped, $($script:WarningSteps.Count) with warnings."
 }
 
 # Define the list of default packages in a single location
@@ -1344,10 +1568,21 @@ function Check-Packages {
 
 Print-Title "Check Installed Packages"
 
-#it should always be true, for now...
-$checkInstalled = $true
+$returnCode = Check-Packages
 
-if ($checkInstalled) {
-    $returnCode = Check-Packages
+if ($OnlyCheck) {
+    # -OnlyCheck keeps its historical contract: 0 or -(missing count).
     exit $returnCode
 }
+
+# Install mode: the exit code reflects step failures, not the package check.
+# (A system-wide tool on PATH can mask a broken zinstaller copy and vice versa.)
+# Callers get a boolean signal: 0 = no step failed, 1 = at least one step failed.
+$installFailedCount = 0
+if ($script:StepResults) {
+    $installFailedCount = @($script:StepResults | Where-Object { $_.status -eq 'failed' }).Count
+}
+if ($installFailedCount -gt 0) {
+    exit 1
+}
+exit 0
