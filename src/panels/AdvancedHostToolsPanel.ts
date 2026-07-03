@@ -206,8 +206,12 @@ export class AdvancedHostToolsPanel {
   /**
    * Augment the user's tool selection with the always-installed parts:
    * - 'venv' on bulk runs (the global venv is never an option; skipping every
-   *   tool still installs it). Per-part repairs skip it so a single-tool fix
-   *   stays fast; the Rebuild button covers explicit venv rebuilds.
+   *   tool still installs it) AND on any run where no usable global venv exists
+   *   yet. The version stamp (the extension's "install complete" signal) is only
+   *   written when a usable venv is present, so a per-part repair on a machine
+   *   with no venv would otherwise regenerate env.X but leave no venv and hence
+   *   no version. When a venv already exists, per-part repairs still skip it so a
+   *   single-tool fix stays fast; the Rebuild button covers explicit rebuilds.
    * - 'python' always for the system/custom sources (the python step is a
    *   cheap probe there) and for the portable source when the portable
    *   python is not installed yet. A present portable python is NOT
@@ -216,7 +220,8 @@ export class AdvancedHostToolsPanel {
    */
   private async computeSelection(parts: string[], mode: string, includeVenv: boolean): Promise<string[]> {
     const selection = parts.filter(p => ADVANCED_PARTS.some(ap => ap.id === p));
-    if (includeVenv) {
+    const venvPresent = probeHostToolsPartsPresence()['venv'] === true;
+    if ((includeVenv || !venvPresent) && !selection.includes('venv')) {
       selection.push('venv');
     }
     // Default-source presence: WinPython/AppImage artifact on win32/linux;
@@ -232,7 +237,7 @@ export class AdvancedHostToolsPanel {
       defaultSourcePresent = probeHostToolsPartsPresence()['python'] === true;
     }
     const needPython = mode !== 'portable' || !defaultSourcePresent;
-    if (needPython) {
+    if (needPython && !selection.includes('python')) {
       selection.push('python');
     }
     return selection;
@@ -242,6 +247,22 @@ export class AdvancedHostToolsPanel {
     const ok = await vscode.commands.executeCommand<boolean>(
       'zephyr-workbench.install-host-tools.select', selection, pythonOpts);
     return ok === true;
+  }
+
+  /**
+   * The completion stamp is only written when env.X, a usable global venv, and no
+   * failed/selected-skipped steps all line up. A per-part install can install its
+   * own artifact yet still leave the setup incomplete (e.g. the venv could not be
+   * built), which would otherwise be reported as a silent success while the
+   * extension keeps flagging "needs install". Surface why.
+   */
+  private warnIfStampMissing(context: string): void {
+    if (fileExists(getZinstallerVersionStampPath())) {
+      return;
+    }
+    vscode.window.showWarningMessage(
+      `Installed ${context}, but host tools are not marked complete yet (the global venv is missing or a step failed). Check the install terminal, or use Rebuild venv / Reinstall all to finish.`
+    );
   }
 
   private _setWebviewMessageListener(webview: vscode.Webview) {
@@ -407,6 +428,7 @@ export class AdvancedHostToolsPanel {
       const installed = artifactParts.filter(p => after[p] === true);
       const failed = artifactParts.filter(p => after[p] !== true);
       this.post({ command: 'install-finished', ok, kind: 'selected', installed, failed });
+      this.warnIfStampMissing('the selected tools');
     } catch {
       this.post({ command: 'install-finished', ok: false, kind: 'selected' });
     } finally {
@@ -437,6 +459,7 @@ export class AdvancedHostToolsPanel {
       const after = await probeHostToolsPresence(this._extensionUri);
       const partOk = ok && after[part] === true;
       this.post({ command: 'install-part-finished', part, ok: partOk });
+      this.warnIfStampMissing(part);
     } catch {
       this.post({ command: 'install-part-finished', part, ok: false });
     } finally {

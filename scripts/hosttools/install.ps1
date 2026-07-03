@@ -1501,7 +1501,7 @@ $envLines = @(
     '# Defines workspace tools, runners, and Zephyr compatibility metadata',
     '',
     'global:',
-    '  version: 1.0',
+    "  version: $ZinstallerVersion",
     '  description: "Host tools configuration for Zephyr Workbench"',
     '',
     '# Any variable here will be added as environment variables',
