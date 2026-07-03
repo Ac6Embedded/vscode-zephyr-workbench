@@ -2,6 +2,14 @@
 BASE_DIR="$HOME/.zinstaller"
 SELECTED_OS="linux"
 
+# Download mirror used when a primary download fails or its checksum
+# mismatches. Files are stored content-addressed as
+# <MIRROR_BASE_URL>/<sha256-lowercase> (bare hash, no filename).
+# Override with --mirror-base-url or the ZW_MIRROR_BASE_URL environment
+# variable; an empty value disables the fallback.
+MIRROR_BASE_URL_DEFAULT="https://www.ac6-tools.com/downloads/zephyr-workbench/mirror/hosttools"
+MIRROR_BASE_URL="${ZW_MIRROR_BASE_URL-$MIRROR_BASE_URL_DEFAULT}"
+
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 YAML_FILE="$SCRIPT_DIR/tools.yml"
 
@@ -40,6 +48,9 @@ OPTIONS:
   --reinstall-venv          Remove existing virtual environment and create a new one.
   --create-venv             Create a Python virtual environment and install requirements, then exit.
   --venv-path <path>        Override venv location (default: <installDir>/.venv)
+  --mirror-base-url <url>   Override the download mirror used when a primary download
+                            fails or mismatches (default: Ac6 mirror). An empty value
+                            disables the mirror fallback.
 
 ARGUMENTS:
   installDir                The directory where the packages should be installed. 
@@ -84,6 +95,10 @@ while [[ "$#" -gt 0 ]]; do
     --venv-path)
       shift
       VENV_PATH="$1"
+      ;;
+    --mirror-base-url)
+      shift
+      MIRROR_BASE_URL="$1"
       ;;
     *)
       if [[ -z "$INSTALL_DIR" ]]; then
@@ -222,7 +237,49 @@ check_python_version_requirement() {
     fi
 }
 
-# Function to download the file and check its SHA-256 hash
+# Mirror contract (shared with the mirror updater script): files are stored
+# content-addressed as <MIRROR_BASE_URL>/<sha256-lowercase>, bare hash, no
+# filename. Prints nothing and returns 1 when the mirror is disabled or the
+# manifest hash is a placeholder (not 64 hex chars): no mirror attempt then.
+get_mirror_url() {
+    local h
+    h=$(printf '%s' "$1" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    [ -n "$MIRROR_BASE_URL" ] || return 1
+    [ ${#h} -eq 64 ] || return 1
+    case "$h" in *[!0-9a-f]*) return 1 ;; esac
+    echo "${MIRROR_BASE_URL%/}/$h"
+}
+
+# One download and verify attempt. Prints the failure reason on stdout.
+# Returns 0 on success, 1 when the download failed, 2 on hash mismatch.
+try_download_and_verify() {
+    local url=$1 expected_hash=$2 file_path=$3
+    local computed_hash expected_lc
+    rm -f "$file_path"
+
+    # Download the file using wget
+    wget --no-check-certificate -q "$url" -O "$file_path"
+
+    # -s not -f: wget -O leaves a zero-byte file behind on failure
+    if [ ! -s "$file_path" ]; then
+        rm -f "$file_path"
+        echo "download failed"
+        return 1
+    fi
+
+    # Compute the SHA-256 hash of the downloaded file, compare case-insensitively
+    computed_hash=$(sha256sum "$file_path" | awk '{print $1}')
+    expected_lc=$(printf '%s' "$expected_hash" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    if [ "$computed_hash" != "$expected_lc" ]; then
+        rm -f "$file_path"
+        echo "hash mismatch: expected $expected_lc, computed $computed_hash"
+        return 2
+    fi
+    return 0
+}
+
+# Function to download the file and check its SHA-256 hash, retrying from the
+# mirror when the primary source fails or mismatches.
 download_and_check_hash() {
     local source=$1
     local expected_hash=$2
@@ -230,28 +287,29 @@ download_and_check_hash() {
 
     # Full path where the file will be saved
     local file_path="$DL_DIR/$filename"
+    local primary_reason primary_status mirror_url mirror_reason mirror_status
 
-    # Download the file using wget
-    wget --no-check-certificate -q "$source" -O "$file_path"
-
-    # Check if the download was successful
-    if [ ! -f "$file_path" ]; then
-        pr_error 1 "Error: Failed to download the file."
-        exit 1
-    fi
-
-    # Compute the SHA-256 hash of the downloaded file
-    local computed_hash=$(sha256sum "$file_path" | awk '{print $1}')
-
-    # Compare the computed hash with the expected hash
-    if [ "$computed_hash" == "$expected_hash" ]; then
+    primary_reason=$(try_download_and_verify "$source" "$expected_hash" "$file_path")
+    primary_status=$?
+    if [ $primary_status -eq 0 ]; then
         echo "DL: $filename downloaded successfully"
-    else
-        pr_error 2 "Error: Hash mismatch."
-        pr_error 2 "Expected: $expected_hash"
-        pr_error 2 "Computed: $computed_hash"
-        exit 2
+        return 0
     fi
+
+    if mirror_url=$(get_mirror_url "$expected_hash"); then
+        pr_warn "Primary download of $filename from $source failed ($primary_reason); trying mirror: $mirror_url"
+        mirror_reason=$(try_download_and_verify "$mirror_url" "$expected_hash" "$file_path")
+        mirror_status=$?
+        if [ $mirror_status -eq 0 ]; then
+            echo "DL: $filename downloaded successfully (mirror)"
+            return 0
+        fi
+        pr_error $mirror_status "Failed to download $filename: primary $source ($primary_reason); mirror $mirror_url ($mirror_reason)"
+        exit $mirror_status
+    fi
+
+    pr_error $primary_status "Failed to download $filename from $source ($primary_reason)"
+    exit $primary_status
 }
 
 # Function to download the file and check its SHA-256 hash

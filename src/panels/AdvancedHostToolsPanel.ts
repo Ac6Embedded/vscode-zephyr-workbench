@@ -469,7 +469,7 @@ export class AdvancedHostToolsPanel {
         </head>
         <body>
           <h1>Advanced Host Tools Installation</h1>
-          <p class="panel-lead">Install or repair individual parts of the Zephyr host tools. Unchecked tools are skipped. Python and the global virtual environment are always installed; the base tools (yq, 7-Zip) are fetched automatically when a download is needed, and the environment files are always refreshed. Downloads use PowerShell by default; an installed wget is preferred when available.</p>
+          <p class="panel-lead">Install or repair individual parts of the Zephyr host tools. Unchecked tools are skipped. Python and the global virtual environment are always installed; the base tools (yq, 7-Zip) are fetched automatically when a download is needed, and the environment files are always refreshed. Downloads use PowerShell by default; an installed wget is preferred when available. If a download fails or its checksum mismatches, it is automatically retried from the Ac6 mirror.</p>
 
           <form>
             <h2>Python and virtual environment

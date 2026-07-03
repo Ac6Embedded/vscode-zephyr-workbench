@@ -8,6 +8,7 @@ param (
     [switch]$UseSystemPython,
     [string]$PythonExePath = "",
     [string]$RequirementsRef = "",
+    [string]$MirrorBaseUrl = "https://www.ac6-tools.com/downloads/zephyr-workbench/mirror/hosttools",
     [switch]$Help,
     [switch]$Version
 )
@@ -49,6 +50,9 @@ Options:
   -RequirementsRef       Optional. Zephyr git ref (tag or branch, e.g. v4.2.0 or main) whose scripts/requirements*.txt
                          are installed into the virtual environment. Defaults to main. An explicit ref takes
                          precedence over a local ZEPHYR_BASE requirements file.
+  -MirrorBaseUrl         Optional. Base URL of the download mirror used when a primary download fails or its
+                         checksum mismatches. An empty value ('') disables the mirror fallback.
+                         Defaults to the Ac6 mirror.
 
 Arguments:
   InstallDir             Optional. The directory where the Zephyr environment will be installed. Defaults to '$env:USERPROFILE\.zinstaller'
@@ -376,6 +380,19 @@ if (! $OnlyCheck -or $ReinstallVenv) {
         Write-Output "Detected wget, preferring it for downloads: $($script:Wget)"
     }
 
+    # Mirror contract (shared with the mirror updater script): files are stored
+    # content-addressed as <MirrorBaseUrl>/<sha256-lowercase>, bare hash, no
+    # filename. Returns $null when the mirror is disabled (-MirrorBaseUrl '')
+    # or the manifest hash is a placeholder (not 64 hex chars), in which case
+    # no mirror attempt must be made.
+    function Get-MirrorUrl {
+        param([string]$ExpectedHash)
+        if ([string]::IsNullOrWhiteSpace($MirrorBaseUrl)) { return $null }
+        $CleanHash = "$ExpectedHash".Trim()
+        if ($CleanHash -notmatch '^[0-9a-fA-F]{64}$') { return $null }
+        return "$($MirrorBaseUrl.TrimEnd('/'))/$($CleanHash.ToLowerInvariant())"
+    }
+
     function Download-FileWithHashCheck {
         param (
             [string]$SourceUrl,
@@ -383,19 +400,43 @@ if (! $OnlyCheck -or $ReinstallVenv) {
             [string]$Filename
         )
 
-        # Same download path as unchecked downloads, plus hash verification.
-        Download-WithoutCheck $SourceUrl $Filename
-
         $FilePath = Join-Path -Path $DownloadDirectory -ChildPath $Filename
 
-        # Compute the SHA-256 hash of the downloaded file
-        $ComputedHash = Get-FileHash -Path $FilePath -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+        # Same download path as unchecked downloads, plus hash verification.
+        $PrimaryError = $null
+        try {
+            Download-WithoutCheck $SourceUrl $Filename
+            $ComputedHash = Get-FileHash -Path $FilePath -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+            # String -eq is case-insensitive: tools.yml mixes hash cases
+            if ($ComputedHash -eq $ExpectedHash) {
+                Write-Output "DL: $Filename downloaded successfully"
+                return
+            }
+            $PrimaryError = "hash mismatch: expected $ExpectedHash, computed $ComputedHash"
+        } catch {
+            $PrimaryError = $_.Exception.Message
+        }
 
-        # Compare the computed hash with the expected hash
-        if ($ComputedHash -eq $ExpectedHash) {
-            Write-Output "DL: $Filename downloaded successfully"
-        } else {
-            throw "Hash mismatch for ${Filename}: expected $ExpectedHash, computed $ComputedHash"
+        $MirrorUrl = Get-MirrorUrl -ExpectedHash $ExpectedHash
+        if (-not $MirrorUrl) {
+            throw "Failed to download $Filename from ${SourceUrl}: $PrimaryError"
+        }
+
+        Add-StepWarning "Primary download of $Filename from $SourceUrl failed ($PrimaryError); trying mirror: $MirrorUrl"
+        # Drop the corrupt/partial file so the mirror attempt starts clean
+        Remove-Item -Path $FilePath -Force -ErrorAction SilentlyContinue
+
+        try {
+            Download-WithoutCheck $MirrorUrl $Filename
+            $ComputedHash = Get-FileHash -Path $FilePath -Algorithm SHA256 | Select-Object -ExpandProperty Hash
+            if ($ComputedHash -eq $ExpectedHash) {
+                Write-Output "DL: $Filename downloaded successfully (mirror)"
+                return
+            }
+            throw "hash mismatch: expected $ExpectedHash, computed $ComputedHash"
+        } catch {
+            Remove-Item -Path $FilePath -Force -ErrorAction SilentlyContinue
+            throw "Failed to download ${Filename}: primary $SourceUrl failed ($PrimaryError); mirror $MirrorUrl failed ($($_.Exception.Message))"
         }
     }
 	

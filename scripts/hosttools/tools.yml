@@ -53,13 +53,8 @@ zephyr_content:
       sha256: 413d9f5562c39c2fcac1e48b3e2155838680a0aec1ddcb95b23cb2f092962dcc
       version: 3.0.1
     linux:
-      source: http://ftp.gnu.org/pub/gnu/gperf/gperf-3.1.tar.gz
-      sha256: b7e7ccdb9dfea72c42798ba1c83d330b319d6f6f829519db3e73c6250c6864f9
-- tool: zephyr_dependencies
-  os:
-    linux:
-      source: https://apt.kitware.com/kitware-archive.sh
-      sha256: b7e7ccdb9dfea72c42798ba1c83d330b319d6f6f829519db3e73c6250c6864f9
+      source: https://ftp.gnu.org/pub/gnu/gperf/gperf-3.1.tar.gz
+      sha256: 588546b945bba4b70b6a3a616e80b4ab466e3f33024a352fc2198112cdbb3ae2
 - tool: cmake
   os:
     linux:
