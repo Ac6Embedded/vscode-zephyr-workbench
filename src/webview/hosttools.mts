@@ -217,6 +217,12 @@ function main() {
       webviewApi.postMessage({ command: 'reinstall-venv' });
     });
   }
+  const btnAdvancedInstall = document.getElementById('btn-advanced-install');
+  if (btnAdvancedInstall) {
+    btnAdvancedInstall.addEventListener('click', () => {
+      webviewApi.postMessage({ command: 'advanced-install' });
+    });
+  }
 
   // Save on Enter for main tools
   document.addEventListener('keydown', (e) => {

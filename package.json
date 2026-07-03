@@ -947,7 +947,7 @@
       },
       {
         "view": "zephyr-workbench-tools-explorer",
-        "contents": "[Install Host Tools](command:zephyr-workbench.install-host-tools.open-manager)\n[Install Host Tools (Advanced)](command:zephyr-workbench.install-host-tools.advanced)\n"
+        "contents": "[Install Host Tools](command:zephyr-workbench.install-host-tools.open-manager)\nOr use the [Advanced installation](command:zephyr-workbench.install-host-tools.advanced) to install or skip individual parts.\n"
       },
       {
         "view": "zephyr-workbench-sdk-explorer",

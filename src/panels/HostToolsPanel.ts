@@ -306,6 +306,7 @@ export class HostToolsPanel {
               <vscode-button id="btn-reinstall-host-tools" appearance="primary">Reinstall host tools</vscode-button>
               <vscode-button id="btn-verify-host-tools" appearance="primary">Verify host tools</vscode-button>
               <vscode-button id="btn-reinstall-venv" appearance="primary">Reinstall global venv</vscode-button>
+              <vscode-button id="btn-advanced-install" appearance="secondary">Advanced installation</vscode-button>
             </div>
           </div>
           <form>
@@ -388,6 +389,11 @@ export class HostToolsPanel {
           }
           case "verify-host-tools": {
             await vscode.commands.executeCommand("zephyr-workbench.verify-host-tools");
+            break;
+          }
+          case "advanced-install": {
+            // Per-part install/repair with python source selection
+            await vscode.commands.executeCommand("zephyr-workbench.install-host-tools.advanced");
             break;
           }
           case "reinstall-venv": {
