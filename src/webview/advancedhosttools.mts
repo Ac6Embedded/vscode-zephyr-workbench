@@ -16,6 +16,11 @@ interface PartStatus {
 
 let lastParts: PartStatus[] = [];
 let probeDebounce: number | undefined;
+// False when Homebrew is missing on macOS: install actions stay disabled
+// (Refresh and the checkboxes remain usable so the user can install brew and
+// re-check without reopening the panel).
+let installsAllowed = true;
+let actionsEnabled = true;
 
 function getPythonMode(): string {
   const checked = document.querySelector('.python-source-radio:checked') as HTMLInputElement | null;
@@ -67,12 +72,21 @@ function schedulePythonProbe() {
 }
 
 function setActionsEnabled(enabled: boolean) {
-  const ids = ['btn-install-selected', 'btn-reinstall-all', 'btn-rebuild-venv', 'btn-select-missing', 'btn-select-all', 'btn-unselect-all'];
-  for (const id of ids) {
+  actionsEnabled = enabled;
+  // Selection helpers only depend on the busy state; the actions that launch
+  // an installer are additionally gated by installsAllowed (Homebrew line).
+  const selectIds = ['btn-select-missing', 'btn-select-all', 'btn-unselect-all'];
+  for (const id of selectIds) {
     const el = document.getElementById(id) as any;
     if (el) { el.disabled = !enabled; }
   }
-  document.querySelectorAll('.install-part-button').forEach(btn => { (btn as any).disabled = !enabled; });
+  const installEnabled = enabled && installsAllowed;
+  const installIds = ['btn-install-selected', 'btn-reinstall-all', 'btn-rebuild-venv'];
+  for (const id of installIds) {
+    const el = document.getElementById(id) as any;
+    if (el) { el.disabled = !installEnabled; }
+  }
+  document.querySelectorAll('.install-part-button').forEach(btn => { (btn as any).disabled = !installEnabled; });
 }
 
 function hideAllWheels() {
@@ -86,6 +100,32 @@ function showResultLine(text: string, isError: boolean) {
   textEl.textContent = text;
   line.classList.remove('hidden');
   line.classList.toggle('result-error', isError);
+}
+
+function renderHomebrewStatus(homebrew: { ok?: boolean; prefix?: string } | undefined) {
+  const line = document.getElementById('homebrew-status');
+  if (!line || !homebrew) { return; }
+  if (homebrew.ok) {
+    const where = homebrew.prefix ? ` at ${homebrew.prefix}` : '';
+    line.innerHTML = `<span class="codicon codicon-check success-icon"></span> Homebrew detected${where}`;
+    installsAllowed = true;
+  } else {
+    line.innerHTML = '<span class="codicon codicon-error error-icon"></span> Homebrew was not detected. Install it from https://brew.sh, then refresh. Install actions are disabled until Homebrew is available.';
+    installsAllowed = false;
+  }
+  setActionsEnabled(actionsEnabled);
+}
+
+// The sudo hint only shows while a [sudo] row is actually selected: skipping
+// every sudo row means no password prompt at all.
+function updateSudoNotice() {
+  const notice = document.getElementById('sudo-notice');
+  if (!notice) { return; }
+  let anySudoChecked = false;
+  document.querySelectorAll('.part-checkbox[data-sudo="true"]').forEach(box => {
+    if ((box as HTMLInputElement).checked) { anySudoChecked = true; }
+  });
+  notice.classList.toggle('hidden', !anySudoChecked);
 }
 
 function renderVenvStatus(venvPresent: boolean) {
@@ -130,6 +170,7 @@ function setCheckboxes(predicate: (p: PartStatus) => boolean) {
     const box = document.getElementById(`check-${p.part}`) as HTMLInputElement | null;
     if (box) { box.checked = predicate(p); }
   }
+  updateSudoNotice();
 }
 
 function getCheckedParts(): string[] {
@@ -168,6 +209,10 @@ function main() {
 
   document.getElementById('btn-refresh-status')?.addEventListener('click', () => {
     webviewApi.postMessage({ command: 'refresh-status' });
+  });
+
+  document.querySelectorAll('.part-checkbox[data-sudo="true"]').forEach(box => {
+    box.addEventListener('change', () => updateSudoNotice());
   });
 
   document.getElementById('btn-select-missing')?.addEventListener('click', () => setCheckboxes(p => !p.present));
@@ -285,6 +330,7 @@ function setVSCodeMessageListener() {
       case 'status-updated': {
         renderStatus(Array.isArray(event.data.parts) ? event.data.parts : [], event.data.anyInstalled === true);
         renderVenvStatus(event.data.venvPresent === true);
+        renderHomebrewStatus(event.data.homebrew);
         break;
       }
       case 'python-probe-result': {

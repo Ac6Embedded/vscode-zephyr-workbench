@@ -2250,9 +2250,9 @@ export function activate(context: vscode.ExtensionContext) {
 		)
 	);
 
-	// Selective host-tools install/repair (Windows): runs install.ps1 with a
-	// -Tools subset. Not surfaced in menus; entry point for the future
-	// Advanced Host Tools UI and for programmatic repairs. Deliberately does
+	// Selective host-tools install/repair: runs the platform installer with a
+	// -Tools/--tools subset. Not surfaced in menus; entry point for the
+	// Advanced Host Tools panel and for programmatic repairs. Deliberately does
 	// not chain the OpenOCD-runner install like the full install command does.
 	context.subscriptions.push(
 		vscode.commands.registerCommand(

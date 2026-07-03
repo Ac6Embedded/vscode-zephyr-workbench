@@ -3,10 +3,13 @@ import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import {
   fetchHostToolsCheckedVersions,
+  probeHomebrew,
   probeHostToolsPartsPresence,
+  probeHostToolsPresence,
   probePythonInterpreter,
   readHostToolsTargetVersions,
 } from "../utils/hostToolsStatusUtils";
+import { getAdvancedRowParts, hasProviderColumn, HostToolsPartDef } from "../utils/hostToolsPartsRegistry";
 import { getZinstallerVersionStampPath, HostToolsPythonOptions, sanitizeRequirementsRef } from "../utils/installUtils";
 import { getGitBranches, getGitTags } from "../utils/execUtils";
 import { fileExists } from "../utils/utils";
@@ -20,35 +23,19 @@ const ZEPHYR_REPO_URL = 'https://github.com/zephyrproject-rtos/zephyr';
  *
  * Lets the user install or repair individual parts of the host tools
  * (unchecked parts are skipped by the installer) and choose the Python
- * source: Zinstaller portable (downloaded), system (detected from PATH) or a
- * custom interpreter. Python is always required because the global venv needs
- * an interpreter, so it is a mandatory source selector instead of a checklist
- * row. The base tools (yq, wget, 7-Zip) and the environment files are always
- * processed by any run.
+ * source: platform default (portable WinPython / AppImage / Homebrew formula),
+ * system (detected from PATH) or a custom interpreter. Python is always
+ * required because the global venv needs an interpreter, so it is a mandatory
+ * source selector instead of a checklist row. The helper tools and the
+ * environment files are always processed by any run.
+ *
+ * The checklist rows and their probes come from the per-OS parts registry
+ * (hostToolsPartsRegistry), the same source that whitelists the --tools
+ * values, so UI and command line cannot drift.
  */
 
-interface AdvancedPart {
-  id: string;
-  label: string;
-  /** Key in the -OnlyCheck version map (detected version). */
-  versionKey?: string;
-  /** Key in tools.yml (target version that would be installed). */
-  targetKey?: string;
-}
-
-/**
- * Checklist rows: only the skippable tools. python (mandatory source
- * selector) and the global venv (always installed with every bulk run) are
- * intentionally NOT listed as options.
- */
-const ADVANCED_PARTS: AdvancedPart[] = [
-  { id: 'cmake', label: 'CMake', versionKey: 'cmake', targetKey: 'cmake' },
-  { id: 'ninja', label: 'Ninja', versionKey: 'ninja', targetKey: 'ninja' },
-  { id: 'gperf', label: 'gperf', versionKey: 'gperf', targetKey: 'gperf' },
-  { id: 'dtc', label: 'Device Tree Compiler', versionKey: 'dtc', targetKey: 'dtc' },
-  { id: 'git', label: 'Git', versionKey: 'git', targetKey: 'git' },
-  { id: 'wget', label: 'wget', versionKey: 'wget', targetKey: 'wget' },
-];
+/** Checklist rows for the current platform (python/venv are never rows). */
+const ADVANCED_PARTS: HostToolsPartDef[] = getAdvancedRowParts();
 
 interface PythonSelection {
   mode?: string;
@@ -128,8 +115,11 @@ export class AdvancedHostToolsPanel {
     if (this.installRunning) { return; }
     this.post({ command: 'toggle-spinner', show: true });
     try {
-      const presence = probeHostToolsPartsPresence();
+      // Versions first: the registry-driven probe reuses the map for the
+      // parts whose presence derives from the check output (no double run).
       const versions = await fetchHostToolsCheckedVersions(this._extensionUri);
+      const presence = await probeHostToolsPresence(this._extensionUri, versions);
+      const homebrew = process.platform === 'darwin' ? await probeHomebrew() : undefined;
       // "Other actions" (full reinstall, venv rebuild) only make sense once
       // something is installed.
       const anyInstalled = Object.values(presence).some(v => v === true)
@@ -141,6 +131,7 @@ export class AdvancedHostToolsPanel {
         venvPresent: presence['venv'] === true,
         pythonPortablePresent: presence['python'] === true,
         pythonPortableVersion: this.displayVersion(versions['python']),
+        homebrew: homebrew ? { ok: homebrew.ok, prefix: homebrew.prefix ?? '' } : undefined,
       });
     } finally {
       this.post({ command: 'toggle-spinner', show: false });
@@ -159,8 +150,24 @@ export class AdvancedHostToolsPanel {
       // The -OnlyCheck run resolves the zinstaller copy first (env sourced);
       // when the artifact is absent it falls back to a system-wide tool, so
       // the detected version then describes what the SYSTEM provides.
-      const detectedVersion = p.versionKey ? this.displayVersion(versions[p.versionKey]) : '';
-      const systemDetected = !present && detectedVersion.length > 0;
+      let detectedVersion = '';
+      if (p.probe.versionKeysAllOf) {
+        // Batch row (linux system packages): list the detected constituents.
+        detectedVersion = p.probe.versionKeysAllOf
+          .map(k => ({ k, v: this.displayVersion(versions[k]) }))
+          .filter(e => e.v.length > 0)
+          .map(e => `${e.k} ${e.v}`)
+          .join(', ');
+      } else if (p.versionKey) {
+        detectedVersion = this.displayVersion(versions[p.versionKey]);
+      }
+      // "System only" contrasts the zinstaller artifact with a PATH-wide
+      // tool; on provider rows (brew/distro) the provider IS the system, so
+      // the distinction carries no meaning there.
+      const systemDetected = !p.provider && !present && detectedVersion.length > 0;
+      if (p.provider && detectedVersion.length === 0) {
+        detectedVersion = '-';
+      }
       return { part: p.id, label: p.label, present, detectedVersion, systemDetected };
     });
   }
@@ -185,6 +192,13 @@ export class AdvancedHostToolsPanel {
       opts.pythonExePath = p;
       return opts;
     }
+    // 'portable' = platform default source. On linux that is the AppImage,
+    // passed explicitly so the script skips its system-python auto mode; on
+    // win32 (WinPython) and darwin (brew formula) the scripts default to it.
+    if (process.platform === 'linux') {
+      opts.usePortablePython = true;
+      return opts;
+    }
     return Object.keys(opts).length > 0 ? opts : undefined;
   }
 
@@ -199,13 +213,20 @@ export class AdvancedHostToolsPanel {
    *   re-selected, so runs do not re-download WinPython; the venv step's
    *   presence probe covers the dependency.
    */
-  private computeSelection(parts: string[], mode: string, includeVenv: boolean): string[] {
+  private async computeSelection(parts: string[], mode: string, includeVenv: boolean): Promise<string[]> {
     const selection = parts.filter(p => ADVANCED_PARTS.some(ap => ap.id === p));
     if (includeVenv) {
       selection.push('venv');
     }
-    const portablePresent = probeHostToolsPartsPresence()['python'] === true;
-    const needPython = mode !== 'portable' || !portablePresent;
+    // Default-source presence: WinPython/AppImage artifact on win32/linux,
+    // a working python3 on darwin (the brew formula's install marker).
+    let defaultSourcePresent: boolean;
+    if (process.platform === 'darwin') {
+      defaultSourcePresent = (await probePythonInterpreter('system')).ok;
+    } else {
+      defaultSourcePresent = probeHostToolsPartsPresence()['python'] === true;
+    }
+    const needPython = mode !== 'portable' || !defaultSourcePresent;
     if (needPython) {
       selection.push('python');
     }
@@ -326,7 +347,7 @@ export class AdvancedHostToolsPanel {
     }
 
     // Bulk runs always install the global venv (it is never an option).
-    const selection = this.computeSelection(rawParts, mode, true);
+    const selection = await this.computeSelection(rawParts, mode, true);
 
     this.installRunning = true;
     this.post({ command: 'toggle-spinner', show: true });
@@ -334,7 +355,7 @@ export class AdvancedHostToolsPanel {
       const ok = await this.runSelectCommand(selection, pythonOpts);
       // Result detail comes from re-probing the artifacts, never from parsing
       // the installer output (the terminal summary is the detailed report).
-      const after = probeHostToolsPartsPresence();
+      const after = await probeHostToolsPresence(this._extensionUri);
       const artifactParts = [...rawParts, 'venv'].filter(p => p in after);
       const installed = artifactParts.filter(p => after[p] === true);
       const failed = artifactParts.filter(p => after[p] !== true);
@@ -364,9 +385,9 @@ export class AdvancedHostToolsPanel {
 
     this.installRunning = true;
     try {
-      const selection = this.computeSelection([part], mode, false);
+      const selection = await this.computeSelection([part], mode, false);
       const ok = await this.runSelectCommand(selection, pythonOpts);
-      const after = probeHostToolsPartsPresence();
+      const after = await probeHostToolsPresence(this._extensionUri);
       const partOk = ok && after[part] === true;
       this.post({ command: 'install-part-finished', part, ok: partOk });
     } catch {
@@ -414,6 +435,8 @@ export class AdvancedHostToolsPanel {
     try {
       await vscode.commands.executeCommand('zephyr-workbench.reinstall-venv', true, requirementsRef);
       const after = probeHostToolsPartsPresence();
+      // The venv probe is a plain artifact everywhere, so the sync probe is
+      // sufficient here.
       this.post({ command: 'venv-rebuild-finished', ok: after['venv'] === true });
     } catch {
       this.post({ command: 'venv-rebuild-finished', ok: false });
@@ -425,14 +448,19 @@ export class AdvancedHostToolsPanel {
   }
 
   private getPartsRowsHTML(targetVersions: Record<string, string>): string {
+    const withProvider = hasProviderColumn();
     let html = "";
     for (const p of ADVANCED_PARTS) {
       // Target version is static per session (tools.yml ships with the
       // extension), so it is rendered directly into the row.
-      const target = p.targetKey ? (targetVersions[p.targetKey] ?? '') : '';
+      const target = p.targetKey ? (targetVersions[p.targetKey] ?? '') : (p.availableText ?? '');
+      const sudoBadge = p.sudo ? ` <span class="part-badge sudo-badge" title="Installs distribution packages with administrator rights">sudo</span>` : '';
+      const detail = p.detail ? `<div class="part-detail">${p.detail}</div>` : '';
+      const providerCell = withProvider ? `
+        <td class="provider-cell">${p.provider ?? '-'}</td>` : '';
       html += `<tr id="row-${p.id}">
-        <td><input type="checkbox" class="part-checkbox" id="check-${p.id}" data-part="${p.id}"></td>
-        <td id="name-${p.id}">${p.label}</td>
+        <td><input type="checkbox" class="part-checkbox" id="check-${p.id}" data-part="${p.id}"${p.sudo ? ' data-sudo="true"' : ''}></td>
+        <td id="name-${p.id}">${p.label}${sudoBadge}${detail}</td>${providerCell}
         <td id="status-${p.id}"></td>
         <td id="detected-${p.id}"></td>
         <td id="available-${p.id}">${target || '-'}</td>
@@ -452,9 +480,45 @@ export class AdvancedHostToolsPanel {
     const nonce = getNonce();
     const targetVersions = readHostToolsTargetVersions(extensionUri);
     const portablePythonTarget = targetVersions['python_portable'] ?? '';
-    const portableLabel = portablePythonTarget
-      ? `Zinstaller (portable Python ${portablePythonTarget}, downloaded automatically)`
-      : 'Zinstaller (portable Python, downloaded automatically)';
+
+    // Per-OS wording. The 'portable' mode id always means "platform default
+    // python source": WinPython download, AppImage download or brew formula.
+    let portableLabel: string;
+    let leadText: string;
+    let confirmText = 'This removes the installed host tools, the global virtual environment and reinstalls everything with the selected Python source. Continue?';
+    let pythonPathPlaceholder = 'Path to the python executable or its folder';
+    // linux defaults to the system python (the historical behavior); the
+    // other platforms default to their portable/managed source.
+    let defaultPythonMode: 'portable' | 'system' = 'portable';
+    if (process.platform === 'linux') {
+      portableLabel = portablePythonTarget
+        ? `Portable AppImage (Python ${portablePythonTarget}, downloaded automatically, no sudo)`
+        : 'Portable AppImage (downloaded automatically, no sudo)';
+      leadText = 'Install or repair individual parts of the Zephyr host tools. Unchecked parts are skipped. The System packages row installs distribution packages with sudo; skip it and no password is asked. Downloads (CMake, Ninja, the portable Python) go to the .zinstaller directory without sudo, and the environment files are always refreshed. If a download fails or its checksum mismatches, it is automatically retried from the Ac6 mirror.';
+      confirmText += ' Your sudo password will be requested.';
+      defaultPythonMode = 'system';
+    } else if (process.platform === 'darwin') {
+      portableLabel = 'Homebrew (python@3.13 formula, installed with brew)';
+      leadText = 'Install or repair individual parts of the Zephyr host tools. Everything installs through Homebrew; unchecked parts are skipped. Python and the global virtual environment are always installed, and the environment files are always refreshed.';
+    } else {
+      portableLabel = portablePythonTarget
+        ? `Zinstaller (portable Python ${portablePythonTarget}, downloaded automatically)`
+        : 'Zinstaller (portable Python, downloaded automatically)';
+      leadText = 'Install or repair individual parts of the Zephyr host tools. Unchecked tools are skipped. Python and the global virtual environment are always installed; the base tools (yq, 7-Zip) are fetched automatically when a download is needed, and the environment files are always refreshed. Downloads use PowerShell by default; an installed wget is preferred when available. If a download fails or its checksum mismatches, it is automatically retried from the Ac6 mirror.';
+      pythonPathPlaceholder = 'Path to python.exe or its folder';
+    }
+    const withProvider = hasProviderColumn();
+    const providerHeader = withProvider ? `
+                <th>Provider</th>` : '';
+    const tableClass = withProvider
+      ? 'debug-tools-table advanced-host-tools-table has-provider'
+      : 'debug-tools-table advanced-host-tools-table';
+    const homebrewLine = process.platform === 'darwin'
+      ? `
+            <div id="homebrew-status" class="python-detection"></div>` : '';
+    const sudoNotice = process.platform === 'linux'
+      ? `
+            <div id="sudo-notice" class="python-detection hidden"><span class="codicon codicon-warning warning-icon"></span> System packages selected: you will be asked for your sudo password.</div>` : '';
 
     return /*html*/ `
       <!DOCTYPE html>
@@ -469,7 +533,7 @@ export class AdvancedHostToolsPanel {
         </head>
         <body>
           <h1>Advanced Host Tools Installation</h1>
-          <p class="panel-lead">Install or repair individual parts of the Zephyr host tools. Unchecked tools are skipped. Python and the global virtual environment are always installed; the base tools (yq, 7-Zip) are fetched automatically when a download is needed, and the environment files are always refreshed. Downloads use PowerShell by default; an installed wget is preferred when available. If a download fails or its checksum mismatches, it is automatically retried from the Ac6 mirror.</p>
+          <p class="panel-lead">${leadText}</p>
 
           <form>
             <h2>Python and virtual environment
@@ -478,11 +542,11 @@ export class AdvancedHostToolsPanel {
             <p class="panel-note">Always installed, even when every tool is skipped: the selected Python is used by the tools and to create the global virtual environment.</p>
             <div id="python-source">
               <label class="set-default-radio">
-                <input type="radio" class="set-default-radio-input python-source-radio" name="python-source" data-mode="portable" checked>
+                <input type="radio" class="set-default-radio-input python-source-radio" name="python-source" data-mode="portable"${defaultPythonMode === 'portable' ? ' checked' : ''}>
                 <span>${portableLabel}</span>
               </label>
               <label class="set-default-radio">
-                <input type="radio" class="set-default-radio-input python-source-radio" name="python-source" data-mode="system">
+                <input type="radio" class="set-default-radio-input python-source-radio" name="python-source" data-mode="system"${defaultPythonMode === 'system' ? ' checked' : ''}>
                 <span>System (detected from PATH)</span>
               </label>
               <label class="set-default-radio">
@@ -491,7 +555,7 @@ export class AdvancedHostToolsPanel {
               </label>
             </div>
             <div class="grid-group-div hidden" id="custom-python-row">
-              <vscode-text-field id="custom-python-path" size="50" placeholder="Path to python.exe or its folder">Python path:</vscode-text-field>
+              <vscode-text-field id="custom-python-path" size="50" placeholder="${pythonPathPlaceholder}">Python path:</vscode-text-field>
               <vscode-button id="browse-python-button" appearance="secondary">
                 <span class="codicon codicon-folder"></span>
               </vscode-button>
@@ -524,11 +588,11 @@ export class AdvancedHostToolsPanel {
             <h2>Tools
               <span id="aht-spinner" class="codicon codicon-loading codicon-modifier-spin hidden" title="Checking status"></span>
               <button id="btn-refresh-status" type="button" class="inline-icon-button codicon codicon-refresh" title="Refresh status" aria-label="Refresh status"></button>
-            </h2>
-            <table class="debug-tools-table advanced-host-tools-table">
+            </h2>${homebrewLine}
+            <table class="${tableClass}">
               <tr>
                 <th></th>
-                <th>Name</th>
+                <th>Name</th>${providerHeader}
                 <th>Status</th>
                 <th>Detected</th>
                 <th>Available</th>
@@ -541,7 +605,7 @@ export class AdvancedHostToolsPanel {
               <vscode-button id="btn-select-all" appearance="secondary">Select all</vscode-button>
               <vscode-button id="btn-unselect-all" appearance="secondary">Unselect all</vscode-button>
               <vscode-button id="btn-install-selected" appearance="primary">Install selected</vscode-button>
-            </div>
+            </div>${sudoNotice}
             <div id="result-line" class="result-line hidden">
               <span id="result-text"></span>
               <a id="open-terminal-link" href="#">Open terminal output</a>
@@ -558,7 +622,7 @@ export class AdvancedHostToolsPanel {
 
           <div id="confirm-overlay" class="confirm-overlay hidden" role="presentation">
             <div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-message">
-              <div id="confirm-message" class="confirm-message">This removes the installed host tools, the global virtual environment and reinstalls everything with the selected Python source. Continue?</div>
+              <div id="confirm-message" class="confirm-message">${confirmText}</div>
               <div class="confirm-actions">
                 <vscode-button id="confirm-cancel" appearance="secondary">Cancel</vscode-button>
                 <vscode-button id="confirm-ok" appearance="primary">Reinstall</vscode-button>

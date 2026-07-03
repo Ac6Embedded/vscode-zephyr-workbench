@@ -17,6 +17,8 @@ import { getRunner } from "./debugTools/debugUtils";
 import { getZephyrTerminal } from "./zephyr/zephyrTerminalUtils";
 import { ensurePowershellExecutionPolicy, quotePathForPwshCommand } from "./powershellUtils";
 import { setDebugToolAliasDefault } from './debugTools/debugToolEnvUtils';
+import { getSelectablePartIds } from './hostToolsPartsRegistry';
+import { probeHomebrew } from './hostToolsStatusUtils';
 
 export let output = vscode.window.createOutputChannel("Installing Host Tools");
 
@@ -287,10 +289,11 @@ async function installHostToolsWithOutcome(
  *
  * The folder checks alone cannot detect a partial failure: the installer
  * creates the tools directory before installing anything, so checkHostTools()
- * is true after any run. On Windows the captured exit code is therefore the
- * authoritative signal (0 = no step failed, 1 = at least one step failed; the
- * script prints a per-step summary in the terminal and keeps going on
- * individual failures).
+ * is true after any run. The captured exit code is therefore the
+ * authoritative signal on every platform (0 = no step failed, non-zero = at
+ * least one step failed or a selected part was skipped; the script prints a
+ * per-step summary in the terminal and keeps going on individual failures).
+ * On linux the exit code aggregates the elevated and non-root invocations.
  */
 async function reportHostToolsInstallOutcome(
   context: vscode.ExtensionContext,
@@ -315,7 +318,7 @@ async function reportHostToolsInstallOutcome(
     return false;
   }
 
-  if (result.ran && result.exitCode === undefined && process.platform === 'win32') {
+  if (result.ran && result.exitCode === undefined) {
     // The task ended without an exit code: the installer process never started
     // or was killed before finishing. Do not report success on folder checks.
     progress.report({ message: "Installing host tools has failed", increment: 100 });
@@ -349,10 +352,15 @@ async function reportHostToolsInstallOutcome(
   return true;
 }
 
+/**
+ * Run the non-root installer command and resolve with its exit code (never
+ * rejects on a non-zero exit). Reporting is reportHostToolsInstallOutcome's
+ * single job, so this only logs; a launch failure resolves as 1.
+ */
 async function runNonRootHostToolsCommand(
   command: string,
   shellOpts: vscode.ShellExecutionOptions
-): Promise<void> {
+): Promise<number> {
   const executable = shellOpts.executable ?? getShellExe();
   const args = [...(shellOpts.shellArgs ?? []), command];
   const cwd = shellOpts.cwd ?? os.homedir();
@@ -360,7 +368,7 @@ async function runNonRootHostToolsCommand(
 
   output.appendLine('Starting non-root host tools installation...');
 
-  await new Promise<void>((resolve, reject) => {
+  return await new Promise<number>((resolve) => {
     const child = spawn(executable, args, {
       cwd,
       env,
@@ -376,31 +384,20 @@ async function runNonRootHostToolsCommand(
     });
 
     child.on('error', (error) => {
-      const message = `Failed to launch non-root installer: ${error.message}`;
-      output.appendLine(message);
-      vscode.window.showErrorMessage(message, 'Open log').then(selection => {
-        if (selection === 'Open log') {
-          output.show();
-        }
-      });
-      reject(error);
+      output.appendLine(`Failed to launch non-root installer: ${error.message}`);
+      resolve(1);
     });
 
     child.on('close', (code, signal) => {
       if (code === 0) {
         output.appendLine('Non-root host tools installation finished.');
-        resolve();
+        resolve(0);
       } else {
         const message = code !== null
           ? `Non-root host tools installation failed with exit code ${code}.`
           : `Non-root host tools installation was interrupted${signal ? ` (${signal})` : ''}.`;
         output.appendLine(message);
-        vscode.window.showErrorMessage(message, 'Open log').then(selection => {
-          if (selection === 'Open log') {
-            output.show();
-          }
-        });
-        reject(new Error(message));
+        resolve(code ?? 1);
       }
     });
   });
@@ -479,8 +476,8 @@ function appendElevatedBlock(header: string, content?: string | Buffer): void {
 }
 
 /**
- * Run `command` with root privileges. Resolves on success and throws on failure (callers
- * report via reportInstallError).
+ * Run `command` with root privileges and resolve with its exit code (never
+ * rejects; 0 means success).
  *
  * Strategy:
  *  - Where a graphical sudo prompt can plausibly work (desktop Linux, macOS), try
@@ -489,19 +486,20 @@ function appendElevatedBlock(header: string, content?: string | Buffer): void {
  *  - In WSL, remote, or headless Linux, skip straight to an interactive terminal running
  *    `sudo <command>`, where sudo prompts on stdin and all output is visible live.
  *
- * The terminal path resolves only when the task process exits 0; a non-zero exit throws.
+ * GUI success maps to 0; the terminal path returns the task's captured exit
+ * code (a cancelled password prompt exits non-zero).
  */
 async function runElevatedCommand(
   command: string,
   opts: { taskName: string; shellOpts: vscode.ShellExecutionOptions }
-): Promise<void> {
+): Promise<number> {
   await focusInstallerOutputChannel();
   const availability = detectGuiSudoAvailability();
 
   if (availability.available) {
     try {
       await runSudoPromptGui(command, opts.taskName);
-      return;
+      return 0;
     } catch (guiError) {
       const msg = guiError instanceof Error ? guiError.message : String(guiError);
       output.appendLine(`Graphical sudo unavailable (${msg}); falling back to terminal sudo.`);
@@ -516,8 +514,9 @@ async function runElevatedCommand(
   vscode.window.showInformationMessage(`${opts.taskName}: enter your sudo password in the terminal.`);
   const exitCode = await execShellCommandCapturingExit(opts.taskName, `sudo ${command}`, opts.shellOpts);
   if (exitCode !== 0) {
-    throw new Error(`${opts.taskName} failed (exit code ${exitCode ?? 'unknown'}). See terminal/log for details.`);
+    output.appendLine(`${opts.taskName} failed (exit code ${exitCode ?? 'unknown'}). See terminal/log for details.`);
   }
+  return typeof exitCode === 'number' ? exitCode : 1;
 }
 
 /**
@@ -547,16 +546,23 @@ async function runElevatedDebugToolsCommand(
   command: string,
   shellOpts: vscode.ShellExecutionOptions
 ): Promise<void> {
-  await runElevatedCommand(command, { taskName: 'Installing root-required runners', shellOpts });
+  // Debug-tools callers still expect throw-on-failure semantics.
+  const exitCode = await runElevatedCommand(command, { taskName: 'Installing root-required runners', shellOpts });
+  if (exitCode !== 0) {
+    throw new Error(`Installing root-required runners failed (exit code ${exitCode}). See terminal/log for details.`);
+  }
 }
 
 /**
  * Result of launching the host-tools install script.
  * `ran` is false when the script was never started (unsupported platform,
- * blocked execution policy, missing script). `exitCode` is only populated on
- * win32, where the installer never aborts on a single failed step and exits
- * 0 (no step failed) or 1 (at least one step failed); the per-step summary is
- * printed in the terminal by the script itself.
+ * blocked execution policy, missing script, Homebrew missing on darwin).
+ * `exitCode` is populated on every platform whenever `ran` is true: the
+ * installers never abort on a single failed step and exit 0 (no step failed)
+ * or non-zero (at least one step failed or a selected part was skipped); the
+ * per-step summary is printed in the terminal by the script itself. On linux
+ * the value aggregates the two invocations (root exit when non-zero,
+ * otherwise the non-root exit; a skipped root step counts as 0).
  */
 export interface HostToolsInstallResult {
   ran: boolean;
@@ -564,22 +570,17 @@ export interface HostToolsInstallResult {
 }
 
 /**
- * Selectable host-tools parts, mirroring the selectable step names in
- * install.ps1. Used to whitelist -Tools values before they enter a shell
- * command line.
- */
-export const HOST_TOOLS_SELECTABLE_PARTS = ['gperf', 'cmake', 'ninja', 'dtc', 'git', 'wget', 'python', 'venv'] as const;
-
-/**
  * Python and environment options for the host-tools installer: use the
- * PATH-detected system Python or a specific one instead of downloading the
- * portable WinPython (mutually exclusive; useSystemPython wins when both are
- * set), and optionally the zephyr git ref (tag or branch) whose
- * scripts/requirements*.txt are installed into the global venv.
+ * PATH-detected system Python, a specific one, or (linux only) force the
+ * portable AppImage python instead of the auto system-with-fallback default.
+ * Precedence: useSystemPython > pythonExePath > usePortablePython. Optionally
+ * the zephyr git ref (tag or branch) whose scripts/requirements*.txt are
+ * installed into the global venv.
  */
 export interface HostToolsPythonOptions {
   useSystemPython?: boolean;
   pythonExePath?: string;
+  usePortablePython?: boolean;
   requirementsRef?: string;
 }
 
@@ -596,10 +597,72 @@ function sanitizeSelectedHostTools(selectTools?: string[]): string[] {
   if (!selectTools || selectTools.length === 0) {
     return [];
   }
-  const valid = new Set<string>(HOST_TOOLS_SELECTABLE_PARTS);
+  // Whitelist from the per-OS parts registry (single source shared with the
+  // Advanced panel rows, so UI and command line cannot drift).
+  const valid = new Set<string>(getSelectablePartIds(process.platform));
   return selectTools
     .map(t => String(t ?? '').trim().toLowerCase())
     .filter(t => valid.has(t));
+}
+
+/**
+ * Selection/python/requirements arguments for the host-tools installer,
+ * shared by every platform branch. `selected` must already be sanitized.
+ * win32 emits -Tools/-UseSystemPython/-PythonExePath/-RequirementsRef;
+ * linux/darwin emit the --tools/--use-system-python/--python-exe-path/
+ * --portable-python/--requirements-ref equivalents. Returns '' or a string
+ * starting with a space.
+ */
+export function buildHostToolsSelectionArgs(
+  platform: NodeJS.Platform,
+  selected: string[],
+  pythonOpts?: HostToolsPythonOptions
+): string {
+  let args = '';
+  if (platform === 'win32') {
+    // Selective install: append -Tools a,b (whitelisted names only, no
+    // spaces, so no quoting is needed after the --% verbatim token).
+    if (selected.length > 0) {
+      args += ` -Tools ${selected.join(',')}`;
+    }
+    // Python source: system PATH python or a specific one instead of
+    // the portable download (quoted like -InstallDir).
+    if (pythonOpts?.useSystemPython) {
+      args += ' -UseSystemPython';
+    } else if (pythonOpts?.pythonExePath && pythonOpts.pythonExePath.trim().length > 0) {
+      args += ` -PythonExePath ${quotePathForPwshCommand(pythonOpts.pythonExePath.trim())}`;
+    }
+    // Zephyr ref providing the venv requirements (safe charset, no
+    // spaces, so no quoting is needed after the --% verbatim token).
+    const requirementsRef = sanitizeRequirementsRef(pythonOpts?.requirementsRef);
+    if (requirementsRef.length > 0) {
+      args += ` -RequirementsRef ${requirementsRef}`;
+    }
+    return args;
+  }
+
+  // linux/darwin: the command is one string handed to `bash -c`, so paths
+  // must be double-quoted and shell metacharacters rejected.
+  if (selected.length > 0) {
+    args += ` --tools ${selected.join(',')}`;
+  }
+  if (pythonOpts?.useSystemPython) {
+    args += ' --use-system-python';
+  } else if (pythonOpts?.pythonExePath && pythonOpts.pythonExePath.trim().length > 0) {
+    const p = pythonOpts.pythonExePath.trim();
+    if (/["`$\\]/.test(p)) {
+      output.appendLine(`WARN: custom python path ignored (characters not supported on the shell command line): ${p}`);
+    } else {
+      args += ` --python-exe-path "${p}"`;
+    }
+  } else if (platform === 'linux' && pythonOpts?.usePortablePython) {
+    args += ' --portable-python';
+  }
+  const requirementsRef = sanitizeRequirementsRef(pythonOpts?.requirementsRef);
+  if (requirementsRef.length > 0) {
+    args += ` --requirements-ref ${requirementsRef}`;
+  }
+  return args;
 }
 
 export async function installHostTools(context: vscode.ExtensionContext, listTools: string = "", selectTools?: string[], pythonOpts?: HostToolsPythonOptions): Promise<HostToolsInstallResult> {
@@ -612,13 +675,15 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
     let shell: string = "";
 
     destDir = getInstallDirRealPath();
+    const selected = sanitizeSelectedHostTools(selectTools);
     switch(process.platform) {
       case 'linux': {
         installScript = 'install.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
+        installArgs += buildHostToolsSelectionArgs('linux', selected, pythonOpts);
         installArgs += ` ${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       case 'win32': {
         // Ensure execution policy permits running our script
@@ -636,40 +701,27 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
         installScript = 'install.ps1';
         installCmd = `powershell --% -File ${quotePathForPwshCommand(vscode.Uri.joinPath(installDirUri, installScript).fsPath)}`;
         installArgs += ` -InstallDir ${quotePathForPwshCommand(destDir)}`;
-        {
-          // Selective install: append -Tools a,b (whitelisted names only, no
-          // spaces, so no quoting is needed after the --% verbatim token).
-          const selected = sanitizeSelectedHostTools(selectTools);
-          if (selected.length > 0) {
-            installArgs += ` -Tools ${selected.join(',')}`;
-          }
-          // Python source: system PATH python or a specific one instead of
-          // the portable download (quoted like -InstallDir above).
-          if (pythonOpts?.useSystemPython) {
-            installArgs += ' -UseSystemPython';
-          } else if (pythonOpts?.pythonExePath && pythonOpts.pythonExePath.trim().length > 0) {
-            installArgs += ` -PythonExePath ${quotePathForPwshCommand(pythonOpts.pythonExePath.trim())}`;
-          }
-          // Zephyr ref providing the venv requirements (safe charset, no
-          // spaces, so no quoting is needed after the --% verbatim token).
-          const requirementsRef = sanitizeRequirementsRef(pythonOpts?.requirementsRef);
-          if (requirementsRef.length > 0) {
-            installArgs += ` -RequirementsRef ${requirementsRef}`;
-          }
-        }
+        installArgs += buildHostToolsSelectionArgs('win32', selected, pythonOpts);
         shell = 'powershell.exe';
         // TODO: check if powershell 7 is installed and used by default then use pwsh.exe instead
         break;
       }
       case 'darwin': {
+        // Homebrew provides every darwin package: without it the run could
+        // only produce failed brew steps, so refuse early with a clear hint.
+        // (listTools is unused on darwin: the legacy --select-sdk flag was
+        // never a valid install-mac.sh option and made the script exit 1.)
+        const brew = await probeHomebrew();
+        if (!brew.ok) {
+          vscode.window.showErrorMessage('Homebrew is not installed or not in your PATH. Install it from https://brew.sh, then retry.');
+          return { ran: false };
+        }
         installScript = 'install-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        if(listTools.length > 0) {
-          installArgs += ` --select-sdk="${listTools}"`;
-        }
+        installArgs += buildHostToolsSelectionArgs('darwin', selected, pythonOpts);
         installArgs += ` ${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       default: {
         vscode.window.showErrorMessage("Platform not supported !");
@@ -688,25 +740,33 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
       const rootCommand = `${installCmd} --only-root${installArgs}`;
       const nonRootCommand = `${installCmd} --only-without-root${installArgs}`;
 
-      // Root step: GUI prompt where possible, otherwise interactive terminal sudo.
-      // Failures propagate so the caller reports them (no more silent catch).
-      await runElevatedCommand(rootCommand, { taskName: 'Installing sudo host tools', shellOpts });
-
-      // Brief pause so the root step's effects settle before the non-root step.
-      await new Promise<void>(resolve => setTimeout(resolve, 2000));
+      // The elevated invocation only runs the `system` step, so it is skipped
+      // entirely (no sudo prompt at all) when a selection leaves that row out.
+      const runRoot = selected.length === 0 || selected.includes('system');
+      if (runRoot) {
+        // Root step: GUI prompt where possible, otherwise interactive terminal sudo.
+        const rootExit = await runElevatedCommand(rootCommand, { taskName: 'Installing sudo host tools', shellOpts });
+        if (rootExit !== 0) {
+          // A failed or cancelled root step still skips the non-root step
+          // (previous semantics), but now flows through the standard outcome
+          // reporting instead of a raw throw.
+          return { ran: true, exitCode: rootExit };
+        }
+        // Brief pause so the root step's effects settle before the non-root step.
+        await new Promise<void>(resolve => setTimeout(resolve, 2000));
+      } else {
+        output.appendLine('Selection does not include the System packages row: skipping the elevated step (no sudo prompt).');
+      }
 
       // Non-root step runs without sudo and already works in every environment.
-      await runNonRootHostToolsCommand(nonRootCommand, shellOpts);
-      return { ran: true };
-    } else if (process.platform === 'win32') {
-      // Capture the exit code: the hardened installer never aborts on a single
-      // failed step; it exits 1 when at least one step failed and prints the
-      // per-step summary in the terminal.
+      const nonRootExit = await runNonRootHostToolsCommand(nonRootCommand, shellOpts);
+      return { ran: true, exitCode: nonRootExit };
+    } else {
+      // Capture the exit code: the hardened installers never abort on a single
+      // failed step; they exit non-zero when at least one step failed (or a
+      // selected part was skipped) and print the per-step summary themselves.
       const exitCode = await execShellCommandCapturingExit('Installing Host tools', installCmd + " " + installArgs, shellOpts);
       return { ran: true, exitCode };
-    } else {
-      await execShellCommand('Installing Host tools', installCmd + " " + installArgs, shellOpts);
-      return { ran: true };
     }
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");
@@ -760,15 +820,19 @@ export async function installVenv(context: vscode.ExtensionContext, requirements
       shellArgs: getShellArgs(shell),
     };
     
+    // Optional zephyr ref for the venv requirements, honored on every OS.
+    // The scripts refuse to delete the venv when they cannot rebuild it (no
+    // working python) and exit 1: surface that instead of silently completing
+    // the progress notification.
+    const ref = sanitizeRequirementsRef(requirementsRef);
     if(process.platform === 'linux' || process.platform === 'darwin') {
-      await execShellCommand('Installing Venv', installCmd + " --reinstall-venv " + installArgs, shellOpts);
+      const refArg = ref.length > 0 ? ` --requirements-ref ${ref}` : '';
+      const exitCode = await execShellCommandCapturingExit('Installing Venv', installCmd + " --reinstall-venv" + refArg + " " + installArgs, shellOpts);
+      if (exitCode !== 0) {
+        vscode.window.showErrorMessage('Reinstalling the virtual environment failed. See the terminal output for details.');
+      }
     } else {
-      // Optional zephyr ref for the requirements (Windows-only this phase).
-      const ref = sanitizeRequirementsRef(requirementsRef);
       const refArg = ref.length > 0 ? ` -RequirementsRef ${ref}` : '';
-      // The script refuses to delete the venv when it cannot rebuild it
-      // (network canary failed, no working python) and exits 1: surface that
-      // instead of silently completing the progress notification.
       const exitCode = await execShellCommandCapturingExit('Installing Venv', installCmd + " -ReinstallVenv" + refArg + " " + installArgs, shellOpts);
       if (exitCode !== 0) {
         vscode.window.showErrorMessage('Reinstalling the virtual environment failed. See the terminal output for details.');

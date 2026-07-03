@@ -17,13 +17,38 @@ YAML_FILE="$SCRIPT_DIR/tools.yml"
 root_packages=true
 non_root_packages=true
 check_installed_bool=true
+only_check_bool=false
 reinstall_venv_bool=false
 create_venv_bool=false
+engine_selftest_bool=false
+selftest_env_merge_bool=false
 # Optional custom venv path
 VENV_PATH=""
-# Portable python is not used by default, keep it in case we need it in the future
-portable_python=false
 INSTALL_DIR=""
+
+# Selective install: empty means full install. Values come from --tools and
+# must belong to SELECTABLE_STEPS. INFRA_STEPS run only when a selected part
+# actually needs a download.
+SELECTED_TOOLS_RAW=""
+SELECTED_TOOLS=""
+SELECTABLE_STEPS="system cmake ninja python venv"
+INFRA_STEPS="yq"
+INFRA_NEEDED=true
+
+# Python source: auto keeps the historical behavior (system python3 with an
+# automatic portable AppImage fallback when it is too old or missing).
+PYTHON_MODE="auto"
+PYTHON_MODE_EFFECTIVE=""
+use_system_python_bool=false
+portable_python_flag_bool=false
+PYTHON_EXE_PATH=""
+CUSTOM_PYTHON_EXE=""
+CUSTOM_PYTHON_DIR=""
+
+# Zephyr git ref used for the Python requirements files. An explicit
+# --requirements-ref beats ZEPHYR_BASE.
+REQUIREMENTS_REF=""
+REQUIREMENTS_REF_VALUE="main"
 
 # Track if system Python is too old for Zephyr
 PYTHON_TOO_OLD=false
@@ -35,6 +60,7 @@ zinstaller_version="2.0"
 zinstaller_md5=$(md5sum "$BASH_SOURCE")
 tools_yml_md5=$(md5sum "$YAML_FILE")
 openssl_lib_bool=false
+NL=$'\n'
 # Function to display usage information
 usage() {
     cat << EOF
@@ -48,18 +74,32 @@ OPTIONS:
   --reinstall-venv          Remove existing virtual environment and create a new one.
   --create-venv             Create a Python virtual environment and install requirements, then exit.
   --venv-path <path>        Override venv location (default: <installDir>/.venv)
+  --tools <a,b,...>         Install only the listed parts. Valid values:
+                            system, cmake, ninja, python, venv.
+                            Everything else is skipped; environment files are
+                            always regenerated.
+  --use-system-python       Use the python3 found on PATH instead of the
+                            portable AppImage.
+  --portable-python         Force the portable AppImage python.
+  --python-exe-path <path>  Use a specific python executable (or a folder
+                            containing python3/python).
+  --requirements-ref <ref>  Zephyr git ref (tag or branch) used to fetch the
+                            Python requirements files (default: main).
   --mirror-base-url <url>   Override the download mirror used when a primary download
                             fails or mismatches (default: Ac6 mirror). An empty value
                             disables the mirror fallback.
 
 ARGUMENTS:
-  installDir                The directory where the packages should be installed. 
+  installDir                The directory where the packages should be installed.
                             Default is \$HOME/.zinstaller.
 
 DESCRIPTION:
   This script installs host dependencies for Zephyr project on your system.
   By default, it installs all necessary packages.
   If no installDir is specified, the default directory is used.
+  A failing package never stops the run: each step is recorded and reported
+  in the final summary, and the script exits non-zero when something failed
+  or a selected part could not be installed.
 EOF
 }
 
@@ -81,6 +121,7 @@ while [[ "$#" -gt 0 ]]; do
     --only-check)
       root_packages=false
       non_root_packages=false
+      only_check_bool=true
       ;;
     --reinstall-venv)
       reinstall_venv_bool=true
@@ -95,6 +136,38 @@ while [[ "$#" -gt 0 ]]; do
     --venv-path)
       shift
       VENV_PATH="$1"
+      ;;
+    --tools)
+      shift
+      SELECTED_TOOLS_RAW="$1"
+      ;;
+    --use-system-python)
+      use_system_python_bool=true
+      ;;
+    --portable-python)
+      portable_python_flag_bool=true
+      ;;
+    --python-exe-path)
+      shift
+      PYTHON_EXE_PATH="$1"
+      ;;
+    --requirements-ref)
+      shift
+      REQUIREMENTS_REF="$1"
+      ;;
+    --engine-selftest)
+      # Dev-only: exercise the step engine with mock steps and exit.
+      engine_selftest_bool=true
+      root_packages=false
+      non_root_packages=false
+      check_installed_bool=false
+      ;;
+    --selftest-env-merge)
+      # Dev-only: run only the env.yml merge against installDir and exit.
+      selftest_env_merge_bool=true
+      root_packages=false
+      non_root_packages=false
+      check_installed_bool=false
       ;;
     --mirror-base-url)
       shift
@@ -133,6 +206,7 @@ TOOLS_DIR="$INSTALL_DIR/tools"
 ENV_FILE="$INSTALL_DIR/env.sh"
 ENV_YAML_PATH="$INSTALL_DIR/env.yml"
 ENV_PY_PATH="$INSTALL_DIR/env.py"
+VENV_PATH_EFFECTIVE="${VENV_PATH:-$INSTALL_DIR/.venv}"
 
 pr_title() {
     local width=40
@@ -237,6 +311,231 @@ check_python_version_requirement() {
     fi
 }
 
+# ----------------------------------------------------------------------------
+# Step engine: every install unit runs through run_step and NEVER stops the
+# script. Results are collected in parallel arrays and reported in a final
+# summary; the exit code signals failed or selected-but-skipped steps.
+# The code is kept bash 3.2 compatible so install-mac.sh can share it.
+# ----------------------------------------------------------------------------
+STEP_NAMES=()
+STEP_LABELS=()
+STEP_STATUS=()      # success|warning|failed|skipped|not-selected
+STEP_REASON=()
+STEP_WARNINGS=()
+CURRENT_STEP_WARNINGS=""
+STEP_ERROR=""
+INSTALL_FAILED_COUNT=0
+INSTALL_SKIPPED_COUNT=0
+INSTALL_WARNING_COUNT=0
+SELECTED_SKIPPED_COUNT=0
+
+# is_in_list <item> <"a b c">
+is_in_list() {
+    case " $2 " in
+        *" $1 "*) return 0 ;;
+    esac
+    return 1
+}
+
+# Record a warning against the currently running step (degrades it to [WARN])
+step_warn() {
+    pr_warn "$1"
+    CURRENT_STEP_WARNINGS="${CURRENT_STEP_WARNINGS}${CURRENT_STEP_WARNINGS:+$NL}$1"
+}
+
+# Set the failure reason before 'return 1' from a step body
+step_error() {
+    STEP_ERROR="$1"
+}
+
+record_step() {
+    STEP_NAMES+=("$1")
+    STEP_LABELS+=("$2")
+    STEP_STATUS+=("$3")
+    STEP_REASON+=("$4")
+    STEP_WARNINGS+=("$5")
+}
+
+get_step_status() {
+    local i
+    for ((i=0; i<${#STEP_NAMES[@]}; i++)); do
+        if [ "${STEP_NAMES[$i]}" = "$1" ]; then
+            echo "${STEP_STATUS[$i]}"
+            return 0
+        fi
+    done
+    echo ""
+    return 0
+}
+
+# When a required step was deselected, the dependent step can still run if the
+# requirement is already satisfied on this machine.
+probe_step_presence() {
+    case "$1" in
+        python)
+            [ -x "$TOOLS_DIR/python/python3" ] && return 0
+            if [ -n "$CUSTOM_PYTHON_EXE" ] && "$CUSTOM_PYTHON_EXE" --version >/dev/null 2>&1; then
+                return 0
+            fi
+            python3 --version >/dev/null 2>&1 && return 0
+            python --version >/dev/null 2>&1 && return 0
+            return 1
+            ;;
+    esac
+    return 1
+}
+
+# run_step <name> <label> <requires: "a b"> <body-function>
+# Body functions run in the CURRENT shell (they may mutate PATH and globals);
+# they must use 'cmd || { step_error "reason"; return 1; }' on critical
+# commands instead of exiting.
+run_step() {
+    local name="$1" label="$2" requires="$3" body="$4"
+    local req rs ok reason st
+
+    # 1. selection filter: deselected wins over failed prerequisites
+    if [ -n "$SELECTED_TOOLS" ] && is_in_list "$name" "$SELECTABLE_STEPS" \
+       && ! is_in_list "$name" "$SELECTED_TOOLS"; then
+        record_step "$name" "$label" "not-selected" "not selected" ""
+        return 0
+    fi
+    # 2. infra filter: helper tools only run when a selected part needs them
+    if [ "$INFRA_NEEDED" != "true" ] && is_in_list "$name" "$INFRA_STEPS"; then
+        record_step "$name" "$label" "not-selected" "not needed for this selection" ""
+        return 0
+    fi
+    # 3. requirements, with a presence probe for deselected prerequisites
+    for req in $requires; do
+        rs=$(get_step_status "$req")
+        ok=false
+        reason="requires '$req'"
+        case "$rs" in
+            success|warning) ok=true ;;
+            not-selected)
+                if probe_step_presence "$req"; then
+                    ok=true
+                else
+                    reason="requires '$req' (not selected and not installed)"
+                fi
+                ;;
+        esac
+        if [ "$ok" != "true" ]; then
+            pr_warn "Skipping $label: required step '$req' did not succeed"
+            record_step "$name" "$label" "skipped" "$reason" ""
+            return 0
+        fi
+    done
+    # 4. never-stop execution
+    CURRENT_STEP_WARNINGS=""
+    STEP_ERROR=""
+    if "$body"; then
+        st=success
+        [ -n "$CURRENT_STEP_WARNINGS" ] && st=warning
+        record_step "$name" "$label" "$st" "" "$CURRENT_STEP_WARNINGS"
+    else
+        [ -n "$STEP_ERROR" ] || STEP_ERROR="step returned a non-zero exit code"
+        echo "ERROR: Step '$label' failed: $STEP_ERROR"
+        record_step "$name" "$label" "failed" "$STEP_ERROR" "$CURRENT_STEP_WARNINGS"
+    fi
+    return 0
+}
+
+compute_step_counts() {
+    INSTALL_FAILED_COUNT=0
+    INSTALL_SKIPPED_COUNT=0
+    INSTALL_WARNING_COUNT=0
+    SELECTED_SKIPPED_COUNT=0
+    local i
+    for ((i=0; i<${#STEP_NAMES[@]}; i++)); do
+        case "${STEP_STATUS[$i]}" in
+            failed)
+                INSTALL_FAILED_COUNT=$((INSTALL_FAILED_COUNT+1))
+                ;;
+            warning)
+                INSTALL_WARNING_COUNT=$((INSTALL_WARNING_COUNT+1))
+                ;;
+            skipped|not-selected)
+                INSTALL_SKIPPED_COUNT=$((INSTALL_SKIPPED_COUNT+1))
+                if [ "${STEP_STATUS[$i]}" = "skipped" ] && [ -n "$SELECTED_TOOLS" ] \
+                   && is_in_list "${STEP_NAMES[$i]}" "$SELECTED_TOOLS"; then
+                    SELECTED_SKIPPED_COUNT=$((SELECTED_SKIPPED_COUNT+1))
+                fi
+                ;;
+        esac
+    done
+    return 0
+}
+
+print_step_summary() {
+    [ ${#STEP_NAMES[@]} -gt 0 ] || return 0
+    pr_title "Installation Summary"
+    local i tag line w
+    for ((i=0; i<${#STEP_NAMES[@]}; i++)); do
+        tag='[ OK ]'
+        case "${STEP_STATUS[$i]}" in
+            warning) tag='[WARN]' ;;
+            failed) tag='[FAIL]' ;;
+            skipped|not-selected) tag='[SKIP]' ;;
+        esac
+        line="$tag ${STEP_LABELS[$i]}"
+        [ -n "${STEP_REASON[$i]}" ] && line="$line : ${STEP_REASON[$i]}"
+        echo "$line"
+        if [ -n "${STEP_WARNINGS[$i]}" ]; then
+            while IFS= read -r w; do
+                [ -n "$w" ] && echo "         - $w"
+            done <<< "${STEP_WARNINGS[$i]}"
+        fi
+    done
+    echo "$INSTALL_FAILED_COUNT step(s) failed, $INSTALL_SKIPPED_COUNT skipped, $INSTALL_WARNING_COUNT with warnings."
+    return 0
+}
+
+# ----------------------------------------------------------------------------
+# tools.yml field reader: line scan, no yq needed (POSIX awk so the same code
+# works with BSD awk on macOS).
+# get_yaml_os_field <tool> <field>
+# ----------------------------------------------------------------------------
+get_yaml_os_field() {
+    awk -v tool="$1" -v os="$SELECTED_OS" -v field="$2" -v sq=\' '
+        $0 ~ ("^- tool: " tool "$")                        { ft=1; fo=0; next }
+        ft && /^- tool: /                                  { exit }
+        ft && $0 ~ ("^[ ]+" os ":[ \t]*$")                 { fo=1; next }
+        ft && fo && /^[ ]+(windows|linux|darwin):[ \t]*$/  { fo=0; next }
+        ft && fo && $0 ~ ("^[ ]+" field ": ") {
+            line=$0
+            sub("^[ ]+" field ": *", "", line)
+            gsub(/"/, "", line)
+            gsub(sq, "", line)
+            print line
+            exit
+        }
+    ' "$YAML_FILE"
+}
+
+# ----------------------------------------------------------------------------
+# env.yml section extraction for the merge: prints the section starting at
+# '<indent><key>:' up to the next line at the same or lower indentation,
+# trailing blank lines trimmed. POSIX awk only.
+# get_yaml_section <file> <key> <indent>
+# ----------------------------------------------------------------------------
+get_yaml_section() {
+    [ -f "$1" ] || return 0
+    awk -v key="$2" -v ind="$3" '
+    BEGIN { insec = 0; nblank = 0; pfx = sprintf("%*s", ind, "") }
+    {
+        if (!insec) {
+            if ($0 ~ ("^" pfx key ":[ \t]*$")) { insec = 1; print }
+            next
+        }
+        if ($0 ~ /^[ \t]*$/) { nblank++; next }
+        s = $0
+        sub(/[^ ].*$/, "", s)
+        if (length(s) <= ind) exit
+        while (nblank > 0) { print ""; nblank-- }
+        print
+    }' "$1"
+}
+
 # Mirror contract (shared with the mirror updater script): files are stored
 # content-addressed as <MIRROR_BASE_URL>/<sha256-lowercase>, bare hash, no
 # filename. Prints nothing and returns 1 when the mirror is disabled or the
@@ -250,6 +549,29 @@ get_mirror_url() {
     echo "${MIRROR_BASE_URL%/}/$h"
 }
 
+# fetch_url <url> <dest>: prefer wget when present, fall back to curl.
+# Diagnostics go to stderr because some callers capture stdout as the
+# failure reason. Returns non-zero when nothing could fetch the file.
+fetch_url() {
+    local url="$1" dest="$2"
+    if command -v wget >/dev/null 2>&1; then
+        if wget --no-check-certificate -q "$url" -O "$dest" && [ -s "$dest" ]; then
+            return 0
+        fi
+        rm -f "$dest"
+        if command -v curl >/dev/null 2>&1; then
+            pr_warn "wget failed for $(basename "$dest"); trying curl" >&2
+        fi
+    fi
+    if command -v curl >/dev/null 2>&1; then
+        if curl -fkLsS -o "$dest" "$url" 2>/dev/null && [ -s "$dest" ]; then
+            return 0
+        fi
+        rm -f "$dest"
+    fi
+    return 1
+}
+
 # One download and verify attempt. Prints the failure reason on stdout.
 # Returns 0 on success, 1 when the download failed, 2 on hash mismatch.
 try_download_and_verify() {
@@ -257,12 +579,7 @@ try_download_and_verify() {
     local computed_hash expected_lc
     rm -f "$file_path"
 
-    # Download the file using wget
-    wget --no-check-certificate -q "$url" -O "$file_path"
-
-    # -s not -f: wget -O leaves a zero-byte file behind on failure
-    if [ ! -s "$file_path" ]; then
-        rm -f "$file_path"
+    if ! fetch_url "$url" "$file_path"; then
         echo "download failed"
         return 1
     fi
@@ -279,7 +596,8 @@ try_download_and_verify() {
 }
 
 # Function to download the file and check its SHA-256 hash, retrying from the
-# mirror when the primary source fails or mismatches.
+# mirror when the primary source fails or mismatches. Returns non-zero on
+# failure (never exits: callers turn this into a step failure).
 download_and_check_hash() {
     local source=$1
     local expected_hash=$2
@@ -305,29 +623,27 @@ download_and_check_hash() {
             return 0
         fi
         pr_error $mirror_status "Failed to download $filename: primary $source ($primary_reason); mirror $mirror_url ($mirror_reason)"
-        exit $mirror_status
+        return $mirror_status
     fi
 
     pr_error $primary_status "Failed to download $filename from $source ($primary_reason)"
-    exit $primary_status
+    return $primary_status
 }
 
-# Function to download the file and check its SHA-256 hash
+# Plain download without hash verification. Returns non-zero on failure.
 download() {
     local source=$1
     local filename=$2
 
     # Full path where the file will be saved
     local file_path="$DL_DIR/$filename"
+    rm -f "$file_path"
 
-    # Download the file using wget
-    wget --no-check-certificate -q "$source" -O "$file_path"
-
-    # Check if the download was successful
-    if [ ! -f "$file_path" ]; then
-        pr_error 1 "Error: Failed to download the file."
-        exit 1
+    if ! fetch_url "$source" "$file_path"; then
+        pr_error 1 "Failed to download $filename from $source"
+        return 1
     fi
+    return 0
 }
 
 prepend_python_paths_from_env() {
@@ -381,19 +697,20 @@ install_python_venv() {
 
     pr_title "Zephyr Python Requirements"
 
-    local requirements_baseurl="https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
+    local requirements_baseurl="https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/${REQUIREMENTS_REF_VALUE}/scripts"
     local requirements_dir="$work_directory/requirements"
     local venv_path="${VENV_PATH:-$install_directory/.venv}"
 
-    # Choose requirements source: honor ZEPHYR_BASE if it points to a Zephyr tree
+    # Choose requirements source: honor ZEPHYR_BASE only when no explicit
+    # --requirements-ref was given.
     local use_zephyr_base_req=false
     local requirements_file=""
-    if [[ -n "$ZEPHYR_BASE" && -f "$ZEPHYR_BASE/scripts/requirements.txt" ]]; then
+    if [[ -z "$REQUIREMENTS_REF" && -n "$ZEPHYR_BASE" && -f "$ZEPHYR_BASE/scripts/requirements.txt" ]]; then
         use_zephyr_base_req=true
         requirements_file="$ZEPHYR_BASE/scripts/requirements.txt"
         echo "Using ZEPHYR_BASE requirements: $requirements_file"
     else
-        echo "ZEPHYR_BASE is not set, so download latest requirements"
+        echo "Downloading Zephyr requirements (ref: ${REQUIREMENTS_REF_VALUE})"
         local requirement_files=(
             "requirements.txt"
             "requirements-run-test.txt"
@@ -404,20 +721,44 @@ install_python_venv() {
         )
         mkdir -p "$requirements_dir"
         for requirement in "${requirement_files[@]}"; do
-            download "$requirements_baseurl/$requirement" "$requirement"
+            if ! download "$requirements_baseurl/$requirement" "$requirement"; then
+                step_error "Failed to download $requirement (Zephyr ref: ${REQUIREMENTS_REF_VALUE})"
+                return 1
+            fi
             mv "$DL_DIR/$requirement" "$requirements_dir/$requirement"
         done
         requirements_file="$requirements_dir/requirements.txt"
     fi
 
+    # A half-created venv (directory without an activation script) can never
+    # become usable: rebuild it instead of failing forever.
+    if [[ -d "$venv_path" && ! -f "$venv_path/bin/activate" ]]; then
+        pr_warn "Existing virtual environment at $venv_path is incomplete; recreating it"
+        rm -rf "$venv_path"
+    fi
+
+    local venv_python=python3
+    if [[ -n "$CUSTOM_PYTHON_EXE" ]]; then
+        venv_python="$CUSTOM_PYTHON_EXE"
+    elif ! command -v python3 >/dev/null 2>&1; then
+        venv_python=python
+    fi
+
     if [[ ! -d "$venv_path" ]]; then
-        python3 -m venv "$venv_path"
+        if ! "$venv_python" -m venv "$venv_path"; then
+            step_error "Failed to create the virtual environment at $venv_path"
+            return 1
+        fi
+    fi
+    if [[ ! -f "$venv_path/bin/activate" ]]; then
+        step_error "Virtual environment has no activation script: $venv_path"
+        return 1
     fi
 
     # shellcheck disable=SC1091
     source "$venv_path/bin/activate"
     echo "Upgrading pip to the latest version..."
-    python -m pip install --upgrade pip --quiet
+    python -m pip install --upgrade pip --quiet || pr_warn "pip self-upgrade failed; continuing with the bundled pip"
 
     local -a python_package_specs=()
     local parser_script="$SCRIPT_DIR/parse_python_packages.py"
@@ -448,211 +789,31 @@ PY
         echo "Parser script not found: $parser_script" >&2
     fi
 
+    # Attempt every package, then report the failures together: one broken
+    # package never blocks the others.
+    local -a venv_failed_specs=()
     for spec in "${python_package_specs[@]}"; do
         if [[ -n "$spec" && "$spec" != "null" ]]; then
             echo "Installing Python package: $spec"
-            python -m pip install "$spec" --quiet
+            python -m pip install "$spec" --quiet || venv_failed_specs+=("$spec")
         fi
     done
 
     echo "Installing Zephyr's base requirements..."
-    python -m pip install -r "$requirements_file" --quiet
+    if ! python -m pip install -r "$requirements_file" --quiet; then
+        step_error "Failed to install Zephyr base requirements ($requirements_file)"
+        return 1
+    fi
+
+    if [ ${#venv_failed_specs[@]} -gt 0 ]; then
+        step_error "Failed to install ${#venv_failed_specs[@]} Python package(s): ${venv_failed_specs[*]}"
+        return 1
+    fi
+    return 0
 }
 
-if [[ $root_packages == true ]]; then
-    pr_title "Install non portable tools"
-
-    if [[ -f /etc/os-release ]]; then
-        . /etc/os-release
-        case "$ID" in
-        ubuntu)
-            echo "This is Ubuntu."
-            if [ $(lsb_release -rs | awk -F. '{print $1$2}') -ge 2004 ]; then
-                echo "Ubuntu version is equal to or higher than 20.04"
-            else
-                pr_warn "Ubuntu versions lower than 20.04 are not officially supported."
-                pr_minimum_packages_note
-                echo "Attempting install anyway..."
-            fi
-            sudo DEBIAN_FRONTEND=noninteractive apt-get update
-            sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends git cmake ninja-build gperf ccache dfu-util device-tree-compiler wget python3-dev python3-venv python3-pip python3-setuptools python3-tk python3-wheel xz-utils file make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1 unzip
-            # Install HIDAPI libraries for USB device access
-            sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends libhidapi-hidraw0 libhidapi-libusb0
-            ;;
-        fedora)
-            echo "This is Fedora."
-            sudo dnf upgrade -y
-            sudo dnf group install -y "Development Tools" "C Development Tools and Libraries"
-            sudo dnf install -y cmake ninja-build gperf dfu-util dtc wget which python3-pip python3-tkinter xz file python3-devel SDL2-devel
-            ;;
-        clear-linux-os)
-            echo "This is Clear Linux."
-            sudo swupd update
-            sudo swupd bundle-add c-basic dev-utils dfu-util dtc os-core-dev python-basic python3-basic python3-tcl
-            ;;
-        arch)
-            echo "This is Arch Linux."
-            sudo pacman -Syu --noconfirm
-            sudo pacman -S --noconfirm git cmake ninja gperf ccache dfu-util dtc wget python-pip python-setuptools python-wheel tk xz file make
-            ;;
-        *)
-            pr_warn "Distribution is not recognized; skipping automatic root package install."
-            pr_minimum_packages_note
-            ;;
-        esac
-    else
-        pr_warn "/etc/os-release file not found. Cannot determine distribution; skipping automatic root package install."
-        pr_minimum_packages_note
-    fi
-
-    # After installing root packages, check Python version requirement
-    check_python_version_requirement || true
-fi
-
-if [[ $non_root_packages == true ]]; then
-    mkdir -p "$TMP_DIR"
-    mkdir -p "$DL_DIR"
-    mkdir -p "$TOOLS_DIR"
-
-    pr_title "YQ"
-    YQ_FILENAME="yq"
-    YQ_SOURCE=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'source' | awk -F": " '{print $2}')
-    YQ_SHA256=$(grep -A 10 'tool: yq' $YAML_FILE | grep -A 2 "$SELECTED_OS:" | grep 'sha256' | awk -F": " '{print $2}')
-
-    # Download and verify
-    download_and_check_hash "$YQ_SOURCE" "$YQ_SHA256" "$YQ_FILENAME"
-
-    # Install it permanently in tools/yq/
-    mkdir -p "$TOOLS_DIR/yq"
-    mv "$DL_DIR/$YQ_FILENAME" "$TOOLS_DIR/yq/yq"
-    chmod +x "$TOOLS_DIR/yq/yq"
-
-    # Update variable for later usage
-    YQ="$TOOLS_DIR/yq/yq"
-
-    # Start generating the manifest file
-    echo "#!/bin/bash" > $MANIFEST_FILE
-
-    # Function to generate array entries if the tool supports the specified OS
-    function generate_manifest_entries {
-        local tool=$1
-        local SELECTED_OS=$2
-
-        # Using yq to parse the source and sha256 for the specific OS and tool
-        source=$($YQ eval ".*_content[] | select(.tool == \"$tool\") | .os.$SELECTED_OS.source" $YAML_FILE)
-        sha256=$($YQ eval ".*_content[] | select(.tool == \"$tool\") | .os.$SELECTED_OS.sha256" $YAML_FILE)
-
-        # Check if the source and sha256 are not null (meaning the tool supports the OS)
-        if [ "$source" != "null" ] && [ "$sha256" != "null" ]; then
-            echo "declare -A ${tool}=()" >> $MANIFEST_FILE
-            echo "${tool}[source]=\"$source\"" >> $MANIFEST_FILE
-            echo "${tool}[sha256]=\"$sha256\"" >> $MANIFEST_FILE
-        fi
-    }
-
-    pr_title "Parse YAML and generate manifest"
-
-    # List all tools from the YAML file
-    tools=$($YQ eval '.*_content[].tool' $YAML_FILE)
-
-    # Loop through each tool and generate the entries
-    for tool in $tools; do
-        generate_manifest_entries $tool $SELECTED_OS
-    done
-
-    source $MANIFEST_FILE
-
-    if [[ $create_venv_bool == true ]]; then
-      pr_title "Creating Python VENV"
-      debug "create_venv flow: PATH(before): $PATH"
-      prepend_python_paths_from_env "$ENV_YAML_PATH" "$YQ"
-      # Ensure Python meets requirement (may set PYTHON_TOO_OLD)
-      check_python_version_requirement || true
-      debug "create_venv: python3=$(command -v python3 || echo not-found) | python=$(command -v python || echo not-found) | PYTHON_TOO_OLD=$PYTHON_TOO_OLD"
-      if [[ -n "$VENV_PATH" && -d "$VENV_PATH" ]]; then
-        echo "VENV already exists at: $VENV_PATH"
-      else
-        install_python_venv "$INSTALL_DIR" "$TMP_DIR"
-      fi
-      rm -rf "$TMP_DIR"
-      exit 0
-    fi
-
-    if [[ $reinstall_venv_bool == true ]]; then
-      pr_title "Reinstalling Python VENV"
-      if [ -d "$INSTALL_DIR/.venv" ]; then
-        rm -rf "$INSTALL_DIR/.venv"
-      fi
-      debug "reinstall_venv flow: PATH(before): $PATH"
-      prepend_python_paths_from_env "$ENV_YAML_PATH" "$YQ"
-      # Re-check Python version requirement after adjusting PATH
-      check_python_version_requirement || true
-      debug "reinstall_venv: python3=$(command -v python3 || echo not-found) | python=$(command -v python || echo not-found) | PYTHON_TOO_OLD=$PYTHON_TOO_OLD"
-      install_python_venv "$INSTALL_DIR" "$TMP_DIR"
-      rm -rf "$TMP_DIR"
-      exit 0
-    fi
-
-    # If the system Python is not supported, switch to portable AppImage
-    check_python_version_requirement || true
-    if [[ "$PYTHON_TOO_OLD" == true ]]; then
-        pr_warn "System Python is older than ${PYTHON_MIN_VERSION} or missing."
-        pr_warn "Applying workaround: installing portable Python via AppImage."
-        pr_warn "More info: https://python-appimage.readthedocs.io"
-        debug "Switching to portable Python: PYTHON_TOO_OLD=$PYTHON_TOO_OLD (before portable_python=$portable_python)"
-        portable_python=true
-    fi
-
-	if [ $portable_python = true ]; then
-        pr_title "Python (Portable AppImage)"
-        # Download portable Python AppImage as defined in tools.yml
-        PY_APPIMAGE_URL="${python_portable[source]}"
-        PY_APPIMAGE_SHA="${python_portable[sha256]}"
-        PY_APPIMAGE_NAME="$(basename "$PY_APPIMAGE_URL")"
-        download_and_check_hash "$PY_APPIMAGE_URL" "$PY_APPIMAGE_SHA" "$PY_APPIMAGE_NAME"
-
-        # Install under tools/python/ and create symlinks
-        mkdir -p "$TOOLS_DIR/python"
-        mv "$DL_DIR/$PY_APPIMAGE_NAME" "$TOOLS_DIR/python/python.AppImage"
-        chmod +x "$TOOLS_DIR/python/python.AppImage"
-        ln -sf "python.AppImage" "$TOOLS_DIR/python/python"
-        ln -sf "python.AppImage" "$TOOLS_DIR/python/python3"
-        debug "Installed AppImage at $TOOLS_DIR/python/python.AppImage"
-        debug "Symlinks: $(ls -l "$TOOLS_DIR/python" 2>/dev/null | tr -s ' ')"
-
-        # Ensure the shim directory is on PATH
-        export PATH="$TOOLS_DIR/python:$PATH"
-        debug "PATH with portable: $PATH"
-    fi
-
-    pr_title "Ninja"
-    NINJA_ARCHIVE_NAME="ninja-linux.zip"
-    download_and_check_hash ${ninja[source]} ${ninja[sha256]} "$NINJA_ARCHIVE_NAME"
-    mkdir -p "$TOOLS_DIR/ninja"
-    unzip -o "$DL_DIR/$NINJA_ARCHIVE_NAME" -d "$TOOLS_DIR/ninja"
-
-    pr_title "CMake"
-    CMAKE_FOLDER_NAME="cmake-4.1.2-linux-x86_64"
-    CMAKE_ARCHIVE_NAME="${CMAKE_FOLDER_NAME}.tar.gz"
-    download_and_check_hash ${cmake[source]} ${cmake[sha256]} "$CMAKE_ARCHIVE_NAME"
-    tar xf "$DL_DIR/$CMAKE_ARCHIVE_NAME" -C "$TOOLS_DIR"
-	
-    cmake_path="$INSTALL_DIR/tools/$CMAKE_FOLDER_NAME/bin"
-    ninja_path="$INSTALL_DIR/tools/ninja"
-    
-    export PATH="$ninja_path:$cmake_path:/usr/local/bin:$PATH"
-    
-    pr_title "Python VENV"
-    install_python_venv "$INSTALL_DIR" "$TMP_DIR"
-
-    if ! command -v west &> /dev/null; then
-    echo "West is not available. Something is wrong !!"
-    else
-    echo "West is available."
-    fi
-
-    env_script() {
-    cat << 'EOF'
+env_script() {
+cat << 'EOF'
 # Please do not manually edit this script, it is intended to be sourced by other scripts to set up the environment.
 # You can add environment variables and paths to env.yml via the Host Tools Manager interface.
 
@@ -732,105 +893,230 @@ fi
 EOF
 }
 
-    env_script > $ENV_FILE
-	
-	# --------------------------------------------------------------------------
-	# Create environment manifest (env.yml)
-	# --------------------------------------------------------------------------
-	
-	cat << EOF > "$ENV_YAML_PATH"
-# env.yml
-# ZInstaller Workspace Environment Manifest
-# Defines workspace tools and Python environment metadata for Zephyr Workbench
+# ----------------------------------------------------------------------------
+# env.yml is REGENERATED AS A MERGE on every run whose steps did not fail,
+# selective or not: skipping a tool never leaves the manifest incomplete or
+# stale.
+#  - Tool entries owned by parts touched by this run are rebuilt with paths
+#    and versions (python: detected version per source mode).
+#  - Tool entries NOT touched are carried over verbatim from the previous
+#    file (user path/source overrides survive), template when absent.
+#  - User data always survives: extra env: keys, runners: and other: sections.
+# A failed run keeps an existing file untouched.
+# ----------------------------------------------------------------------------
 
-global:
-  version: "$zinstaller_version"
-  description: "Host tools configuration for Zephyr Workbench (Linux)"
+# Extract the version from a 'name [version]' check_package line.
+get_detected_tool_version() {
+    local out
+    out=$(check_package "$1" 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+    out="${out#*\[}"
+    out="${out%\]}"
+    if [ "$out" = "NOT INSTALLED" ] || [ -z "$out" ]; then
+        return 1
+    fi
+    echo "$out"
+    return 0
+}
 
-# Any variable here will be added as environment variables
-env:
-  zi_base_dir: "$INSTALL_DIR"
-  zi_tools_dir: "\${zi_base_dir}/tools"
-EOF
+# Which selectable part owns each env.yml tool block
+env_tool_regen() {
+    local id="$1" owner
+    case "$id" in
+        python) owner="python" ;;
+        cmake)  owner="cmake" ;;
+        ninja)  owner="ninja" ;;
+        *)      owner="system" ;;
+    esac
+    # Full run regenerates everything
+    [ -z "$SELECTED_TOOLS" ] && return 0
+    is_in_list "$owner" "$SELECTED_TOOLS"
+}
 
-if [ "$openssl_lib_bool" = true ]; then
-	cat << EOF >> "$ENV_YAML_PATH"
-  LD_LIBRARY_PATH: "$openssl_path/usr/local/lib:\$LD_LIBRARY_PATH"
-EOF
+detect_env_python_version() {
+    local out=""
+    case "$PYTHON_MODE_EFFECTIVE" in
+        portable)
+            if [[ -x "$TOOLS_DIR/python/python3" ]]; then
+                out=$("$TOOLS_DIR/python/python3" --version 2>&1 | sed -n 's/^Python //p')
+            fi
+            ;;
+        custom)
+            if [[ -n "$CUSTOM_PYTHON_EXE" ]]; then
+                out=$("$CUSTOM_PYTHON_EXE" --version 2>&1 | sed -n 's/^Python //p')
+            fi
+            ;;
+        *)
+            if command -v python3 >/dev/null 2>&1; then
+                out=$(python3 --version 2>&1 | sed -n 's/^Python //p')
+            elif command -v python >/dev/null 2>&1; then
+                out=$(python --version 2>&1 | sed -n 's/^Python //p')
+            fi
+            ;;
+    esac
+    echo "$out"
+    return 0
+}
 
-fi
-cat << EOF >> "$ENV_YAML_PATH"
-tools:
-EOF
+# 'do_not_use: true' is the Host Tools Manager's "System" source semantics:
+# env.py then adds no python path and the panel shows Source=System. A custom
+# python gets its real path written so sourced shells resolve it.
+emit_python_tool_template() {
+    local py_version
+    py_version=$(detect_env_python_version)
+    echo "  python:"
+    case "$PYTHON_MODE_EFFECTIVE" in
+        portable)
+            echo "    path:"
+            echo "      - \"\${zi_tools_dir}/python\""
+            if [ -n "$py_version" ]; then
+                echo "    version: \"$py_version\""
+            fi
+            echo "    do_not_use: false"
+            ;;
+        custom)
+            echo "    path:"
+            echo "      - \"$CUSTOM_PYTHON_DIR\""
+            if [ -n "$py_version" ]; then
+                echo "    version: \"$py_version\""
+            fi
+            echo "    do_not_use: false"
+            ;;
+        *)
+            if [ -n "$py_version" ]; then
+                echo "    version: \"$py_version\""
+            fi
+            echo "    do_not_use: true"
+            ;;
+    esac
+    return 0
+}
 
-if [ "$portable_python" = true ]; then
-	# Detect the installed Python version from the portable shim, if present
-	if [[ -x "$INSTALL_DIR/tools/python/python3" ]]; then
-		PYTHON_VERSION=$("$INSTALL_DIR/tools/python/python3" --version 2>&1 | grep -oP 'Python \K[^\s]+')
-	else
-		PYTHON_VERSION=""
-	fi
+emit_cmake_tool_template() {
+    echo "  cmake:"
+    echo "    path: \"\${zi_tools_dir}/$CMAKE_FOLDER_NAME/bin\""
+    if [ -n "$CMAKE_VERSION" ]; then
+        echo "    version: \"$CMAKE_VERSION\""
+    fi
+    echo "    do_not_use: false"
+    return 0
+}
 
-	cat << EOF >> "$ENV_YAML_PATH"
+emit_ninja_tool_template() {
+    echo "  ninja:"
+    echo "    path: \"\${zi_tools_dir}/ninja\""
+    if [ -n "$NINJA_VERSION" ]; then
+        echo "    version: \"$NINJA_VERSION\""
+    fi
+    echo "    do_not_use: false"
+    return 0
+}
 
-  python:
-    path:
-      - "\${zi_tools_dir}/python"
-    version: "$PYTHON_VERSION"
-    do_not_use: false
-EOF
-else
-    cat << EOF >> "$ENV_YAML_PATH"
+# Pathless tools provided by the distro packages: record the detected version
+# when the tool is reachable, no path (they live on the system PATH).
+emit_simple_tool_template() {
+    local id="$1" ver
+    ver=$(get_detected_tool_version "$id")
+    echo "  $id:"
+    if [ -n "$ver" ]; then
+        echo "    version: \"$ver\""
+    fi
+    echo "    do_not_use: false"
+    return 0
+}
 
-  python:
-    do_not_use: false
-EOF
-fi
+emit_env_tool() {
+    local id="$1" old_block
+    echo ""
+    if ! env_tool_regen "$id" && [ -s "$OLD_ENV_YML" ]; then
+        old_block=$(get_yaml_section "$OLD_ENV_YML" "$id" 2)
+        if [ -n "$old_block" ]; then
+            echo "$old_block"
+            return 0
+        fi
+    fi
+    case "$id" in
+        python) emit_python_tool_template ;;
+        cmake)  emit_cmake_tool_template ;;
+        ninja)  emit_ninja_tool_template ;;
+        *)      emit_simple_tool_template "$id" ;;
+    esac
+    return 0
+}
 
-	cat << EOF >> "$ENV_YAML_PATH"
-  cmake:
-    path: "\${zi_tools_dir}/$CMAKE_FOLDER_NAME/bin"
-    do_not_use: false
+ENV_YAML_TOOLS="python cmake ninja git gperf dtc ccache dfu-util wget xz-utils file make"
 
-  ninja:
-    path: "\${zi_tools_dir}/ninja"
-    do_not_use: false
+write_env_yaml() {
+    # A failed run keeps an existing manifest untouched; everything else gets
+    # the merged regeneration (selective runs included, so a new python source
+    # or freshly installed tool always lands in env.yml).
+    local failed_so_far=0 i sec block tmp_yaml
+    for ((i=0; i<${#STEP_NAMES[@]}; i++)); do
+        [ "${STEP_STATUS[$i]}" = "failed" ] && failed_so_far=$((failed_so_far+1))
+    done
+    if [ -f "$ENV_YAML_PATH" ] && [ "$failed_so_far" -gt 0 ]; then
+        pr_warn "Keeping existing environment manifest (some steps failed): $ENV_YAML_PATH"
+        return 0
+    fi
 
-  git:
-    do_not_use: false
+    OLD_ENV_YML="$TMP_DIR/env.yml.old"
+    if [ -f "$ENV_YAML_PATH" ]; then
+        cp "$ENV_YAML_PATH" "$OLD_ENV_YML"
+    else
+        : > "$OLD_ENV_YML"
+    fi
 
-  gperf:
-    do_not_use: false
+    tmp_yaml="$ENV_YAML_PATH.tmp"
+    {
+        echo "# env.yml"
+        echo "# ZInstaller Workspace Environment Manifest"
+        echo "# Defines workspace tools and Python environment metadata for Zephyr Workbench"
+        echo ""
+        echo "global:"
+        echo "  version: \"$zinstaller_version\""
+        echo "  description: \"Host tools configuration for Zephyr Workbench (Linux)\""
+        echo ""
+        echo "# Any variable here will be added as environment variables"
+        echo "env:"
+        echo "  zi_base_dir: \"$INSTALL_DIR\""
+        echo "  zi_tools_dir: \"\${zi_base_dir}/tools\""
+        if [ "$openssl_lib_bool" = true ]; then
+            echo "  LD_LIBRARY_PATH: \"$openssl_path/usr/local/lib:\$LD_LIBRARY_PATH\""
+        fi
+        if [ -s "$OLD_ENV_YML" ]; then
+            # Carry user-defined environment variables.
+            get_yaml_section "$OLD_ENV_YML" env 0 \
+                | grep -Ev '^env[[:space:]]*:|^[[:space:]]*(zi_base_dir|zi_tools_dir)[[:space:]]*:|^[[:space:]]*$'
+        fi
+        echo ""
+        echo "tools:"
+        for sec in $ENV_YAML_TOOLS; do
+            emit_env_tool "$sec"
+        done
+        echo ""
+        echo "python:"
+        echo "  global_venv_path: \"$INSTALL_DIR/.venv\""
+        echo ""
+        # Carry the user-owned top-level sections (runner paths, extra tool paths).
+        for sec in runners other; do
+            if [ -s "$OLD_ENV_YML" ]; then
+                block=$(get_yaml_section "$OLD_ENV_YML" "$sec" 0)
+                if [ -n "$block" ]; then
+                    echo "$block"
+                    echo ""
+                fi
+            fi
+        done
+    } > "$tmp_yaml" || return 1
+    mv "$tmp_yaml" "$ENV_YAML_PATH" || return 1
 
-  ccache:
-    do_not_use: false
+    echo "Created environment manifest: $ENV_YAML_PATH"
+    return 0
+}
 
-  dfu-util:
-    do_not_use: false
-
-  wget:
-    do_not_use: false
-
-  xz-utils:
-    do_not_use: false
-
-  file:
-    do_not_use: false
-
-  make:
-    do_not_use: false
-
-python:
-  global_venv_path: "$INSTALL_DIR/.venv"
-
-EOF
-
-echo "Created environment manifest: $ENV_YAML_PATH"
-
-	# --------------------------------------------------------------------------
-	# Create python script to parse environement yml (env.py)
-	# --------------------------------------------------------------------------
-	
+write_env_py() {
 	cat << 'EOF' > "$ENV_PY_PATH"
 #!/usr/bin/env python3
 """
@@ -1108,19 +1394,7 @@ if __name__ == "__main__":
     main()
 
 EOF
-
-    echo "Created py script to parse yml: $ENV_PY_PATH"
-
-    cat <<EOF > "$INSTALL_DIR/zinstaller_version"
-Script Version: $zinstaller_version
-Script MD5: $zinstaller_md5
-tools.yml MD5: $tools_yml_md5
-EOF
-    echo "Source me: . $ENV_FILE"
-    
-    pr_title "Clean up"
-    rm -rf $TMP_DIR
-fi
+}
 
 # Function to check if a package is installed and print the version
 check_package() {
@@ -1135,6 +1409,7 @@ check_package() {
 		openssl) version_command="openssl version 2>&1" ;;
 		git) version_command="git --version 2>&1" ;;
 		gperf) version_command="gperf --version 2>&1 | head -n 1" ;;
+		dtc) version_command="dtc --version 2>&1 | head -n 1" ;;
 		ccache) version_command="ccache --version 2>&1 | head -n 1" ;;
 		dfu-util) version_command="dfu-util --version 2>&1 | head -n 1" ;;
 		wget) version_command="wget --version 2>&1 | head -n 1" ;;
@@ -1143,6 +1418,15 @@ check_package() {
 		make) version_command="make --version 2>&1 | head -n 1" ;;
 		*) echo "$package [NOT INSTALLED]" && return 1 ;;
 	esac
+
+	# The '| head -n 1' pipes above mask a missing command's exit code, so
+	# probe for the executable first.
+	local probe_cmd
+	probe_cmd=${version_command%% *}
+	if ! command -v "$probe_cmd" >/dev/null 2>&1; then
+		echo "$package [NOT INSTALLED]"
+		return 1
+	fi
 
 	version=$(eval $version_command)
 
@@ -1157,6 +1441,7 @@ check_package() {
 			ninja) version=$(echo "$version") ;;
 			git) version=$(echo "$version" | grep -oP 'git version \K[^\s]+') ;;
 			gperf) version=$(echo "$version" | grep -oP 'GNU gperf \K[^\s]+') ;;
+			dtc) version=$(echo "$version" | grep -oP 'Version: DTC \K[^\s]+') ;;
 			ccache) version=$(echo "$version" | grep -oP 'ccache version \K[^\s]+') ;;
 			dfu-util) version=$(echo "$version" | grep -oP 'dfu-util \K[^\s]+') ;;
 			wget) version=$(echo "$version" | grep -oP 'GNU Wget \K[^\s]+') ;;
@@ -1178,6 +1463,7 @@ check_packages() {
         ninja
         git
         gperf
+        dtc
         ccache
         dfu-util
         wget
@@ -1209,7 +1495,597 @@ check_packages() {
     fi
 }
 
-if [[ $check_installed_bool == true ]]; then
+# ----------------------------------------------------------------------------
+# Step bodies
+# ----------------------------------------------------------------------------
+
+# Bulk install first for speed; on failure retry package by package so a
+# single broken package degrades this step instead of losing the whole batch.
+# $1 = installer function taking package names; the rest = packages.
+resilient_batch_install() {
+    local installer="$1"
+    shift
+    local -a pkgs=("$@")
+    if "$installer" "${pkgs[@]}"; then
+        return 0
+    fi
+    step_warn "Bulk package install failed; retrying packages one by one"
+    local -a failed_pkgs=()
+    local p
+    for p in "${pkgs[@]}"; do
+        "$installer" "$p" || failed_pkgs+=("$p")
+    done
+    if [ ${#pkgs[@]} -gt 0 ] && [ ${#failed_pkgs[@]} -eq ${#pkgs[@]} ]; then
+        step_error "All system packages failed to install (package manager unusable?)"
+        return 1
+    fi
+    for p in "${failed_pkgs[@]}"; do
+        step_warn "Package failed to install: $p"
+    done
+    return 0
+}
+
+apt_install() {
+    sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends "$@"
+}
+
+dnf_install() {
+    sudo dnf install -y "$@"
+}
+
+swupd_install() {
+    sudo swupd bundle-add "$@"
+}
+
+pacman_install() {
+    sudo pacman -S --noconfirm "$@"
+}
+
+step_system() {
+    if [[ ! -f /etc/os-release ]]; then
+        step_warn "/etc/os-release file not found. Cannot determine distribution; skipping automatic root package install."
+        pr_minimum_packages_note
+        return 0
+    fi
+    . /etc/os-release
+    case "$ID" in
+    ubuntu)
+        echo "This is Ubuntu."
+        if [ "$(lsb_release -rs 2>/dev/null | awk -F. '{print $1$2}')" -ge 2004 ] 2>/dev/null; then
+            echo "Ubuntu version is equal to or higher than 20.04"
+        else
+            pr_warn "Ubuntu versions lower than 20.04 are not officially supported."
+            pr_minimum_packages_note
+            echo "Attempting install anyway..."
+        fi
+        sudo DEBIAN_FRONTEND=noninteractive apt-get update \
+            || step_warn "apt-get update failed (exit $?); package lists may be stale"
+        resilient_batch_install apt_install \
+            git cmake ninja-build gperf ccache dfu-util device-tree-compiler wget \
+            python3-dev python3-venv python3-pip python3-setuptools python3-tk python3-wheel \
+            xz-utils file make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1 unzip \
+            libhidapi-hidraw0 libhidapi-libusb0 \
+            || return 1
+        ;;
+    fedora)
+        echo "This is Fedora."
+        sudo dnf upgrade -y || step_warn "dnf upgrade failed (exit $?); continuing"
+        sudo dnf group install -y "Development Tools" "C Development Tools and Libraries" \
+            || step_warn "dnf group install failed (exit $?); continuing"
+        resilient_batch_install dnf_install \
+            cmake ninja-build gperf dfu-util dtc wget which python3-pip python3-tkinter \
+            xz file python3-devel SDL2-devel \
+            || return 1
+        ;;
+    clear-linux-os)
+        echo "This is Clear Linux."
+        sudo swupd update || step_warn "swupd update failed (exit $?); continuing"
+        resilient_batch_install swupd_install \
+            c-basic dev-utils dfu-util dtc os-core-dev python-basic python3-basic python3-tcl \
+            || return 1
+        ;;
+    arch)
+        echo "This is Arch Linux."
+        sudo pacman -Syu --noconfirm || step_warn "pacman -Syu failed (exit $?); continuing"
+        resilient_batch_install pacman_install \
+            git cmake ninja gperf ccache dfu-util dtc wget python-pip python-setuptools \
+            python-wheel tk xz file make \
+            || return 1
+        ;;
+    *)
+        step_warn "Distribution is not recognized; skipping automatic root package install."
+        pr_minimum_packages_note
+        ;;
+    esac
+    return 0
+}
+
+# Function to generate array entries if the tool supports the specified OS
+generate_manifest_entries() {
+    local tool=$1
+    local SELECTED_OS=$2
+
+    # Using yq to parse the source and sha256 for the specific OS and tool
+    source=$($YQ eval ".*_content[] | select(.tool == \"$tool\") | .os.$SELECTED_OS.source" $YAML_FILE)
+    sha256=$($YQ eval ".*_content[] | select(.tool == \"$tool\") | .os.$SELECTED_OS.sha256" $YAML_FILE)
+
+    # Check if the source and sha256 are not null (meaning the tool supports the OS)
+    if [ "$source" != "null" ] && [ "$sha256" != "null" ]; then
+        echo "declare -A ${tool}=()" >> $MANIFEST_FILE
+        echo "${tool}[source]=\"$source\"" >> $MANIFEST_FILE
+        echo "${tool}[sha256]=\"$sha256\"" >> $MANIFEST_FILE
+    fi
+}
+
+step_yq() {
+    pr_title "YQ"
+    local YQ_FILENAME="yq"
+    local yq_source yq_sha
+    yq_source=$(get_yaml_os_field yq source)
+    yq_sha=$(get_yaml_os_field yq sha256)
+    if [[ -z "$yq_source" || -z "$yq_sha" ]]; then
+        step_error "yq source/sha256 not found in tools.yml"
+        return 1
+    fi
+
+    download_and_check_hash "$yq_source" "$yq_sha" "$YQ_FILENAME" \
+        || { step_error "Failed to download yq"; return 1; }
+
+    # Install it permanently in tools/yq/
+    mkdir -p "$TOOLS_DIR/yq"
+    mv "$DL_DIR/$YQ_FILENAME" "$TOOLS_DIR/yq/yq" || { step_error "Failed to install yq into $TOOLS_DIR/yq"; return 1; }
+    chmod +x "$TOOLS_DIR/yq/yq"
+
+    # Update variable for later usage
+    YQ="$TOOLS_DIR/yq/yq"
+
+    # Start generating the manifest file
+    echo "#!/bin/bash" > $MANIFEST_FILE
+
+    pr_title "Parse YAML and generate manifest"
+
+    # List all tools from the YAML file
+    local tools tool
+    tools=$($YQ eval '.*_content[].tool' $YAML_FILE) \
+        || { step_error "Failed to parse $YAML_FILE with yq"; return 1; }
+
+    # Loop through each tool and generate the entries
+    for tool in $tools; do
+        generate_manifest_entries $tool $SELECTED_OS
+    done
+
+    source $MANIFEST_FILE
+    return 0
+}
+
+step_python() {
+    case "$PYTHON_MODE_EFFECTIVE" in
+    portable)
+        pr_title "Python (Portable AppImage)"
+        # Download portable Python AppImage as defined in tools.yml
+        local PY_APPIMAGE_URL="${python_portable[source]}"
+        local PY_APPIMAGE_SHA="${python_portable[sha256]}"
+        if [[ -z "$PY_APPIMAGE_URL" || -z "$PY_APPIMAGE_SHA" ]]; then
+            step_error "python_portable entry missing from the manifest (yq step did not run?)"
+            return 1
+        fi
+        local PY_APPIMAGE_NAME="$(basename "$PY_APPIMAGE_URL")"
+        download_and_check_hash "$PY_APPIMAGE_URL" "$PY_APPIMAGE_SHA" "$PY_APPIMAGE_NAME" \
+            || { step_error "Failed to download the portable Python AppImage"; return 1; }
+
+        # Install under tools/python/ and create symlinks
+        mkdir -p "$TOOLS_DIR/python"
+        mv "$DL_DIR/$PY_APPIMAGE_NAME" "$TOOLS_DIR/python/python.AppImage" \
+            || { step_error "Failed to install the Python AppImage"; return 1; }
+        chmod +x "$TOOLS_DIR/python/python.AppImage"
+        ln -sf "python.AppImage" "$TOOLS_DIR/python/python"
+        ln -sf "python.AppImage" "$TOOLS_DIR/python/python3"
+        debug "Installed AppImage at $TOOLS_DIR/python/python.AppImage"
+        debug "Symlinks: $(ls -l "$TOOLS_DIR/python" 2>/dev/null | tr -s ' ')"
+
+        # Ensure the shim directory is on PATH
+        export PATH="$TOOLS_DIR/python:$PATH"
+        debug "PATH with portable: $PATH"
+        if ! "$TOOLS_DIR/python/python3" --version >/dev/null 2>&1; then
+            step_warn "Portable Python installed but does not run here (missing FUSE?); the venv step may fall back to another python"
+        fi
+        ;;
+    custom)
+        pr_title "Python (custom)"
+        if ! "$CUSTOM_PYTHON_EXE" --version >/dev/null 2>&1; then
+            step_error "Custom python is not runnable: $CUSTOM_PYTHON_EXE"
+            return 1
+        fi
+        echo "Using custom Python: $CUSTOM_PYTHON_EXE ($("$CUSTOM_PYTHON_EXE" --version 2>&1))"
+        check_python_version_requirement || true
+        if [[ "$PYTHON_TOO_OLD" == true ]]; then
+            step_warn "Custom Python is older than ${PYTHON_MIN_VERSION}; Zephyr requires >= ${PYTHON_MIN_VERSION}"
+        fi
+        ;;
+    *)
+        pr_title "Python (system)"
+        local pyexe=""
+        if command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
+            pyexe=python3
+        elif command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
+            pyexe=python
+        fi
+        if [[ -z "$pyexe" ]]; then
+            step_error "No working python3/python found on PATH"
+            return 1
+        fi
+        echo "Using system Python: $(command -v $pyexe) ($($pyexe --version 2>&1))"
+        check_python_version_requirement || true
+        if [[ "$PYTHON_TOO_OLD" == true ]]; then
+            step_warn "System Python is older than ${PYTHON_MIN_VERSION}; Zephyr requires >= ${PYTHON_MIN_VERSION}"
+        fi
+        ;;
+    esac
+    return 0
+}
+
+step_ninja() {
+    pr_title "Ninja"
+    local NINJA_ARCHIVE_NAME="ninja-linux.zip"
+    download_and_check_hash "${ninja[source]}" "${ninja[sha256]}" "$NINJA_ARCHIVE_NAME" \
+        || { step_error "Failed to download ninja"; return 1; }
+    mkdir -p "$TOOLS_DIR/ninja"
+    unzip -o "$DL_DIR/$NINJA_ARCHIVE_NAME" -d "$TOOLS_DIR/ninja" \
+        || { step_error "Failed to extract $NINJA_ARCHIVE_NAME"; return 1; }
+    return 0
+}
+
+step_cmake() {
+    pr_title "CMake"
+    local CMAKE_ARCHIVE_NAME="${CMAKE_FOLDER_NAME}.tar.gz"
+    download_and_check_hash "${cmake[source]}" "${cmake[sha256]}" "$CMAKE_ARCHIVE_NAME" \
+        || { step_error "Failed to download cmake"; return 1; }
+    tar xf "$DL_DIR/$CMAKE_ARCHIVE_NAME" -C "$TOOLS_DIR" \
+        || { step_error "Failed to extract $CMAKE_ARCHIVE_NAME"; return 1; }
+    if [[ ! -x "$TOOLS_DIR/$CMAKE_FOLDER_NAME/bin/cmake" ]]; then
+        step_error "cmake binary missing after extraction ($CMAKE_FOLDER_NAME)"
+        return 1
+    fi
+    return 0
+}
+
+step_venv() {
+    pr_title "Python VENV"
+    install_python_venv "$INSTALL_DIR" "$TMP_DIR" || return 1
+
+    if ! command -v west &> /dev/null; then
+    echo "West is not available. Something is wrong !!"
+    else
+    echo "West is available."
+    fi
+    return 0
+}
+
+step_env_files() {
+    env_script > "$ENV_FILE" || { step_error "Failed to write $ENV_FILE"; return 1; }
+    write_env_yaml || { step_error "Failed to write $ENV_YAML_PATH"; return 1; }
+    write_env_py || { step_error "Failed to write $ENV_PY_PATH"; return 1; }
+    echo "Created py script to parse yml: $ENV_PY_PATH"
+    return 0
+}
+
+# ----------------------------------------------------------------------------
+# Option validation (needs the helpers above)
+# ----------------------------------------------------------------------------
+
+# --tools only applies to install runs
+if [[ -n "$SELECTED_TOOLS_RAW" ]]; then
+    if [[ $only_check_bool == true || $create_venv_bool == true || $reinstall_venv_bool == true ]]; then
+        pr_warn "--tools is ignored with --only-check, --create-venv and --reinstall-venv"
+        SELECTED_TOOLS_RAW=""
+    fi
+fi
+SELECTED_TOOLS=$(echo "$SELECTED_TOOLS_RAW" | tr ',' ' ' | tr '[:upper:]' '[:lower:]')
+SELECTED_TOOLS=$(echo $SELECTED_TOOLS)
+if [[ -n "$SELECTED_TOOLS" && $engine_selftest_bool != true ]]; then
+    invalid_tools=""
+    for t in $SELECTED_TOOLS; do
+        is_in_list "$t" "$SELECTABLE_STEPS" || invalid_tools="$invalid_tools $t"
+    done
+    if [[ -n "$invalid_tools" ]]; then
+        pr_error 1 "Unknown value(s) for --tools:$invalid_tools. Valid values: system, cmake, ninja, python, venv"
+        exit 1
+    fi
+fi
+
+# Python source flags are mutually exclusive
+python_flag_count=0
+[[ $use_system_python_bool == true ]] && python_flag_count=$((python_flag_count+1))
+[[ $portable_python_flag_bool == true ]] && python_flag_count=$((python_flag_count+1))
+[[ -n "$PYTHON_EXE_PATH" ]] && python_flag_count=$((python_flag_count+1))
+if [[ $python_flag_count -gt 1 ]]; then
+    pr_error 1 "--use-system-python, --portable-python and --python-exe-path are mutually exclusive"
+    exit 1
+fi
+if [[ $use_system_python_bool == true ]]; then
+    PYTHON_MODE="system"
+elif [[ $portable_python_flag_bool == true ]]; then
+    PYTHON_MODE="portable"
+elif [[ -n "$PYTHON_EXE_PATH" ]]; then
+    PYTHON_MODE="custom"
+    if [[ -d "$PYTHON_EXE_PATH" ]]; then
+        if [[ -x "$PYTHON_EXE_PATH/python3" ]]; then
+            CUSTOM_PYTHON_EXE="$PYTHON_EXE_PATH/python3"
+        elif [[ -x "$PYTHON_EXE_PATH/python" ]]; then
+            CUSTOM_PYTHON_EXE="$PYTHON_EXE_PATH/python"
+        else
+            pr_error 1 "--python-exe-path: no python3/python executable found in directory: $PYTHON_EXE_PATH"
+            exit 1
+        fi
+    elif [[ -f "$PYTHON_EXE_PATH" ]]; then
+        CUSTOM_PYTHON_EXE="$PYTHON_EXE_PATH"
+    else
+        pr_error 1 "--python-exe-path does not exist: $PYTHON_EXE_PATH"
+        exit 1
+    fi
+    CUSTOM_PYTHON_DIR="$(cd "$(dirname "$CUSTOM_PYTHON_EXE")" && pwd)"
+fi
+
+# Requirements ref: tag or branch name characters only
+if [[ -n "$REQUIREMENTS_REF" ]]; then
+    case "$REQUIREMENTS_REF" in
+        *[!A-Za-z0-9._/-]*)
+            pr_error 1 "Invalid --requirements-ref value: $REQUIREMENTS_REF (allowed characters: letters, digits, . _ / -)"
+            exit 1
+            ;;
+        *)
+            REQUIREMENTS_REF_VALUE="$REQUIREMENTS_REF"
+            ;;
+    esac
+fi
+
+# ----------------------------------------------------------------------------
+# Dev-only selftests (no downloads, no package installs)
+# ----------------------------------------------------------------------------
+
+if [[ $engine_selftest_bool == true ]]; then
+    selftest_ok() { echo "ok body ran"; }
+    selftest_warn() { step_warn "something minor happened"; }
+    selftest_fail() { step_error "boom"; return 1; }
+    selftest_never() { echo "THIS BODY MUST NOT RUN"; }
+
+    if [[ "${ZI_SELFTEST_PASS:-0}" != "0" ]]; then
+        SELECTED_TOOLS=""
+        SELECTABLE_STEPS="ok warnstep"
+        INFRA_STEPS="infra"
+        INFRA_NEEDED=false
+        run_step ok "Step OK" "" selftest_ok
+        run_step warnstep "Step Warn" "" selftest_warn
+        run_step infra "Step Infra" "" selftest_never
+    else
+        SELECTED_TOOLS="ok warnstep failstep needsfail needsnotsel"
+        SELECTABLE_STEPS="ok warnstep failstep needsfail needsnotsel notsel"
+        INFRA_STEPS="infra"
+        INFRA_NEEDED=false
+        run_step ok "Step OK" "" selftest_ok
+        run_step warnstep "Step Warn" "" selftest_warn
+        run_step failstep "Step Fail" "" selftest_fail
+        run_step needsfail "Step Requires Failed" "failstep" selftest_never
+        run_step notsel "Step Not Selected" "" selftest_never
+        run_step needsnotsel "Step Requires Unselected" "notsel" selftest_never
+        run_step infra "Step Infra" "" selftest_never
+    fi
+    compute_step_counts
+    print_step_summary
+    if [[ $INSTALL_FAILED_COUNT -gt 0 || $SELECTED_SKIPPED_COUNT -gt 0 ]]; then
+        exit 1
+    fi
+    exit 0
+fi
+
+if [[ $selftest_env_merge_bool == true ]]; then
+    mkdir -p "$TMP_DIR"
+    PYTHON_MODE_EFFECTIVE="$PYTHON_MODE"
+    [[ "$PYTHON_MODE_EFFECTIVE" == "auto" ]] && PYTHON_MODE_EFFECTIVE="system"
+    CMAKE_VERSION=$(get_yaml_os_field cmake version)
+    NINJA_VERSION=$(get_yaml_os_field ninja version)
+    CMAKE_FOLDER_NAME="cmake-${CMAKE_VERSION:-4.1.2}-linux-x86_64"
+    write_env_yaml
+    merge_status=$?
+    rm -rf "$TMP_DIR"
+    exit $merge_status
+fi
+
+# ----------------------------------------------------------------------------
+# Python source PATH resolution (before any flow that runs python)
+# ----------------------------------------------------------------------------
+if [[ "$PYTHON_MODE" == "custom" ]]; then
+    export PATH="$CUSTOM_PYTHON_DIR:$PATH"
+    debug "Custom python dir prepended to PATH: $CUSTOM_PYTHON_DIR"
+elif [[ "$PYTHON_MODE" == "portable" && -x "$TOOLS_DIR/python/python3" ]]; then
+    export PATH="$TOOLS_DIR/python:$PATH"
+    debug "Existing portable python prepended to PATH"
+fi
+
+# ----------------------------------------------------------------------------
+# Venv-only flows (exit on completion, honest exit codes)
+# ----------------------------------------------------------------------------
+
+if [[ $create_venv_bool == true ]]; then
+    pr_title "Creating Python VENV"
+    mkdir -p "$TMP_DIR" "$DL_DIR"
+    debug "create_venv flow: PATH(before): $PATH"
+    prepend_python_paths_from_env "$ENV_YAML_PATH" "$TOOLS_DIR/yq/yq"
+    # Ensure Python meets requirement (may set PYTHON_TOO_OLD)
+    check_python_version_requirement || true
+    debug "create_venv: python3=$(command -v python3 || echo not-found) | python=$(command -v python || echo not-found) | PYTHON_TOO_OLD=$PYTHON_TOO_OLD"
+    if [[ -n "$VENV_PATH" && -d "$VENV_PATH" && -f "$VENV_PATH/bin/activate" ]]; then
+        echo "VENV already exists at: $VENV_PATH"
+        rm -rf "$TMP_DIR"
+        exit 0
+    fi
+    if install_python_venv "$INSTALL_DIR" "$TMP_DIR"; then
+        rm -rf "$TMP_DIR"
+        exit 0
+    fi
+    [[ -n "$STEP_ERROR" ]] && echo "ERROR: $STEP_ERROR"
+    rm -rf "$TMP_DIR"
+    exit 1
+fi
+
+if [[ $reinstall_venv_bool == true ]]; then
+    pr_title "Reinstalling Python VENV"
+    mkdir -p "$TMP_DIR" "$DL_DIR"
+    debug "reinstall_venv flow: PATH(before): $PATH"
+    prepend_python_paths_from_env "$ENV_YAML_PATH" "$TOOLS_DIR/yq/yq"
+    # Re-check Python version requirement after adjusting PATH
+    check_python_version_requirement || true
+    debug "reinstall_venv: python3=$(command -v python3 || echo not-found) | python=$(command -v python || echo not-found) | PYTHON_TOO_OLD=$PYTHON_TOO_OLD"
+    # Refuse to delete the venv when no interpreter could rebuild it
+    if ! probe_step_presence python; then
+        echo "ERROR: No working python executable found on PATH; existing venv left untouched."
+        rm -rf "$TMP_DIR"
+        exit 1
+    fi
+    if [[ -d "$VENV_PATH_EFFECTIVE" ]]; then
+        rm -rf "$VENV_PATH_EFFECTIVE"
+    fi
+    if install_python_venv "$INSTALL_DIR" "$TMP_DIR"; then
+        rm -rf "$TMP_DIR"
+        exit 0
+    fi
+    [[ -n "$STEP_ERROR" ]] && echo "ERROR: $STEP_ERROR"
+    rm -rf "$TMP_DIR"
+    exit 1
+fi
+
+# ----------------------------------------------------------------------------
+# Root roster
+# ----------------------------------------------------------------------------
+
+if [[ $root_packages == true ]]; then
+    pr_title "Install non portable tools"
+    run_step system "System packages (distro package manager)" "" step_system
+fi
+
+# ----------------------------------------------------------------------------
+# Non-root roster
+# ----------------------------------------------------------------------------
+
+if [[ $non_root_packages == true ]]; then
+    mkdir -p "$TMP_DIR"
+    mkdir -p "$DL_DIR"
+    mkdir -p "$TOOLS_DIR"
+
+    # Resolve the effective python mode: auto keeps the historical behavior
+    # (system python3, portable AppImage fallback when too old or missing).
+    # Runs after the system step so a freshly installed python3 is seen.
+    PYTHON_MODE_EFFECTIVE="$PYTHON_MODE"
+    if [[ "$PYTHON_MODE" == "auto" ]]; then
+        check_python_version_requirement || true
+        if [[ "$PYTHON_TOO_OLD" == true ]]; then
+            pr_warn "System Python is older than ${PYTHON_MIN_VERSION} or missing."
+            pr_warn "Applying workaround: installing portable Python via AppImage."
+            pr_warn "More info: https://python-appimage.readthedocs.io"
+            PYTHON_MODE_EFFECTIVE="portable"
+        else
+            PYTHON_MODE_EFFECTIVE="system"
+        fi
+    fi
+    if [[ "$PYTHON_MODE_EFFECTIVE" == "portable" && -x "$TOOLS_DIR/python/python3" ]]; then
+        export PATH="$TOOLS_DIR/python:$PATH"
+    fi
+
+    # Helper downloads (yq) only run when a selected part needs a download
+    INFRA_NEEDED=true
+    if [[ -n "$SELECTED_TOOLS" ]]; then
+        INFRA_NEEDED=false
+        is_in_list cmake "$SELECTED_TOOLS" && INFRA_NEEDED=true
+        is_in_list ninja "$SELECTED_TOOLS" && INFRA_NEEDED=true
+        if is_in_list python "$SELECTED_TOOLS" && [[ "$PYTHON_MODE_EFFECTIVE" == "portable" ]]; then
+            INFRA_NEEDED=true
+        fi
+    fi
+
+    # Versions come from tools.yml (single source of truth shared with the UI)
+    CMAKE_VERSION=$(get_yaml_os_field cmake version)
+    NINJA_VERSION=$(get_yaml_os_field ninja version)
+    if [[ -z "$CMAKE_VERSION" ]]; then
+        pr_warn "cmake version missing from tools.yml; assuming 4.1.2"
+        CMAKE_VERSION="4.1.2"
+    fi
+    CMAKE_FOLDER_NAME="cmake-${CMAKE_VERSION}-linux-x86_64"
+
+    PYTHON_STEP_REQUIRES=""
+    [[ "$PYTHON_MODE_EFFECTIVE" == "portable" ]] && PYTHON_STEP_REQUIRES="yq"
+
+    run_step yq "yq (YAML parser)" "" step_yq
+    run_step python "Python" "$PYTHON_STEP_REQUIRES" step_python
+    run_step ninja "Ninja" "yq" step_ninja
+    run_step cmake "CMake" "yq" step_cmake
+
+    cmake_path="$TOOLS_DIR/$CMAKE_FOLDER_NAME/bin"
+    ninja_path="$TOOLS_DIR/ninja"
+
+    export PATH="$ninja_path:$cmake_path:/usr/local/bin:$PATH"
+
+    run_step venv "Python virtual environment" "python" step_venv
+    run_step env-files "Environment files" "" step_env_files
+fi
+
+# ----------------------------------------------------------------------------
+# Install-mode tail: summary, essentials stamp, informational check, exit
+# ----------------------------------------------------------------------------
+
+if [[ $only_check_bool != true ]]; then
+    compute_step_counts
+
+    if [[ $non_root_packages == true ]]; then
+        pr_title "Clean up"
+        rm -rf $TMP_DIR
+    fi
+
+    print_step_summary
+
+    if [[ $non_root_packages == true ]]; then
+        # The essentials stamp: written only when nothing failed, nothing
+        # selected was skipped, and the global venv is usable. Without it the
+        # install keeps being reported as needing (re)installation.
+        VENV_USABLE=false
+        [[ -f "$VENV_PATH_EFFECTIVE/bin/activate" ]] && VENV_USABLE=true
+        if [[ ${#STEP_NAMES[@]} -gt 0 && $INSTALL_FAILED_COUNT -eq 0 \
+              && $SELECTED_SKIPPED_COUNT -eq 0 && "$VENV_USABLE" == true ]]; then
+            cat <<EOF > "$INSTALL_DIR/zinstaller_version"
+Script Version: $zinstaller_version
+Script MD5: $zinstaller_md5
+tools.yml MD5: $tools_yml_md5
+EOF
+        else
+            pr_warn "Version stamp not written (failed or skipped steps, or the global venv is not available)."
+        fi
+        echo "Source me: . $ENV_FILE"
+
+        if [[ $check_installed_bool == true ]]; then
+            pr_title "Check Installed Packages"
+            check_packages || true
+
+            # Check Python version requirement
+            check_python_version_requirement || true
+
+            # Final reminder about Python if version is too old
+            if [[ "$PYTHON_TOO_OLD" == true ]]; then
+                pr_warn "If you are on older platforms, install a recent Python manually,"
+                pr_warn "add it to the PATH (if needed), and click on Reinstall global venv."
+            fi
+        fi
+    fi
+
+    if [[ $INSTALL_FAILED_COUNT -gt 0 || $SELECTED_SKIPPED_COUNT -gt 0 ]]; then
+        exit 1
+    fi
+    exit 0
+fi
+
+# ----------------------------------------------------------------------------
+# --only-check: byte-stable package listing, exit code = -missing
+# ----------------------------------------------------------------------------
+
+if [[ $only_check_bool == true ]]; then
     pr_title "Check Installed Packages"
 
     check_packages

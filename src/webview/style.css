@@ -251,6 +251,46 @@ form {
 .debug-tools-table.advanced-host-tools-table th:nth-child(6), .debug-tools-table.advanced-host-tools-table td:nth-child(6) {
   width: 130px;
 }
+/* Provider variant (linux/darwin): one extra column between Name and Status.
+   Scoped to .has-provider so the win32 6-column layout stays untouched. */
+.debug-tools-table.advanced-host-tools-table.has-provider th:nth-child(2), .debug-tools-table.advanced-host-tools-table.has-provider td:nth-child(2) {
+  width: 26%;
+}
+.debug-tools-table.advanced-host-tools-table.has-provider th:nth-child(3), .debug-tools-table.advanced-host-tools-table.has-provider td:nth-child(3) {
+  width: 11%;
+  text-align: left;
+}
+.debug-tools-table.advanced-host-tools-table.has-provider th:nth-child(4), .debug-tools-table.advanced-host-tools-table.has-provider td:nth-child(4) {
+  width: 13%;
+  text-align: left;
+}
+.debug-tools-table.advanced-host-tools-table.has-provider th:nth-child(5), .debug-tools-table.advanced-host-tools-table.has-provider td:nth-child(5) {
+  width: 16%;
+}
+.debug-tools-table.advanced-host-tools-table.has-provider th:nth-child(6), .debug-tools-table.advanced-host-tools-table.has-provider td:nth-child(6) {
+  width: 10%;
+}
+.debug-tools-table.advanced-host-tools-table.has-provider th:nth-child(7), .debug-tools-table.advanced-host-tools-table.has-provider td:nth-child(7) {
+  width: 130px;
+}
+.advanced-host-tools-table .provider-cell {
+  color: var(--vscode-descriptionForeground);
+}
+.advanced-host-tools-table .part-badge {
+  display: inline-block;
+  font-size: 0.85em;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.advanced-host-tools-table .part-detail {
+  font-size: calc(var(--type-ramp-base-font-size) - 2px);
+  color: var(--vscode-descriptionForeground);
+  margin-top: 2px;
+}
 .advanced-host-tools-table .part-action-cell {
   white-space: nowrap;
 }

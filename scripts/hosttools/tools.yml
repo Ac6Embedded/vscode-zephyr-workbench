@@ -12,6 +12,7 @@ other_content:
     linux:
       source: https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_linux_amd64
       sha256: cfbbb9ba72c9402ef4ab9d8f843439693dfb380927921740e51706d90869c7e1
+      version: 4.43.1
     darwin:
       source: https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_darwin_amd64
       sha256: fdc42b132ac460037f4f0f48caea82138772c651d91cfbb735210075ddfdbaed
@@ -60,6 +61,7 @@ zephyr_content:
     linux:
       source: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
       sha256: 773cc679c3a7395413bd096523f8e5d6c39f8718af4e12eb4e4195f72f35e4ab
+      version: 4.1.2
     windows:
       source: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-x86_64.zip
       sha256: 82730741149681597510a4bc7095da1460b472dac24eaf9c23ad7440f47753ab
@@ -72,6 +74,7 @@ zephyr_content:
     linux:
       source: https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux.zip
       sha256: 0830252db77884957a1a4b87b05a1e2d9b5f658b8367f82999a941884cbe0238
+      version: 1.13.1
     windows:
       source: https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-win.zip
       sha256: 26a40fa8595694dec2fad4911e62d29e10525d2133c9a4230b66397774ae25bf
@@ -93,6 +96,7 @@ zephyr_content:
     linux:
       source: https://github.com/niess/python-appimage/releases/download/python3.13/python3.13.9-cp313-cp313-manylinux2014_x86_64.AppImage
       sha256: 75f78f7dc48b020c1e6e008740240aa92e1450e7db2b75cf9c8caf58283533c2
+      version: 3.13.9
     windows:
       source: https://github.com/winpython/winpython/releases/download/16.6.20250620final/Winpython64-3.13.5.0dot.exe
       sha256: 9f9488eca6aba8fbe75cccde84457b6753cb100a66a4c6c9116107907c4df096
