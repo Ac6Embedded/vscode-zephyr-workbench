@@ -88,6 +88,7 @@ function main() {
   workspaceInput.addEventListener('input', () => {
     clearSelectedValueIfEdited(workspaceInput);
     westWorkspaceChanged(workspaceInput.getAttribute('data-value') ?? '');
+    notifySdkCompatCheck();
   });
 
   workspaceInput.addEventListener('keyup', () => {
@@ -129,6 +130,7 @@ function main() {
   sdkInput.addEventListener('input', () => {
     clearSelectedValueIfEdited(sdkInput);
     updateToolchainVariantVisibility();
+    notifySdkCompatCheck();
   });
 
   sdkDropdown.addEventListener('mousedown', function (event) {
@@ -526,6 +528,35 @@ function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
 }
 
 
+// Ask the extension host to re-check SDK <-> Zephyr compatibility for the
+// current workspace/toolchain selection; the result comes back as a
+// 'sdkCompatResult' message and is rendered inline under the toolchain field.
+function notifySdkCompatCheck() {
+  const workspaceInput = document.getElementById('workspaceInput') as HTMLInputElement;
+  const sdkInput = document.getElementById('sdkInput') as HTMLInputElement;
+  webviewApi.postMessage(
+    {
+      command: 'sdkCompatCheck',
+      westWorkspaceRootPath: workspaceInput.getAttribute('data-value') ?? '',
+      toolchainInstallationPath: sdkInput.getAttribute('data-value') ?? '',
+    }
+  );
+}
+
+function updateSdkCompatStatus(message?: string) {
+  const status = document.getElementById('sdkCompatStatus');
+  if (!status) {
+    return;
+  }
+  if (message) {
+    status.textContent = `⚠ ${message}`;
+    status.classList.add('warning');
+  } else {
+    status.textContent = '';
+    status.classList.remove('warning');
+  }
+}
+
 async function westWorkspaceChanged(selectedWorkspaceUri: string) {
   currentWorkspaceRequestId += 1;
   const requestId = currentWorkspaceRequestId;
@@ -706,6 +737,9 @@ function setVSCodeMessageListener() {
         break;
       case 'updateBoardImage':
         updateBoardImage(event.data.imgPath);
+        break;
+      case 'sdkCompatResult':
+        updateSdkCompatStatus(event.data.message);
         break;
     }
 

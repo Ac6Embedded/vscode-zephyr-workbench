@@ -88,6 +88,13 @@ form {
   color: var(--vscode-errorForeground);
 }
 
+/* Compatibility warnings stay inline like errors: the user should see them
+   before submitting, but they never block the form. */
+.combo-status.warning {
+  display: block;
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
 .app-form-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 36vw);

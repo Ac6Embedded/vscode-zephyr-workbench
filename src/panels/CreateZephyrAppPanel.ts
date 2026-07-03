@@ -10,6 +10,7 @@ import { describeZephyrApplicationDetectionFailure, fileExists, findRustToolchai
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { isPathWithin as isPathWithinWorkspaceApplication } from "../utils/zephyr/workspaceApplications";
+import { checkSdkCompatibility, formatSdkCompatMessage } from "../utils/zephyr/sdkCompatUtils";
 
 type CreateAppDiscoveryTarget = 'board' | 'sample';
 type CreateAppDiscoveryIssueCode = 'invalid-workspace' | 'missing-workspace-content' | 'env-script' | 'invalid-venv' | 'generic';
@@ -162,7 +163,7 @@ export class CreateZephyrAppPanel {
                   <div id="listSdks" class="combo-dropdown grid-value-div">
                     <input type="text" id="sdkInput" class="combo-dropdown-control" placeholder="Choose your toolchain..." data-value="">
                     <div aria-hidden="true" class="indicator" part="indicator">
-                      <slot name="indicator">  
+                      <slot name="indicator">
                         <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
                           <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
                         </svg>
@@ -172,6 +173,7 @@ export class CreateZephyrAppPanel {
                       ${sdkHTML}
                     </div>
                   </div>
+                  <div id="sdkCompatStatus" class="combo-status" role="status" aria-live="polite"></div>
                 </div>
 
                 <div class="grid-group-div" id="toolchainVariantRow" style="display:none;">
@@ -356,6 +358,12 @@ export class CreateZephyrAppPanel {
             break;
           case 'boardChanged':
             await updateBoardImage(webview, message.boardYamlPath);
+            break;
+          case 'sdkCompatCheck':
+            webview.postMessage({
+              command: 'sdkCompatResult',
+              message: getSdkCompatWarningMessage(message.westWorkspaceRootPath, message.toolchainInstallationPath),
+            });
             break;
           case 'openLocationDialog': {
             const westWorkspaceRootPath = getStringValue(message.westWorkspaceRootPath);
@@ -1070,6 +1078,41 @@ function getErrorDetails(error: unknown): string {
 
 function getStringValue(value: unknown): string {
   return typeof value === 'string' ? value : '';
+}
+
+/**
+ * Inline SDK <-> Zephyr compatibility hint for the wizard: returns the warning
+ * sentence when the selected toolchain is a Zephyr SDK that doesn't match the
+ * selected west workspace's Zephyr version, undefined otherwise. Never throws.
+ */
+function getSdkCompatWarningMessage(westWorkspaceUri: unknown, toolchainUri: unknown): string | undefined {
+  try {
+    const westWorkspaceRootPath = getStringValue(westWorkspaceUri);
+    const toolchainInstallationPath = getStringValue(toolchainUri);
+    if (!westWorkspaceRootPath || !toolchainInstallationPath) {
+      return undefined;
+    }
+    // Only Zephyr SDK toolchains carry an SDK version to check (mirror the
+    // resolution order used on submit in handleCreateMessage).
+    const otherToolchain = findRustToolchainInstallation(toolchainInstallationPath)
+      ?? getArmGnuToolchainInstallationByPath(toolchainInstallationPath)
+      ?? getIarToolchainInstallationByPath(toolchainInstallationPath);
+    if (otherToolchain) {
+      return undefined;
+    }
+    const sdk = tryGetZephyrSdkInstallation(vscode.Uri.parse(toolchainInstallationPath, true).fsPath);
+    if (!sdk) {
+      return undefined;
+    }
+    const westWorkspace = getWestWorkspace(vscode.Uri.parse(westWorkspaceRootPath, true).fsPath);
+    return formatSdkCompatMessage(
+      checkSdkCompatibility(sdk.version, westWorkspace.kernelUri.fsPath),
+      sdk.version,
+    );
+  } catch {
+    // Unknown compatibility -> no hint.
+    return undefined;
+  }
 }
 
 function isMissingValue(value: unknown): boolean {

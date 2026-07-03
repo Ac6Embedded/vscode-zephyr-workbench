@@ -48,6 +48,7 @@ import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherReso
 import { ToolchainInstallationsDataProvider, ToolchainInstallationTreeItem } from "./providers/ToolchainInstallationsDataProvider";
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain, getMinimalToolchainsForVersion, friendlyToolchainId, isSdkV1OrLater } from './utils/zephyr/sdkUtils';
+import { checkSdkCompatibility, showSdkCompatWarning } from './utils/zephyr/sdkCompatUtils';
 import { registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zephyr/armGnuToolchainUtils';
 import { checkRustPrerequisites, findRustup, getManagedRustupRootDir, installManagedRustup, installMsvcBuildTools, installRustToolchainViaRustup, MSVC_BUILD_TOOLS_MANUAL_URL, resolveRustupToolchainName, uninstallRustToolchainViaRustup } from './utils/zephyr/rustupUtils';
 import { buildLlvmDownloadUrl, buildRustDistUrls, detectRustVersion, getLlvmTopLevelDirName, getRustDistTopLevelDirName, getRustHostTriple, installMingwToolchain, installRustDistComponents, isLlvmPath, registerRustToolchain, unregisterRustToolchain, updateRustToolchainLink, updateRustToolchainLlvm, WINLIBS_MANUAL_URL } from './utils/zephyr/rustToolchainUtils';
@@ -97,6 +98,19 @@ function hasPathSpace(value: string): boolean {
 function showPathSpaceError(label: string): boolean {
 	vscode.window.showErrorMessage(`${label} cannot contain spaces.`);
 	return false;
+}
+
+// Non-blocking SDK <-> Zephyr version compatibility warning when an app is
+// created/imported with a Zephyr SDK toolchain. Never throws, never blocks.
+function warnIfSdkIncompatible(westWorkspace: WestWorkspace, toolchainInstallation: unknown): void {
+	try {
+		if (toolchainInstallation instanceof ZephyrSdkInstallation) {
+			const sdkVersion = toolchainInstallation.version;
+			showSdkCompatWarning(checkSdkCompatibility(sdkVersion, westWorkspace.kernelUri.fsPath), sdkVersion);
+		}
+	} catch {
+		// Unknown compatibility must never break app creation/import.
+	}
 }
 
 function hasApplicationToolchainChanged(project: ZephyrApplication, pick: ToolchainVariantPick): boolean {
@@ -1411,6 +1425,16 @@ export function activate(context: vscode.ExtensionContext) {
 						westWorkspacePath,
 						vscode.ConfigurationTarget.WorkspaceFolder,
 					);
+					// Non-blocking: warn if the app's SDK doesn't match the new workspace's Zephyr version
+					try {
+						const westWorkspace = getWestWorkspace(westWorkspacePath);
+						showSdkCompatWarning(
+							checkSdkCompatibility(node.project.zephyrSdkVersion, westWorkspace.kernelUri.fsPath),
+							node.project.zephyrSdkVersion,
+						);
+					} catch {
+						// Unknown compatibility must never break the workspace change.
+					}
 				}
 			}
 		})
@@ -1434,6 +1458,20 @@ export function activate(context: vscode.ExtensionContext) {
 						[ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY]: undefined,
 						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: pick.rustToolchainPath,
 					});
+
+					// Non-blocking: warn if the newly assigned SDK doesn't match the app's Zephyr version
+					if (pick.zephyrSdkPath) {
+						try {
+							const sdkVersion = getZephyrSdkInstallation(pick.zephyrSdkPath).version;
+							const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
+							showSdkCompatWarning(
+								checkSdkCompatibility(sdkVersion, westWorkspace.kernelUri.fsPath),
+								sdkVersion,
+							);
+						} catch {
+							// Unknown compatibility must never break the toolchain change.
+						}
+					}
 
 					if (pick.zephyrSdkPath) {
 						const activeConfig = node.project.buildConfigs.find(config => config.active) ?? node.project.buildConfigs[0];
@@ -3685,6 +3723,8 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
+			warnIfSdkIncompatible(westWorkspace, toolchainInstallation);
+
 			await withAppRefreshBatch(async () => {
 				await vscode.window.withProgress({
 					location: vscode.ProgressLocation.Notification,
@@ -3817,6 +3857,7 @@ export function activate(context: vscode.ExtensionContext) {
 						venvPath,
 						pathMode: settingsPathMode,
 					});
+					warnIfSdkIncompatible(detectedWestWorkspace, toolchainInstallation);
 					vscode.window.showInformationMessage(`Importing West workspace application '${path.basename(projectLoc)}' done`);
 					requestAppRefresh();
 					westWorkspaceProvider.refresh();
@@ -3838,6 +3879,7 @@ export function activate(context: vscode.ExtensionContext) {
 					await assertFreestandingApplicationFilesCreated(projectLoc);
 
 					const addedToWorkspace = await addWorkspaceFolder(projectLoc);
+					warnIfSdkIncompatible(westWorkspace, toolchainInstallation);
 					vscode.window.showInformationMessage(`Importing Application '${workspaceFolder.name}' done`);
 					if (!addedToWorkspace && !getExactWorkspaceFolder(projectLoc)) {
 						vscode.window.showWarningMessage(`Application settings were created, but '${workspaceFolder.name}' could not be added as a VS Code workspace folder.`);

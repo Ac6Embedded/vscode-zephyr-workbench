@@ -8,6 +8,7 @@ import {
   getEffectiveWorkspaceApplicationEntry,
   resolveWorkspaceApplicationPath,
 } from '../utils/zephyr/workspaceApplications';
+import { checkSdkCompatibility, clearSdkCompatCache, formatSdkCompatMessage } from '../utils/zephyr/sdkCompatUtils';
 
 const EXTRA_ENV_KEYS = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES'];
 const WEST_ARGUMENTS_LABEL = 'west Arguments';
@@ -196,6 +197,7 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
 
   refresh(): void {
     ZephyrApplication.clearApplicationWorkspaceCache();
+    clearSdkCompatCache();
 		this._onDidChangeTreeData.fire();
 	}
 
@@ -329,6 +331,23 @@ export class ZephyrApplicationToolchainTreeItem extends ZephyrApplicationTreeIte
         light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'toolchain_icon_light.svg'),
         dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'toolchain_icon_dark.svg'),
       };
+    }
+
+    // Passive SDK <-> Zephyr compatibility badge (Zephyr SDK variants only).
+    // Verdicts are cached by sdkCompatUtils and cleared on provider refresh.
+    if ((variant === 'zephyr' || variant === 'zephyr/llvm') && project.zephyrSdkVersion) {
+      try {
+        const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
+        const verdict = checkSdkCompatibility(project.zephyrSdkVersion, westWorkspace.kernelUri.fsPath);
+        const message = formatSdkCompatMessage(verdict, project.zephyrSdkVersion);
+        if (message) {
+          this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+          this.description = `${this.description} ⚠ ${verdict.status === 'partial' ? 'partially compatible' : 'incompatible'} with Zephyr ${verdict.zephyrVersion}`;
+          this.tooltip = `${this.tooltip}\n${message}`;
+        }
+      } catch {
+        // Unknown compatibility -> no badge.
+      }
     }
   }
 
