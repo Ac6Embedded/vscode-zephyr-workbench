@@ -559,16 +559,28 @@ export interface HostToolsInstallResult {
  * install.ps1. Used to whitelist -Tools values before they enter a shell
  * command line.
  */
-export const HOST_TOOLS_SELECTABLE_PARTS = ['gperf', 'cmake', 'ninja', 'dtc', 'git', 'python', 'venv'] as const;
+export const HOST_TOOLS_SELECTABLE_PARTS = ['gperf', 'cmake', 'ninja', 'dtc', 'git', 'wget', 'python', 'venv'] as const;
 
 /**
- * Python source options for the host-tools installer: use the PATH-detected
- * system Python or a specific one instead of downloading the portable
- * WinPython. Mutually exclusive; useSystemPython wins when both are set.
+ * Python and environment options for the host-tools installer: use the
+ * PATH-detected system Python or a specific one instead of downloading the
+ * portable WinPython (mutually exclusive; useSystemPython wins when both are
+ * set), and optionally the zephyr git ref (tag or branch) whose
+ * scripts/requirements*.txt are installed into the global venv.
  */
 export interface HostToolsPythonOptions {
   useSystemPython?: boolean;
   pythonExePath?: string;
+  requirementsRef?: string;
+}
+
+/** Git refs are URL path segments here: restrict to safe characters. */
+export function sanitizeRequirementsRef(ref?: string): string {
+  const trimmed = String(ref ?? '').trim();
+  if (trimmed.length > 0 && /^[A-Za-z0-9._/-]+$/.test(trimmed)) {
+    return trimmed;
+  }
+  return '';
 }
 
 function sanitizeSelectedHostTools(selectTools?: string[]): string[] {
@@ -629,6 +641,12 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
           } else if (pythonOpts?.pythonExePath && pythonOpts.pythonExePath.trim().length > 0) {
             installArgs += ` -PythonExePath ${quotePathForPwshCommand(pythonOpts.pythonExePath.trim())}`;
           }
+          // Zephyr ref providing the venv requirements (safe charset, no
+          // spaces, so no quoting is needed after the --% verbatim token).
+          const requirementsRef = sanitizeRequirementsRef(pythonOpts?.requirementsRef);
+          if (requirementsRef.length > 0) {
+            installArgs += ` -RequirementsRef ${requirementsRef}`;
+          }
         }
         shell = 'powershell.exe';
         // TODO: check if powershell 7 is installed and used by default then use pwsh.exe instead
@@ -687,7 +705,7 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
   }
 }
 
-export async function installVenv(context: vscode.ExtensionContext) {
+export async function installVenv(context: vscode.ExtensionContext, requirementsRef?: string) {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   if(installDirUri) {
     let installScript: string = "";
@@ -736,10 +754,13 @@ export async function installVenv(context: vscode.ExtensionContext) {
     if(process.platform === 'linux' || process.platform === 'darwin') {
       await execShellCommand('Installing Venv', installCmd + " --reinstall-venv " + installArgs, shellOpts);
     } else {
+      // Optional zephyr ref for the requirements (Windows-only this phase).
+      const ref = sanitizeRequirementsRef(requirementsRef);
+      const refArg = ref.length > 0 ? ` -RequirementsRef ${ref}` : '';
       // The script refuses to delete the venv when it cannot rebuild it
       // (network canary failed, no working python) and exits 1: surface that
       // instead of silently completing the progress notification.
-      const exitCode = await execShellCommandCapturingExit('Installing Venv', installCmd + " -ReinstallVenv " + installArgs, shellOpts);
+      const exitCode = await execShellCommandCapturingExit('Installing Venv', installCmd + " -ReinstallVenv" + refArg + " " + installArgs, shellOpts);
       if (exitCode !== 0) {
         vscode.window.showErrorMessage('Reinstalling the virtual environment failed. See the terminal output for details.');
       }

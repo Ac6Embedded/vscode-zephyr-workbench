@@ -2132,6 +2132,7 @@ export function activate(context: vscode.ExtensionContext) {
                         zephyrToolsCommandProvider.refresh();
                         // If Host Tools Manager is open, refresh its content
                         try { HostToolsPanel.currentPanel?.refresh(); } catch {}
+                        try { AdvancedHostToolsPanel.currentPanel?.refreshStatus(); } catch {}
 
                         // After host tools progress ends, start a new progress for OpenOCD installation.
                         // Skipped when the install reported failures: chaining
@@ -2256,11 +2257,13 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand(
 			"zephyr-workbench.install-host-tools.select",
-			async (parts: string[], pythonOpts?: HostToolsPythonOptions) => {
+			async (parts: string[], pythonOpts?: HostToolsPythonOptions): Promise<boolean> => {
 				if (!Array.isArray(parts) || parts.length === 0) {
 					vscode.window.showErrorMessage("No host tools parts selected to install");
-					return;
+					return false;
 				}
+				// The boolean result is relayed to executeCommand callers (e.g. the
+				// Advanced Host Tools panel awaits it to render the run result).
 				return vscode.window.withProgress(
 					{
 						location: vscode.ProgressLocation.Notification,
@@ -2269,15 +2272,18 @@ export function activate(context: vscode.ExtensionContext) {
 					},
 					async (progress, token) => {
 						try {
-							await runInstallHostTools(context, "", progress, token, parts, pythonOpts);
+							const ok = await runInstallHostTools(context, "", progress, token, parts, pythonOpts);
 
 							toolchainInstallationsProvider.refresh();
 							zephyrShortcutProvider.refresh();
 							zephyrToolsCommandProvider.refresh();
 							// If Host Tools Manager is open, refresh its content
+							// (the Advanced panel refreshes itself after awaiting this command)
 							try { HostToolsPanel.currentPanel?.refresh(); } catch {}
+							return ok;
 						} catch (installError) {
 							reportInstallError('Host tools installation failed', installError);
+							return false;
 						}
 					}
 				);
@@ -2286,13 +2292,15 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench.reinstall-venv", async (force = false) => {
-			vscode.window.withProgress({
+		vscode.commands.registerCommand("zephyr-workbench.reinstall-venv", async (force = false, requirementsRef?: string) => {
+			// Returned so executeCommand callers (e.g. the Advanced Host Tools
+			// panel) can await completion before re-probing the venv state.
+			return vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
 				title: "Reinstalling Virtual environment",
 				cancellable: false,
 			}, async () => {
-				await installVenv(context);
+				await installVenv(context, requirementsRef);
 			});
 		})
 	);

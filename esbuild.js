@@ -99,6 +99,14 @@ const webviewEclairManagerConfig = {
   outfile: "./out/eclairmanager.js",
 };
 
+const webviewAdvancedHostToolsConfig = {
+  ...baseConfig,
+  target: "es2020",
+  format: "esm",
+  entryPoints: ["./src/webview/advancedhosttools.mts"],
+  outfile: "./out/advancedhosttools.js",
+};
+
 const buildConfigs = [
   extensionConfig,
   webviewCreateWestWorkspaceConfig,
@@ -109,6 +117,7 @@ const buildConfigs = [
   webviewWestManagerConfig,
   webviewHostToolsConfig,
   webviewEclairManagerConfig,
+  webviewAdvancedHostToolsConfig,
 ];
 
 function formatError(error) {

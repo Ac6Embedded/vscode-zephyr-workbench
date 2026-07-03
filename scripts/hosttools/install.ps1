@@ -7,6 +7,7 @@ param (
     [string]$Tools = "",
     [switch]$UseSystemPython,
     [string]$PythonExePath = "",
+    [string]$RequirementsRef = "",
     [switch]$Help,
     [switch]$Version
 )
@@ -34,8 +35,9 @@ Options:
   -ReinstallVenv         Remove the venv folder (see -VenvPath), create a new one and install Python requirements
   -CreateVenv            Create a Python venv (see -VenvPath) and install Python requirements; does not remove existing venv
   -VenvPath              Optional. Full path to the Python virtual environment to create/use. Defaults to '<InstallDir>\.zinstaller\.venv'
-  -Tools                 Optional. Comma-separated subset of parts to install: gperf,cmake,ninja,dtc,git,python,venv.
-                         Base tools (yq, wget, 7-Zip) and the environment files are always processed.
+  -Tools                 Optional. Comma-separated subset of parts to install: gperf,cmake,ninja,dtc,git,wget,python,venv.
+                         Base tools (yq, 7-Zip) run when a download is needed; the environment files are always processed.
+                         Downloads use PowerShell by default; an installed wget is preferred with a PowerShell fallback.
                          Ignored with -OnlyCheck, -CreateVenv and -ReinstallVenv.
                          Note: selecting python without venv replaces the portable Python; an existing venv keeps
                          pointing at the old base interpreter, so select venv together with python to rebuild it.
@@ -44,6 +46,9 @@ Options:
                          Cannot be combined with -UseSystemPython.
                          Note: switching the Python source does not rebuild an existing venv (it stays bound to
                          its previous base interpreter); also select venv (-Tools python,venv) or use -ReinstallVenv.
+  -RequirementsRef       Optional. Zephyr git ref (tag or branch, e.g. v4.2.0 or main) whose scripts/requirements*.txt
+                         are installed into the virtual environment. Defaults to main. An explicit ref takes
+                         precedence over a local ZEPHYR_BASE requirements file.
 
 Arguments:
   InstallDir             Optional. The directory where the Zephyr environment will be installed. Defaults to '$env:USERPROFILE\.zinstaller'
@@ -59,6 +64,7 @@ Examples:
   install.ps1 -Tools cmake,ninja
   install.ps1 -UseSystemPython
   install.ps1 -PythonExePath "C:\Python313" -Tools python,venv
+  install.ps1 -Tools venv -UseSystemPython -RequirementsRef v4.2.0
 "@
     Write-Host $helpText
 }
@@ -79,7 +85,7 @@ if ($Version) {
 # (yq, wget, 7-Zip) and the environment files are always processed. Defined at
 # top level so the final exit/stamp logic can always read the selection.
 # ---------------------------------------------------------------------------
-$script:SelectableSteps = @('gperf', 'cmake', 'ninja', 'dtc', 'git', 'python', 'venv')
+$script:SelectableSteps = @('gperf', 'cmake', 'ninja', 'dtc', 'git', 'wget', 'python', 'venv')
 $script:SelectedSteps = @($Tools -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ -ne '' })
 
 if ($script:SelectedSteps.Count -gt 0 -and ($OnlyCheck -or $CreateVenv -or $ReinstallVenv)) {
@@ -123,6 +129,37 @@ if ($UseSystemPython) {
     }
     $script:PythonMode = 'custom'
     $script:CustomPythonDir = Split-Path -Parent ([System.IO.Path]::GetFullPath($resolvedPythonExe))
+}
+
+# ---------------------------------------------------------------------------
+# Zephyr requirements ref: which zephyr tag/branch provides the
+# scripts/requirements*.txt installed into the virtual environment.
+# ---------------------------------------------------------------------------
+$script:RequirementsRefValue = 'main'
+if ($RequirementsRef) {
+    if ($RequirementsRef -notmatch '^[A-Za-z0-9._/-]+$') {
+        Write-Output "ERROR: -RequirementsRef contains invalid characters: $RequirementsRef"
+        exit 1
+    }
+    $script:RequirementsRefValue = $RequirementsRef
+}
+
+# ---------------------------------------------------------------------------
+# The base tools (yq, 7-Zip) exist to download and extract the other tools.
+# When a selective run needs no download at all (e.g. only the venv with a
+# system or custom python), they are skipped. wget is NOT base infrastructure:
+# downloads default to Invoke-WebRequest, and an installed/detected wget is
+# only used as a preferred downloader with an Invoke-WebRequest fallback.
+# ---------------------------------------------------------------------------
+$script:InfraSteps = @('yq', '7z')
+$script:InfraNeeded = $true
+if ($script:SelectedSteps.Count -gt 0) {
+    $downloadingParts = @('gperf', 'cmake', 'ninja', 'dtc', 'git', 'wget')
+    $needsDownloads = @($script:SelectedSteps | Where-Object { $downloadingParts -contains $_ }).Count -gt 0
+    if (-not $needsDownloads -and $script:SelectedSteps -contains 'python' -and $script:PythonMode -eq 'portable') {
+        $needsDownloads = $true
+    }
+    $script:InfraNeeded = $needsDownloads
 }
 
 # Check if an install directory argument is provided
@@ -188,12 +225,13 @@ function Install-PythonVenv {
     $script:VenvPackageFailures = @()
 
     Print-Title "Zephyr Python-Requirements"
-    $RequirementsBaseUrl = "https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts"
+    $RequirementsBaseUrl = "https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/$($script:RequirementsRefValue)/scripts"
 
-    # Decide requirements source
+    # Decide requirements source. An explicit -RequirementsRef wins over a
+    # local ZEPHYR_BASE tree: the user asked for that specific version.
     $UseZephyrBaseReq = $false
     $RequirementsFile = $null
-    if ($env:ZEPHYR_BASE -and -not [string]::IsNullOrWhiteSpace($env:ZEPHYR_BASE)) {
+    if (-not $RequirementsRef -and $env:ZEPHYR_BASE -and -not [string]::IsNullOrWhiteSpace($env:ZEPHYR_BASE)) {
         $Candidate = Join-Path -Path $env:ZEPHYR_BASE -ChildPath "scripts\requirements.txt"
         if (Test-Path -Path $Candidate) {
             $UseZephyrBaseReq = $true
@@ -218,7 +256,7 @@ function Install-PythonVenv {
         Move-Item -Path "$DownloadDirectory/require*.txt" -Destination "$RequirementsDirectory" -Force
 
         $RequirementsFile = Join-Path -Path $RequirementsDirectory -ChildPath "requirements.txt"
-        Write-Output "Using downloaded requirements: $RequirementsFile"
+        Write-Output "Using downloaded requirements: $RequirementsFile (Zephyr ref: $($script:RequirementsRefValue))"
     }
 
     if ((Test-Path -Path $VenvPath) -and -not (Test-Path -Path "$VenvPath\Scripts\Activate.ps1")) {
@@ -318,8 +356,26 @@ if (! $OnlyCheck -or $ReinstallVenv) {
         $env:PATH = "$PortablePythonBin;$PortablePythonScripts;" + $env:PATH
     }
     
-    $UseWget = $false
-    
+    # wget is optional: downloads default to Invoke-WebRequest. An already
+    # installed (or PATH-detected) wget is preferred, and every wget download
+    # falls back to Invoke-WebRequest when it fails.
+    $script:UseWget = $false
+    $script:Wget = ''
+    $ExistingWget = Join-Path $ToolsDirectory "wget\wget.exe"
+    if (Test-Path -Path $ExistingWget) {
+        $script:Wget = $ExistingWget
+        $script:UseWget = $true
+    } else {
+        $WgetOnPath = Get-Command wget.exe -ErrorAction SilentlyContinue
+        if ($WgetOnPath -and $WgetOnPath.Source) {
+            $script:Wget = $WgetOnPath.Source
+            $script:UseWget = $true
+        }
+    }
+    if ($script:UseWget) {
+        Write-Output "Detected wget, preferring it for downloads: $($script:Wget)"
+    }
+
     function Download-FileWithHashCheck {
         param (
             [string]$SourceUrl,
@@ -351,22 +407,33 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     
         # Full path where the file will be saved
         $FilePath = Join-Path -Path $DownloadDirectory -ChildPath $Filename
-    
-        Write-Output "Downloading: $Filename ..."
-    
+
+        $downloadMethod = 'PowerShell'
+        if ($UseWget) { $downloadMethod = 'wget' }
+        Write-Output "Downloading: $Filename ($downloadMethod) ..."
+
+        $wgetSucceeded = $false
         if ($UseWget) {
-            # Using wget for downloading
-            & $Wget -q $SourceUrl -O $FilePath
-            if ($LASTEXITCODE -ne 0) {
+            # Prefer an available wget, but never depend on it: any failure
+            # (non-zero exit, broken executable) falls back to Invoke-WebRequest.
+            try {
+                & $Wget -q $SourceUrl -O $FilePath
+                if ($LASTEXITCODE -eq 0) { $wgetSucceeded = $true }
+            } catch { }
+            if (-not $wgetSucceeded) {
                 # wget -O leaves a zero-byte file behind on failure
                 Remove-Item -Path $FilePath -Force -ErrorAction SilentlyContinue
-                throw "Failed to download $Filename from $SourceUrl (wget exit code $LASTEXITCODE)"
+                Print-Warning "wget could not download $Filename; falling back to Invoke-WebRequest"
             }
-        } else {
-            # Using Invoke-WebRequest for downloading, make it silent, if not it will be very slow
+        }
+        if (-not $wgetSucceeded) {
+            # Default download method, made silent because the progress bar
+            # slows Invoke-WebRequest down considerably. The wget user agent
+            # matters: some hosts (sourceforge) serve an HTML page to browser
+            # agents but the direct binary to wget-like agents.
             & {
                  $ProgressPreference = 'SilentlyContinue'
-                 Invoke-WebRequest -Uri $SourceUrl -OutFile $FilePath -ErrorAction Stop
+                 Invoke-WebRequest -Uri $SourceUrl -OutFile $FilePath -UserAgent 'Wget/1.21.4' -ErrorAction Stop
             }
         }
         # Check if the download was successful
@@ -395,10 +462,11 @@ if (! $OnlyCheck -or $ReinstallVenv) {
             [string]$Tool,
             [string]$OperatingSystem
         )
-        # Using yq to parse the source and sha256 for the specific OS and tool
+        # Using yq to parse the source, sha256 and version for the specific OS and tool
         $Source = & $Yq eval ".*_content[] | select(.tool == `"`"`"$Tool`"`"`") | .os.$OperatingSystem.source" $YamlFilePath
         $Sha256 = & $Yq eval ".*_content[] | select(.tool == `"`"`"$Tool`"`"`") | .os.$OperatingSystem.sha256" $YamlFilePath
-    
+        $ToolVersion = & $Yq eval ".*_content[] | select(.tool == `"`"`"$Tool`"`"`") | .os.$OperatingSystem.version" $YamlFilePath
+
         # Check if the source and sha256 are not null (meaning the tool supports the OS)
         # Entries are written to script scope because the manifest is dot-sourced
         # inside a step scriptblock and later steps must still see the arrays.
@@ -408,6 +476,9 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 
 "@
             Add-Content $ManifestFilePath $ManifestEntry
+            if ($ToolVersion -and $ToolVersion -ne 'null') {
+                Add-Content $ManifestFilePath "`$script:${Tool}_version = '$ToolVersion'"
+            }
         }
     }
     
@@ -474,6 +545,18 @@ if (! $OnlyCheck -or $ReinstallVenv) {
         }
     }
 
+    function Get-ManifestToolVersion {
+        # Versions come from tools.yml (os.windows.version), emitted into the
+        # manifest by the yq step: the single source of truth for what gets
+        # installed, shared with the Advanced Host Tools panel.
+        param([string]$Tool)
+        $found = Get-Variable -Name "${Tool}_version" -Scope Script -ErrorAction SilentlyContinue
+        if (-not $found -or -not $found.Value -or $found.Value -eq 'null') {
+            throw "No version defined for tool '$Tool' in tools.yml (os.windows.version)"
+        }
+        return $found.Value
+    }
+
     function Get-StepResult {
         param([string]$Name)
         return $script:StepResults | Where-Object { $_.name -eq $Name } | Select-Object -First 1
@@ -491,6 +574,11 @@ if (! $OnlyCheck -or $ReinstallVenv) {
         # when its prerequisites failed (the exit signal comes from those).
         if ($script:SelectedSteps.Count -gt 0 -and $script:SelectableSteps -contains $Name -and $script:SelectedSteps -notcontains $Name) {
             $null = $script:StepResults.Add([ordered]@{ name = $Name; label = $Label; status = 'not-selected'; error = $null; reason = 'not selected'; warnings = @() })
+            return
+        }
+        # Base tools are skipped when the selection needs no download at all.
+        if (-not $script:InfraNeeded -and $script:InfraSteps -contains $Name) {
+            $null = $script:StepResults.Add([ordered]@{ name = $Name; label = $Label; status = 'not-selected'; error = $null; reason = 'not needed for this selection'; warnings = @() })
             return
         }
         foreach ($req in $Requires) {
@@ -530,10 +618,33 @@ if (! $OnlyCheck -or $ReinstallVenv) {
         }
     }
 
-    # Hoisted values used by the env.yml manifest so it can always be
-    # generated, even when the corresponding install step failed or was skipped.
-    $script:wgetVersion = "1.21.4"
-    $script:pythonVersion = "3.13.5"
+    function Get-YamlWindowsField {
+        # Minimal line-scan of tools.yml, usable BEFORE yq is available (the
+        # same technique that bootstraps yq itself). Needed because env.yml is
+        # always generated, even when the yq step failed or was skipped as not
+        # needed, so these values cannot depend on the manifest.
+        param([string]$Tool, [string]$Field)
+        $foundTool = $false
+        $foundOs = $false
+        foreach ($line in Get-Content -Path $YamlFilePath) {
+            if ($line -match "^\s*- tool: $Tool\s*$") { $foundTool = $true; $foundOs = $false; continue }
+            if ($foundTool -and $line -match "^\s*- tool: ") { break }
+            if ($foundTool -and $line -match "^\s*windows:\s*$") { $foundOs = $true; continue }
+            if ($foundTool -and $foundOs -and $line -match "^\s*(linux|darwin):\s*$") { $foundOs = $false; continue }
+            if ($foundTool -and $foundOs -and $line -match "^\s*${Field}:\s*(.+)$") {
+                return $matches[1].Trim().Trim('"').Trim("'")
+            }
+        }
+        return ''
+    }
+
+    # Versions used by the env.yml manifest, read from tools.yml (the single
+    # source of truth; no hardcoded copies). The python step overrides
+    # pythonVersion with the detected one in system/custom mode.
+    $script:wgetVersion = Get-YamlWindowsField 'wget' 'version'
+    $script:pythonVersion = Get-YamlWindowsField 'python_portable' 'version'
+    if (-not $script:wgetVersion) { $script:wgetVersion = 'unknown' }
+    if (-not $script:pythonVersion) { $script:pythonVersion = 'unknown' }
     # Default 7-Zip location; the 7z step overwrites these when it resolves or
     # installs one. A preset default keeps env.yml from ever containing an empty
     # path (env.py would normalize "" to "." and prepend the cwd to PATH).
@@ -614,8 +725,8 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 
     $script:Wget = "$ToolsDirectory\wget\$WgetExecutableName"
 
-    # From here on downloads go through wget; when this step fails, UseWget
-    # stays false and later downloads fall back to Invoke-WebRequest.
+    # A freshly installed wget becomes the preferred downloader for the rest
+    # of the run (Invoke-WebRequest remains the fallback on any failure).
     $script:UseWget = $true
     }
 
@@ -727,7 +838,7 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 
     Invoke-Step -Name 'gperf' -Label 'gperf' -Requires @('yq','7z') -Body {
     Print-Title "Gperf"
-    $GperfVersion = "3.0.1"
+    $GperfVersion = Get-ManifestToolVersion 'gperf'
     $GperfZipName = "gperf-${GperfVersion}-bin.zip"
     $GperfInstallDirectory = "$ToolsDirectory\gperf"
     Download-FileWithHashCheck $gperf_array[0] $gperf_array[1] $GperfZipName
@@ -738,7 +849,7 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 
     Invoke-Step -Name 'cmake' -Label 'CMake' -Requires @('yq','7z') -Body {
     Print-Title "CMake"
-    $CmakeVersion = "4.1.2"
+    $CmakeVersion = Get-ManifestToolVersion 'cmake'
     $CmakeZipName = "cmake-${CmakeVersion}-windows-x86_64.zip"
     $CmakeFolderName = "cmake-${CmakeVersion}-windows-x86_64"
     Download-FileWithHashCheck $cmake_array[0] $cmake_array[1] $CmakeZipName
@@ -757,7 +868,6 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     Invoke-Step -Name 'ninja' -Label 'Ninja' -Requires @('yq','7z') -Body {
     Print-Title "Ninja"
     $NinjaZipName = "ninja-win.zip"
-    $NinjaVersion = "1.13.1"
     Download-FileWithHashCheck $ninja_array[0] $ninja_array[1] $NinjaZipName
 
     $NinjaFolderPath = "$ToolsDirectory\ninja"
@@ -770,15 +880,16 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     # libyaml DLLs grafted into its bin folder before its self-test can pass.
     Invoke-Step -Name 'dtc' -Label 'Device Tree Compiler' -Requires @('yq','7z') -Body {
     Print-Title "Zstd"
-    $ZstdZipName = "zstd-v1.5.7-win64.zip"
+    $ZstdVersion = Get-ManifestToolVersion 'zstd'
+    $ZstdZipName = "zstd-v${ZstdVersion}-win64.zip"
     Download-FileWithHashCheck $zstd_array[0] $zstd_array[1] $ZstdZipName
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$ZstdZipName" -DestinationDirectory $DownloadDirectory
 
-    $ZstdFolderName = "zstd-v1.5.7-win64"
+    $ZstdFolderName = "zstd-v${ZstdVersion}-win64"
     $ZstdExecutable = "$DownloadDirectory\$ZstdFolderName\zstd.exe"
 
     Print-Title "DTC"
-    $DtcVersion = "1.7.2-1"
+    $DtcVersion = Get-ManifestToolVersion 'dtc'
     $DtcZstName = "dtc-${DtcVersion}-x86_64.pkg.tar.zst"
     $DtcZstTarName = "dtc-${DtcVersion}-x86_64.pkg.tar"
     Download-FileWithHashCheck $dtc_array[0] $dtc_array[1] $DtcZstName
@@ -792,8 +903,9 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     Extract-ArchiveFile -ZipFilePath "$DownloadDirectory\$DtcZstTarName" -DestinationDirectory $DtcFolderPath
 
     Print-Title "msys2"
-    $Msys2ZstName = "msys2-runtime-3.6.5-1-x86_64.pkg.tar.zst"
-    $Msys2ZstTarName = "msys2-runtime-3.6.5-1-x86_64.pkg.tar"
+    $Msys2Version = Get-ManifestToolVersion 'msys2_runtime'
+    $Msys2ZstName = "msys2-runtime-${Msys2Version}-x86_64.pkg.tar.zst"
+    $Msys2ZstTarName = "msys2-runtime-${Msys2Version}-x86_64.pkg.tar"
     Download-FileWithHashCheck $msys2_runtime_array[0] $msys2_runtime_array[1] $Msys2ZstName
 
     & $ZstdExecutable --quiet -d -f "$DownloadDirectory\$Msys2ZstName" -o "$DownloadDirectory\$Msys2ZstTarName"
@@ -806,7 +918,8 @@ if (! $OnlyCheck -or $ReinstallVenv) {
     Copy-Item -Path "$Msys2FolderPath\usr\bin\msys-2.0.dll" -Destination "$DtcFolderPath\usr\bin\msys-2.0.dll" -ErrorAction Stop
 
     Print-Title "libyaml"
-    $LibyamlName = "libyaml-0.2.5-2-x86_64"
+    $LibyamlVersion = Get-ManifestToolVersion 'libyaml'
+    $LibyamlName = "libyaml-${LibyamlVersion}-x86_64"
     $LibyamlZstName = "$LibyamlName.pkg.tar.zst"
     $LibyamlZstTarName = "$LibyamlName.pkg.tar"
     Download-FileWithHashCheck $libyaml_array[0] $libyaml_array[1] $LibyamlZstName
@@ -834,7 +947,7 @@ if (! $OnlyCheck -or $ReinstallVenv) {
 
     Invoke-Step -Name 'git' -Label 'Git' -Requires @('yq') -Body {
     Print-Title "Git"
-    $GitVersion = "2.51.2"
+    $GitVersion = Get-ManifestToolVersion 'git'
     $GitSetupFilename = "PortableGit-${GitVersion}-64-bit.7z.exe"
     Download-FileWithHashCheck $git_array[0] $git_array[1] $GitSetupFilename
 
@@ -879,8 +992,8 @@ if (! $OnlyCheck -or $ReinstallVenv) {
             $script:pythonVersion = ($PythonVersionOutput -replace '^Python\s+', '').Trim()
             $pythonMajor = [int]$matches[1]
             $pythonMinor = [int]$matches[2]
-            if ($pythonMajor -lt 3 -or ($pythonMajor -eq 3 -and $pythonMinor -lt 10)) {
-                Add-StepWarning "Python $($script:pythonVersion) is older than 3.10, the minimum required by current Zephyr requirements"
+            if ($pythonMajor -lt 3 -or ($pythonMajor -eq 3 -and $pythonMinor -lt 12)) {
+                Add-StepWarning "Python $($script:pythonVersion) is older than 3.12, the minimum recommended by current Zephyr requirements"
             }
         }
         Write-Output "Using $($script:PythonMode) Python: $ResolvedPython ($PythonVersionOutput)"
@@ -1256,90 +1369,167 @@ $InstallDirectorySlashFormat = $InstallDirectory -replace '\\', '/'
 $ToolsDirectorySlashFormat = $ToolsDirectory -replace '\\', '/'
 $SevenZPathSlashFormat = $SevenZPath -replace '\\', '/'
 
+# ---------------------------------------------------------------------------
+# env.yml is REGENERATED AS A MERGE on every successful run, selective or not:
+# skipping a tool never leaves the manifest incomplete or stale.
+#  - Tool entries touched by this run (installed tools, the chosen python, the
+#    base tools when they ran) are rebuilt with paths and versions from
+#    tools.yml (python: detected version in system/custom mode).
+#  - Tool entries NOT touched by this run are carried over verbatim from the
+#    previous file (user path/source overrides survive), template when absent.
+#  - User data always survives: extra env: keys, runners: and other: sections.
+# A failed run keeps an existing file untouched, as before.
+# ---------------------------------------------------------------------------
+
+$OldEnvYamlLines = @()
+if (Test-Path -Path $EnvYamlPath) {
+    $OldEnvYamlLines = @(Get-Content -Path $EnvYamlPath)
+}
+
+function Get-YamlSectionLines {
+    # Verbatim lines of the section starting at '<indent><key>:' up to the
+    # next line at the same or lower indentation (blank lines excluded from
+    # the tail).
+    param([string[]]$Lines, [string]$Key, [int]$Indent)
+    $prefix = ' ' * $Indent
+    $collected = @()
+    $inSection = $false
+    foreach ($line in $Lines) {
+        if (-not $inSection) {
+            if ($line -match "^$prefix$([regex]::Escape($Key))\s*:\s*$") {
+                $inSection = $true
+                $collected += $line
+            }
+            continue
+        }
+        if ($line -match '^\s*$') { $collected += $line; continue }
+        $lineIndent = $line.Length - $line.TrimStart(' ').Length
+        if ($lineIndent -le $Indent) { break }
+        $collected += $line
+    }
+    while ($collected.Count -gt 0 -and $collected[-1] -match '^\s*$') {
+        $collected = @($collected[0..($collected.Count - 2)])
+    }
+    return ,$collected
+}
+
+function New-EnvToolTemplateLines {
+    param([string]$Id, [string[]]$PathLines, [string]$Version, [string]$DoNotUse)
+    $block = @("  ${Id}:") + $PathLines
+    if ($Version) { $block += "    version: $Version" }
+    $block += "    do_not_use: $DoNotUse"
+    return ,$block
+}
+
+function Get-EnvToolLines {
+    # Template block when the tool was touched by this run (or no previous
+    # file exists); otherwise the previous block carried over verbatim.
+    param([string]$Id, [bool]$Regenerate, [string[]]$TemplateLines)
+    if (-not $Regenerate -and $OldEnvYamlLines.Count -gt 0) {
+        $oldBlock = Get-YamlSectionLines -Lines $OldEnvYamlLines -Key $Id -Indent 2
+        if ($oldBlock.Count -gt 0) { return ,$oldBlock }
+    }
+    return ,$TemplateLines
+}
+
 # Python entry per source mode. 'do_not_use: true' is the Host Tools Manager's
 # existing "System" source semantics: env.py then adds no python path and the
 # panel shows Source=System. A custom python gets its real paths written so
 # sourced shells resolve it.
-$PythonPathYamlFirst = "$ToolsDirectorySlashFormat/python/python"
-$PythonPathYamlSecond = "$ToolsDirectorySlashFormat/python/python/Scripts"
+$PythonPathLines = @(
+    '    path:',
+    "      - `"$ToolsDirectorySlashFormat/python/python`"",
+    "      - `"$ToolsDirectorySlashFormat/python/python/Scripts`""
+)
 $PythonDoNotUse = "false"
 if ($script:PythonMode -eq 'system') {
     $PythonDoNotUse = "true"
 } elseif ($script:PythonMode -eq 'custom') {
     $CustomPythonDirSlashFormat = $script:CustomPythonDir -replace '\\', '/'
-    $PythonPathYamlFirst = $CustomPythonDirSlashFormat
-    $PythonPathYamlSecond = "$CustomPythonDirSlashFormat/Scripts"
+    $PythonPathLines = @(
+        '    path:',
+        "      - `"$CustomPythonDirSlashFormat`"",
+        "      - `"$CustomPythonDirSlashFormat/Scripts`""
+    )
 }
 
-$envYaml = @"
-# env.yml
-# ZInstaller Workspace Environment Manifest
-# Defines workspace tools, runners, and Zephyr compatibility metadata
+$fullRun = ($script:SelectedSteps.Count -eq 0)
+$envLines = @(
+    '# env.yml',
+    '# ZInstaller Workspace Environment Manifest',
+    '# Defines workspace tools, runners, and Zephyr compatibility metadata',
+    '',
+    'global:',
+    '  version: 1.0',
+    '  description: "Host tools configuration for Zephyr Workbench"',
+    '',
+    '# Any variable here will be added as environment variables',
+    'env:',
+    "  zi_base_dir: `"$InstallDirectorySlashFormat`"",
+    "  zi_tools_dir: `"$InstallDirectorySlashFormat/tools`""
+)
+if ($OldEnvYamlLines.Count -gt 0) {
+    # Carry user-defined environment variables.
+    $oldEnvSection = Get-YamlSectionLines -Lines $OldEnvYamlLines -Key 'env' -Indent 0
+    foreach ($oldEnvLine in $oldEnvSection) {
+        if ($oldEnvLine -match '^env\s*:') { continue }
+        if ($oldEnvLine -match '^\s*(zi_base_dir|zi_tools_dir)\s*:') { continue }
+        if ($oldEnvLine -match '^\s*$') { continue }
+        $envLines += $oldEnvLine
+    }
+}
+$envLines += ''
+$envLines += 'tools:'
 
-global:
-  version: 1.0
-  description: "Host tools configuration for Zephyr Workbench"
+$envLines += Get-EnvToolLines 'python' ($fullRun -or ($script:SelectedSteps -contains 'python')) `
+    (New-EnvToolTemplateLines 'python' $PythonPathLines $script:pythonVersion $PythonDoNotUse)
+$envLines += ''
+$envLines += Get-EnvToolLines 'cmake' ($fullRun -or ($script:SelectedSteps -contains 'cmake')) `
+    (New-EnvToolTemplateLines 'cmake' @('    path: "${zi_tools_dir}/cmake/bin"') (Get-YamlWindowsField 'cmake' 'version') 'false')
+$envLines += ''
+$envLines += Get-EnvToolLines 'dtc' ($fullRun -or ($script:SelectedSteps -contains 'dtc')) `
+    (New-EnvToolTemplateLines 'dtc' @('    path: "${zi_tools_dir}/dtc/usr/bin"') (Get-YamlWindowsField 'dtc' 'version') 'false')
+$envLines += ''
+$envLines += Get-EnvToolLines 'gperf' ($fullRun -or ($script:SelectedSteps -contains 'gperf')) `
+    (New-EnvToolTemplateLines 'gperf' @('    path: "${zi_tools_dir}/gperf/bin"') (Get-YamlWindowsField 'gperf' 'version') 'false')
+$envLines += ''
+$envLines += Get-EnvToolLines 'ninja' ($fullRun -or ($script:SelectedSteps -contains 'ninja')) `
+    (New-EnvToolTemplateLines 'ninja' @('    path: "${zi_tools_dir}/ninja"') (Get-YamlWindowsField 'ninja' 'version') 'false')
+$envLines += ''
+$envLines += Get-EnvToolLines 'git' ($fullRun -or ($script:SelectedSteps -contains 'git')) `
+    (New-EnvToolTemplateLines 'git' @('    path: "${zi_tools_dir}/git/bin"') (Get-YamlWindowsField 'git' 'version') 'false')
+$envLines += ''
+$envLines += Get-EnvToolLines '7z' ($fullRun -or $script:InfraNeeded) `
+    (New-EnvToolTemplateLines '7z' @("    path: `"$SevenZPathSlashFormat`"") (Get-YamlWindowsField 'seven_z' 'version') 'false')
+$envLines += ''
+$envLines += Get-EnvToolLines 'wget' ($fullRun -or ($script:SelectedSteps -contains 'wget')) `
+    (New-EnvToolTemplateLines 'wget' @('    path: "${zi_tools_dir}/wget"') $script:wgetVersion 'false')
+$envLines += ''
+$envLines += 'python:'
+$envLines += "  global_venv_path: `"$InstallDirectorySlashFormat/.venv`""
+$envLines += ''
 
-# Any variable here will be added as environment variables
-env:
-  zi_base_dir: "${InstallDirectorySlashFormat}"
-  zi_tools_dir: "${InstallDirectorySlashFormat}/tools"
+# Carry the user-owned top-level sections (runner paths, extra tool paths).
+foreach ($userSection in @('runners', 'other')) {
+    if ($OldEnvYamlLines.Count -gt 0) {
+        $oldUserBlock = Get-YamlSectionLines -Lines $OldEnvYamlLines -Key $userSection -Indent 0
+        if ($oldUserBlock.Count -gt 0) {
+            $envLines += $oldUserBlock
+            $envLines += ''
+        }
+    }
+}
 
-tools:
-  python:
-    path:
-      - "$PythonPathYamlFirst"
-      - "$PythonPathYamlSecond"
-    version: ${pythonVersion}
-    do_not_use: $PythonDoNotUse
-
-  cmake:
-    path: "`${zi_tools_dir}/cmake/bin"
-    do_not_use: false
-
-  dtc:
-    path: "`${zi_tools_dir}/dtc/usr/bin"
-    do_not_use: false
-
-  gperf:
-    path: "`${zi_tools_dir}/gperf/bin"
-    do_not_use: false
-
-  ninja:
-    path: "`${zi_tools_dir}/ninja"
-    do_not_use: false
-
-  git:
-    path: "`${zi_tools_dir}/git/bin"
-    do_not_use: false
-
-  7z:
-    path: "$SevenZPathSlashFormat"
-    do_not_use: false
-
-  wget:
-    path: "`${zi_tools_dir}/wget"
-    version: $wgetVersion
-    do_not_use: false
-
-python:
-  global_venv_path: "${InstallDirectorySlashFormat}/.venv"
-
-"@
-
-	# env.yml carries user data (custom env vars, extra tool/runner paths, tool
-	# source overrides). A failed run used to abort before this point, leaving the
-	# file untouched; keep that behavior and only regenerate it from the template
-	# when a full run had no failed step, or when the file does not exist yet.
-	# Selective runs (-Tools) never overwrite an existing env.yml either: a
-	# targeted repair must not wipe the user's customizations.
+	# A failed run keeps an existing manifest untouched; everything else gets
+	# the merged regeneration above (selective runs included, so a new python
+	# source or freshly installed tool always lands in env.yml).
 	$priorFailedSteps = @($script:StepResults | Where-Object { $_.status -eq 'failed' }).Count
-	if ((-not (Test-Path -Path $EnvYamlPath)) -or ($priorFailedSteps -eq 0 -and $script:SelectedSteps.Count -eq 0)) {
-		$envYaml | Out-File -FilePath $EnvYamlPath -Encoding UTF8
+	if ((-not (Test-Path -Path $EnvYamlPath)) -or ($priorFailedSteps -eq 0)) {
+		($envLines -join "`r`n") + "`r`n" | Out-File -FilePath $EnvYamlPath -Encoding UTF8
 
 		Write-Output "Created environment manifest: $EnvYamlPath"
 	} else {
-		Print-Warning "Keeping existing environment manifest (failed steps or selective install): $EnvYamlPath"
+		Print-Warning "Keeping existing environment manifest (some steps failed): $EnvYamlPath"
 	}
 
 # --------------------------------------------------------------------------
@@ -1745,19 +1935,21 @@ if ($script:StepResults) {
     $selectedSkippedCount = @($script:StepResults | Where-Object { $_.status -eq 'skipped' -and $script:SelectedSteps -contains $_.name }).Count
 }
 
-# Version stamp: marks "the install is complete". Written when nothing failed,
-# nothing requested was skipped, and (for selective runs) the package check
-# confirms the whole tool set is present, so a targeted repair that completes
-# the set clears the partial-install marker while an incomplete selection
-# keeps it (the extension re-runs the installer while the stamp is missing).
-if ($script:StepResults -and $installFailedCount -eq 0 -and $selectedSkippedCount -eq 0 -and ($script:SelectedSteps.Count -eq 0 -or $returnCode -eq 0)) {
+# Version stamp: marks "the install is complete". Complete means the
+# ESSENTIALS the extension depends on are available: the environment files
+# (always regenerated by the env-files step) and a usable global venv.
+# Skipped tools never block completeness (that is the point of skipping;
+# the user provides them or the Advanced panel installs them later), but
+# failed steps and selected-but-skipped steps do.
+$venvUsable = Test-Path -Path (Join-Path $VenvPath "Scripts\Activate.ps1")
+if ($script:StepResults -and $installFailedCount -eq 0 -and $selectedSkippedCount -eq 0 -and $venvUsable) {
 @"
 Script Version: $ZinstallerVersion
 Script MD5: $ZinstallerMd5
 tools.yml MD5: $ToolsYmlMd5
 "@ | Out-File -FilePath "$InstallDirectory\zinstaller_version" -Encoding ASCII
 } elseif ($script:StepResults) {
-    Print-Warning "Version stamp not written (failed or skipped steps, or an incomplete selective install); the install keeps being reported as needing reinstallation."
+    Print-Warning "Version stamp not written (failed or skipped steps, or the global venv is not available); the install keeps being reported as needing reinstallation."
 }
 
 if ($installFailedCount -gt 0 -or $selectedSkippedCount -gt 0) {

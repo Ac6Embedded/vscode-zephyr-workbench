@@ -1,8 +1,7 @@
 import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { getInternalDirRealPath } from "../utils/utils";
-import { execCommandWithEnv } from "../utils/execUtils";
+import { fetchHostToolsCheckedVersions } from "../utils/hostToolsStatusUtils";
 import { ZINSTALLER_MINIMUM_VERSION } from "../constants";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/env/envYamlUtils";
 import { createWritableEnvYamlDocument, loadEnvYamlState, writeEnvYamlDocument } from "../utils/env/envYamlFileUtils";
@@ -120,50 +119,13 @@ export class HostToolsPanel {
   }
 
   private async refreshToolVersionsFromCheck(): Promise<void> {
-    try {
-      const scriptsDir = vscode.Uri.joinPath(this._extensionUri, 'scripts', 'hosttools');
-      const destDir = getInternalDirRealPath();
-
-      let cmd = '';
-      if (process.platform === 'win32') {
-        const ps = vscode.Uri.joinPath(scriptsDir, 'install.ps1').fsPath;
-        cmd = `powershell -File "${ps}" -OnlyCheck -InstallDir "${destDir}"`;
-      } else if (process.platform === 'darwin') {
-        const sh = vscode.Uri.joinPath(scriptsDir, 'install-mac.sh').fsPath;
-        cmd = `bash "${sh}" --only-check ${destDir}`;
-      } else {
-        const sh = vscode.Uri.joinPath(scriptsDir, 'install.sh').fsPath;
-        cmd = `bash "${sh}" --only-check ${destDir}`;
-      }
-
-      const proc = await execCommandWithEnv(cmd);
-
-      let full = '';
-      await new Promise<void>((resolve, reject) => {
-        proc.stdout?.on('data', c => { full += c.toString(); });
-        proc.stderr?.on('data', c => { full += c.toString(); });
-        proc.on('error', e => reject(e));
-        proc.on('close', _code => resolve());
-      });
-
-      const map: Record<string, string> = {};
-      const lines = full.split(/\r?\n/);
-      for (const raw of lines) {
-        const line = raw.trim();
-        if (!line || line.startsWith('---')) { continue; }
-        // Expect lines like: python [3.13.5] or 7z [24.08 (x64)]
-        const m = line.match(/^(\S+)\s*\[(.+?)\]\s*$/);
-        if (!m) { continue; }
-        let name = m[1].toLowerCase();
-        name = name.replace(/\.exe$/, '');
-        const ver = m[2].trim();
-        if (name && ver) {
-          map[name] = ver;
-        }
-      }
+    // Shared with the Advanced Host Tools panel: single parser of the
+    // -OnlyCheck output contract. An empty map means the check failed;
+    // keep the previous values so the UI does not flicker to blank.
+    const map = await fetchHostToolsCheckedVersions(this._extensionUri);
+    if (Object.keys(map).length > 0) {
       this.toolVersionsFromCheck = map;
-    } catch {
-      // On any failure, do not block UI, just keep previous/empty map
+    } else {
       this.toolVersionsFromCheck = this.toolVersionsFromCheck || {};
     }
   }
