@@ -184,7 +184,9 @@ function main() {
       const part = button.getAttribute('data-part');
       if (!part) { return; }
       const wheel = document.getElementById(`progress-${part}`);
-      if (wheel) { (wheel as HTMLElement).style.display = 'block'; }
+      // inline-block: the wheel sits NEXT to the Install button; block would
+      // wrap it to its own line and break the row layout.
+      if (wheel) { (wheel as HTMLElement).style.display = 'inline-block'; }
       setActionsEnabled(false);
       webviewApi.postMessage({ command: 'install-part', part, python: getPythonSelection() });
     });

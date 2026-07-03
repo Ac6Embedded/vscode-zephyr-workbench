@@ -254,10 +254,18 @@ form {
 .advanced-host-tools-table .part-action-cell {
   white-space: nowrap;
 }
+/* The per-row wheel matches the Install button height so showing it never
+   changes the row height or wraps. */
 .advanced-host-tools-table .part-action-cell .progress-wheel {
   display: inline-block;
   vertical-align: middle;
   margin-left: 6px;
+  width: 16px;
+  height: 16px;
+}
+.advanced-host-tools-table .part-action-cell .progress-wheel vscode-progress-ring {
+  width: 16px;
+  height: 16px;
 }
 .aht-actions {
   display: flex;

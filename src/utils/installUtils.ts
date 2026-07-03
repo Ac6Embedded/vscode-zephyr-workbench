@@ -245,6 +245,15 @@ async function installHostToolsWithOutcome(
   // A selection means "repair these parts": it never wipes the install like
   // force does, and it must bypass the already-installed short-circuit.
   const selection = sanitizeSelectedHostTools(selectTools);
+  if (selectTools && selectTools.length > 0) {
+    // Log the boundary decision: silently dropped parts are invisible in the
+    // terminal command line and painful to diagnose without this.
+    output.appendLine(`Selective host tools install requested: [${selectTools.join(', ')}] -> running: [${selection.join(', ')}]${pythonOpts ? ` (python options: ${JSON.stringify(pythonOpts)})` : ''}`);
+    const dropped = selectTools.map(t => String(t ?? '').trim().toLowerCase()).filter(t => !selection.includes(t));
+    if (dropped.length > 0) {
+      output.appendLine(`WARN: unknown host tools part name(s) ignored: ${dropped.join(', ')}`);
+    }
+  }
 
   let result: HostToolsInstallResult = { ran: false };
   if (force) {
