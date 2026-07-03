@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ArmGnuToolchainInstallation, RustToolchainInstallation, ToolchainInstallation, IarToolchainInstallation } from '../models/ToolchainInstallations';
+import { ArmGnuToolchainInstallation, RustToolchainInstallation, ToolchainInstallation, IarToolchainInstallation, ZephyrSdkInstallation } from '../models/ToolchainInstallations';
 import { getInternalZephyrSdkInstallation, getRegisteredArmGnuToolchainInstallations, getRegisteredRustToolchainInstallations, getRegisteredZephyrSdkInstallations, getRegisteredIarToolchainInstallations} from '../utils/utils';
+import { friendlyToolchainId, isSdkV1OrLater } from '../utils/zephyr/sdkUtils';
 
 export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvider<ToolchainInstallationTreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<ToolchainInstallationTreeItem | undefined | void> = new vscode.EventEmitter<ToolchainInstallationTreeItem | undefined | void>();
@@ -27,7 +28,14 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
 	  // Top-level SDKs
 	  for (const zephyrSdkInstallation of zephyrSDKs) {
 		const isInternal = internal?.rootUri.fsPath === zephyrSdkInstallation.rootUri.fsPath;
-		items.push(new ToolchainInstallationTreeItem(zephyrSdkInstallation, isInternal, vscode.TreeItemCollapsibleState.None));
+		// v1.0+ always expands to the GNU/LLVM groups (which include install suggestions);
+		// older SDKs only expand when there is at least one installed toolchain to list.
+		const hasChildren = isSdkV1OrLater(zephyrSdkInstallation.version)
+		  || zephyrSdkInstallation.getInstalledGnuToolchains().length > 0;
+		const collapsibleState = hasChildren
+		  ? vscode.TreeItemCollapsibleState.Collapsed
+		  : vscode.TreeItemCollapsibleState.None;
+		items.push(new ToolchainInstallationTreeItem(zephyrSdkInstallation, isInternal, collapsibleState));
 	  }
   
 	  // Top-level IARs
@@ -101,7 +109,87 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
 		return children;
 	  }
 
+	// Zephyr SDK node and its category / toolchain sub-nodes
+	if (element.installation instanceof ZephyrSdkInstallation) {
+		const sdk = element.installation;
+		const isInternal = element.isInternal;
+
+		// The SDK root node: v1.0+ groups toolchains under GNU / LLVM; older SDKs stay flat.
+		if (element.contextValue === 'zephyr-sdk' || element.contextValue === 'zephyr-sdk-internal') {
+			if (isSdkV1OrLater(sdk.version)) {
+				return [
+					this.makeCategoryItem(sdk, isInternal, 'GNU', 'zephyr-sdk-gnu-group'),
+					this.makeCategoryItem(sdk, isInternal, 'LLVM', 'zephyr-sdk-llvm-group'),
+				];
+			}
+			return this.makeGnuToolchainLeaves(sdk, isInternal);
+		}
+
+		// GNU category: installed arch toolchains + a suggestion to add more
+		if (element.contextValue === 'zephyr-sdk-gnu-group') {
+			const items = this.makeGnuToolchainLeaves(sdk, isInternal);
+			items.push(this.makeActionItem(
+				sdk, isInternal, 'Add GNU toolchain...', 'zephyr-sdk-add-gnu',
+				'add', 'zephyr-workbench-sdk-explorer.add-sdk-toolchain'));
+			return items;
+		}
+
+		// LLVM category: the installed clang toolchain, or a suggestion to install it
+		if (element.contextValue === 'zephyr-sdk-llvm-group') {
+			if (sdk.hasLlvmToolchain()) {
+				const item = new ToolchainInstallationTreeItem(sdk, isInternal, vscode.TreeItemCollapsibleState.None);
+				item.label = 'llvm';
+				item.description = 'clang';
+				item.tooltip = path.join(sdk.rootUri.fsPath, 'llvm');
+				item.contextValue = 'zephyr-sdk-llvm';
+				item.iconPath = {
+					light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'llvm_icon_light.svg'),
+					dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'llvm_icon_dark.svg')
+				};
+				return [item];
+			}
+			return [this.makeActionItem(
+				sdk, isInternal, 'Install LLVM toolchain...', 'zephyr-sdk-install-llvm',
+				'cloud-download', 'zephyr-workbench-sdk-explorer.install-sdk-llvm')];
+		}
+
+		return [];
+	}
+
 	return [];
+  }
+
+  /** Read-only leaves for the GNU toolchains actually installed on disk. */
+  private makeGnuToolchainLeaves(sdk: ZephyrSdkInstallation, isInternal: boolean): ToolchainInstallationTreeItem[] {
+	return sdk.getInstalledGnuToolchains().map(toolchain => {
+		const item = new ToolchainInstallationTreeItem(sdk, isInternal, vscode.TreeItemCollapsibleState.None);
+		item.label = toolchain.name;
+		item.description = friendlyToolchainId(toolchain.name);
+		item.tooltip = toolchain.toolchainPath;
+		item.contextValue = 'zephyr-sdk-toolchain';
+		item.iconPath = new vscode.ThemeIcon('chip');
+		return item;
+	});
+  }
+
+  /** A collapsible category node (GNU / LLVM) under a v1.0+ SDK. */
+  private makeCategoryItem(sdk: ZephyrSdkInstallation, isInternal: boolean, label: string, contextValue: string): ToolchainInstallationTreeItem {
+	const item = new ToolchainInstallationTreeItem(sdk, isInternal, vscode.TreeItemCollapsibleState.Collapsed);
+	item.label = label;
+	item.tooltip = `${label} toolchains for Zephyr SDK ${sdk.version.trim()}`;
+	item.contextValue = contextValue;
+	item.iconPath = new vscode.ThemeIcon('library');
+	return item;
+  }
+
+  /** A clickable "install/add" suggestion leaf that runs the given command on select. */
+  private makeActionItem(sdk: ZephyrSdkInstallation, isInternal: boolean, label: string, contextValue: string, icon: string, commandId: string): ToolchainInstallationTreeItem {
+	const item = new ToolchainInstallationTreeItem(sdk, isInternal, vscode.TreeItemCollapsibleState.None);
+	item.label = label;
+	item.contextValue = contextValue;
+	item.iconPath = new vscode.ThemeIcon(icon);
+	item.command = { command: commandId, title: label, arguments: [item] };
+	return item;
   }
   
   

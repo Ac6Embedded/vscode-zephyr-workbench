@@ -755,6 +755,12 @@
         "category": "Zephyr Workbench"
       },
       {
+        "command": "zephyr-workbench-sdk-explorer.add-sdk-toolchain",
+        "title": "Add Toolchain to SDK...",
+        "icon": "$(add)",
+        "category": "Zephyr Workbench/SDK"
+      },
+      {
         "command": "zephyr-workbench-sdk-explorer.remove-sdk",
         "title": "Remove Toolchain",
         "icon": "$(remove)",
@@ -1365,6 +1371,11 @@
           "when": "view == zephyr-workbench-sdk-explorer"
         },
         {
+          "command": "zephyr-workbench-sdk-explorer.add-sdk-toolchain",
+          "group": "0@view/item/context@0",
+          "when": "view == zephyr-workbench-sdk-explorer && (viewItem == zephyr-sdk || viewItem == zephyr-sdk-internal)"
+        },
+        {
           "command": "zephyr-workbench-sdk-explorer.remove-sdk",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
@@ -1921,6 +1932,10 @@
         },
         {
           "command": "zephyr-workbench-sdk-explorer.remove-sdk",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.add-sdk-toolchain",
           "when": "false"
         },
         {

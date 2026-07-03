@@ -47,7 +47,7 @@ import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsComma
 import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ToolchainInstallationsDataProvider, ToolchainInstallationTreeItem } from "./providers/ToolchainInstallationsDataProvider";
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
-import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain } from './utils/zephyr/sdkUtils';
+import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain, getMinimalToolchainsForVersion, friendlyToolchainId, isSdkV1OrLater } from './utils/zephyr/sdkUtils';
 import { registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zephyr/armGnuToolchainUtils';
 import { checkRustPrerequisites, findRustup, getManagedRustupRootDir, installManagedRustup, installMsvcBuildTools, installRustToolchainViaRustup, MSVC_BUILD_TOOLS_MANUAL_URL, resolveRustupToolchainName, uninstallRustToolchainViaRustup } from './utils/zephyr/rustupUtils';
 import { buildLlvmDownloadUrl, buildRustDistUrls, detectRustVersion, getLlvmTopLevelDirName, getRustDistTopLevelDirName, getRustHostTriple, installMingwToolchain, installRustDistComponents, isLlvmPath, registerRustToolchain, unregisterRustToolchain, updateRustToolchainLink, updateRustToolchainLlvm, WINLIBS_MANUAL_URL } from './utils/zephyr/rustToolchainUtils';
@@ -3163,6 +3163,139 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				}
 			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.add-sdk-toolchain", async (node: ToolchainInstallationTreeItem) => {
+			const sdk = node?.installation;
+			if (!(sdk instanceof ZephyrSdkInstallation)) {
+				vscode.window.showErrorMessage("Please select a Zephyr SDK to add a toolchain to.");
+				return;
+			}
+			const version = sdk.version.trim();
+
+			// Available toolchains for this SDK version (friendly ids), scraped from the release page.
+			let possible: string[];
+			try {
+				possible = await getMinimalToolchainsForVersion(version);
+			} catch (e: any) {
+				vscode.window.showErrorMessage(`Could not fetch available toolchains for Zephyr SDK ${version}: ${e?.message ?? e}`);
+				return;
+			}
+
+			// missing = available - installed (installed = toolchains actually on disk, normalized to friendly ids)
+			const installed = new Set(sdk.getInstalledGnuToolchains().map(tc => friendlyToolchainId(tc.name)));
+			const missing = possible.filter(t => !installed.has(t));
+
+			if (missing.length === 0) {
+				vscode.window.showInformationMessage(`All available toolchains for Zephyr SDK ${version} are already installed.`);
+				return;
+			}
+
+			const picked = await vscode.window.showQuickPick(
+				missing.map(id => ({ label: id })),
+				{
+					canPickMany: true,
+					title: `Add Toolchain to Zephyr SDK ${version}`,
+					placeHolder: 'Select toolchains to install',
+				}
+			);
+			if (!picked || picked.length === 0) {
+				return;
+			}
+			const selected = picked.map(p => p.label);
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: `Adding toolchain to Zephyr SDK ${version}`,
+				cancellable: true,
+			}, async (progress, token) => {
+				const dest = sdk.getGnuToolchainsRootPath();
+				try {
+					if (!fs.existsSync(dest)) {
+						fs.mkdirSync(dest, { recursive: true });
+					}
+					for (const toolchain of selected) {
+						// generateSdkUrls returns [baseMinimalSdkUrl, toolchainUrl]; keep only the toolchain package.
+						const url = generateSdkUrls('minimal', version, [toolchain], false)[1];
+						if (!url) {
+							continue;
+						}
+						progress.report({ message: `Download ${url}` });
+						const downloadedFileUri = await download(url, dest, context, progress, token);
+						progress.report({ message: `Extracting ${downloadedFileUri.fsPath}` });
+						await extractSDK(downloadedFileUri.fsPath, dest, progress, token);
+						// The extracted `<prefix>/` directory is the source of truth for the tree;
+						// a refresh below re-scans the toolchains root and picks it up.
+					}
+					await cleanupDownloadDir(context);
+					vscode.window.showInformationMessage(`Added ${selected.join(', ')} to Zephyr SDK ${version}.`);
+				} catch (e: any) {
+					if (e.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+						vscode.window.showInformationMessage("Download cancelled");
+					} else if (e.code === 'TAR_BAD_ARCHIVE') {
+						vscode.window.showErrorMessage("Extracting toolchain failed");
+					} else {
+						vscode.window.showErrorMessage("Adding toolchain failed: " + (e?.message ?? e));
+					}
+				}
+				progress.report({ message: 'Done', increment: 100 });
+				toolchainInstallationsProvider.refresh();
+			});
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.install-sdk-llvm", async (node: ToolchainInstallationTreeItem) => {
+			const sdk = node?.installation;
+			if (!(sdk instanceof ZephyrSdkInstallation)) {
+				vscode.window.showErrorMessage("Please select a Zephyr SDK to install LLVM for.");
+				return;
+			}
+			const version = sdk.version.trim();
+			if (!isSdkV1OrLater(version)) {
+				vscode.window.showWarningMessage(`The LLVM toolchain is only available for Zephyr SDK 1.0 or later (this SDK is ${version}).`);
+				return;
+			}
+			if (sdk.hasLlvmToolchain()) {
+				vscode.window.showInformationMessage(`The LLVM toolchain is already installed for Zephyr SDK ${version}.`);
+				return;
+			}
+
+			// generateSdkUrls returns [baseMinimalSdkUrl, llvmUrl]; keep only the LLVM package.
+			const url = generateSdkUrls('minimal', version, [], true)[1];
+			if (!url) {
+				vscode.window.showErrorMessage("No LLVM toolchain package is available for this platform/version.");
+				return;
+			}
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: `Installing LLVM toolchain for Zephyr SDK ${version}`,
+				cancellable: true,
+			}, async (progress, token) => {
+				// The LLVM archive already contains its own llvm/ folder, so extract at the SDK root.
+				const dest = sdk.rootUri.fsPath;
+				try {
+					progress.report({ message: `Download ${url}` });
+					const downloadedFileUri = await download(url, dest, context, progress, token);
+					progress.report({ message: `Extracting ${downloadedFileUri.fsPath}` });
+					await extractSDK(downloadedFileUri.fsPath, dest, progress, token);
+					await cleanupDownloadDir(context);
+					vscode.window.showInformationMessage(`LLVM toolchain installed for Zephyr SDK ${version}.`);
+				} catch (e: any) {
+					if (e.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+						vscode.window.showInformationMessage("Download cancelled");
+					} else if (e.code === 'TAR_BAD_ARCHIVE') {
+						vscode.window.showErrorMessage("Extracting LLVM toolchain failed");
+					} else {
+						vscode.window.showErrorMessage("Installing LLVM toolchain failed: " + (e?.message ?? e));
+					}
+				}
+				progress.report({ message: 'Done', increment: 100 });
+				toolchainInstallationsProvider.refresh();
+			});
 		})
 	);
 

@@ -129,6 +129,37 @@ export class ZephyrSdkInstallation {
     return this.rootUri.fsPath;
   }
 
+  /**
+   * Directory where per-toolchain packages live for this SDK: a `gnu/` subdir
+   * for SDKs that nest toolchains there, otherwise the SDK root. Public so
+   * callers adding a toolchain to an existing SDK extract into the right place.
+   */
+  public getGnuToolchainsRootPath(): string {
+    return this.gnuToolchainsRootPath;
+  }
+
+  /**
+   * The GNU toolchains actually present on disk for this SDK. The manifest file
+   * (`sdk_gnu_toolchains`/`sdk_toolchains`) lists every toolchain the SDK knows
+   * about, but a minimal install only extracts a subset — so the ground truth is
+   * the set of `*-zephyr-elf`/`*-zephyr-eabi` directories under the toolchains
+   * root (a `gnu/` subdir on newer SDKs, the SDK root on older ones). Returns each
+   * toolchain's directory name and absolute path, sorted by name.
+   */
+  public getInstalledGnuToolchains(): { name: string; toolchainPath: string }[] {
+    const root = this.gnuToolchainsRootPath;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(root, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+    return entries
+      .filter(entry => entry.isDirectory() && /-zephyr-(elf|eabi)$/.test(entry.name))
+      .map(entry => ({ name: entry.name, toolchainPath: path.join(root, entry.name) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   get name(): string {
     return path.basename(this.rootUri.fsPath);
   }
