@@ -707,14 +707,23 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
         break;
       }
       case 'darwin': {
-        // Homebrew provides every darwin package: without it the run could
-        // only produce failed brew steps, so refuse early with a clear hint.
+        // Refuse early (clear hint beats a run full of failed brew steps),
+        // but only when the run actually needs Homebrew: a selective install
+        // of just the venv with a system/custom python is explicitly
+        // supported by install-mac.sh without brew.
         // (listTools is unused on darwin: the legacy --select-sdk flag was
         // never a valid install-mac.sh option and made the script exit 1.)
-        const brew = await probeHomebrew();
-        if (!brew.ok) {
-          vscode.window.showErrorMessage('Homebrew is not installed or not in your PATH. Install it from https://brew.sh, then retry.');
-          return { ran: false };
+        const brewPython = !pythonOpts?.useSystemPython
+          && !(pythonOpts?.pythonExePath && pythonOpts.pythonExePath.trim().length > 0);
+        const brewNeeded = selected.length === 0
+          || selected.some(t => t !== 'venv' && t !== 'python')
+          || (selected.includes('python') && brewPython);
+        if (brewNeeded) {
+          const brew = await probeHomebrew();
+          if (!brew.ok) {
+            vscode.window.showErrorMessage('Homebrew is not installed or not in your PATH. Install it from https://brew.sh, then retry.');
+            return { ran: false };
+          }
         }
         installScript = 'install-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;

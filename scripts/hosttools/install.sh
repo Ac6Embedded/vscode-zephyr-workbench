@@ -200,7 +200,6 @@ fi
 echo "Installing in $INSTALL_DIR"
 
 TMP_DIR="$INSTALL_DIR/tmp"
-MANIFEST_FILE="$TMP_DIR/manifest.sh"
 DL_DIR="$TMP_DIR/downloads"
 TOOLS_DIR="$INSTALL_DIR/tools"
 ENV_FILE="$INSTALL_DIR/env.sh"
@@ -552,10 +551,12 @@ get_mirror_url() {
 # fetch_url <url> <dest>: prefer wget when present, fall back to curl.
 # Diagnostics go to stderr because some callers capture stdout as the
 # failure reason. Returns non-zero when nothing could fetch the file.
+# Stall guards (connect timeout, dead-transfer abort) keep a broken network
+# from hanging the run for hours; a slow but moving download is never cut.
 fetch_url() {
     local url="$1" dest="$2"
     if command -v wget >/dev/null 2>&1; then
-        if wget --no-check-certificate -q "$url" -O "$dest" && [ -s "$dest" ]; then
+        if wget --no-check-certificate -q --timeout=30 --tries=2 "$url" -O "$dest" && [ -s "$dest" ]; then
             return 0
         fi
         rm -f "$dest"
@@ -564,7 +565,7 @@ fetch_url() {
         fi
     fi
     if command -v curl >/dev/null 2>&1; then
-        if curl -fkLsS -o "$dest" "$url" 2>/dev/null && [ -s "$dest" ]; then
+        if curl -fkLsS --connect-timeout 30 --speed-time 60 --speed-limit 1024 -o "$dest" "$url" 2>/dev/null && [ -s "$dest" ]; then
             return 0
         fi
         rm -f "$dest"
@@ -1600,23 +1601,6 @@ step_system() {
     return 0
 }
 
-# Function to generate array entries if the tool supports the specified OS
-generate_manifest_entries() {
-    local tool=$1
-    local SELECTED_OS=$2
-
-    # Using yq to parse the source and sha256 for the specific OS and tool
-    source=$($YQ eval ".*_content[] | select(.tool == \"$tool\") | .os.$SELECTED_OS.source" $YAML_FILE)
-    sha256=$($YQ eval ".*_content[] | select(.tool == \"$tool\") | .os.$SELECTED_OS.sha256" $YAML_FILE)
-
-    # Check if the source and sha256 are not null (meaning the tool supports the OS)
-    if [ "$source" != "null" ] && [ "$sha256" != "null" ]; then
-        echo "declare -A ${tool}=()" >> $MANIFEST_FILE
-        echo "${tool}[source]=\"$source\"" >> $MANIFEST_FILE
-        echo "${tool}[sha256]=\"$sha256\"" >> $MANIFEST_FILE
-    fi
-}
-
 step_yq() {
     pr_title "YQ"
     local YQ_FILENAME="yq"
@@ -1638,23 +1622,6 @@ step_yq() {
 
     # Update variable for later usage
     YQ="$TOOLS_DIR/yq/yq"
-
-    # Start generating the manifest file
-    echo "#!/bin/bash" > $MANIFEST_FILE
-
-    pr_title "Parse YAML and generate manifest"
-
-    # List all tools from the YAML file
-    local tools tool
-    tools=$($YQ eval '.*_content[].tool' $YAML_FILE) \
-        || { step_error "Failed to parse $YAML_FILE with yq"; return 1; }
-
-    # Loop through each tool and generate the entries
-    for tool in $tools; do
-        generate_manifest_entries $tool $SELECTED_OS
-    done
-
-    source $MANIFEST_FILE
     return 0
 }
 
@@ -1663,10 +1630,11 @@ step_python() {
     portable)
         pr_title "Python (Portable AppImage)"
         # Download portable Python AppImage as defined in tools.yml
-        local PY_APPIMAGE_URL="${python_portable[source]}"
-        local PY_APPIMAGE_SHA="${python_portable[sha256]}"
+        local PY_APPIMAGE_URL PY_APPIMAGE_SHA
+        PY_APPIMAGE_URL=$(get_yaml_os_field python_portable source)
+        PY_APPIMAGE_SHA=$(get_yaml_os_field python_portable sha256)
         if [[ -z "$PY_APPIMAGE_URL" || -z "$PY_APPIMAGE_SHA" ]]; then
-            step_error "python_portable entry missing from the manifest (yq step did not run?)"
+            step_error "python_portable source/sha256 not found in tools.yml"
             return 1
         fi
         local PY_APPIMAGE_NAME="$(basename "$PY_APPIMAGE_URL")"
@@ -1727,7 +1695,14 @@ step_python() {
 step_ninja() {
     pr_title "Ninja"
     local NINJA_ARCHIVE_NAME="ninja-linux.zip"
-    download_and_check_hash "${ninja[source]}" "${ninja[sha256]}" "$NINJA_ARCHIVE_NAME" \
+    local ninja_source ninja_sha
+    ninja_source=$(get_yaml_os_field ninja source)
+    ninja_sha=$(get_yaml_os_field ninja sha256)
+    if [[ -z "$ninja_source" || -z "$ninja_sha" ]]; then
+        step_error "ninja source/sha256 not found in tools.yml"
+        return 1
+    fi
+    download_and_check_hash "$ninja_source" "$ninja_sha" "$NINJA_ARCHIVE_NAME" \
         || { step_error "Failed to download ninja"; return 1; }
     mkdir -p "$TOOLS_DIR/ninja"
     unzip -o "$DL_DIR/$NINJA_ARCHIVE_NAME" -d "$TOOLS_DIR/ninja" \
@@ -1738,7 +1713,14 @@ step_ninja() {
 step_cmake() {
     pr_title "CMake"
     local CMAKE_ARCHIVE_NAME="${CMAKE_FOLDER_NAME}.tar.gz"
-    download_and_check_hash "${cmake[source]}" "${cmake[sha256]}" "$CMAKE_ARCHIVE_NAME" \
+    local cmake_source cmake_sha
+    cmake_source=$(get_yaml_os_field cmake source)
+    cmake_sha=$(get_yaml_os_field cmake sha256)
+    if [[ -z "$cmake_source" || -z "$cmake_sha" ]]; then
+        step_error "cmake source/sha256 not found in tools.yml"
+        return 1
+    fi
+    download_and_check_hash "$cmake_source" "$cmake_sha" "$CMAKE_ARCHIVE_NAME" \
         || { step_error "Failed to download cmake"; return 1; }
     tar xf "$DL_DIR/$CMAKE_ARCHIVE_NAME" -C "$TOOLS_DIR" \
         || { step_error "Failed to extract $CMAKE_ARCHIVE_NAME"; return 1; }
@@ -2011,13 +1993,13 @@ if [[ $non_root_packages == true ]]; then
     fi
     CMAKE_FOLDER_NAME="cmake-${CMAKE_VERSION}-linux-x86_64"
 
-    PYTHON_STEP_REQUIRES=""
-    [[ "$PYTHON_MODE_EFFECTIVE" == "portable" ]] && PYTHON_STEP_REQUIRES="yq"
-
+    # Download sources are read straight from tools.yml (awk line scan), so
+    # no step depends on the yq binary: it is installed as a managed tool for
+    # the extension and the env.yml readers.
     run_step yq "yq (YAML parser)" "" step_yq
-    run_step python "Python" "$PYTHON_STEP_REQUIRES" step_python
-    run_step ninja "Ninja" "yq" step_ninja
-    run_step cmake "CMake" "yq" step_cmake
+    run_step python "Python" "" step_python
+    run_step ninja "Ninja" "" step_ninja
+    run_step cmake "CMake" "" step_cmake
 
     cmake_path="$TOOLS_DIR/$CMAKE_FOLDER_NAME/bin"
     ninja_path="$TOOLS_DIR/ninja"
@@ -2037,7 +2019,7 @@ if [[ $only_check_bool != true ]]; then
 
     if [[ $non_root_packages == true ]]; then
         pr_title "Clean up"
-        rm -rf $TMP_DIR
+        rm -rf "$TMP_DIR"
     fi
 
     print_step_summary

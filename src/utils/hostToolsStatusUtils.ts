@@ -1,10 +1,11 @@
-import { execFile } from "child_process";
+import { exec, execFile } from "child_process";
 import * as fs from 'fs';
 import path from "path";
 import * as vscode from "vscode";
 import yaml from 'yaml';
-import { execCommandWithEnv } from "./execUtils";
-import { getInternalDirRealPath } from "./utils";
+import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY } from "../constants";
+import { execCommandWithEnv, getConfiguredWorkbenchPath } from "./execUtils";
+import { fileExists, getInternalDirRealPath } from "./utils";
 import { getHostToolsParts, HostToolsPartDef } from "./hostToolsPartsRegistry";
 
 /**
@@ -192,7 +193,17 @@ export async function fetchHostToolsCheckedVersions(extensionUri: vscode.Uri): P
       cmd = `bash "${sh}" --only-check "${destDir}"`;
     }
 
-    const proc = await execCommandWithEnv(cmd);
+    // The env-sourced wrapper chains '. env.sh && <cmd>': before the host
+    // tools exist (or when env.sh was deleted) the sourcing fails and the
+    // check never runs, leaving the Detected column empty for tools that ARE
+    // installed. The check scripts are self-sufficient, so run them plain
+    // whenever the configured env script is not an existing file.
+    let envScriptPath: string | undefined;
+    try {
+      envScriptPath = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
+    } catch { }
+    const useEnv = !!envScriptPath && fileExists(envScriptPath);
+    const proc = useEnv ? await execCommandWithEnv(cmd) : exec(cmd);
 
     let full = '';
     await new Promise<void>((resolve, reject) => {
@@ -277,52 +288,23 @@ export function versionLessThan(a: string, b: string): boolean {
   return false;
 }
 
-/**
- * Probe a python interpreter WITHOUT sourcing the Zephyr environment script:
- * execCommandWithEnv would put the portable python on PATH and falsify a
- * "system" probe. execFile also avoids shell quoting for paths with spaces.
- * The Microsoft Store app-execution alias resolves as `python` but exits
- * non-zero, so it correctly lands in the "not detected" branch.
- */
-export async function probePythonInterpreter(mode: 'system' | 'custom', customPath?: string): Promise<PythonProbeResult> {
-  let exe = 'python';
-  if (mode === 'custom') {
-    const provided = (customPath ?? '').trim();
-    if (!provided) {
-      return { ok: false, error: 'No python path provided' };
-    }
-    let resolved = provided;
-    try {
-      if (fs.existsSync(provided) && fs.statSync(provided).isDirectory()) {
-        resolved = path.join(provided, process.platform === 'win32' ? 'python.exe' : 'python');
-      }
-    } catch { }
-    if (!fs.existsSync(resolved)) {
-      return { ok: false, error: `Python executable not found: ${resolved}` };
-    }
-    exe = resolved;
-  }
-
-  return new Promise<PythonProbeResult>((resolve) => {
+/** One interpreter run; resolves undefined when the executable does not work. */
+function runPythonProbe(exe: string): Promise<PythonProbeResult | undefined> {
+  return new Promise((resolve) => {
     execFile(
       exe,
       ['-c', 'import sys;print(sys.executable);print(sys.version.split()[0])'],
       { timeout: 10000 },
       (error, stdout) => {
         if (error) {
-          resolve({
-            ok: false,
-            error: mode === 'system'
-              ? 'No working Python detected on PATH'
-              : 'The selected Python does not run',
-          });
+          resolve(undefined);
           return;
         }
         const lines = String(stdout).split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
         const exePath = lines[0];
         const version = lines[1];
         if (!exePath || !version) {
-          resolve({ ok: false, error: 'Unexpected output from the python interpreter' });
+          resolve(undefined);
           return;
         }
         resolve({
@@ -334,4 +316,62 @@ export async function probePythonInterpreter(mode: 'system' | 'custom', customPa
       }
     );
   });
+}
+
+/**
+ * Probe a python interpreter WITHOUT sourcing the Zephyr environment script:
+ * execCommandWithEnv would put the portable python on PATH and falsify a
+ * "system" probe. execFile also avoids shell quoting for paths with spaces.
+ * The Microsoft Store app-execution alias resolves as `python` but exits
+ * non-zero, so it correctly lands in the "not detected" branch. On posix
+ * `python3` is probed first: distros usually ship no bare `python`.
+ */
+export async function probePythonInterpreter(mode: 'system' | 'custom', customPath?: string): Promise<PythonProbeResult> {
+  const candidates: string[] = [];
+  if (mode === 'custom') {
+    const provided = (customPath ?? '').trim();
+    if (!provided) {
+      return { ok: false, error: 'No python path provided' };
+    }
+    let isDir = false;
+    try {
+      isDir = fs.existsSync(provided) && fs.statSync(provided).isDirectory();
+    } catch { }
+    if (isDir) {
+      const names = process.platform === 'win32' ? ['python.exe'] : ['python3', 'python'];
+      for (const name of names) {
+        const p = path.join(provided, name);
+        if (fs.existsSync(p)) {
+          candidates.push(p);
+        }
+      }
+      if (candidates.length === 0) {
+        return { ok: false, error: `No python executable found in: ${provided}` };
+      }
+    } else {
+      if (!fs.existsSync(provided)) {
+        return { ok: false, error: `Python executable not found: ${provided}` };
+      }
+      candidates.push(provided);
+    }
+  } else {
+    if (process.platform === 'win32') {
+      candidates.push('python');
+    } else {
+      candidates.push('python3', 'python');
+    }
+  }
+
+  for (const exe of candidates) {
+    const result = await runPythonProbe(exe);
+    if (result) {
+      return result;
+    }
+  }
+  return {
+    ok: false,
+    error: mode === 'system'
+      ? 'No working Python detected on PATH'
+      : 'The selected Python does not run',
+  };
 }

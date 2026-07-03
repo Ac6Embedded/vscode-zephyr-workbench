@@ -1177,6 +1177,47 @@ export function getTerminalDefaultProfile(): string | undefined {
 
 /* git helpers */
 
+/** Parse `git ls-remote --tags` output: version tags first, newest first. */
+export function parseGitTagsOutput(out: string): string[] {
+  return out
+    .trim()
+    .split('\n')
+    .filter(l => l.trim() !== '' && !l.includes('^{}') && l.includes('\t'))
+    .map(l => {
+      const parts = l.split('\t');
+      return parts[1] ? parts[1].replace('refs/tags/', '') : '';
+    })
+    .filter(tag => tag !== '')
+    .sort((a, b) => {
+      const aIsVersionTag = /^v\d/.test(a);
+      const bIsVersionTag = /^v\d/.test(b);
+
+      if (aIsVersionTag !== bIsVersionTag) {
+        return aIsVersionTag ? -1 : 1;
+      }
+
+      if (aIsVersionTag && bIsVersionTag) {
+        return compareVersions(b, a);
+      }
+
+      return a.localeCompare(b);
+    });
+}
+
+/** Parse `git ls-remote --heads` output into a sorted branch list. */
+export function parseGitBranchesOutput(out: string): string[] {
+  return out
+    .trim()
+    .split('\n')
+    .filter(l => l.trim() !== '' && l.includes('\t'))
+    .map(l => {
+      const parts = l.split('\t');
+      return parts[1] ? parts[1].replace('refs/heads/', '') : '';
+    })
+    .filter(branch => branch !== '')
+    .sort();
+}
+
 export async function getGitTags(gitUrl: string): Promise<string[]> {
   const gitCmd = `git ls-remote --tags ${gitUrl}`;
   return new Promise((resolve, reject) => {
@@ -1185,30 +1226,7 @@ export async function getGitTags(gitUrl: string): Promise<string[]> {
         reject(`Error: ${errStr}`);
         return;
       }
-      const tags = out
-        .trim()
-        .split('\n')
-        .filter(l => l.trim() !== '' && !l.includes('^{}') && l.includes('\t'))
-        .map(l => {
-          const parts = l.split('\t');
-          return parts[1] ? parts[1].replace('refs/tags/', '') : '';
-        })
-        .filter(tag => tag !== '')
-        .sort((a, b) => {
-          const aIsVersionTag = /^v\d/.test(a);
-          const bIsVersionTag = /^v\d/.test(b);
-
-          if (aIsVersionTag !== bIsVersionTag) {
-            return aIsVersionTag ? -1 : 1;
-          }
-
-          if (aIsVersionTag && bIsVersionTag) {
-            return compareVersions(b, a);
-          }
-
-          return a.localeCompare(b);
-        });
-      resolve(tags);
+      resolve(parseGitTagsOutput(out));
     });
   });
 }
@@ -1221,17 +1239,7 @@ export async function getGitBranches(gitUrl: string): Promise<string[]> {
         reject(`Error: ${errStr}`);
         return;
       }
-      const branches = out
-        .trim()
-        .split('\n')
-        .filter(l => l.trim() !== '' && l.includes('\t'))
-        .map(l => {
-          const parts = l.split('\t');
-          return parts[1] ? parts[1].replace('refs/heads/', '') : '';
-        })
-        .filter(branch => branch !== '')
-        .sort();
-      resolve(branches);
+      resolve(parseGitBranchesOutput(out));
     });
   });
 }

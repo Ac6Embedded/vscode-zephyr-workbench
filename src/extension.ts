@@ -24,7 +24,8 @@ import {
 	removeApplicationLaunchConfigurations,
 } from './utils/debugTools/debugUtils';
 import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
-import { checkEnvFile, checkHomebrew, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
+import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
+import { probeHomebrew } from './utils/hostToolsStatusUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
@@ -2194,17 +2195,13 @@ export function activate(context: vscode.ExtensionContext) {
 			async (force = false) => {
 
 				if (process.platform === "darwin") {
-					try {
-						if (!(await checkHomebrew())) {
-							vscode.window.showErrorMessage(
-								"Homebrew is not installed or not in your PATH. " +
-								"Please install it first.");
-							return;
-						}
-					} catch {
+					// probeHomebrew also checks the fixed install locations:
+					// GUI-launched extension hosts often miss the brew dir on
+					// PATH, and install-mac.sh repairs PATH itself anyway.
+					const brew = await probeHomebrew();
+					if (!brew.ok) {
 						vscode.window.showErrorMessage(
-							"Homebrew is not installed or not in your PATH. " +
-							"Please install it first.");
+							"Homebrew is not installed. Install it from https://brew.sh, then retry.");
 						return;
 					}
 				}

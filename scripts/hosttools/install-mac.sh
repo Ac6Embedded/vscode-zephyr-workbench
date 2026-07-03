@@ -499,10 +499,12 @@ get_mirror_url() {
 # available on macOS, so downloads work before the utilities step installs
 # wget). Diagnostics go to stderr because some callers capture stdout as the
 # failure reason. Returns non-zero when nothing could fetch the file.
+# Stall guards (connect timeout, dead-transfer abort) keep a broken network
+# from hanging the run for hours; a slow but moving download is never cut.
 fetch_url() {
     local url="$1" dest="$2"
     if command -v wget >/dev/null 2>&1; then
-        if wget --no-check-certificate -q "$url" -O "$dest" && [ -s "$dest" ]; then
+        if wget --no-check-certificate -q --timeout=30 --tries=2 "$url" -O "$dest" && [ -s "$dest" ]; then
             return 0
         fi
         rm -f "$dest"
@@ -511,7 +513,7 @@ fetch_url() {
         fi
     fi
     if command -v curl >/dev/null 2>&1; then
-        if curl -fkLsS -o "$dest" "$url" 2>/dev/null && [ -s "$dest" ]; then
+        if curl -fkLsS --connect-timeout 30 --speed-time 60 --speed-limit 1024 -o "$dest" "$url" 2>/dev/null && [ -s "$dest" ]; then
             return 0
         fi
         rm -f "$dest"
@@ -590,6 +592,51 @@ download() {
         pr_error 1 "Failed to download $filename from $source"
         return 1
     fi
+    return 0
+}
+
+# Print the python path entries recorded in env.yml (tools.python.path),
+# one per line. Pure awk: works before yq exists and on BSD awk.
+get_env_python_paths() {
+    [ -f "$ENV_YAML_PATH" ] || return 0
+    awk '
+        /^tools:[ \t]*$/               { intools=1; next }
+        intools && /^[^ ]/             { intools=0 }
+        intools && /^  python:[ \t]*$/ { inpy=1; next }
+        inpy && /^  [^ ]/              { inpy=0 }
+        inpy && /^    path:/ {
+            inpath=1
+            line=$0
+            sub(/^    path:[ \t]*/, "", line)
+            if (line != "") { gsub(/"/, "", line); print line }
+            next
+        }
+        inpath && /^      - / {
+            line=$0
+            sub(/^      - /, "", line)
+            gsub(/"/, "", line)
+            print line
+            next
+        }
+        inpath { inpath=0 }
+    ' "$ENV_YAML_PATH"
+    return 0
+}
+
+# Prepend the python source recorded in env.yml to PATH, so venv-only runs
+# rebuild the venv with the interpreter the install was configured with
+# (custom python) instead of whatever python3 is first on PATH.
+prepend_python_paths_from_env() {
+    local p resolved
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        resolved="$p"
+        resolved="${resolved//\$\{zi_tools_dir\}/$INSTALL_DIR/tools}"
+        resolved="${resolved//\$\{zi_base_dir\}/$INSTALL_DIR}"
+        if [ -d "$resolved" ]; then
+            export PATH="$resolved:$PATH"
+        fi
+    done <<< "$(get_env_python_paths)"
     return 0
 }
 
@@ -1650,6 +1697,7 @@ fi
 if [[ $create_venv_bool == true ]]; then
     pr_title "Creating Python VENV"
     mkdir -p "$TMP_DIR" "$DL_DIR"
+    prepend_python_paths_from_env
     check_python_version_requirement || true
     if [[ -n "$VENV_PATH" && -d "$VENV_PATH" && -f "$VENV_PATH/bin/activate" ]]; then
         echo "VENV already exists at: $VENV_PATH"
@@ -1668,6 +1716,7 @@ fi
 if [[ $reinstall_venv_bool == true ]]; then
     pr_title "Reinstalling Python VENV"
     mkdir -p "$TMP_DIR" "$DL_DIR"
+    prepend_python_paths_from_env
     check_python_version_requirement || true
     # Refuse to delete the venv when no interpreter could rebuild it
     if ! probe_step_presence python; then
@@ -1719,7 +1768,7 @@ if [[ $only_check_bool != true ]]; then
 
     if [[ $non_root_packages == true ]]; then
         pr_title "Clean up"
-        rm -rf $TMP_DIR
+        rm -rf "$TMP_DIR"
     fi
 
     print_step_summary

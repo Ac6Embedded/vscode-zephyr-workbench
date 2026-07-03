@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { execFile } from "child_process";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import {
@@ -11,7 +12,7 @@ import {
 } from "../utils/hostToolsStatusUtils";
 import { getAdvancedRowParts, hasProviderColumn, HostToolsPartDef } from "../utils/hostToolsPartsRegistry";
 import { getZinstallerVersionStampPath, HostToolsPythonOptions, sanitizeRequirementsRef } from "../utils/installUtils";
-import { getGitBranches, getGitTags } from "../utils/execUtils";
+import { getGitBranches, getGitTags, parseGitBranchesOutput, parseGitTagsOutput } from "../utils/execUtils";
 import { fileExists } from "../utils/utils";
 import { getZephyrTerminal } from "../utils/zephyr/zephyrTerminalUtils";
 
@@ -218,11 +219,15 @@ export class AdvancedHostToolsPanel {
     if (includeVenv) {
       selection.push('venv');
     }
-    // Default-source presence: WinPython/AppImage artifact on win32/linux,
-    // a working python3 on darwin (the brew formula's install marker).
+    // Default-source presence: WinPython/AppImage artifact on win32/linux;
+    // on darwin a python3 that also meets the minimum version (Homebrew is
+    // never present without the Xcode CLT, whose /usr/bin/python3 is 3.9, so
+    // a merely-working python3 would wrongly skip the brew python@3.13 step
+    // and build the venv on an unsupported interpreter).
     let defaultSourcePresent: boolean;
     if (process.platform === 'darwin') {
-      defaultSourcePresent = (await probePythonInterpreter('system')).ok;
+      const probe = await probePythonInterpreter('system');
+      defaultSourcePresent = probe.ok && probe.tooOld !== true;
     } else {
       defaultSourcePresent = probeHostToolsPartsPresence()['python'] === true;
     }
@@ -289,7 +294,17 @@ export class AdvancedHostToolsPanel {
             break;
           }
           case 'open-terminal': {
-            try { (await getZephyrTerminal()).show(); } catch { }
+            // The installers run as VS Code tasks: their per-step summary
+            // lives in the task terminal, not the (possibly empty) Zephyr
+            // BuildSystem terminal, so prefer the most recent task terminal.
+            const taskNames = ['Installing Host tools', 'Installing Venv', 'Installing sudo host tools'];
+            const taskTerminal = [...vscode.window.terminals].reverse()
+              .find(t => taskNames.some(n => t.name.includes(n)));
+            if (taskTerminal) {
+              taskTerminal.show();
+            } else {
+              try { (await getZephyrTerminal()).show(); } catch { }
+            }
             break;
           }
         }
@@ -299,17 +314,49 @@ export class AdvancedHostToolsPanel {
     );
   }
 
+  /** One plain `git ls-remote` run WITHOUT sourcing the Zephyr env script. */
+  private execGitLsRemote(kind: '--tags' | '--heads'): Promise<string> {
+    return new Promise((resolve, reject) => {
+      execFile(
+        'git',
+        ['ls-remote', kind, ZEPHYR_REPO_URL],
+        { timeout: 30000, maxBuffer: 16 * 1024 * 1024 },
+        (error, stdout) => {
+          if (error) { reject(error); return; }
+          resolve(String(stdout));
+        }
+      );
+    });
+  }
+
   /**
-   * List the zephyr repo tags and branches (same mechanism as the Create West
-   * Workspace revision picker) and publish them as a prebuilt dropdown.
-   * Default: the newest version tag ("latest"), falling back to main.
+   * List the zephyr repo refs. Plain PATH git first: listing a public repo
+   * needs no Zephyr environment, and this panel typically runs BEFORE the
+   * host tools (and their env script) exist. The env-sourced helpers remain
+   * as fallback for machines whose only git is the zinstaller-provided one.
    */
-  private async handleFetchRequirementsRefs(): Promise<void> {
+  private async fetchZephyrRefs(): Promise<[string[], string[]]> {
     try {
-      const [tags, branches] = await Promise.all([
+      const [tagsOut, headsOut] = await Promise.all([
+        this.execGitLsRemote('--tags'),
+        this.execGitLsRemote('--heads'),
+      ]);
+      return [parseGitTagsOutput(tagsOut), parseGitBranchesOutput(headsOut)];
+    } catch {
+      return await Promise.all([
         getGitTags(ZEPHYR_REPO_URL),
         getGitBranches(ZEPHYR_REPO_URL),
       ]);
+    }
+  }
+
+  /**
+   * List the zephyr repo tags and branches (same data as the Create West
+   * Workspace revision picker) and publish them as a prebuilt dropdown.
+   */
+  private async handleFetchRequirementsRefs(): Promise<void> {
+    try {
+      const [tags, branches] = await this.fetchZephyrRefs();
       let refsHTML = '';
       if (tags && tags.length > 0) {
         refsHTML += '<div class="dropdown-header">TAGS</div>';
@@ -487,16 +534,12 @@ export class AdvancedHostToolsPanel {
     let leadText: string;
     let confirmText = 'This removes the installed host tools, the global virtual environment and reinstalls everything with the selected Python source. Continue?';
     let pythonPathPlaceholder = 'Path to the python executable or its folder';
-    // linux defaults to the system python (the historical behavior); the
-    // other platforms default to their portable/managed source.
-    let defaultPythonMode: 'portable' | 'system' = 'portable';
     if (process.platform === 'linux') {
       portableLabel = portablePythonTarget
         ? `Portable AppImage (Python ${portablePythonTarget}, downloaded automatically, no sudo)`
         : 'Portable AppImage (downloaded automatically, no sudo)';
       leadText = 'Install or repair individual parts of the Zephyr host tools. Unchecked parts are skipped. The System packages row installs distribution packages with sudo; skip it and no password is asked. Downloads (CMake, Ninja, the portable Python) go to the .zinstaller directory without sudo, and the environment files are always refreshed. If a download fails or its checksum mismatches, it is automatically retried from the Ac6 mirror.';
       confirmText += ' Your sudo password will be requested.';
-      defaultPythonMode = 'system';
     } else if (process.platform === 'darwin') {
       portableLabel = 'Homebrew (python@3.13 formula, installed with brew)';
       leadText = 'Install or repair individual parts of the Zephyr host tools. Everything installs through Homebrew; unchecked parts are skipped. Python and the global virtual environment are always installed, and the environment files are always refreshed.';
@@ -542,11 +585,11 @@ export class AdvancedHostToolsPanel {
             <p class="panel-note">Always installed, even when every tool is skipped: the selected Python is used by the tools and to create the global virtual environment.</p>
             <div id="python-source">
               <label class="set-default-radio">
-                <input type="radio" class="set-default-radio-input python-source-radio" name="python-source" data-mode="portable"${defaultPythonMode === 'portable' ? ' checked' : ''}>
+                <input type="radio" class="set-default-radio-input python-source-radio" name="python-source" data-mode="portable" checked>
                 <span>${portableLabel}</span>
               </label>
               <label class="set-default-radio">
-                <input type="radio" class="set-default-radio-input python-source-radio" name="python-source" data-mode="system"${defaultPythonMode === 'system' ? ' checked' : ''}>
+                <input type="radio" class="set-default-radio-input python-source-radio" name="python-source" data-mode="system">
                 <span>System (detected from PATH)</span>
               </label>
               <label class="set-default-radio">
