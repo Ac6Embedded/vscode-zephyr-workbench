@@ -61,6 +61,16 @@ tools_yml_md5=$(md5 -q "$YAML_FILE" 2>/dev/null || md5sum "$YAML_FILE" 2>/dev/nu
 PYTHON_VERSION="3.13"
 NL=$'\n'
 
+# Run Homebrew non-interactively so a host-tools install never stops to ask a
+# question. This suppresses the auto-update/migration prompts, the environment
+# hints, the post-install cleanup, and any "Press RETURN to continue" or sudo
+# password prompt (Homebrew fails fast instead of blocking). A value already
+# exported by the caller wins.
+export HOMEBREW_NO_AUTO_UPDATE="${HOMEBREW_NO_AUTO_UPDATE:-1}"
+export HOMEBREW_NO_INSTALL_CLEANUP="${HOMEBREW_NO_INSTALL_CLEANUP:-1}"
+export HOMEBREW_NO_ENV_HINTS="${HOMEBREW_NO_ENV_HINTS:-1}"
+export NONINTERACTIVE="${NONINTERACTIVE:-1}"
+
 # Function to display usage information
 usage() {
     cat << EOF

@@ -62,6 +62,12 @@ elif [[ "$OS_NAME" == "Darwin" ]]; then
     echo "❌ Homebrew not found. Please install it from https://brew.sh"
     exit 1
   fi
+  # Run Homebrew non-interactively so the build never stops to ask a question
+  # (auto-update migrations, "Press RETURN to continue", sudo prompts).
+  export HOMEBREW_NO_AUTO_UPDATE="${HOMEBREW_NO_AUTO_UPDATE:-1}"
+  export HOMEBREW_NO_INSTALL_CLEANUP="${HOMEBREW_NO_INSTALL_CLEANUP:-1}"
+  export HOMEBREW_NO_ENV_HINTS="${HOMEBREW_NO_ENV_HINTS:-1}"
+  export NONINTERACTIVE="${NONINTERACTIVE:-1}"
   brew install -q autoconf automake libtool pkg-config hidapi libftdi libusb gettext texinfo cmake || true
 fi
 
