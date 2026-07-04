@@ -374,7 +374,7 @@ export async function westTmpBuildCmakeOnlyCommand(
     : `--source-dir ${quote(normalizePathForShell(shellKind, zephyrProject.appRootPath))}`;
 
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
-  normalizeEnvVarsForShell(rawEnvVars, shellKind);
+  const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
 
   const redirect = getShellNullRedirect(shellKind);
 
@@ -392,7 +392,7 @@ export async function westTmpBuildCmakeOnlyCommand(
   const options: vscode.ShellExecutionOptions = {
     cwd        : zephyrProject.appRootPath,
     env        : prependRustBinPath({
-      ...buildConfig.envVars,
+      ...normEnvVars,
       ...(activeZephyrSdkInstallation?.buildEnv ?? {}),
       ...westWorkspace.buildEnv,
       ...zephyrProject.getToolchainEnv(),
