@@ -458,7 +458,11 @@ export function normalizeEnvVarsForShell(
         .map(entry => normalizePathForShell(shellKind, entry))
         .filter(entry => entry); // Remove empty strings
       if (normalized.length > 0) {
-        out[key] = normalized.join(path.delimiter);
+        // Zephyr/CMake list variables (EXTRA_CONF_FILE, EXTRA_DTC_OVERLAY_FILE,
+        // EXTRA_ZEPHYR_MODULES, SHIELD, ...) are always ';'-separated on every
+        // platform, unlike OS PATH vars. path.delimiter would use ':' on macOS/Linux
+        // and break multi-file values (e.g. "a.conf:b.conf" -> File not found).
+        out[key] = normalized.join(';');
       }
     }
   }
