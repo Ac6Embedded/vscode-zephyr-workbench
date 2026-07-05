@@ -759,7 +759,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const projectNameText = document.getElementById("projectName") as TextField;
   const projectParentPathText = document.getElementById("projectParentPath") as TextField;
   const appFromGroup = document.getElementById('appFromGroup') as RadioGroup;
-  const venvRadioGroup = document.getElementById('venvMode') as RadioGroup;
+  const localVenvCheckbox = document.getElementById('localVenvCheckbox') as HTMLInputElement | null;
   const settingsPathModeGroup = document.getElementById('settingsPathMode') as RadioGroup;
   const toolchainVariantGroup = document.getElementById('toolchainVariantGroup') as RadioGroup;
   const appLocationTypeGroup = document.getElementById('appLocationType') as RadioGroup | null;
@@ -789,7 +789,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
 	      projectParentPath:  projectParentPathText.value,
 	      appLocationType:    appLocationTypeGroup?.value ?? 'freestanding',
 	      applicationsSubfolder: applicationsSubfolderField?.value ?? 'applications',
-	      venv:               venvRadioGroup?.value ?? 'global',
+	      venv:               localVenvCheckbox?.checked ? 'local' : 'global',
 	      settingsPathMode:   settingsPathModeGroup?.value ?? 'relative',
 	      debugPreset:        !!debugPresetCheckbox?.checked,
 	    }

@@ -304,13 +304,7 @@ export class CreateZephyrAppPanel {
 	                    </summary>
 	                    <div class="advanced-options-content">
                       <div class="grid-group-div">
-                        <vscode-radio-group id="venvMode" orientation="horizontal">
-                          <label slot="label">Python virtual environment:&nbsp;&nbsp;
-                            <span class="tooltip stable-tooltip" data-tooltip="Use global if you are not sure">?</span>
-                          </label>
-                          <vscode-radio value="global" checked>global</vscode-radio>
-                          <vscode-radio value="local">local</vscode-radio>
-                        </vscode-radio-group>
+                        <vscode-checkbox id="localVenvCheckbox">Create a dedicated Python venv for this application&nbsp;&nbsp;<span class="tooltip stable-tooltip" data-tooltip="Creates a '.venv' in the application folder used only by this app, overriding its west workspace's venv. Leave unchecked to share the workspace (or global) environment.">?</span></vscode-checkbox>
                       </div>
 	                      <div class="grid-group-div">
 	                        <vscode-radio-group id="settingsPathMode" orientation="horizontal">
