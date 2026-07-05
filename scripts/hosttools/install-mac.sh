@@ -664,6 +664,24 @@ prepend_python_paths_from_env() {
     return 0
 }
 
+# Homebrew's python@X is keg-only: its `python3`/`python` live in
+# `$(brew --prefix python@X)/libexec/bin`, NOT on the default PATH (which keeps
+# the older system python3). The full install prepends this for the run that
+# builds the global venv, but venv-only re-runs (--create-venv / --reinstall-venv)
+# skip that step. Without this, those re-runs rebuild the venv with the system
+# python instead of the brew python the global venv was created with.
+prepend_brew_python_path() {
+    [[ "$PYTHON_MODE" == "brew" ]] || return 0
+    local brew_python_prefix brew_python_bin
+    brew_python_prefix="$(brew --prefix "python@$PYTHON_VERSION" 2>/dev/null)" || return 0
+    [ -n "$brew_python_prefix" ] || return 0
+    brew_python_bin="$brew_python_prefix/libexec/bin"
+    if [ -d "$brew_python_bin" ]; then
+        export PATH="$brew_python_bin:$PATH"
+    fi
+    return 0
+}
+
 install_python_venv() {
     local install_directory=$1
     local work_directory=$2
@@ -1726,6 +1744,7 @@ if [[ $create_venv_bool == true ]]; then
     pr_title "Creating Python VENV"
     mkdir -p "$TMP_DIR" "$DL_DIR"
     prepend_python_paths_from_env
+    prepend_brew_python_path
     check_python_version_requirement || true
     if [[ -n "$VENV_PATH" && -d "$VENV_PATH" && -f "$VENV_PATH/bin/activate" ]]; then
         echo "VENV already exists at: $VENV_PATH"
@@ -1745,6 +1764,7 @@ if [[ $reinstall_venv_bool == true ]]; then
     pr_title "Reinstalling Python VENV"
     mkdir -p "$TMP_DIR" "$DL_DIR"
     prepend_python_paths_from_env
+    prepend_brew_python_path
     check_python_version_requirement || true
     # Refuse to delete the venv when no interpreter could rebuild it
     if ! probe_step_presence python; then
