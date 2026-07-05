@@ -764,6 +764,21 @@
         "category": "Zephyr Workbench/Workspace"
       },
       {
+        "command": "zephyr-workbench-west-workspace.blobs.list",
+        "title": "Blobs: List",
+        "category": "Zephyr Workbench/Workspace"
+      },
+      {
+        "command": "zephyr-workbench-west-workspace.blobs.fetch",
+        "title": "Blobs: Fetch",
+        "category": "Zephyr Workbench/Workspace"
+      },
+      {
+        "command": "zephyr-workbench-west-workspace.blobs.clean",
+        "title": "Blobs: Clean",
+        "category": "Zephyr Workbench/Workspace"
+      },
+      {
         "command": "zephyr-workbench-sdk-explorer.open-wizard",
         "title": "Add Toolchain",
         "icon": "$(add)",
@@ -1035,6 +1050,10 @@
       {
         "id": "zephyr-workbench-app-explorer.sysbuild-submenu",
         "label": "Sysbuild"
+      },
+      {
+        "id": "zephyr-workbench-west-workspace.blobs",
+        "label": "Blobs"
       }
     ],
     "menus": {
@@ -1328,52 +1347,57 @@
         {
           "command": "zephyr-workbench-west-workspace.open-terminal",
           "group": "inline@0",
-          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?$/"
+          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?(-blobs)?$/"
         },
         {
           "command": "zephyr-workbench.west-manager",
           "group": "0@view/item/context@0",
-          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?$/"
+          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?(-blobs)?$/"
         },
         {
           "command": "zephyr-workbench-west-workspace.update",
           "group": "0@view/item/context@1",
-          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?$/"
+          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?(-blobs)?$/"
         },
         {
           "command": "zephyr-workbench-west-workspace.delete",
           "group": "0@view/item/context@2",
-          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?$/"
+          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?(-blobs)?$/"
         },
         {
           "command": "zephyr-workbench-west-workspace.install-python-deps",
           "group": "0@view/item/context@3",
-          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?$/"
+          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?(-blobs)?$/"
+        },
+        {
+          "submenu": "zephyr-workbench-west-workspace.blobs",
+          "group": "0@view/item/context@4",
+          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?-blobs$/"
         },
         {
           "command": "zephyr-workbench-west-workspace.create-venv",
           "group": "1@venv@0",
-          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?$/"
+          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?(-blobs)?$/"
         },
         {
           "command": "zephyr-workbench-west-workspace.set-venv-path",
           "group": "1@venv@1",
-          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?$/"
+          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?(-blobs)?$/"
         },
         {
           "command": "zephyr-workbench-west-workspace.remove-venv",
           "group": "1@venv@2",
-          "when": "view == zephyr-workbench-west-workspace && viewItem == west-workspace-hasvenv"
+          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace-hasvenv(-blobs)?$/"
         },
         {
           "command": "zephyr-workbench-west-workspace.open-terminal",
           "group": "0@view/item/context@2",
-          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?$/"
+          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?(-blobs)?$/"
         },
         {
           "command": "zephyr-workbench-west-workspace.install-python-deps",
           "group": "inline@1",
-          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?$/"
+          "when": "view == zephyr-workbench-west-workspace && viewItem =~ /^west-workspace(-hasvenv)?(-blobs)?$/"
         },
         {
           "command": "zephyr-workbench.env.add",
@@ -1592,6 +1616,20 @@
         {
           "command": "zephyr-workbench-app-explorer.sysbuild.disable",
           "group": "0@view/item/context@1"
+        }
+      ],
+      "zephyr-workbench-west-workspace.blobs": [
+        {
+          "command": "zephyr-workbench-west-workspace.blobs.list",
+          "group": "0@view/item/context@0"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.blobs.fetch",
+          "group": "0@view/item/context@1"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.blobs.clean",
+          "group": "0@view/item/context@2"
         }
       ],
       "zephyr-workbench-app-explorer.local-venv": [
@@ -1970,6 +2008,18 @@
         },
         {
           "command": "zephyr-workbench-west-workspace.remove-venv",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.blobs.list",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.blobs.fetch",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-west-workspace.blobs.clean",
           "when": "false"
         },
         {

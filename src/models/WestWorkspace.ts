@@ -143,6 +143,30 @@ export class WestWorkspace {
     return version;
   }
 
+  // `west blobs` (list/fetch/clean) was introduced in Zephyr 3.2.0. Below that the
+  // command doesn't exist, so the blobs menu/import step must be skipped.
+  get supportsBlobs(): boolean {
+    const major = parseInt(this.versionArray?.['VERSION_MAJOR'] ?? '', 10);
+    const minor = parseInt(this.versionArray?.['VERSION_MINOR'] ?? '', 10);
+    if (!Number.isFinite(major) || !Number.isFinite(minor)) {
+      return false;
+    }
+    return major > 3 || (major === 3 && minor >= 2);
+  }
+
+  // The `-a`/`--auto-accept` flag (skip the click-through license prompt) was added
+  // in Zephyr 4.2.0. On >= 4.2 we always pass it so a click-through blob can't hang
+  // a non-interactive fetch; on 3.2-4.1 the flag doesn't exist (and fetch never
+  // prompts), so it must be omitted.
+  get supportsBlobsAutoAccept(): boolean {
+    const major = parseInt(this.versionArray?.['VERSION_MAJOR'] ?? '', 10);
+    const minor = parseInt(this.versionArray?.['VERSION_MINOR'] ?? '', 10);
+    if (!Number.isFinite(major) || !Number.isFinite(minor)) {
+      return false;
+    }
+    return major > 4 || (major === 4 && minor >= 2);
+  }
+
   get westDirUri(): vscode.Uri {
     return vscode.Uri.joinPath(this.rootUri, '.west');
   }

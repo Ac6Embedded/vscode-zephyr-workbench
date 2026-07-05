@@ -173,9 +173,14 @@ export class WestWorkspaceTreeItem extends vscode.TreeItem {
 
     this.tooltip = `${this.westWorkspace.rootUri.fsPath}`;
     this.description = `[${this.westWorkspace.version}]`;
-    // Suffix the context value when a dedicated venv is set so the "Remove venv"
-    // menu item can be gated to only appear when there is one to remove.
-    this.contextValue = westWorkspace.venvPath ? 'west-workspace-hasvenv' : 'west-workspace';
+    // Suffix the context value so menu items can be gated: `-hasvenv` when a
+    // dedicated venv is set (for "Remove venv"), and `-blobs` when the Zephyr
+    // version supports `west blobs` (>= 3.2), which shows the Blobs submenu.
+    let contextValue = westWorkspace.venvPath ? 'west-workspace-hasvenv' : 'west-workspace';
+    if (westWorkspace.supportsBlobs) {
+      contextValue += '-blobs';
+    }
+    this.contextValue = contextValue;
   }
 
   //iconPath = new vscode.ThemeIcon('symbol-misc');

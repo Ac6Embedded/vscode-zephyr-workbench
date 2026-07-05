@@ -336,6 +336,51 @@ export async function westPackagesInstallCommand(workspacePath: string): Promise
   );
 }
 
+// Fetch binary blobs declared by the workspace's modules (`west blobs fetch`).
+// On Zephyr >= 4.2 pass `--auto-accept` so a blob with a click-through license
+// can't hang this non-interactive task waiting on stdin; on 3.2-4.1 the flag
+// doesn't exist and fetch never prompts, so it must be omitted (see
+// WestWorkspace.supportsBlobsAutoAccept). Caller must gate on supportsBlobs.
+export async function westBlobsFetchCommand(workspacePath: string, autoAccept: boolean): Promise<void> {
+  const command = autoAccept ? "west blobs fetch --auto-accept" : "west blobs fetch";
+
+  const options: vscode.ShellExecutionOptions = {
+    env: { ZEPHYR_PROJECT_DIRECTORY: workspacePath },
+    cwd: workspacePath
+  };
+
+  await execShellCommandWithEnv("West - fetch binary blobs", command, options);
+}
+
+// Delete fetched binary blobs from the workspace (`west blobs clean`).
+export async function westBlobsCleanCommand(workspacePath: string): Promise<void> {
+  const command = "west blobs clean";
+
+  const options: vscode.ShellExecutionOptions = {
+    env: { ZEPHYR_PROJECT_DIRECTORY: workspacePath },
+    cwd: workspacePath
+  };
+
+  await execShellCommandWithEnv("West - clean binary blobs", command, options);
+}
+
+// List binary blobs (`west blobs list`) and print the table into the shared
+// output channel. Uses the stdout-capturing runner (like getSupportedShields)
+// rather than a task terminal so the result stays readable in one place.
+export function westBlobsListCommand(westWorkspace: WestWorkspace): void {
+  const output = getOutputChannel();
+  output.appendLine(`[west blobs list] ${westWorkspace.name}`);
+  output.show(true);
+  execWestCommandWithEnv('west blobs list', westWorkspace, (error, stdout, stderr) => {
+    const text = (error ? (stderr || String(error)) : stdout).trimEnd();
+    if (text.length > 0) {
+      output.appendLine(text);
+    } else if (!error) {
+      output.appendLine('No binary blobs declared for this workspace.');
+    }
+  });
+}
+
 export async function westBoardsCommand(workspacePath: string): Promise<void> {
   const shellKind = classifyShell(getShellExe());
   const redirect = getShellNullRedirect(shellKind);

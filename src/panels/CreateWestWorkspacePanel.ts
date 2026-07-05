@@ -242,6 +242,9 @@ export class CreateWestWorkspacePanel {
                   <div class="grid-group-div">
                     <vscode-checkbox id="dedicatedVenvCheckbox">Create a dedicated Python venv for this workspace&nbsp;&nbsp;<span class="tooltip" data-tooltip="Creates a '.venv' at the workspace root shared by all its applications, installed with west and Zephyr's Python dependencies (modern Zephyr uses 'west packages'). Leave unchecked to use the shared global environment.">?</span></vscode-checkbox>
                   </div>
+                  <div class="grid-group-div">
+                    <vscode-checkbox id="fetchBlobsCheckbox" checked>Fetch west blobs&nbsp;&nbsp;<span class="tooltip" data-tooltip="Runs 'west blobs fetch' after the workspace is set up (after the dedicated venv when one is created) to download vendor binary blobs declared by modules, e.g. HAL firmware. Requires Zephyr 3.2 or newer; skipped on older versions. On Zephyr 4.2+, click-through licenses are auto-accepted.">?</span></vscode-checkbox>
+                  </div>
                 </div>
               </details>
             </div>
@@ -496,14 +499,15 @@ export class CreateWestWorkspacePanel {
             }
 
             const dedicatedVenv = message.dedicatedVenv === true;
+            const fetchBlobs = message.fetchBlobs === true;
             if(srcType === 'remote') {
-              vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath, message.enableRust === true, dedicatedVenv);
+              vscode.commands.executeCommand("west.init", remotePath, remoteBranch, workspacePath, manifestPath, message.enableRust === true, dedicatedVenv, fetchBlobs);
             } else if(srcType === 'local') {
               vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-local", workspacePath, dedicatedVenv);
             } else if(srcType === 'manifest') {
-              vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestPath, message.enableRust === true, dedicatedVenv);
+              vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestPath, message.enableRust === true, dedicatedVenv, fetchBlobs);
             } else if(srcType === 'template') {
-              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir, pathPrefix, projects, message.enableRust === true, dedicatedVenv);
+              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir, pathPrefix, projects, message.enableRust === true, dedicatedVenv, fetchBlobs);
             }
             // Close the wizard as soon as the import is dispatched, so it can't
             // be submitted again while the (long-running) import is in flight.

@@ -3,7 +3,7 @@
 import path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
-import { westBoardsCommand, westEnableRustModuleCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBuildCommand, westConfigCommand, westRebuildCommand, westSpdxGenerateCommand, westSpdxInitCommand } from './commands/WestCommands';
+import { westBoardsCommand, westEnableRustModuleCommand, westInitCommand, westUpdateCommand, westPackagesInstallCommand, westBlobsFetchCommand, westBlobsCleanCommand, westBlobsListCommand, westBuildCommand, westConfigCommand, westRebuildCommand, westSpdxGenerateCommand, westSpdxInitCommand } from './commands/WestCommands';
 import { WestWorkspace } from './models/WestWorkspace';
 import { ZephyrApplication } from './models/ZephyrApplication';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
@@ -1949,6 +1949,41 @@ export function activate(context: vscode.ExtensionContext) {
 				} finally {
 					westWorkspaceProvider.refresh();
 				}
+			}
+		})
+	);
+
+	// Guard a blobs action on the workspace's Zephyr version: `west blobs` only
+	// exists from 3.2.0. Returns true when it's safe to run. The submenu is already
+	// hidden below 3.2 via contextValue, but the palette can still invoke these.
+	const ensureBlobsSupported = (node: WestWorkspaceTreeItem): boolean => {
+		if (!node?.westWorkspace) { return false; }
+		if (!node.westWorkspace.supportsBlobs) {
+			vscode.window.showInformationMessage(`west blobs requires Zephyr >= 3.2.0 (this workspace is ${node.westWorkspace.version}).`);
+			return false;
+		}
+		return true;
+	};
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-west-workspace.blobs.list', async (node: WestWorkspaceTreeItem) => {
+			if (!ensureBlobsSupported(node)) { return; }
+			westBlobsListCommand(node.westWorkspace);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-west-workspace.blobs.fetch', async (node: WestWorkspaceTreeItem) => {
+			if (!ensureBlobsSupported(node)) { return; }
+			await westBlobsFetchCommand(node.westWorkspace.rootUri.fsPath, node.westWorkspace.supportsBlobsAutoAccept);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-west-workspace.blobs.clean', async (node: WestWorkspaceTreeItem) => {
+			if (!ensureBlobsSupported(node)) { return; }
+			if (await showConfirmMessage(`Delete all fetched binary blobs for ${node.westWorkspace.name}? They can be re-fetched later.`)) {
+				await westBlobsCleanCommand(node.westWorkspace.rootUri.fsPath);
 			}
 		})
 	);
@@ -3927,7 +3962,7 @@ export function activate(context: vscode.ExtensionContext) {
 	};
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("west.init", async (srcUrl, srcRev, workspaceDestPath, manifestPath, enableRust = false, createWorkspaceVenvFlag = false) => {
+		vscode.commands.registerCommand("west.init", async (srcUrl, srcRev, workspaceDestPath, manifestPath, enableRust = false, createWorkspaceVenvFlag = false, fetchBlobsFlag = false) => {
 			if (workspaceDestPath && !isWorkspaceFolder(workspaceDestPath)) {
 				vscode.window.withProgress({
 					location: vscode.ProgressLocation.Notification,
@@ -3965,6 +4000,27 @@ export function activate(context: vscode.ExtensionContext) {
 						if (createWorkspaceVenvFlag) {
 							progress.report({ increment: 5, message: 'Creating workspace virtual environment...' });
 							await createAndStoreWorkspaceVenv(workspaceDestPath);
+							if (token.isCancellationRequested) {
+								throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
+							}
+						}
+						// Fetch binary blobs after the workspace is populated (and after the
+						// dedicated venv when one was requested), but before addWorkspaceFolder
+						// which can reload the window and abort this callback. Skipped on
+						// Zephyr < 3.2 where `west blobs` does not exist. Read the version from
+						// disk via getWestWorkspace (works pre-registration, like the venv step).
+						// Best-effort: a failed blob download must NOT abort the import (the
+						// folder still needs registering), so failures degrade to a warning.
+						if (fetchBlobsFlag) {
+							try {
+								const ws = getWestWorkspace(workspaceDestPath);
+								if (ws?.supportsBlobs) {
+									progress.report({ increment: 5, message: 'Fetching binary blobs...' });
+									await westBlobsFetchCommand(workspaceDestPath, ws.supportsBlobsAutoAccept);
+								}
+							} catch (blobErr) {
+								vscode.window.showWarningMessage(`Some binary blobs could not be fetched (${blobErr instanceof Error ? blobErr.message : String(blobErr)}). You can retry later from the workspace's Blobs > Fetch menu.`);
+							}
 							if (token.isCancellationRequested) {
 								throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
 							}
@@ -4029,7 +4085,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir?: string, pathPrefix?: string, projects?: string[], enableRust = false, createWorkspaceVenvFlag = false) => {
+		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir?: string, pathPrefix?: string, projects?: string[], enableRust = false, createWorkspaceVenvFlag = false, fetchBlobsFlag = false) => {
 			if (remotePath && remoteBranch && workspacePath && templateHal) {
 				try {
 					// Determine if mode is 'full' or 'minimal'
@@ -4037,7 +4093,7 @@ export function activate(context: vscode.ExtensionContext) {
 					// Generate west.xml from template
 					let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal, isFull, manifestDir, pathPrefix, projects, enableRust === true);
 					// Run west init to the newly create manifest
-					vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestFile, enableRust, createWorkspaceVenvFlag);
+					vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestFile, enableRust, createWorkspaceVenvFlag, fetchBlobsFlag);
 				} catch (error) {
 					vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
 				}
