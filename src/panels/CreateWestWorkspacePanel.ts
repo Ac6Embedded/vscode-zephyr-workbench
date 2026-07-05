@@ -254,6 +254,10 @@ export class CreateWestWorkspacePanel {
               <vscode-button id="browseLocationButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
             </div>
 
+            <div class="grid-group-div" id="subfolderGroup">
+              <vscode-text-field size="50" type="text" id="workspaceSubfolder" value="zephyrproject" placeholder="zephyrproject">Subfolder:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Name of the folder created under the Location for the new west workspace (e.g. Location/zephyrproject). Leave empty to create it directly in the selected folder.">?</span></vscode-text-field>
+            </div>
+
             <div class="grid-group-div">
               <vscode-button id="importButton" class="finish-input-button">Import</vscode-button>
             <div>
@@ -469,6 +473,18 @@ export class CreateWestWorkspacePanel {
             templateHal = message.templateHal;
             projects = Array.isArray(message.projects) ? message.projects : [];
             this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: workspacePath, id: 'workspacePath'});
+
+            // Create the workspace in a named subfolder of the selected location
+            // (default "zephyrproject"). Empty falls back to the location itself.
+            // Not applicable to local import, which points at an existing workspace.
+            const subfolder = srcType !== 'local' ? String(message.subfolder ?? '').trim() : '';
+            if (subfolder.length > 0) {
+              workspacePath = path.join(workspacePath, subfolder);
+              if (fs.existsSync(workspacePath) && fs.readdirSync(workspacePath).length > 0) {
+                vscode.window.showWarningMessage(`The subfolder "${subfolder}" already exists and is not empty. Please choose a different name.`);
+                return;
+              }
+            }
 
             const hasDeps = fs.existsSync(path.join(workspacePath, 'deps'));
             const hasManifestDir = fs.existsSync(path.join(workspacePath, 'manifest'));

@@ -537,6 +537,13 @@ function modifySrcTypeHandler(this: HTMLElement) {
     advancedOptionsGroup.style.display = srcTypeRadioGroup.value === 'local' ? 'none' : 'block';
   }
 
+  // The subfolder only applies when creating a workspace, not for local import
+  // (which points at an existing workspace folder).
+  const subfolderGroup = document.getElementById("subfolderGroup") as HTMLDivElement | null;
+  if (subfolderGroup) {
+    subfolderGroup.style.display = srcTypeRadioGroup.value === 'local' ? 'none' : 'block';
+  }
+
   // Enable/Disable form section depending on user choice
   if(srcTypeRadioGroup.value === 'remote') {
     srcRemotePath.removeAttribute('disabled');
@@ -642,7 +649,8 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const manifestDirField = document.getElementById("manifestDir") as TextField | null;
   const pathPrefixField = document.getElementById("pathPrefix") as TextField | null;
   const workspacePath = document.getElementById("workspacePath") as TextField;
-  
+  const workspaceSubfolder = document.getElementById("workspaceSubfolder") as TextField | null;
+
   // Get template mode (Full or Minimal)
   const templateModeGroup = document.getElementById("templateMode");
   let templateModeValue = "minimal";
@@ -665,6 +673,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       manifestDir: manifestDirField ? manifestDirField.value : undefined,
       pathPrefix: pathPrefixField ? pathPrefixField.value : undefined,
       workspacePath: workspacePath.value,
+      subfolder: workspaceSubfolder ? workspaceSubfolder.value : undefined,
       templateMode: templateModeValue,
       projects: projects,
       enableRust: (document.getElementById('enableRustCheckbox') as unknown as { checked?: boolean } | null)?.checked === true,
