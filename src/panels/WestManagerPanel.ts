@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import yaml from 'yaml';
+import yaml, { isMap, isSeq, YAMLSeq } from 'yaml';
 import { getUri } from '../utilities/getUri';
 import { getNonce } from '../utilities/getNonce';
 import { WestWorkspace } from '../models/WestWorkspace';
@@ -38,6 +38,8 @@ interface WestManagerWorkspaceDetails extends WestManagerWorkspaceSummary {
   submanifestPaths: string[];
   zephyrRepoUrl: string;
   zephyrRevision: string;
+  supported: boolean;
+  unsupportedReason?: string;
   importAll: boolean;
   availableProjects: string[];
   selectedProjects: string[];
@@ -47,11 +49,20 @@ interface WestManagerWorkspaceDetails extends WestManagerWorkspaceSummary {
 interface WestManagerApplyState {
   rootPath: string;
   zephyrRevision: string;
+  importAll: boolean;
   selectedProjects: string[];
   rustEnabled: boolean;
 }
 
 const ZEPHYR_LANG_RUST_PROJECT_FILTER = `+${ZEPHYR_LANG_RUST_PROJECT_NAME}`;
+
+/* West Manager only edits the zephyr project's module import. It can manage a
+   full workspace (`import: true`, or an import map without a name-allowlist) and
+   a minimal workspace (`import.name-allowlist`). Any other shape — no zephyr
+   project, or an import that pulls in manifest files (a string/sequence) — is
+   left untouched and reported to the user. */
+const UNSUPPORTED_MANIFEST_TOPOLOGY_MESSAGE =
+  'This manifest topology is not supported. West Manager can manage a zephyr project that imports modules via "import: true" or an "import.name-allowlist".';
 
 interface WestConfigProjectFilter {
   /* Line index where a new project-filter entry can be inserted (end of the
@@ -159,6 +170,56 @@ function findZephyrProject(projects: WestManifestProject[] | undefined): WestMan
     project['repo-path'] === 'zephyr' ||
     project.path === 'zephyr'
   );
+}
+
+/* Classify the zephyr project's `import` into the two shapes West Manager can
+   manage. `importAll` is the current state, not a request. Anything unsupported
+   is reported instead of being rewritten. */
+function classifyManifestImport(importValue: unknown): { supported: boolean; importAll: boolean } {
+  if (importValue === true) {
+    return { supported: true, importAll: true };
+  }
+  if (importValue && typeof importValue === 'object' && !Array.isArray(importValue)) {
+    const allowlist = (importValue as Record<string, unknown>)['name-allowlist'];
+    return Array.isArray(allowlist)
+      ? { supported: true, importAll: false }
+      : { supported: true, importAll: true };
+  }
+  return { supported: false, importAll: false };
+}
+
+/* Node-based counterpart of findZephyrProject for the surgical write path. */
+function findZephyrProjectIndex(projectsNode: YAMLSeq): number {
+  for (let i = 0; i < projectsNode.items.length; i++) {
+    const item = projectsNode.items[i];
+    if (!isMap(item)) {
+      continue;
+    }
+    if (item.get('name') === 'zephyr' || item.get('repo-path') === 'zephyr' || item.get('path') === 'zephyr') {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/* Patch a name-allowlist sequence in place: drop entries no longer selected and
+   append newly selected ones, so comments and order on retained entries survive
+   (replacing the whole node would discard them). */
+function setAllowlistSeq(allowlistNode: YAMLSeq, selectedProjects: string[]): void {
+  for (let i = allowlistNode.items.length - 1; i >= 0; i--) {
+    if (!selectedProjects.includes(String(allowlistNode.get(i)))) {
+      allowlistNode.delete(i);
+    }
+  }
+  const existing = new Set<string>();
+  for (let i = 0; i < allowlistNode.items.length; i++) {
+    existing.add(String(allowlistNode.get(i)));
+  }
+  for (const projectName of selectedProjects) {
+    if (!existing.has(projectName)) {
+      allowlistNode.add(projectName);
+    }
+  }
 }
 
 function joinRemoteRepoUrl(urlBase: string, repoPath: string): string {
@@ -285,6 +346,9 @@ function getWorkspaceDetails(westWorkspace: WestWorkspace): WestManagerWorkspace
   const zephyrRepoUrl = getZephyrRepoUrl(manifest, zephyrProject);
   const availableProjects = getAvailableProjects(projectSourcePaths);
   const selection = getSelectedProjects(zephyrProject, availableProjects);
+  const topology = zephyrProject
+    ? classifyManifestImport(zephyrProject.import)
+    : { supported: false, importAll: false };
 
   return {
     name: westWorkspace.name,
@@ -297,68 +361,76 @@ function getWorkspaceDetails(westWorkspace: WestWorkspace): WestManagerWorkspace
     submanifestPaths,
     zephyrRepoUrl,
     zephyrRevision: zephyrProject?.revision ?? '',
-    importAll: selection.importAll,
+    supported: topology.supported,
+    unsupportedReason: topology.supported ? undefined : UNSUPPORTED_MANIFEST_TOPOLOGY_MESSAGE,
+    importAll: topology.importAll,
     availableProjects,
     selectedProjects: selection.selectedProjects,
     rustEnabled: isRustEnabledInWestConfig(westWorkspace.westConfUri.fsPath),
   };
 }
 
-function readWorkspaceManifest(rootPath: string): { westWorkspace: WestWorkspace; manifest: WestManifestData } {
-  const westWorkspace = getWorkspaceByPath(rootPath);
+function applyWorkspaceState(state: WestManagerApplyState): WestManagerWorkspaceDetails {
+  const westWorkspace = getWorkspaceByPath(state.rootPath);
   if (!westWorkspace) {
     throw new Error('West workspace not found in the current VS Code workspace.');
   }
 
-  const manifest = yaml.parse(fs.readFileSync(westWorkspace.manifestUri.fsPath, 'utf8')) as WestManifestData;
-  if (!manifest.manifest) {
-    manifest.manifest = {};
-  }
-  if (!Array.isArray(manifest.manifest.projects)) {
-    manifest.manifest.projects = [];
+  const manifestPath = westWorkspace.manifestUri.fsPath;
+  /* Edit through the YAML Document API so comments and untouched content survive;
+     a parse -> stringify round-trip would rewrite the whole file. */
+  const doc = yaml.parseDocument(fs.readFileSync(manifestPath, 'utf8'));
+
+  const projectsNode = doc.getIn(['manifest', 'projects']);
+  const zephyrIndex = isSeq(projectsNode) ? findZephyrProjectIndex(projectsNode) : -1;
+  if (zephyrIndex < 0) {
+    throw new Error(UNSUPPORTED_MANIFEST_TOPOLOGY_MESSAGE);
   }
 
-  return { westWorkspace, manifest };
-}
-
-function applyWorkspaceState(state: WestManagerApplyState): WestManagerWorkspaceDetails {
-  const { westWorkspace, manifest } = readWorkspaceManifest(state.rootPath);
-  const zephyrProject = findZephyrProject(manifest.manifest?.projects);
-  if (!zephyrProject) {
-    throw new Error('The workspace manifest does not contain a zephyr project entry.');
+  const importPath = ['manifest', 'projects', zephyrIndex, 'import'];
+  const importNode = doc.getIn(importPath);
+  const importMap = isMap(importNode) ? importNode : null;
+  if (importNode !== true && !importMap) {
+    throw new Error(UNSUPPORTED_MANIFEST_TOPOLOGY_MESSAGE);
   }
 
   const revision = state.zephyrRevision.trim();
   if (revision.length > 0) {
-    zephyrProject.revision = revision;
+    doc.setIn(['manifest', 'projects', zephyrIndex, 'revision'], revision);
   }
 
-  const availableProjects = getAvailableProjects(getProjectSourcePaths(westWorkspace.kernelUri.fsPath));
-  const selectedProjects = uniqueProjectNames(state.selectedProjects);
-  /* The Rust module must survive the import name-allowlist on top of the
-     project-filter activation, otherwise west never resolves the project. */
-  if (state.rustEnabled === true && !selectedProjects.includes(ZEPHYR_LANG_RUST_PROJECT_NAME)) {
-    selectedProjects.push(ZEPHYR_LANG_RUST_PROJECT_NAME);
-  }
-  if (availableProjects.length > 0) {
-    const selectedAllProjects = availableProjects.every(projectName => selectedProjects.includes(projectName));
-    let importBlock = zephyrProject.import;
-    if (selectedAllProjects) {
-      if (importBlock && typeof importBlock === 'object' && !Array.isArray(importBlock)) {
-        delete (importBlock as Record<string, unknown>)['name-allowlist'];
+  if (state.importAll) {
+    // Full workspace: import everything. Drop any allowlist; collapse an otherwise
+    // empty import map (e.g. it only held name-allowlist) back to `import: true`.
+    if (importMap) {
+      importMap.delete('name-allowlist');
+      if (importMap.items.length === 0) {
+        doc.setIn(importPath, true);
+      }
+    }
+  } else {
+    // Minimal workspace: manage the name-allowlist.
+    const selectedProjects = uniqueProjectNames(state.selectedProjects);
+    /* The Rust module must survive the import name-allowlist on top of the
+       project-filter activation, otherwise west never resolves the project. */
+    if (state.rustEnabled === true && !selectedProjects.includes(ZEPHYR_LANG_RUST_PROJECT_NAME)) {
+      selectedProjects.push(ZEPHYR_LANG_RUST_PROJECT_NAME);
+    }
+
+    if (importMap) {
+      const allowlistNode = importMap.get('name-allowlist', true);
+      if (isSeq(allowlistNode)) {
+        setAllowlistSeq(allowlistNode, selectedProjects);
       } else {
-        zephyrProject.import = true;
+        importMap.set('name-allowlist', doc.createNode(selectedProjects));
       }
     } else {
-      if (!importBlock || importBlock === true || typeof importBlock !== 'object' || Array.isArray(importBlock)) {
-        importBlock = {};
-        zephyrProject.import = importBlock;
-      }
-      (importBlock as Record<string, unknown>)['name-allowlist'] = selectedProjects;
+      // Coming from a full workspace (`import: true`) into an allowlist.
+      doc.setIn(importPath, { 'name-allowlist': selectedProjects });
     }
   }
 
-  fs.writeFileSync(westWorkspace.manifestUri.fsPath, yaml.stringify(manifest), 'utf8');
+  fs.writeFileSync(manifestPath, doc.toString(), 'utf8');
   setRustEnabledInWestConfig(westWorkspace.westConfUri.fsPath, state.rustEnabled === true);
   return getWorkspaceDetails(westWorkspace);
 }
@@ -516,7 +588,9 @@ export class WestManagerPanel {
                 </div>
 
                 <div class="grid-group-div">
-                  <label>Manifest projects:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Projects are read from the local zephyr/west.yml and zephyr/submanifests/*.yaml when present. Checked projects are written to the manifest name-allowlist; checking all projects imports all.">?</span></label>
+                  <label>Manifest projects:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Projects are read from the local zephyr/west.yml and zephyr/submanifests/*.yaml when present. Checked projects are written to the manifest name-allowlist. Use Import all modules for a full workspace.">?</span></label>
+                  <vscode-checkbox id="importAllCheckbox">Import all modules (full)&nbsp;&nbsp;<span class="tooltip" data-tooltip="Full workspace: the zephyr project imports every module (import: true). Uncheck to manage a specific set through the manifest name-allowlist.">?</span></vscode-checkbox>
+                  <div id="importAllHint" class="projects-empty" style="display:none;">All modules are imported. Uncheck &quot;Import all modules&quot; to pick individual modules.</div>
                   <div class="project-toolbar">
                     <vscode-text-field id="projectFilter" type="text" placeholder="Filter projects"></vscode-text-field>
                     <button id="selectAllProjectsButton" type="button" class="inline-icon-button codicon codicon-check-all" title="Select all projects" aria-label="Select all projects"></button>
@@ -577,6 +651,9 @@ export class WestManagerPanel {
   }
 
   private async postRevisionOptions(details: WestManagerWorkspaceDetails): Promise<void> {
+    if (!details.supported) {
+      return;
+    }
     if (!details.zephyrRepoUrl) {
       this._panel.webview.postMessage({
         command: 'revisionOptionsError',

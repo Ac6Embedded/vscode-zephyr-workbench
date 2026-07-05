@@ -18,6 +18,8 @@ interface WestManagerWorkspaceDetails extends WestManagerWorkspaceSummary {
   submanifestPaths: string[];
   zephyrRepoUrl: string;
   zephyrRevision: string;
+  supported: boolean;
+  unsupportedReason?: string;
   importAll: boolean;
   availableProjects: string[];
   selectedProjects: string[];
@@ -66,6 +68,13 @@ function main() {
   clearButton?.addEventListener('click', () => {
     selectedProjects.clear();
     renderProjects();
+  });
+
+  const importAllCheckbox = document.getElementById('importAllCheckbox') as Checkbox | null;
+  importAllCheckbox?.addEventListener('change', () => {
+    // Rebuild the list from the current selection, then grey it out if importing all.
+    renderProjects();
+    applyImportAllState();
   });
 
   const rustEnabledCheckbox = document.getElementById('rustEnabledCheckbox') as Checkbox | null;
@@ -120,8 +129,9 @@ function setVSCodeMessageListener() {
       case 'workspaceDetails':
         currentDetails = event.data.details;
         currentState.selectedRootPath = currentDetails?.rootPath ?? '';
+        // renderDetails owns the operation buttons: enabled for a supported
+        // workspace, disabled for an empty/unsupported one.
         renderDetails(currentDetails);
-        setOperationButtonsDisabled(false);
         setStatus(event.data.status ?? '');
         break;
       case 'revisionOptions':
@@ -176,6 +186,13 @@ function renderDetails(details: WestManagerWorkspaceDetails | undefined) {
     return;
   }
 
+  if (details.supported === false) {
+    // Nothing editable: hide the form and disable the operation buttons.
+    currentDetails = undefined;
+    setEmptyState(details.unsupportedReason || 'This manifest topology is not supported.');
+    return;
+  }
+
   currentDetails = details;
   selectedProjects = new Set(details.selectedProjects);
 
@@ -207,8 +224,54 @@ function renderDetails(details: WestManagerWorkspaceDetails | undefined) {
     rustEnabledCheckbox.checked = details.rustEnabled;
   }
 
+  const importAllCheckbox = document.getElementById('importAllCheckbox') as Checkbox | null;
+  if (importAllCheckbox) {
+    importAllCheckbox.checked = details.importAll;
+  }
+
   renderProjects();
+  applyImportAllState();
   setOperationButtonsDisabled(false);
+}
+
+/* Full workspace (import all): grey out and force-check the module list; the
+   backend ignores selectedProjects when importAll is set. */
+function applyImportAllState() {
+  const importAllCheckbox = document.getElementById('importAllCheckbox') as Checkbox | null;
+  const importAll = importAllCheckbox?.checked === true;
+
+  const hint = document.getElementById('importAllHint') as HTMLElement | null;
+  if (hint) {
+    hint.style.display = importAll ? '' : 'none';
+  }
+
+  const list = document.getElementById('projectsList') as HTMLElement | null;
+  if (list) {
+    list.style.opacity = importAll ? '0.6' : '';
+    const checkboxes = list.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(node => {
+      const checkbox = node as HTMLInputElement;
+      checkbox.disabled = importAll;
+      if (importAll) {
+        checkbox.checked = true;
+      }
+    });
+  }
+
+  const filterInput = document.getElementById('projectFilter') as TextField | null;
+  if (filterInput) {
+    if (importAll) {
+      filterInput.setAttribute('disabled', 'true');
+    } else {
+      filterInput.removeAttribute('disabled');
+    }
+  }
+  for (const id of ['selectAllProjectsButton', 'clearProjectsButton']) {
+    const button = document.getElementById(id) as HTMLButtonElement | null;
+    if (button) {
+      button.disabled = importAll;
+    }
+  }
 }
 
 function setEmptyState(message: string) {
@@ -381,6 +444,7 @@ function postOperation(command: 'apply' | 'applyAndUpdate') {
 
   const revisionInput = document.getElementById('revisionInput') as HTMLInputElement | null;
   const rustEnabledCheckbox = document.getElementById('rustEnabledCheckbox') as Checkbox | null;
+  const importAllCheckbox = document.getElementById('importAllCheckbox') as Checkbox | null;
   setOperationButtonsDisabled(true);
   setStatus(command === 'apply' ? 'Applying manifest changes...' : 'Applying manifest changes and updating workspace...');
   webviewApi.postMessage({
@@ -388,6 +452,7 @@ function postOperation(command: 'apply' | 'applyAndUpdate') {
     state: {
       rootPath: currentDetails.rootPath,
       zephyrRevision: revisionInput?.value ?? '',
+      importAll: importAllCheckbox?.checked === true,
       selectedProjects: Array.from(selectedProjects),
       rustEnabled: rustEnabledCheckbox?.checked === true,
     },
