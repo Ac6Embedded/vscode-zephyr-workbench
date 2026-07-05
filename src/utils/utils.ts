@@ -703,6 +703,43 @@ export async function getZephyrApplication(projectPath: string): Promise<ZephyrA
   throw new Error(`Cannot find project ${projectPath}`);
 }
 
+/**
+ * Remove registered toolchains from the global settings whose install folder no
+ * longer exists on disk, and ONLY in that condition. Uses plain path existence
+ * (fileExists), not the stricter is*Path checks: a folder that is still present
+ * but fails validation is kept. Each of the four lists is written back only if it
+ * actually changed. Returns whether anything was removed.
+ */
+export async function pruneMissingToolchains(): Promise<boolean> {
+  const config = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY);
+  const gone = (p: unknown): boolean => typeof p === 'string' && p.length > 0 && !fileExists(p);
+
+  const pruneList = async (key: string, pathOf: (entry: any) => unknown): Promise<boolean> => {
+    const list = config.get<any[]>(key, []);
+    if (!Array.isArray(list)) {
+      return false;
+    }
+    const kept = list.filter(entry => !gone(pathOf(entry)));
+    if (kept.length === list.length) {
+      return false;
+    }
+    try {
+      await config.update(key, kept, vscode.ConfigurationTarget.Global);
+      return true;
+    } catch {
+      // Never let a settings-write failure crash activation/refresh.
+      return false;
+    }
+  };
+
+  let changed = false;
+  changed = (await pruneList(ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, path => path)) || changed;
+  changed = (await pruneList(ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY, entry => entry?.iarPath)) || changed;
+  changed = (await pruneList(ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY, entry => entry?.toolchainPath)) || changed;
+  changed = (await pruneList(ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY, entry => entry?.toolchainPath)) || changed;
+  return changed;
+}
+
 export async function getRegisteredZephyrSdkInstallations(): Promise<ZephyrSdkInstallation[]> {
   const zephyrSDKPaths: string[] | undefined = vscode.workspace
     .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)

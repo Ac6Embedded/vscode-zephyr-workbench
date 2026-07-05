@@ -53,7 +53,7 @@ import { registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zeph
 import { checkRustPrerequisites, findRustup, getManagedRustupRootDir, installManagedRustup, installMsvcBuildTools, installRustToolchainViaRustup, MSVC_BUILD_TOOLS_MANUAL_URL, resolveRustupToolchainName, uninstallRustToolchainViaRustup } from './utils/zephyr/rustupUtils';
 import { buildLlvmDownloadUrl, buildRustDistUrls, detectRustVersion, getLlvmTopLevelDirName, getRustDistTopLevelDirName, getRustHostTriple, installMingwToolchain, installRustDistComponents, isLlvmPath, registerRustToolchain, unregisterRustToolchain, updateRustToolchainLink, updateRustToolchainLlvm, WINLIBS_MANUAL_URL } from './utils/zephyr/rustToolchainUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
-import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
+import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, pruneMissingToolchains, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
@@ -456,6 +456,11 @@ export function activate(context: vscode.ExtensionContext) {
 	const toolchainInstallationsProvider = new ToolchainInstallationsDataProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-sdk-explorer', toolchainInstallationsProvider);
 
+	// Drop toolchains from the global settings whose install folder was removed from disk.
+	void pruneMissingToolchains()
+		.then(changed => { if (changed) { toolchainInstallationsProvider.refresh(); } })
+		.catch(() => { /* ignore */ });
+
 	const westWorkspaceProvider = new WestWorkspaceDataProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-west-workspace', westWorkspaceProvider);
 
@@ -518,7 +523,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register commands
 	// TODO: Could be refactored / Optimized
-	vscode.commands.registerCommand('zephyr-workbench-sdk-explorer.refresh', () => toolchainInstallationsProvider.refresh());
+	vscode.commands.registerCommand('zephyr-workbench-sdk-explorer.refresh', async () => {
+		await pruneMissingToolchains();
+		toolchainInstallationsProvider.refresh();
+	});
 	vscode.commands.registerCommand('zephyr-workbench-west-workspace.refresh', () => westWorkspaceProvider.refresh());
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.refresh', () => {
 		zephyrAppProvider.refresh();
