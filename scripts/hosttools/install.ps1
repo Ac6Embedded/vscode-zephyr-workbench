@@ -8,6 +8,8 @@ param (
     [switch]$UseSystemPython,
     [string]$PythonExePath = "",
     [string]$RequirementsRef = "",
+    [ValidateSet("pip", "west")]
+    [string]$ZephyrDeps = "pip",
     [string]$MirrorBaseUrl = "https://www.ac6-tools.com/downloads/zephyr-workbench/mirror/hosttools",
     [switch]$Help,
     [switch]$Version
@@ -50,6 +52,9 @@ Options:
   -RequirementsRef       Optional. Zephyr git ref (tag or branch, e.g. v4.2.0 or main) whose scripts/requirements*.txt
                          are installed into the virtual environment. Defaults to main. An explicit ref takes
                          precedence over a local ZEPHYR_BASE requirements file.
+  -ZephyrDeps            Optional. How to install Zephyr's own dependencies into the venv: 'pip' (default) runs
+                         'pip install -r requirements.txt'; 'west' skips it so the caller can run 'west packages'.
+                         tools.yml base packages are installed in both modes.
   -MirrorBaseUrl         Optional. Base URL of the download mirror used when a primary download fails or its
                          checksum mismatches. An empty value ('') disables the mirror fallback.
                          Defaults to the Ac6 mirror.
@@ -320,10 +325,14 @@ function Install-PythonVenv {
         }
     }
 
-    Write-Output "Installing Zephyr's base requirements..."
-    & python -m pip install -r "$RequirementsFile" --quiet
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to install Zephyr base requirements from $RequirementsFile (exit code $LASTEXITCODE)"
+    if ($ZephyrDeps -eq "west") {
+        Write-Output "Skipping requirements.txt (Zephyr deps will be installed via 'west packages')."
+    } else {
+        Write-Output "Installing Zephyr's base requirements..."
+        & python -m pip install -r "$RequirementsFile" --quiet
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to install Zephyr base requirements from $RequirementsFile (exit code $LASTEXITCODE)"
+        }
     }
 
     # Every package was attempted above (one bad package never stops the

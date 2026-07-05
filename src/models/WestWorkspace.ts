@@ -4,13 +4,17 @@ import path from 'path';
 import { fileExists, getWorkspaceFolder } from '../utils/utils';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY } from '../constants';
 import { getBuildEnv, loadEnv } from '../utils/env/zephyrEnvUtils';
-import { buildStartupSetupShellArgs, buildTerminalEnvCommands, concatCommands, getConfiguredWorkbenchPath, getShellCdCommand, getShellClearCommand, getResolvedShell, getShellSourceCommand, classifyShell, normalizePathForShell, TerminalEnvGroup } from '../utils/execUtils';
+import { buildStartupSetupShellArgs, buildTerminalEnvCommands, concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getShellCdCommand, getShellClearCommand, getResolvedShell, getShellSourceCommand, classifyShell, normalizePathForShell, TerminalEnvGroup } from '../utils/execUtils';
 
 export class WestWorkspace {
   versionArray!: { [key: string]: string };
   manifestPath!: string;
   manifestFile!: string;
   zephyrBase!: string;
+  // Python venv shared by every application of this west workspace. Resolved from
+  // the workspace-folder `venv.path` setting, else auto-detected as `<root>/.venv`.
+  // Undefined => fall back to the global venv. See docs in ZephyrApplication.venvPath.
+  venvPath?: string;
   envVars: { [key: string]: any } = {
     BOARD_ROOT: [],
     DTS_ROOT: [],
@@ -111,6 +115,17 @@ export class WestWorkspace {
         }
       }
     }
+
+    // Resolve the workspace venv: explicit `venv.path` at the workspace-folder scope
+    // wins (SPDX-only paths are filtered out by getConfiguredVenvPath); otherwise
+    // auto-detect a `<root>/.venv` created by the dedicated-venv flow.
+    const configuredVenv = getConfiguredVenvPath(this.rootUri);
+    if (configuredVenv) {
+      this.venvPath = configuredVenv;
+    } else {
+      const candidate = path.join(this.rootUri.fsPath, '.venv');
+      this.venvPath = fileExists(candidate) ? candidate : undefined;
+    }
   }
 
   get version(): string {
@@ -202,14 +217,23 @@ export class WestWorkspace {
   private static buildTerminalContext(westWorkspace: WestWorkspace) {
     const { path: shellPath, args: shellArgs } = getResolvedShell();
     const shellType = classifyShell(shellPath);
+    // PYTHON_VENV_PATH is consumed by the sourced env script to activate the
+    // workspace venv (falls back to the global venv when unset).
+    const helpersEnv: Record<string, string> = westWorkspace.venvPath
+      ? { PYTHON_VENV_PATH: westWorkspace.venvPath }
+      : {};
+    const env = { ...westWorkspace.buildEnv, ...helpersEnv };
     const groups: TerminalEnvGroup[] = [
       { label: 'Zephyr build system', env: westWorkspace.buildEnv },
     ];
+    if (westWorkspace.venvPath) {
+      groups.push({ label: 'Helpers', env: helpersEnv });
+    }
     return {
       shellPath,
       shellArgs,
       shellType,
-      env: westWorkspace.buildEnv,
+      env,
       groups,
       cwd: westWorkspace.rootUri.fsPath,
     };

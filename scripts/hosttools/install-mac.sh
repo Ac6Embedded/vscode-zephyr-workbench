@@ -48,6 +48,12 @@ CUSTOM_PYTHON_DIR=""
 REQUIREMENTS_REF=""
 REQUIREMENTS_REF_VALUE="main"
 
+# How the venv install handles Zephyr's own dependencies:
+#   pip  (default) - `pip install -r requirements.txt`
+#   west           - skip requirements.txt; the caller runs `west packages`
+# The tools.yml base packages are installed in both modes.
+ZEPHYR_DEPS_MODE="pip"
+
 # Track if the selected Python is too old for Zephyr
 PYTHON_TOO_OLD=false
 PYTHON_MIN_MAJOR=3
@@ -93,6 +99,10 @@ OPTIONS:
                             containing python3/python).
   --requirements-ref <ref>  Zephyr git ref (tag or branch) used to fetch the
                             Python requirements files (default: main).
+  --zephyr-deps <pip|west>  How to install Zephyr's own dependencies into the venv
+                            (default: pip). 'west' skips requirements.txt so the
+                            caller can run 'west packages'. tools.yml base packages
+                            are installed in both modes.
   --mirror-base-url <url>   Override the download mirror used when a primary download
                             fails or mismatches (default: Ac6 mirror). An empty value
                             disables the mirror fallback.
@@ -152,6 +162,10 @@ while [[ "$#" -gt 0 ]]; do
     --requirements-ref)
       shift
       REQUIREMENTS_REF="$1"
+      ;;
+    --zephyr-deps)
+      shift
+      ZEPHYR_DEPS_MODE="$1"
       ;;
     --portable)
       echo "WARN: --portable is deprecated and ignored on macOS (Homebrew python is the default)"
@@ -763,10 +777,14 @@ PY
         fi
     done
 
-    echo "Installing Zephyr's base requirements..."
-    if ! python -m pip install -r "$requirements_file" --quiet; then
-        step_error "Failed to install Zephyr base requirements ($requirements_file)"
-        return 1
+    if [[ "$ZEPHYR_DEPS_MODE" == "west" ]]; then
+        echo "Skipping requirements.txt (Zephyr deps will be installed via 'west packages')."
+    else
+        echo "Installing Zephyr's base requirements..."
+        if ! python -m pip install -r "$requirements_file" --quiet; then
+            step_error "Failed to install Zephyr base requirements ($requirements_file)"
+            return 1
+        fi
     fi
 
     if [ ${#venv_failed_specs[@]} -gt 0 ]; then

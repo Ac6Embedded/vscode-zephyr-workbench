@@ -253,7 +253,18 @@ export class ZephyrApplication {
         );
       }
     }
+    // Venv precedence (most specific wins): explicit per-app `venv.path` -> the
+    // linked west workspace's venv -> (undefined) global venv. Every app in a
+    // workspace shares one venv unless it sets its own per-app override.
     this.venvPath = getPathSetting(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY);
+    if (!this.venvPath && this.westWorkspaceRootPath) {
+      try {
+        this.venvPath = getWestWorkspace(this.westWorkspaceRootPath).venvPath;
+      } catch {
+        // west workspace not resolvable (missing/invalid .west) -> leave undefined
+        // so consumers fall back to the global venv.
+      }
+    }
 
     this.zephyrSdkVersion = undefined;
     if (this.zephyrSdkPath) {

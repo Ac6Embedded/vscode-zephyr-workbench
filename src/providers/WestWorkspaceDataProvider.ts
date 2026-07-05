@@ -173,6 +173,9 @@ export class WestWorkspaceTreeItem extends vscode.TreeItem {
 
     this.tooltip = `${this.westWorkspace.rootUri.fsPath}`;
     this.description = `[${this.westWorkspace.version}]`;
+    // Suffix the context value when a dedicated venv is set so the "Remove venv"
+    // menu item can be gated to only appear when there is one to remove.
+    this.contextValue = westWorkspace.venvPath ? 'west-workspace-hasvenv' : 'west-workspace';
   }
 
   //iconPath = new vscode.ThemeIcon('symbol-misc');
@@ -180,7 +183,6 @@ export class WestWorkspaceTreeItem extends vscode.TreeItem {
     light: path.join(__filename, '..', '..', 'res', 'icons','zephyr.svg'),
     dark: path.join(__filename, '..', '..', 'res', 'icons','zephyr.svg')
   };
-  contextValue = 'west-workspace';
 }
 
 export class WestWorkspaceEnvTreeItem extends vscode.TreeItem {

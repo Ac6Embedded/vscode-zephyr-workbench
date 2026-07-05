@@ -1091,6 +1091,12 @@ interface CreateLocalManagedVenvOptions {
   westWorkspacePathOverride?: string;
   venvBasePathOverride?: string;
   extraPackages?: string[];
+  // How to install Zephyr's own dependencies into the venv:
+  //  - 'pip'  (default): let the installer run `pip install -r requirements.txt`.
+  //  - 'west': skip requirements.txt in the installer and instead resolve
+  //            module-aware deps with `west packages pip --install` afterwards.
+  // The `tools.yml` base packages (west, pyelftools, ...) are always installed.
+  zephyrDeps?: 'pip' | 'west';
 }
 
 function getManagedVenvPath(destDir: string, venvDirName: string): string {
@@ -1109,10 +1115,69 @@ function getManagedVenvPythonPath(venvDir: string): string {
     : path.join(venvDir, 'bin', 'python3');
 }
 
+function getManagedVenvWestPath(venvDir: string): string {
+  return process.platform === 'win32'
+    ? path.join(venvDir, 'Scripts', 'west.exe')
+    : path.join(venvDir, 'bin', 'west');
+}
+
+// `west packages pip --install` (module-aware Python dependency resolution)
+// exists from Zephyr ~3.6. Below that, fall back to Zephyr's requirements.txt.
+// Threshold is approximate — the create flow also degrades to the requirements
+// fallback if the `west packages` invocation fails on an unexpected version.
+function zephyrVersionSupportsWestPackages(versionArray: { [key: string]: string }): boolean {
+  const major = parseInt(versionArray?.['VERSION_MAJOR'] ?? '', 10);
+  const minor = parseInt(versionArray?.['VERSION_MINOR'] ?? '', 10);
+  if (!Number.isFinite(major) || !Number.isFinite(minor)) {
+    return false;
+  }
+  return major > 3 || (major === 3 && minor >= 6);
+}
+
 function prependPathEntry(currentPath: string | undefined, entry: string): string {
   return currentPath && currentPath.length > 0
     ? `${entry}${path.delimiter}${currentPath}`
     : entry;
+}
+
+// Env for a process that should run "inside" a managed venv without sourcing the
+// Zephyr env script: activate by setting VIRTUAL_ENV and putting the venv bin dir
+// first on PATH. Extra keys (e.g. ZEPHYR_BASE) are merged last.
+function managedVenvProcessEnv(
+  venvDir: string,
+  extraEnv: NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    VIRTUAL_ENV: venvDir,
+    PATH: prependPathEntry(process.env.PATH, getManagedVenvBinPath(venvDir)),
+    ...extraEnv,
+  };
+}
+
+// Spawn a command, streaming stdout/stderr to the output channel, and resolve on
+// exit code 0 (reject otherwise). Shared by the pip/west venv-provisioning steps.
+function runManagedVenvProcess(
+  command: string,
+  args: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    child.stdout?.on('data', (data: Buffer) => output.append(data.toString()));
+    child.stderr?.on('data', (data: Buffer) => output.append(data.toString()));
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`${path.basename(command)} exited with code ${code}`));
+      }
+    });
+  });
 }
 
 async function installPythonPackagesInManagedVenv(
@@ -1132,39 +1197,71 @@ async function installPythonPackagesInManagedVenv(
   output.show(true);
   output.appendLine(`Installing Python packages into ${venvDir}`);
 
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(
-      pythonPath,
-      ['-m', 'pip', 'install', '--upgrade', 'pip', ...packages],
-      {
-        cwd,
-        env: {
-          ...process.env,
-          VIRTUAL_ENV: venvDir,
-          PATH: prependPathEntry(process.env.PATH, getManagedVenvBinPath(venvDir)),
-        },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      },
+  await runManagedVenvProcess(
+    pythonPath,
+    ['-m', 'pip', 'install', '--upgrade', 'pip', ...packages],
+    cwd,
+    managedVenvProcessEnv(venvDir),
+  );
+  output.appendLine('Python package installation finished.');
+}
+
+// Legacy path: install Zephyr's own requirements.txt directly with pip. Used for
+// older Zephyr and as a fallback when `west packages` is unavailable/fails.
+async function installZephyrRequirementsInManagedVenv(
+  venvDir: string,
+  cwd: string,
+  zephyrBase: string,
+): Promise<void> {
+  const requirementsFile = path.join(zephyrBase, 'scripts', 'requirements.txt');
+  if (!fileExists(requirementsFile)) {
+    output.appendLine(`Zephyr requirements not found at ${requirementsFile}; skipping.`);
+    return;
+  }
+
+  const pythonPath = getManagedVenvPythonPath(venvDir);
+  if (!fileExists(pythonPath)) {
+    throw new Error(`Python executable not found in virtual environment: ${pythonPath}`);
+  }
+
+  output.show(true);
+  output.appendLine(`Installing Zephyr requirements from ${requirementsFile}`);
+  await runManagedVenvProcess(
+    pythonPath,
+    ['-m', 'pip', 'install', '-r', requirementsFile],
+    cwd,
+    managedVenvProcessEnv(venvDir),
+  );
+}
+
+// Modern path: resolve module-aware Python dependencies with `west packages`,
+// run against the freshly created venv from the west topdir. Degrades to the
+// requirements.txt fallback if west is missing or the command fails.
+async function installZephyrDepsViaWestPackages(
+  venvDir: string,
+  topdir: string,
+  zephyrBase: string,
+): Promise<void> {
+  const westPath = getManagedVenvWestPath(venvDir);
+  if (!fileExists(westPath)) {
+    output.appendLine(`west not found in ${venvDir}; installing Zephyr requirements directly.`);
+    await installZephyrRequirementsInManagedVenv(venvDir, topdir, zephyrBase);
+    return;
+  }
+
+  output.show(true);
+  output.appendLine(`Installing Zephyr module dependencies via 'west packages' into ${venvDir}`);
+  try {
+    await runManagedVenvProcess(
+      westPath,
+      ['packages', 'pip', '--install'],
+      topdir,
+      managedVenvProcessEnv(venvDir, { ZEPHYR_BASE: zephyrBase }),
     );
-
-    child.stdout?.on('data', (data: Buffer) => {
-      output.append(data.toString());
-    });
-
-    child.stderr?.on('data', (data: Buffer) => {
-      output.append(data.toString());
-    });
-
-    child.on('error', reject);
-    child.on('close', (code) => {
-      if (code === 0) {
-        output.appendLine('Python package installation finished.');
-        resolve();
-      } else {
-        reject(new Error(`pip install exited with code ${code}`));
-      }
-    });
-  });
+  } catch (e) {
+    output.appendLine(`'west packages' failed (${e}); falling back to Zephyr requirements.txt`);
+    await installZephyrRequirementsInManagedVenv(venvDir, topdir, zephyrBase);
+  }
 }
 
 async function createLocalManagedVenv(
@@ -1190,12 +1287,18 @@ async function createLocalManagedVenv(
   let installArgs = '';
   let shell = '';
 
+  // In 'west' mode the installer skips its `pip install -r requirements.txt` step;
+  // module-aware deps are installed with `west packages` after venv creation. The
+  // `tools.yml` base packages are always installed regardless of this flag.
+  const zephyrDepsFlagPosix = options.zephyrDeps === 'west' ? ' --zephyr-deps west' : '';
+  const zephyrDepsFlagWin = options.zephyrDeps === 'west' ? ' -ZephyrDeps west' : '';
+
   switch (process.platform) {
     case 'linux': {
       installScript = 'install.sh';
       const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
       installCmd = `bash ${scriptPath}`;
-      installArgs = ` --create-venv --venv-path "${venvDir}" ${getInstallDirRealPath()}`;
+      installArgs = ` --create-venv --venv-path "${venvDir}"${zephyrDepsFlagPosix} ${getInstallDirRealPath()}`;
       shell = 'bash';
       break;
     }
@@ -1207,7 +1310,7 @@ async function createLocalManagedVenv(
       installScript = 'install.ps1';
       const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
       installCmd = `powershell -File "${scriptPath}"`;
-      installArgs = ` -CreateVenv -VenvPath "${venvDir}" "${getInstallDirRealPath()}"`;
+      installArgs = ` -CreateVenv -VenvPath "${venvDir}"${zephyrDepsFlagWin} "${getInstallDirRealPath()}"`;
       shell = 'powershell.exe';
       break;
     }
@@ -1215,7 +1318,7 @@ async function createLocalManagedVenv(
       installScript = 'install-mac.sh';
       const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
       installCmd = `bash ${scriptPath}`;
-      installArgs = ` --create-venv --venv-path "${venvDir}" ${getInstallDirRealPath()}`;
+      installArgs = ` --create-venv --venv-path "${venvDir}"${zephyrDepsFlagPosix} ${getInstallDirRealPath()}`;
       shell = 'bash';
       break;
     }
@@ -1254,6 +1357,16 @@ async function createLocalManagedVenv(
     workbenchFolder.uri.fsPath,
   );
 
+  // Modern Zephyr: resolve module-aware deps with `west packages` from the topdir
+  // (the installer skipped requirements.txt for this mode). Older Zephyr keeps the
+  // installer's requirements.txt install and does not enter this branch.
+  if (options.zephyrDeps === 'west') {
+    const topdir = westWorkspacePath && fileExists(westWorkspacePath)
+      ? westWorkspacePath
+      : destDir;
+    await installZephyrDepsViaWestPackages(venvDir, topdir, zephyrBase);
+  }
+
   return toPortableWorkspaceFolderPath(venvDir, workbenchFolder);
 }
 
@@ -1277,6 +1390,36 @@ export async function createLocalVenvSPDX(
   return createLocalManagedVenv(context, workbenchFolder, {
     venvDirName: '.venv-spdx',
     extraPackages: SPDX_VENV_EXTRA_PACKAGES,
+  });
+}
+
+/**
+ * Create a `.venv` at the root of a west workspace (topdir), shared by every
+ * application of that workspace. Installs the `tools.yml` base packages always,
+ * then Zephyr's own dependencies via a version-gated choice: `west packages`
+ * (module-aware) on modern Zephyr, otherwise `pip install -r requirements.txt`.
+ * Must run after `west update` so the Zephyr tree / manifest is present.
+ *
+ * Returns a portable `${workspaceFolder}`-relative venv path to store in
+ * `venv.path` at the workspace-folder scope, or undefined on failure.
+ */
+export async function createWorkspaceVenv(
+  context: vscode.ExtensionContext,
+  westWorkspaceFolder: vscode.WorkspaceFolder,
+): Promise<string | undefined> {
+  const topdir = westWorkspaceFolder.uri.fsPath;
+
+  let useWestPackages = false;
+  try {
+    useWestPackages = zephyrVersionSupportsWestPackages(getWestWorkspace(topdir).versionArray);
+  } catch {
+    // Version not resolvable (e.g. VERSION file missing) -> conservative pip path.
+  }
+
+  return createLocalManagedVenv(context, westWorkspaceFolder, {
+    venvDirName: '.venv',
+    westWorkspacePathOverride: topdir,
+    zephyrDeps: useWestPackages ? 'west' : 'pip',
   });
 }
 

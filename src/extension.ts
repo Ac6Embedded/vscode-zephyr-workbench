@@ -24,7 +24,7 @@ import {
 	removeApplicationLaunchConfigurations,
 } from './utils/debugTools/debugUtils';
 import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
-import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
+import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, createWorkspaceVenv, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
 import { probeHomebrew } from './utils/hostToolsStatusUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
@@ -3903,8 +3903,31 @@ export function activate(context: vscode.ExtensionContext) {
 	})
 	);
 
+	// Create a dedicated venv for a west workspace and persist its path at the
+	// workspace-folder scope so every application of the workspace inherits it
+	// (see WestWorkspace.venvPath / ZephyrApplication.venvPath). Uses a folder
+	// reference rather than getWorkspaceFolder so it also works during import,
+	// before the folder is registered (adding the first folder can reload the
+	// window). When the folder is not yet registered the settings write is a
+	// no-op and WestWorkspace.venvPath auto-detects `<root>/.venv` instead.
+	const createAndStoreWorkspaceVenv = async (workspacePath: string): Promise<string | undefined> => {
+		const workspaceFolder = createWorkspaceFolderReference(workspacePath);
+		const venvPath = await createWorkspaceVenv(context, workspaceFolder);
+		if (venvPath) {
+			try {
+				await vscode.workspace
+					.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+					.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
+			} catch {
+				// Folder not registered yet (created during import, pre-registration):
+				// the on-disk `<root>/.venv` is picked up by WestWorkspace auto-detection.
+			}
+		}
+		return venvPath;
+	};
+
 	context.subscriptions.push(
-		vscode.commands.registerCommand("west.init", async (srcUrl, srcRev, workspaceDestPath, manifestPath, enableRust = false) => {
+		vscode.commands.registerCommand("west.init", async (srcUrl, srcRev, workspaceDestPath, manifestPath, enableRust = false, createWorkspaceVenvFlag = false) => {
 			if (workspaceDestPath && !isWorkspaceFolder(workspaceDestPath)) {
 				vscode.window.withProgress({
 					location: vscode.ProgressLocation.Notification,
@@ -3933,6 +3956,18 @@ export function activate(context: vscode.ExtensionContext) {
 						await westBoardsCommand(workspaceDestPath);
 						if (token.isCancellationRequested) {
 							throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
+						}
+						// Optional dedicated per-workspace venv (Advanced import option). Created
+						// BEFORE addWorkspaceFolder: adding the first folder can reload the window
+						// and abort this callback, so the long-running install must finish first.
+						// It runs after `west update` so `west packages` / requirements.txt can
+						// resolve the Zephyr tree.
+						if (createWorkspaceVenvFlag) {
+							progress.report({ increment: 5, message: 'Creating workspace virtual environment...' });
+							await createAndStoreWorkspaceVenv(workspaceDestPath);
+							if (token.isCancellationRequested) {
+								throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
+							}
 						}
 						await addWorkspaceFolder(workspaceDestPath);
 
@@ -3968,9 +4003,20 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-local", async (workspaceDestPath) => {
+		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-local", async (workspaceDestPath, createWorkspaceVenvFlag = false) => {
 			if (workspaceDestPath && !isWorkspaceFolder(workspaceDestPath)) {
 				if (WestWorkspace.isWestWorkspacePath(workspaceDestPath)) {
+					// Create the venv before registering the folder (see west.init: adding
+					// the first folder can reload the window and abort this handler).
+					if (createWorkspaceVenvFlag) {
+						await vscode.window.withProgress({
+							location: vscode.ProgressLocation.Notification,
+							title: "Creating workspace virtual environment",
+							cancellable: false,
+						}, async () => {
+							await createAndStoreWorkspaceVenv(workspaceDestPath);
+						});
+					}
 					await addWorkspaceFolder(workspaceDestPath);
 					await westBoardsCommand(workspaceDestPath);
 				} else {
@@ -3983,7 +4029,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir?: string, pathPrefix?: string, projects?: string[], enableRust = false) => {
+		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir?: string, pathPrefix?: string, projects?: string[], enableRust = false, createWorkspaceVenvFlag = false) => {
 			if (remotePath && remoteBranch && workspacePath && templateHal) {
 				try {
 					// Determine if mode is 'full' or 'minimal'
@@ -3991,7 +4037,7 @@ export function activate(context: vscode.ExtensionContext) {
 					// Generate west.xml from template
 					let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal, isFull, manifestDir, pathPrefix, projects, enableRust === true);
 					// Run west init to the newly create manifest
-					vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestFile, enableRust);
+					vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestFile, enableRust, createWorkspaceVenvFlag);
 				} catch (error) {
 					vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
 				}
@@ -3999,6 +4045,75 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
+
+	// Manage the dedicated venv of a west workspace from its tree item. These are
+	// the on-demand counterparts to the Advanced import checkbox: they let a user
+	// provision, repoint, or drop a workspace venv after import.
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-west-workspace.create-venv", async (node: WestWorkspaceTreeItem) => {
+			if (!node?.westWorkspace) {
+				return;
+			}
+			const topdir = node.westWorkspace.rootUri.fsPath;
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: "Creating workspace virtual environment",
+				cancellable: false,
+			}, async () => {
+				await createAndStoreWorkspaceVenv(topdir);
+			});
+			westWorkspaceProvider.refresh();
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-west-workspace.set-venv-path", async (node: WestWorkspaceTreeItem) => {
+			if (!node?.westWorkspace) {
+				return;
+			}
+			const workspaceFolder = getWorkspaceFolder(node.westWorkspace.rootUri.fsPath);
+			if (!workspaceFolder) {
+				return;
+			}
+			const nextVenvPath = await showLocalVenvQuickStep(workspaceFolder, node.westWorkspace.venvPath ?? '');
+			if (typeof nextVenvPath === 'undefined') {
+				return;
+			}
+			await vscode.workspace
+				.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+				.update(
+					ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
+					nextVenvPath.length > 0 ? nextVenvPath : undefined,
+					vscode.ConfigurationTarget.WorkspaceFolder,
+				);
+			westWorkspaceProvider.refresh();
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-west-workspace.remove-venv", async (node: WestWorkspaceTreeItem) => {
+			if (!node?.westWorkspace) {
+				return;
+			}
+			const workspaceFolder = getWorkspaceFolder(node.westWorkspace.rootUri.fsPath);
+			if (!workspaceFolder) {
+				return;
+			}
+			if (!(await showConfirmMessage(`Remove the dedicated venv for ${node.westWorkspace.name} ?`))) {
+				return;
+			}
+			await vscode.workspace
+				.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
+				.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+			// Drop the managed `<topdir>/.venv` on disk if present (a user-pointed
+			// external venv path lives elsewhere and is left untouched).
+			const managedVenvDir = path.join(node.westWorkspace.rootUri.fsPath, '.venv');
+			if (fileExists(managedVenvDir)) {
+				deleteFolder(managedVenvDir);
+			}
+			westWorkspaceProvider.refresh();
+		})
+	);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("west.version", async () => {
@@ -4146,20 +4261,30 @@ export function activate(context: vscode.ExtensionContext) {
 			// the right per-folder setting. Falls back to the
 			// global-scope value when no folder is available.
 			let scope: vscode.WorkspaceFolder | undefined;
+			let app: ZephyrApplication | undefined;
 			if (appRootPath) {
 				try {
-					const app = await getZephyrApplication(appRootPath);
+					app = await getZephyrApplication(appRootPath);
 					scope = app?.appWorkspaceFolder;
 				} catch {
+					app = undefined;
 					scope = undefined;
 				}
 			}
-			// 1. Explicit `venv.path` setting wins when the user set one.
+			// 1. Application-resolved venv: explicit per-app `venv.path`, else the
+			//    linked west workspace's venv. ZephyrApplication.venvPath already
+			//    applies that precedence, so sibling extensions transparently get
+			//    the shared workspace venv.
+			if (app?.venvPath) {
+				return app.venvPath;
+			}
+			// 2. Explicit `venv.path` setting at the resolved scope (covers callers
+			//    that pass a folder without a resolvable application).
 			const configured = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, scope);
 			if (configured) {
 				return configured;
 			}
-			// 2. Otherwise fall back to the zinstaller-managed venv — the same
+			// 3. Otherwise fall back to the zinstaller-managed venv — the same
 			//    environment the host-tools / runners installers create and run
 			//    against (`<.zinstaller>/.venv`). `venv.path` is usually empty on
 			//    zinstaller setups (the venv is recorded in env.yml, which only

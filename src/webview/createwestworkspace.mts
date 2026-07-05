@@ -667,7 +667,8 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       workspacePath: workspacePath.value,
       templateMode: templateModeValue,
       projects: projects,
-      enableRust: (document.getElementById('enableRustCheckbox') as unknown as { checked?: boolean } | null)?.checked === true
+      enableRust: (document.getElementById('enableRustCheckbox') as unknown as { checked?: boolean } | null)?.checked === true,
+      dedicatedVenv: (document.getElementById('dedicatedVenvCheckbox') as unknown as { checked?: boolean } | null)?.checked === true
     }
   );
 }
