@@ -197,9 +197,9 @@ export class DebugManagerPanel {
               <legend>Debug Backend</legend>
               <div class="grid-group-div">
                 <vscode-radio-group id="debugBackend" orientation="vertical">
-                  <vscode-radio value="cppdbg" checked>C/C++ Debug (cppdbg)</vscode-radio>
-                  <vscode-radio value="cortex-west">Cortex-Debug (west debugserver)</vscode-radio>
-                  <vscode-radio value="cortex-native">Cortex-Debug (native GDB server, J-Link / ST-LINK)</vscode-radio>
+                  <vscode-radio value="cppdbg" checked>C/C++ Debug (cppdbg)&nbsp;&nbsp;<span class="tooltip" data-tooltip="Debug with the Microsoft C/C++ extension. The GDB server is started through west gdbserver using a generated west wrapper script.">?</span></vscode-radio>
+                  <vscode-radio value="cortex-west">Cortex-Debug (west debugserver)&nbsp;&nbsp;<span class="tooltip" data-tooltip="Debug with the Cortex-Debug extension. Zephyr Workbench starts the GDB server through west for the selected runner, then attaches Cortex-Debug to it.">?</span></vscode-radio>
+                  <vscode-radio value="cortex-native">Cortex-Debug (native GDB server, J-Link / ST-LINK)&nbsp;&nbsp;<span class="tooltip" data-tooltip="Debug with the Cortex-Debug extension. Cortex-Debug launches the J-Link or ST-LINK GDB server directly, without west.">?</span></vscode-radio>
                 </vscode-radio-group>
               </div>
               <div id="cortexDetectRow" class="grid-group-div" style="display: none;">
