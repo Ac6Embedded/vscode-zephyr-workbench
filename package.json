@@ -2125,6 +2125,65 @@
           }
         }
       }
+    ],
+    "debuggers": [
+      {
+        "type": "zephyr-workbench",
+        "label": "Zephyr Workbench (west debugserver)",
+        "languages": [
+          "c",
+          "cpp"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program",
+              "debugServerArgs"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "ELF file to debug (zephyr.elf)."
+              },
+              "debugServerArgs": {
+                "type": "string",
+                "description": "Arguments passed to `west` to start the GDB server, e.g. `debugserver --build-dir ... --runner jlink --gdb-port 2331`."
+              },
+              "gdbTarget": {
+                "type": "string",
+                "description": "GDB server address as host:port. Must match the port in debugServerArgs.",
+                "default": "localhost:3333"
+              },
+              "gdbMode": {
+                "type": "string",
+                "enum": [
+                  "program",
+                  "attach"
+                ],
+                "default": "program",
+                "description": "program = flash and run to main; attach = connect only."
+              },
+              "miDebuggerPath": {
+                "type": "string",
+                "description": "GDB executable (forwarded to Cortex-Debug gdbPath)."
+              },
+              "svdPath": {
+                "type": "string",
+                "description": "SVD file (forwarded to Cortex-Debug svdFile)."
+              },
+              "cwd": {
+                "type": "string",
+                "default": "${workspaceFolder}"
+              },
+              "serverReadyTimeout": {
+                "type": "number",
+                "default": 15000,
+                "description": "Milliseconds to wait for the GDB server to become ready."
+              }
+            }
+          }
+        }
+      }
     ]
   },
   "scripts": {

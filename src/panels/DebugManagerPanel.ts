@@ -1,13 +1,19 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugLaunchConfigurationName, getDebugManagerLaunchConfiguration, getDebugRunners, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getServerAddressFromConfig, getWestDebugArgsForProject, setupPyOCDTarget, writeLaunchJson } from "../utils/debugTools/debugUtils";
+import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugLaunchConfigurationName, getDebugManagerLaunchConfiguration, getDebugRunners, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getWestDebugArgsForProject, setupPyOCDTarget, writeLaunchJson, LaunchConfigurationArtifacts } from "../utils/debugTools/debugUtils";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { getZephyrApplication } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
+import { StlinkGdbserver } from '../debug/runners/StlinkGdbserver';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
-import { getGdbMode, getSetupCommands } from '../debug/gdbUtils';
+import { getSetupCommands } from '../debug/gdbUtils';
 import { getOpenocdSelectionInfo } from '../utils/debugTools/debugToolSelectionUtils';
+import { CORTEX_NATIVE_RUNNER_NAMES, DebugBackendId, getDefaultGdbPort, runnerNameToNativeServer } from '../debug/backends/types';
+import { ensureCortexDebugAvailable, installCortexDebug, isCortexDebugInstalled } from '../debug/backends/cortexDebugExtension';
+import { buildCortexWestLaunchConfig } from '../debug/backends/cortexWest';
+import { buildCortexNativeLaunchConfig, detectJlinkDevice } from '../debug/backends/cortexNative';
+import { readPanelStateFromConfig } from '../debug/backends/backendState';
 
 export class DebugManagerPanel {
   public static currentPanel: DebugManagerPanel | undefined;
@@ -186,9 +192,27 @@ export class DebugManagerPanel {
               </div>
             </div>
 
+            <!-- Debug backend selection: modulates which rows below apply -->
+            <fieldset>
+              <legend>Debug Backend</legend>
+              <div class="grid-group-div">
+                <vscode-radio-group id="debugBackend" orientation="vertical">
+                  <vscode-radio value="cppdbg" checked>C/C++ Debug (cppdbg)</vscode-radio>
+                  <vscode-radio value="cortex-west">Cortex-Debug (west debugserver)</vscode-radio>
+                  <vscode-radio value="cortex-native">Cortex-Debug (native GDB server, J-Link / ST-LINK)</vscode-radio>
+                </vscode-radio-group>
+              </div>
+              <div id="cortexDetectRow" class="grid-group-div" style="display: none;">
+                <div style="display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px;">
+                  <span id="cortexDetect"></span>
+                  <vscode-button id="cortexInstallButton" class="browse-input-button" style="display: none;" hidden>Install Cortex-Debug</vscode-button>
+                </div>
+              </div>
+            </fieldset>
+
             <!-- Program -->
             <fieldset>
-              <legend>Program</legend> 
+              <legend>Program</legend>
               <div class="grid-group-div">
                 <vscode-text-field class="browse-field" size="50" type="text" id="programPath" value="">Program Path:</vscode-text-field>
                 <vscode-button id="browseProgramButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
@@ -213,11 +237,11 @@ export class DebugManagerPanel {
                 <span class="browse-spinner-inline"><span id="gdbPathSpinner" class="spinner" aria-label="Loading GDB path" style="display:none;"></span></span>
               </div>
 
-              <div class="grid-group-div">
+              <div id="gdbAddressRow" class="grid-group-div">
                 <vscode-text-field size="50" type="text" id="gdbAddress" value="">GDB Address:</vscode-text-field>
               </div>
 
-              <div class="grid-group-div">
+              <div id="gdbPortRow" class="grid-group-div">
                 <vscode-text-field size="50" type="text" id="gdbPort" value="">GDB Port:</vscode-text-field>
               </div>
 
@@ -262,6 +286,21 @@ export class DebugManagerPanel {
                 <vscode-text-field class="browse-field" size="50" type="text" id="runnerPath" value="" placeholder="(Optional)">Runner Path:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Optional. When set, this executable overrides the runner found in the active environment.">?</span></vscode-text-field>
                 <vscode-button id="browseRunnerButton" class="browse-input-button" style="vertical-align: middle">Browse...</vscode-button>
                 <span class="browse-spinner-inline"><span id="runnerPathSpinner" class="spinner" aria-label="Loading runner path" style="display:none;"></span></span>
+              </div>
+
+              <div id="deviceRow" class="grid-group-div" style="display: none;">
+                <vscode-text-field class="browse-field" size="50" type="text" id="deviceName" value="" placeholder="e.g. STM32F429ZI">Device:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Target device name passed to the GDB server (SEGGER device name for J-Link). Auto-detected from the build's runners.yaml when available.">?</span></vscode-text-field>
+                <span class="browse-spinner-inline"><span id="deviceNameSpinner" class="spinner" aria-label="Detecting device" style="display:none;"></span></span>
+                <div>
+                  <span id="deviceDetectInfo" style="color: var(--vscode-descriptionForeground); font-size: calc(var(--type-ramp-base-font-size) - 2px);"></span>
+                </div>
+              </div>
+
+              <div id="interfaceRow" class="grid-group-div" style="display: none;">
+                <vscode-radio-group id="deviceInterface" orientation="horizontal">
+                  <vscode-radio value="swd" checked>SWD</vscode-radio>
+                  <vscode-radio value="jtag">JTAG</vscode-radio>
+                </vscode-radio-group>
               </div>
 
               <div id="runnerDetectRow" class="grid-group-div" style="display: none;">
@@ -312,6 +351,9 @@ export class DebugManagerPanel {
 
   private _setWebviewMessageListener(webview: vscode.Webview) {
     let currentOpenocdInfoText: { defaultInfo: string; pathInfo: string } = { defaultInfo: '', pathInfo: '' };
+    // Board/runner artifacts from the last configuration load, reused by the
+    // J-Link device auto-detection so it never re-triggers a CMake probe.
+    let currentArtifacts: LaunchConfigurationArtifacts | undefined;
 
     const buildOpenocdInfoText = (project: ZephyrApplication | undefined, openocdPath?: string): { defaultInfo: string; pathInfo: string } => {
       if (!project) {
@@ -347,6 +389,46 @@ export class DebugManagerPanel {
         runnersHtml = runnersHtml.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runnerLabel}</div>`);
       }
       return runnersHtml;
+    }
+
+    // Restricted runner list for the native Cortex-Debug backend. Labels come
+    // from the same runner classes as the full list — no duplication.
+    function getNativeRunnersHtml(compatibleRunners: string[]): string {
+      let runnersHtml = '';
+      for (const runner of getDebugRunners()) {
+        if (!(CORTEX_NATIVE_RUNNER_NAMES as readonly string[]).includes(runner.name)) {
+          continue;
+        }
+        const runnerLabel = compatibleRunners.includes(runner.name)
+          ? `${runner.label} (compatible)`
+          : runner.label;
+        runnersHtml = runnersHtml.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runnerLabel}</div>`);
+      }
+      return runnersHtml;
+    }
+
+    function postCortexDetect(backend: string) {
+      webview.postMessage({
+        command: 'updateCortexDetect',
+        applicable: backend === 'cppdbg' ? 'false' : 'true',
+        installed: isCortexDebugInstalled() ? 'true' : 'false',
+      });
+    }
+
+    function postDeviceDetect(project: ZephyrApplication | undefined, buildConfig: ZephyrBuildConfig | undefined) {
+      let detection;
+      try {
+        detection = project && buildConfig
+          ? detectJlinkDevice(project, buildConfig, currentArtifacts?.targetBoard)
+          : undefined;
+      } catch (error) {
+        console.error('Debug Manager: J-Link device detection failed', error);
+      }
+      webview.postMessage({
+        command: 'updateDeviceDetect',
+        device: detection?.device ?? '',
+        source: detection?.source ?? '',
+      });
     }
 
     async function getRunnerWebviewState(
@@ -469,16 +551,40 @@ export class DebugManagerPanel {
               const runnerPath = message.runnerPath;
               const runner = getRunner(runnerName);
               const runnerInfo = getRunnerInfo(runnerName);
+              // Never auto-adjust the port for the historical cppdbg backend —
+              // its behavior must stay identical to previous releases.
+              if (message.backend === 'cortex-west' || message.backend === 'cortex-native') {
+                webview.postMessage({ command: 'updateDefaultPort', defaultPort: getDefaultGdbPort(runnerName) });
+              }
+              if (message.backend === 'cortex-native' && runnerName === 'jlink') {
+                postDeviceDetect(this.project, this.buildConfig);
+              }
               if(runner) {
                 if(runnerPath && runnerPath.length > 0) {
                   runner.serverPath = runnerPath;
                 }
-                // let runner auto-discover its executable 
+                // let runner auto-discover its executable
                 await runner.loadInternalArgs();
                 await updateRunnerDetect(runner, runnerInfo.defaultInfo, runnerInfo.pathInfo);
               } else {
                 postRunnerDetectState(false, runnerName, runnerPath, runnerInfo.defaultInfo, runnerInfo.pathInfo);
               }
+              break;
+            }
+            case 'backendChanged': {
+              const backend = typeof message.backend === 'string' ? message.backend : 'cppdbg';
+              postCortexDetect(backend);
+              if (backend === 'cortex-west' || backend === 'cortex-native') {
+                webview.postMessage({ command: 'updateDefaultPort', defaultPort: getDefaultGdbPort(message.runner) });
+              }
+              if (backend === 'cortex-native' && message.runner === 'jlink') {
+                postDeviceDetect(this.project, this.buildConfig);
+              }
+              break;
+            }
+            case 'installCortexDebug': {
+              await installCortexDebug();
+              postCortexDetect(typeof message.backend === 'string' ? message.backend : 'cortex-west');
               break;
             }
             case 'runnerPathChanged': {
@@ -594,50 +700,67 @@ export class DebugManagerPanel {
         let defaultDebugRunner: string | undefined;
         let generatedOpenocdPath: string | undefined;
         if(buildConfig) {
-          [/* launchJson */, config, compatibleRunners, defaultDebugRunner, generatedOpenocdPath] = await getDebugManagerLaunchConfiguration(project, buildConfig);
+          [/* launchJson */, config, compatibleRunners, defaultDebugRunner, generatedOpenocdPath, currentArtifacts] = await getDebugManagerLaunchConfiguration(project, buildConfig);
         }
         currentOpenocdInfoText = buildOpenocdInfoText(project, generatedOpenocdPath);
 
-        const programPath = config.program;
-        const svdPath = config.svdPath;
-        const gdbPath = typeof config.miDebuggerPath === 'string' ? config.miDebuggerPath : '';
-        const serverAddress = getServerAddressFromConfig(config);
-        let gdbAddress = 'localhost';
-        let gdbPort = '3333';
-        let gdbMode = getGdbMode(config.setupCommands);
-        if(serverAddress) {
-          if (serverAddress.includes(':')) {
-            [gdbAddress, gdbPort] = serverAddress.split(':');
-          } else {
-            gdbAddress = serverAddress;
-            gdbPort = '3333';
+        // The stored launch entry is the source of truth for the backend
+        // radio; the reader handles all three entry types without throwing.
+        const state = readPanelStateFromConfig(config);
+        const runnerName = state.runnerName ?? (buildConfig ? defaultDebugRunner : undefined);
+
+        let runnerLabel = '';
+        let runnerValue = runnerName ?? '';
+        let runnerPath = '';
+        let runnerArgs = '';
+        let runnerDefaultInfo = '';
+        let runnerDefaultPathInfo = '';
+        if (state.backend === 'cortex-native') {
+          const runner = runnerName ? getRunner(runnerName) : undefined;
+          runnerLabel = runner?.label ?? '';
+          runnerPath = state.runnerPath ?? '';
+          runnerArgs = state.runnerArgs ?? '';
+          if (!runnerPath && runner) {
+            try {
+              await runner.loadInternalArgs();
+              runnerPath = runner.serverPath ?? '';
+            } catch {
+              // Keep the panel responsive even if runner probing fails.
+            }
           }
+        } else {
+          ({ runnerLabel, runnerValue, runnerPath, runnerArgs, runnerDefaultInfo, runnerDefaultPathInfo } = await getRunnerWebviewState(
+            project,
+            runnerName,
+            state.debugServerArgs,
+          ));
         }
 
-        const newRunnersHTML = getRunnersHtml(compatibleRunners);
-        const runnerName = WestRunner.extractRunner(config.debugServerArgs) ?? (buildConfig ? defaultDebugRunner : undefined);
-        const { runnerLabel, runnerValue, runnerPath, runnerArgs, runnerDefaultInfo, runnerDefaultPathInfo } = await getRunnerWebviewState(
-          project,
-          runnerName,
-          config.debugServerArgs,
-        );
-
-        webview.postMessage({ 
-          command: 'updateConfig', 
-          programPath: `${programPath}`,
-          svdPath: `${svdPath}`,
-          gdbPath,
-          gdbAddress: `${gdbAddress}`,
-          gdbPort: `${gdbPort}`,
-          gdbMode: `${gdbMode}`,
-          runnersHTML: `${newRunnersHTML}`,
+        webview.postMessage({
+          command: 'updateConfig',
+          backend: state.backend,
+          programPath: `${state.programPath}`,
+          svdPath: `${state.svdPath}`,
+          gdbPath: state.gdbPath,
+          gdbAddress: `${state.gdbAddress}`,
+          gdbPort: `${state.gdbPort}`,
+          gdbMode: `${state.gdbMode}`,
+          runnersHTML: `${getRunnersHtml(compatibleRunners)}`,
+          nativeRunnersHTML: `${getNativeRunnersHtml(compatibleRunners)}`,
           runnerName: `${runnerLabel}`,
           runnerValue: `${runnerValue}`,
           runnerPath: `${runnerPath}`,
           runnerArgs: `${runnerArgs}`,
           runnerDefaultInfo: `${runnerDefaultInfo}`,
           runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
+          device: `${state.device ?? ''}`,
+          deviceInterface: `${state.deviceInterface ?? 'swd'}`,
+          defaultGdbPort: getDefaultGdbPort(runnerName),
         });
+        postCortexDetect(state.backend);
+        if (state.backend === 'cortex-native' && runnerName === 'jlink' && !(state.device ?? '').trim()) {
+          postDeviceDetect(project, buildConfig);
+        }
       } catch (error) {
         console.error('Debug Manager: cannot update configuration', error);
         webview.postMessage({ command: 'updateConfigError' });
@@ -684,7 +807,10 @@ export class DebugManagerPanel {
         const appProject = await getZephyrApplication(projectPath);
         const buildConfig = appProject.getBuildConfiguration(buildConfigName);
         if(appProject) {
-          await resetConfiguration(appProject, buildConfig);
+          const backend: DebugBackendId = message.backend === 'cortex-west' || message.backend === 'cortex-native'
+            ? message.backend
+            : 'cppdbg';
+          await resetConfiguration(appProject, buildConfig, backend);
         }
       }
       finally{
@@ -693,51 +819,72 @@ export class DebugManagerPanel {
       }
     }
 
-    async function resetConfiguration(project: ZephyrApplication, buildConfig?: ZephyrBuildConfig) {
+    // Reset keeps the selected backend and restores backend-appropriate
+    // defaults (form-only — nothing is written until Apply).
+    async function resetConfiguration(project: ZephyrApplication, buildConfig?: ZephyrBuildConfig, backend: DebugBackendId = 'cppdbg') {
+      // Without a build configuration there are no defaults to restore —
+      // leave the form untouched instead of blanking user-entered values.
+      if (!buildConfig) {
+        return;
+      }
       let config;
       let compatibleRunners: string[] = [];
       let defaultDebugRunner: string | undefined;
       let generatedOpenocdPath: string | undefined;
-      if(buildConfig) {
-        config  = await createDefaultConfiguration(project, buildConfig.name);
-        [, , compatibleRunners, defaultDebugRunner, generatedOpenocdPath] = await getDebugManagerLaunchConfiguration(project, buildConfig);
-      }
+      config = await createDefaultConfiguration(project, buildConfig.name);
+      [, , compatibleRunners, defaultDebugRunner, generatedOpenocdPath, currentArtifacts] = await getDebugManagerLaunchConfiguration(project, buildConfig);
       currentOpenocdInfoText = buildOpenocdInfoText(project, generatedOpenocdPath);
-     
-      const programPath = config.program;
-      const gdbPath = typeof config.miDebuggerPath === 'string' ? config.miDebuggerPath : '';
-      const serverAddress = getServerAddressFromConfig(config);
-      let gdbAddress = 'localhost';
-      let gdbPort = '3333';
-      let gdbMode = 'program';
-      if(serverAddress) {
-        if (serverAddress.includes(':')) {
-          [gdbAddress, gdbPort] = serverAddress.split(':');
-        } else {
-          gdbAddress = serverAddress;
-          gdbPort = '3333';
+
+      // Program/GDB defaults come from the cppdbg template for every backend —
+      // they are backend-independent artifact paths.
+      const state = readPanelStateFromConfig(config);
+
+      let runnerName = buildConfig ? (defaultDebugRunner ?? getDefaultDebugRunner(project, buildConfig)) : undefined;
+      if (backend === 'cortex-native'
+        && !(runnerName && (CORTEX_NATIVE_RUNNER_NAMES as readonly string[]).includes(runnerName))) {
+        runnerName = compatibleRunners.includes('stlink_gdbserver') && !compatibleRunners.includes('jlink')
+          ? 'stlink_gdbserver'
+          : 'jlink';
+      }
+      const gdbPort = backend === 'cppdbg' ? state.gdbPort : getDefaultGdbPort(runnerName);
+      const { runnerLabel, runnerValue, runnerPath, runnerDefaultInfo, runnerDefaultPathInfo } = await getRunnerWebviewState(project, runnerName);
+
+      let device = '';
+      let deviceSource = '';
+      if (backend === 'cortex-native' && runnerName === 'jlink' && buildConfig) {
+        try {
+          const detection = detectJlinkDevice(project, buildConfig, currentArtifacts?.targetBoard);
+          device = detection?.device ?? '';
+          deviceSource = detection?.source ?? '';
+        } catch (error) {
+          console.error('Debug Manager: J-Link device detection failed', error);
         }
       }
-    
-      const newRunnersHTML = getRunnersHtml(compatibleRunners);
-      const runnerName = buildConfig ? (defaultDebugRunner ?? getDefaultDebugRunner(project, buildConfig)) : undefined;
-      const { runnerLabel, runnerValue, runnerPath, runnerDefaultInfo, runnerDefaultPathInfo } = await getRunnerWebviewState(project, runnerName);
-      
-      webview.postMessage({ 
-        command: 'updateConfig', 
-        programPath: `${programPath}`,
-        gdbPath,
-        gdbAddress: `${gdbAddress}`,
+
+      webview.postMessage({
+        command: 'updateConfig',
+        backend,
+        programPath: `${state.programPath}`,
+        gdbPath: state.gdbPath,
+        gdbAddress: `${state.gdbAddress}`,
         gdbPort: `${gdbPort}`,
-        gdbMode: `${gdbMode}`,
-        runnersHTML: `${newRunnersHTML}`,
+        gdbMode: 'program',
+        runnersHTML: `${getRunnersHtml(compatibleRunners)}`,
+        nativeRunnersHTML: `${getNativeRunnersHtml(compatibleRunners)}`,
         runnerName: `${runnerLabel}`,
         runnerValue: `${runnerValue}`,
         runnerPath: `${runnerPath}`,
         runnerArgs: '',
         runnerDefaultInfo: `${runnerDefaultInfo}`,
         runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
+        device: `${device}`,
+        deviceInterface: 'swd',
+        defaultGdbPort: getDefaultGdbPort(runnerName),
       });
+      postCortexDetect(backend);
+      if (backend === 'cortex-native' && runnerName === 'jlink') {
+        webview.postMessage({ command: 'updateDeviceDetect', device, source: deviceSource });
+      }
     }
 
     function escapeRegExp(value: string): string {
@@ -795,6 +942,11 @@ export class DebugManagerPanel {
       const runner = getRunner(runnerName);
       const runnerPath = message.runnerPath;
       const runnerArgs = message.runnerArgs;
+      const backend: DebugBackendId = message.backend === 'cortex-west' || message.backend === 'cortex-native'
+        ? message.backend
+        : 'cppdbg';
+      const device = typeof message.device === 'string' ? message.device.trim() : '';
+      const deviceInterface: 'swd' | 'jtag' = message.deviceInterface === 'jtag' ? 'jtag' : 'swd';
 
       if (!runner) {
         vscode.window.showErrorMessage('Debug manager: No debug runner selected!');
@@ -813,18 +965,139 @@ export class DebugManagerPanel {
         return false;
       }
 
-      if (!gdbAddress) {
-        vscode.window.showErrorMessage('Debug manager: GDB address is required before applying or debugging.');
+      // The native backend has no GDB target address/port (cortex-debug manages
+      // the server connection itself) but J-Link requires a device name.
+      if (backend !== 'cortex-native') {
+        if (!gdbAddress) {
+          vscode.window.showErrorMessage('Debug manager: GDB address is required before applying or debugging.');
+          return false;
+        }
+
+        if (!gdbPort) {
+          vscode.window.showErrorMessage('Debug manager: GDB port is required before applying or debugging.');
+          return false;
+        }
+      } else if (runnerName === 'jlink' && !device) {
+        vscode.window.showErrorMessage('Debug manager: Device name is required for J-Link. Enter the SEGGER device name (e.g. STM32F429ZI, EFR32MG24BxxxF1536).');
         return false;
       }
 
-      if (!gdbPort) {
-        vscode.window.showErrorMessage('Debug manager: GDB port is required before applying or debugging.');
-        return false;
+      if (backend !== 'cppdbg') {
+        if (!appProject || !buildConfig) {
+          return false;
+        }
+        if (!(await ensureCortexDebugAvailable('apply'))) {
+          return false;
+        }
+
+        const [launchJson, existing] = await getLaunchConfiguration(appProject, buildConfigName);
+        const existingIndex = launchJson.configurations.indexOf(existing);
+        const configName = typeof existing?.name === 'string' && existing.name.length > 0
+          ? existing.name
+          : getDebugLaunchConfigurationName(appProject, buildConfigName);
+        const cwd = typeof existing?.cwd === 'string' && existing.cwd.length > 0
+          ? existing.cwd
+          : '${workspaceFolder}';
+
+        // Backends always rebuild the entry from scratch and replace it in
+        // place so no keys of the previous backend survive the switch.
+        let freshConfig: any;
+        if (backend === 'cortex-west') {
+          runner.loadArgs(runnerArgs);
+          runner.serverPath = runnerPath;
+          runner.serverAddress = gdbAddress;
+          runner.serverPort = gdbPort;
+          let debugServerArgs = getWestDebugArgsForProject(runner, appProject, buildConfig);
+          debugServerArgs = runnerPathArg(debugServerArgs, runner.name, runnerPath);
+          freshConfig = buildCortexWestLaunchConfig({
+            name: configName,
+            cwd,
+            programPath,
+            svdPath,
+            gdbPath,
+            gdbMode,
+            gdbAddress,
+            gdbPort,
+          }, debugServerArgs);
+        } else {
+          const nativeServer = runnerNameToNativeServer(runnerName);
+          if (!nativeServer) {
+            vscode.window.showErrorMessage('Debug manager: select J-Link or ST-LINK GDB Server for the native Cortex-Debug backend.');
+            return false;
+          }
+          let serverPath = typeof runnerPath === 'string' ? runnerPath.trim() : '';
+          let stm32CubeProgrammerDir: string | undefined;
+          if (nativeServer === 'stlink') {
+            const stlinkRunner = new StlinkGdbserver();
+            try {
+              await stlinkRunner.loadInternalArgs();
+            } catch {
+              // CubeCLT probing is best effort; cortex-debug falls back to its settings.
+            }
+            if (!serverPath) {
+              serverPath = stlinkRunner.serverPath ?? '';
+            }
+            stm32CubeProgrammerDir = stlinkRunner.findCubeCltFile('STM32CubeProgrammer', 'bin');
+          }
+          freshConfig = buildCortexNativeLaunchConfig({
+            name: configName,
+            cwd,
+            programPath,
+            svdPath,
+            gdbPath,
+            gdbMode,
+            server: nativeServer,
+            device,
+            interface: deviceInterface,
+            serverPath,
+            serverArgs: runnerArgs,
+            stm32CubeProgrammerDir,
+          });
+        }
+
+        if (existingIndex >= 0) {
+          launchJson.configurations[existingIndex] = freshConfig;
+        } else {
+          launchJson.configurations.push(freshConfig);
+        }
+
+        // The west debug server keeps the same runner-side requirements as the
+        // cppdbg pipeline (generated openocd cfg, pyocd target pack) — only the
+        // west wrapper script is no longer needed.
+        if (backend === 'cortex-west') {
+          switch (runner.name) {
+            case 'openocd':
+              createOpenocdCfg(appProject);
+              break;
+            case 'pyocd':
+              await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: "Please wait... installing target support on pyOCD",
+                cancellable: false,
+              }, async () => {
+                await setupPyOCDTarget(appProject, buildConfigName);
+              });
+              break;
+          }
+        }
+
+        writeLaunchJson(launchJson, appProject);
+        return true;
       }
-    
+
       if(appProject && buildConfig) {
         let [launchJson, config] = await getLaunchConfiguration(appProject, buildConfigName);
+        if (config?.type && config.type !== 'cppdbg') {
+          // Switching back to the cppdbg backend: rebuild the template entry,
+          // then let the historical mutation block below fill the panel fields.
+          const configIndex = launchJson.configurations.indexOf(config);
+          config = await createDefaultConfiguration(appProject, buildConfigName);
+          if (configIndex >= 0) {
+            launchJson.configurations[configIndex] = config;
+          } else {
+            launchJson.configurations.push(config);
+          }
+        }
         config.program = programPath;
         config.svdPath = svdPath? svdPath:'';
         config.miDebuggerPath = gdbPath;

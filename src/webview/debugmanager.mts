@@ -11,11 +11,19 @@ function main() {
 
   hideBrowseSpinners();
   setRunnerDetectMessage('');
+  setCortexDetectMessage('');
   updateRunnerDefaultInfo('', '');
   initApplicationsDropdown();
   initBuildConfigsDropdown();
   initRunnersDropdown();
+  initBackendRadioGroup();
   hideSpinner('resetSpinner');
+  hideSpinner('deviceNameSpinner');
+
+  // Seed the west cache from the server-rendered dropdown so a backend toggle
+  // before any build configuration loads does not wipe the runner list.
+  const initialRunnersDropdown = document.getElementById('runnersDropdown') as HTMLElement | null;
+  cachedWestRunnersHTML = initialRunnersDropdown?.innerHTML ?? '';
 
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const browseProgramButton = document.getElementById("browseProgramButton") as Button;
@@ -25,9 +33,14 @@ function main() {
   const installButton = document.getElementById("installRunnerButton") as Button;
   const runnerDetectInstallButton = document.getElementById("runnerDetectInstallButton") as Button;
   const changeRunnerDefaultButton = document.getElementById("changeRunnerDefaultButton") as Button;
+  const cortexInstallButton = document.getElementById("cortexInstallButton") as Button | null;
   const resetButton = document.getElementById("resetButton") as Button;
   const applyButton = document.getElementById("applyButton") as Button;
   const debugButton = document.getElementById("debugButton") as Button;
+
+  cortexInstallButton?.addEventListener("click", () => {
+    webviewApi.postMessage({ command: 'installCortexDebug', backend: getSelectedBackend() });
+  });
 
   runnerPathText.addEventListener('input', function() {
     const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
@@ -53,23 +66,127 @@ function main() {
   webviewApi.postMessage({ command: 'webviewReady' });
 }
 
+// HTML lists for the runner dropdown per backend, refreshed by updateConfig.
+let cachedWestRunnersHTML = '';
+let cachedNativeRunnersHTML = '';
+// Pristine tracking: auto-delivered values only overwrite fields the user
+// never customized (empty, or still equal to the last auto value).
+let lastDefaultGdbPort = '';
+let lastAutoDetectedDevice = '';
+// Guards the backend radio listener against the synchronous 'change' event
+// the toolkit fires when updateConfig assigns the group value programmatically.
+let suppressBackendChangeEvent = false;
+
+function getSelectedBackend(): string {
+  const backendGroup = document.getElementById('debugBackend') as RadioGroup | null;
+  return backendGroup?.value || 'cppdbg';
+}
+
+function setRowVisible(rowId: string, visible: boolean) {
+  const row = document.getElementById(rowId) as HTMLElement | null;
+  if (row) {
+    row.style.display = visible ? '' : 'none';
+  }
+}
+
 /**
- * Hide the Runner Path row for runners that should not expose an executable
- * path override in this view.
+ * Single visibility authority for backend-dependent rows.
  *
- * - `stlink_gdbserver` is launched indirectly via the STM32CubeCLT bundle.
- * - `pyocd` is expected to resolve from the active environment rather than
- *   from a per-config path field here.
+ * - Native (cortex-debug spawns the server): no GDB address/port, but Device +
+ *   Interface rows and a Runner Path (cortex-debug `serverpath`) for both
+ *   servers.
+ * - West-based backends: keep the historical per-runner Runner Path rule
+ *   (`stlink_gdbserver` is launched via the CubeCLT bundle, `pyocd` resolves
+ *   from the environment).
  */
-function runnerPathHiddenForSelectedRunner() {
+function applyBackendVisibility() {
+  const backend = getSelectedBackend();
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement | null;
   const runnerName = (runnerInput?.getAttribute('data-value') ?? '').toLowerCase();
-  const hideRow = runnerName === 'stlink_gdbserver' || runnerName === 'pyocd';
+  const native = backend === 'cortex-native';
 
-  const runnerPathRow = document.getElementById('runnerPathRow') as HTMLElement | null;
-  if (runnerPathRow) {
-    runnerPathRow.style.display = hideRow ? 'none' : '';
+  setRowVisible('gdbAddressRow', !native);
+  setRowVisible('gdbPortRow', !native);
+  setRowVisible('deviceRow', native);
+  setRowVisible('interfaceRow', native);
+  setRowVisible('runnerPathRow', native || !(runnerName === 'stlink_gdbserver' || runnerName === 'pyocd'));
+}
+
+function runnerPathHiddenForSelectedRunner() {
+  applyBackendVisibility();
+}
+
+/**
+ * Install the runner list matching the selected backend and keep the current
+ * selection when it is still available; otherwise prefer the first runner
+ * marked compatible with the board, else clear the selection.
+ */
+function repopulateRunnersDropdown() {
+  const runnerInput = document.getElementById('runnerInput') as HTMLInputElement | null;
+  const runnersDropdown = document.getElementById('runnersDropdown') as HTMLElement | null;
+  if (!runnerInput || !runnersDropdown) {
+    return;
   }
+
+  let html = getSelectedBackend() === 'cortex-native' ? cachedNativeRunnersHTML : cachedWestRunnersHTML;
+  if (getSelectedBackend() === 'cortex-native' && !html && cachedWestRunnersHTML) {
+    // No native list received yet — derive it by filtering the west list to
+    // the servers cortex-debug can spawn natively.
+    const container = document.createElement('div');
+    container.innerHTML = cachedWestRunnersHTML;
+    for (const item of Array.from(container.children)) {
+      const value = (item as HTMLElement).getAttribute('data-value');
+      if (value !== 'jlink' && value !== 'stlink_gdbserver') {
+        item.remove();
+      }
+    }
+    html = container.innerHTML;
+  }
+  runnersDropdown.innerHTML = html ?? '';
+  if ((html ?? '').length > 0) {
+    addDropdownItemEventListeners(runnersDropdown, runnerInput);
+  }
+
+  const currentValue = runnerInput.getAttribute('data-value') ?? '';
+  if (currentValue && runnersDropdown.querySelector(`.dropdown-item[data-value="${currentValue}"]`)) {
+    return;
+  }
+
+  const items = Array.from(runnersDropdown.getElementsByClassName('dropdown-item')) as HTMLElement[];
+  const preferred = items.find(item => (item.textContent ?? '').includes('(compatible)'));
+  if (preferred) {
+    runnerInput.value = preferred.getAttribute('data-label') || '';
+    runnerInput.setAttribute('data-value', preferred.getAttribute('data-value') || '');
+    runnerInput.dispatchEvent(new Event('input'));
+    return;
+  }
+
+  runnerInput.value = '';
+  runnerInput.setAttribute('data-value', '');
+  setRunnerDetectMessage('Choose a runner', '#aa0000');
+}
+
+function initBackendRadioGroup() {
+  const backendGroup = document.getElementById('debugBackend') as RadioGroup | null;
+  if (!backendGroup) {
+    return;
+  }
+
+  backendGroup.addEventListener('change', () => {
+    if (suppressBackendChangeEvent) {
+      return;
+    }
+    const backend = getSelectedBackend();
+    repopulateRunnersDropdown();
+    applyBackendVisibility();
+
+    const runnerInput = document.getElementById('runnerInput') as HTMLInputElement | null;
+    const runner = runnerInput?.getAttribute('data-value') ?? '';
+    if (backend === 'cortex-native' && runner === 'jlink') {
+      showSpinner('deviceNameSpinner');
+    }
+    webviewApi.postMessage({ command: 'backendChanged', backend, runner });
+  });
 }
 
 function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputElement) {
@@ -180,6 +297,22 @@ function setRunnerDetectMessage(text: string, color: string = '', showInstallBut
   runnerDetectRow.style.display = resolvedText.length > 0 ? '' : 'none';
 }
 
+function setCortexDetectMessage(text: string, color: string = '', showInstallButton: boolean = false) {
+  const cortexDetectRow = document.getElementById('cortexDetectRow') as HTMLElement | null;
+  const cortexDetectSpan = document.getElementById('cortexDetect') as HTMLElement | null;
+  const cortexInstallButton = document.getElementById('cortexInstallButton') as Button | null;
+  if (!cortexDetectRow || !cortexDetectSpan || !cortexInstallButton) {
+    return;
+  }
+
+  const resolvedText = (text ?? '').trim();
+  cortexDetectSpan.textContent = resolvedText;
+  cortexDetectSpan.style.color = color;
+  cortexInstallButton.hidden = !(resolvedText.length > 0 && showInstallButton);
+  cortexInstallButton.style.display = resolvedText.length > 0 && showInstallButton ? '' : 'none';
+  cortexDetectRow.style.display = resolvedText.length > 0 ? '' : 'none';
+}
+
 function setVSCodeMessageListener() {
   window.addEventListener("message", (event) => {
     const command = event.data.command;
@@ -254,6 +387,48 @@ function setVSCodeMessageListener() {
         document.getElementById('resetSpinner')!.style.display = 'none';
         break;
       }
+      case 'updateCortexDetect': {
+        // Only surface the row when something needs the user's attention:
+        // a cortex backend is selected AND the extension is missing.
+        if (event.data.applicable !== 'true' || event.data.installed === 'true') {
+          setCortexDetectMessage('');
+        } else {
+          setCortexDetectMessage('Cortex-Debug extension is NOT installed (or disabled)', '#aa0000', true);
+        }
+        break;
+      }
+      case 'updateDeviceDetect': {
+        const device = (event.data.device ?? '') as string;
+        const deviceNameText = document.getElementById('deviceName') as TextField | null;
+        const deviceDetectInfo = document.getElementById('deviceDetectInfo') as HTMLElement | null;
+        // Only track the auto value when it actually landed in the field —
+        // otherwise a user-typed value that happens to match a future
+        // detection would be misclassified as auto and later clobbered.
+        if (deviceNameText && device
+          && (!deviceNameText.value.trim() || deviceNameText.value === lastAutoDetectedDevice)) {
+          deviceNameText.value = device;
+          lastAutoDetectedDevice = device;
+        }
+        if (deviceDetectInfo) {
+          deviceDetectInfo.textContent = device
+            ? ''
+            : 'Could not auto-detect the device — enter it manually';
+        }
+        hideSpinner('deviceNameSpinner');
+        break;
+      }
+      case 'updateDefaultPort': {
+        const defaultPort = (event.data.defaultPort ?? '') as string;
+        const gdbPortText = document.getElementById('gdbPort') as TextField | null;
+        // Track the default only when it was applied, so a user-typed port
+        // equal to some runner's default is never treated as pristine.
+        if (gdbPortText && defaultPort
+          && (!gdbPortText.value.trim() || gdbPortText.value === lastDefaultGdbPort)) {
+          gdbPortText.value = defaultPort;
+          lastDefaultGdbPort = defaultPort;
+        }
+        break;
+      }
       case 'fileSelected':
         setLocalPath(event.data.id, event.data.fileUri);
         break;
@@ -300,7 +475,8 @@ function resetHandler(this: HTMLElement, ev: MouseEvent) {
   webviewApi.postMessage({
     command: 'reset',
     project: applicationInput.getAttribute('data-value'),
-    buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : ''
+    buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
+    backend: getSelectedBackend()
   });
 }
 
@@ -321,6 +497,7 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
     command: 'apply',
     project: applicationInput.getAttribute('data-value'),
     buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
+    backend: getSelectedBackend(),
     programPath: programPath.value,
     svdPath: svdPath.value,
     gdbPath: gdbPath.value,
@@ -329,7 +506,9 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
     gdbMode: gdbModeRadioGroup.value,
     runner: runnerInput.getAttribute('data-value'),
     runnerPath: runnerPath.value,
-    runnerArgs: runnerArgs.value
+    runnerArgs: runnerArgs.value,
+    device: (document.getElementById('deviceName') as TextField | null)?.value ?? '',
+    deviceInterface: (document.getElementById('deviceInterface') as RadioGroup | null)?.value ?? 'swd'
   });
 }
 
@@ -351,6 +530,7 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
     command: 'debug',
     project: applicationInput.getAttribute('data-value'),
     buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
+    backend: getSelectedBackend(),
     programPath: programPath.value,
     svdPath: svdPath.value,
     gdbPath: gdbPath.value,
@@ -359,7 +539,9 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
     gdbMode: gdbModeRadioGroup.value,
     runner: runnerInput.getAttribute('data-value'),
     runnerPath: runnerPath.value,
-    runnerArgs: runnerArgs.value
+    runnerArgs: runnerArgs.value,
+    device: (document.getElementById('deviceName') as TextField | null)?.value ?? '',
+    deviceInterface: (document.getElementById('deviceInterface') as RadioGroup | null)?.value ?? 'swd'
   });
 }
 
@@ -472,14 +654,19 @@ function initRunnersDropdown() {
   runnerInput.addEventListener('input', () => {
     // Clear previous detection text before triggering new detection
     const runnerPathText = document.getElementById('runnerPath') as TextField;
+    const backend = getSelectedBackend();
     setRunnerDetectMessage('');
     if (runnerPathText) {
       runnerPathText.value = '';
+    }
+    if (backend === 'cortex-native' && runnerInput.getAttribute('data-value') === 'jlink') {
+      showSpinner('deviceNameSpinner');
     }
     webviewApi.postMessage({
       command: 'runnerChanged',
       runner: runnerInput.getAttribute('data-value'),
       runnerPath: '',
+      backend,
     });
     runnerPathHiddenForSelectedRunner();
   });
@@ -550,6 +737,7 @@ function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = fal
 }
 
 function updateConfig(data: any) {
+  const backend = data.backend === 'cortex-west' || data.backend === 'cortex-native' ? data.backend : 'cppdbg';
   const programPath = data.programPath;
   const svdPath = data.svdPath;
   const gdbPath = data.gdbPath;
@@ -570,10 +758,13 @@ function updateConfig(data: any) {
   const gdbAddressText = document.getElementById('gdbAddress') as TextField;
   const gdbPortText = document.getElementById('gdbPort') as TextField;
   const gdbModeRadioGroup = document.getElementById("gdbMode") as RadioGroup;
+  const backendRadioGroup = document.getElementById("debugBackend") as RadioGroup | null;
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
   const runnersDropdown = document.getElementById('runnersDropdown') as HTMLElement;
   const runnerPathText = document.getElementById('runnerPath') as TextField;
   const runnerArgsText = document.getElementById('runnerArgs') as TextField;
+  const deviceNameText = document.getElementById('deviceName') as TextField | null;
+  const deviceInterfaceGroup = document.getElementById('deviceInterface') as RadioGroup | null;
 
   programPathText.value = programPath ?? '';
   svdPathText.value = svdPath ?? '';
@@ -581,12 +772,42 @@ function updateConfig(data: any) {
   gdbAddressText.value = gdbAddress ?? '';
   gdbPortText.value = gdbPort ?? '';
   gdbModeRadioGroup.value = gdbMode ?? 'program';
+  if (deviceNameText) {
+    deviceNameText.value = data.device ?? '';
+  }
+  // A device restored from launch.json is user-owned: never let a later
+  // auto-detection overwrite it (only updateDeviceDetect marks auto values).
+  lastAutoDetectedDevice = '';
+  const deviceDetectInfo = document.getElementById('deviceDetectInfo') as HTMLElement | null;
+  if (deviceDetectInfo) {
+    deviceDetectInfo.textContent = '';
+  }
+  if (deviceInterfaceGroup) {
+    deviceInterfaceGroup.value = data.deviceInterface === 'jtag' ? 'jtag' : 'swd';
+  }
+  lastDefaultGdbPort = data.defaultGdbPort ?? '';
 
   // Always replace the dropdown contents — assigning an empty string clears it
   // so a previous application's runners don't leak into the new selection.
-  runnersDropdown.innerHTML = runnersHTML ?? '';
-  if ((runnersHTML ?? '').length > 0) {
+  // The list depends on the backend: full west runner list vs. native servers.
+  cachedWestRunnersHTML = runnersHTML ?? '';
+  cachedNativeRunnersHTML = data.nativeRunnersHTML ?? '';
+  const activeRunnersHTML = backend === 'cortex-native' ? cachedNativeRunnersHTML : cachedWestRunnersHTML;
+  runnersDropdown.innerHTML = activeRunnersHTML;
+  if (activeRunnersHTML.length > 0) {
     addDropdownItemEventListeners(runnersDropdown, runnerInput);
+  }
+
+  // Set the backend radio AFTER the caches/fields above are consistent: the
+  // toolkit radio-group fires 'change' synchronously on programmatic writes,
+  // so the listener is suppressed for this assignment.
+  if (backendRadioGroup && backendRadioGroup.value !== backend) {
+    suppressBackendChangeEvent = true;
+    try {
+      backendRadioGroup.value = backend;
+    } finally {
+      suppressBackendChangeEvent = false;
+    }
   }
 
   const selectedRunner = (

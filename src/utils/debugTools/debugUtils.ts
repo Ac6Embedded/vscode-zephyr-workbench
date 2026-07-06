@@ -25,13 +25,14 @@ import { ParsedRunnersYaml, findRunnersYamlForProject, getRunnerPathFromRunnersY
 import { composeWestBuildArgs, hasWestBuildSourceDirArg } from '../zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from './debugToolSelectionUtils';
 import { cleanupEmptyWorkspaceSettings } from '../vscodeWorkspaceCleanup';
+import { ZW_DEBUG_TYPE } from '../../debug/backends/types';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 const LEGACY_ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY = 'zephyrWorkbenchAppRoot';
 const ZEPHYR_SDK_CONFIG_VARIABLE = '${config:zephyr-workbench.sdk}';
 const WORKSPACE_APPLICATION_DEBUG_CONFIG_SEPARATOR = ': ';
 
-interface LaunchConfigurationArtifacts {
+export interface LaunchConfigurationArtifacts {
   compatibleRunners: string[];
   defaultDebugRunner?: string;
   generatedGdbPath?: string;
@@ -828,8 +829,8 @@ function isWithin(parentPath: string, childPath: string): boolean {
   return child === parent || child.startsWith(`${parent}${path.sep}`);
 }
 
-function shouldRefreshWorkspaceApplicationProgram(config: any, project: ZephyrApplication): boolean {
-  const programPath = resolveWorkspaceExpression(config.program, project.appWorkspaceFolder);
+function shouldRefreshWorkspaceApplicationProgram(program: string | undefined, project: ZephyrApplication): boolean {
+  const programPath = resolveWorkspaceExpression(program, project.appWorkspaceFolder);
   if (!programPath) {
     return true;
   }
@@ -943,6 +944,27 @@ export function syncLaunchConfigurationProjectPaths(
   }
 
   const paths = getLaunchConfigurationPaths(project, buildConfig);
+
+  if (config.type && config.type !== 'cppdbg') {
+    // Non-cppdbg entries (zephyr-workbench / native cortex-debug) own a
+    // different key set — they must never receive cppdbg-only keys such as
+    // debugServerPath (the west wrapper) or miDebuggerPath. Refresh only the
+    // generated paths they actually use.
+    config.cwd = paths.cwd;
+    const programKey = config.type === 'cortex-debug' ? 'executable' : 'program';
+    if (!config[programKey]
+      || (project.isWestWorkspaceApplication && shouldRefreshWorkspaceApplicationProgram(config[programKey], project))) {
+      config[programKey] = paths.program;
+    }
+    if (config.type === ZW_DEBUG_TYPE && typeof config.debugServerArgs === 'string') {
+      config.debugServerArgs = withDebugServerBuildDir(
+        config.debugServerArgs,
+        '${workspaceFolder}/' + paths.workspaceRelativeBuildDir,
+      );
+    }
+    return;
+  }
+
   // These fields are generated paths, not user-owned debugger options. Refresh
   // them from one path model so workspace-app launch entries stay aligned with
   // the selected app without storing extension-private keys inside cppdbg.
@@ -953,7 +975,7 @@ export function syncLaunchConfigurationProjectPaths(
     '${workspaceFolder}/' + paths.workspaceRelativeBuildDir,
   );
 
-  if (project.isWestWorkspaceApplication && shouldRefreshWorkspaceApplicationProgram(config, project)) {
+  if (project.isWestWorkspaceApplication && shouldRefreshWorkspaceApplicationProgram(config.program, project)) {
     config.program = paths.program;
   }
   if (project.isWestWorkspaceApplication) {
@@ -1361,14 +1383,19 @@ export async function getLaunchConfiguration(
 export async function getDebugManagerLaunchConfiguration(
   project: ZephyrApplication,
   buildConfig: ZephyrBuildConfig,
-): Promise<[any, any, string[], string | undefined, string | undefined]> {
+): Promise<[any, any, string[], string | undefined, string | undefined, LaunchConfigurationArtifacts]> {
   const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
   const artifacts = await collectLaunchConfigurationArtifacts(project, buildConfig, westWorkspace);
   const [launchJson, config] = await getLaunchConfiguration(project, buildConfig.name, false, artifacts);
-  return [launchJson, config, artifacts.compatibleRunners, artifacts.defaultDebugRunner, artifacts.generatedOpenocdPath];
+  return [launchJson, config, artifacts.compatibleRunners, artifacts.defaultDebugRunner, artifacts.generatedOpenocdPath, artifacts];
 }
 
 export function getServerAddressFromConfig(config: any) : any | undefined {
+  // Non-cppdbg launch entries (cortex-debug / zephyr-workbench) have no
+  // setupCommands — never throw on them.
+  if (!Array.isArray(config?.setupCommands)) {
+    return undefined;
+  }
   for(const setupCmd of config.setupCommands) {
     if(setupCmd.description === 'connect to target') {
       const regex = /\S*:\S*/g;

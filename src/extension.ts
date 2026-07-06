@@ -7,6 +7,10 @@ import { westBoardsCommand, westEnableRustModuleCommand, westInitCommand, westUp
 import { WestWorkspace } from './models/WestWorkspace';
 import { ZephyrApplication } from './models/ZephyrApplication';
 import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigurationProvider';
+import { ZephyrWestServerDebugConfigurationProvider } from './providers/ZephyrWestServerDebugConfigurationProvider';
+import { ZephyrCortexNativeDebugConfigurationProvider } from './providers/ZephyrCortexNativeDebugConfigurationProvider';
+import { attachDebugSessionLifecycle, disposeAllManagedServers } from './debug/backends/serverRegistry';
+import { ZW_DEBUG_TYPE } from './debug/backends/types';
 import { ZephyrBuildConfig } from './models/ZephyrBuildConfig';
 import { ArmGnuToolchainInstallation, normalizeArmGnuTargetTriple, normalizeZephyrSdkVariant, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
 import { checkAndCreateTasksJson, isReservedTaskLabel, removeCppToolsConfiguration, saveCustomTaskDefinition, setDefaultProjectSettings, setDefaultWorkspaceApplicationSettings, updateCppToolsConfiguration, updateTasks, ZephyrTaskDefinition, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
@@ -427,6 +431,11 @@ export function activate(context: vscode.ExtensionContext) {
 	// Setup task and debug providers
 	zephyrTaskProvider = vscode.tasks.registerTaskProvider(ZephyrTaskProvider.ZephyrType, new ZephyrTaskProvider());
 	zephyrDebugConfigurationProvide = vscode.debug.registerDebugConfigurationProvider('cppdbg', new ZephyrDebugConfigurationProvider());
+	context.subscriptions.push(
+		vscode.debug.registerDebugConfigurationProvider(ZW_DEBUG_TYPE, new ZephyrWestServerDebugConfigurationProvider()),
+		vscode.debug.registerDebugConfigurationProvider('cortex-debug', new ZephyrCortexNativeDebugConfigurationProvider()),
+	);
+	attachDebugSessionLifecycle(context);
 
 	// Setup Status bar
 	statusBarBuildItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 101);
@@ -4887,4 +4896,6 @@ async function addCustomRunners(
 export function deactivate() {
 	zephyrTaskProvider?.dispose();
 	zephyrDebugConfigurationProvide?.dispose();
+	// Returned so VS Code awaits the debug-server tree kill during shutdown.
+	return disposeAllManagedServers();
 }
