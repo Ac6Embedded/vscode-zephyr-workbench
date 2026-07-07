@@ -47,7 +47,7 @@ import { getBoardFromIdentifier } from './utils/zephyr/boardDiscovery';
 import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
 import { WestWorkspaceApplicationTreeItem, WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
-import { ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigDefaultRunnerTreeItem, ZephyrConfigCustomArgsTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem, ZephyrConfigWestFlagsDTreeItem, ZephyrConfigWestFlagsDValueTreeItem } from './providers/ZephyrApplicationProvider';
+import { ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrCodeExplorerEntryTreeItem, ZephyrCodeExplorerTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigDefaultRunnerTreeItem, ZephyrConfigCustomArgsTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem, ZephyrConfigWestFlagsDTreeItem, ZephyrConfigWestFlagsDValueTreeItem } from './providers/ZephyrApplicationProvider';
 import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsCommandProvider';
 import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ToolchainInstallationsDataProvider, ToolchainInstallationTreeItem } from "./providers/ToolchainInstallationsDataProvider";
@@ -503,7 +503,203 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.window.registerTreeDataProvider('zephyr-workbench-west-workspace', westWorkspaceProvider);
 
 	const zephyrAppProvider = new ZephyrApplicationDataProvider();
-	vscode.window.registerTreeDataProvider('zephyr-workbench-app-explorer', zephyrAppProvider);
+	// createTreeView (not registerTreeDataProvider) so we retain a handle for
+	// TreeView.reveal(), used to auto-reveal the active editor's file inside its
+	// app's Code Explorer.
+	const appTreeView = vscode.window.createTreeView('zephyr-workbench-app-explorer', { treeDataProvider: zephyrAppProvider });
+	context.subscriptions.push(appTreeView);
+	// Accordion: expanding one app's Code Explorer collapses the others'. Only the
+	// Code Explorer sub-nodes are affected; the rest of each app's rows are left
+	// as the user set them. Collapsing the active one clears the state so a later
+	// refresh doesn't silently re-expand it.
+	context.subscriptions.push(
+		appTreeView.onDidExpandElement((e) => {
+			if (e.element instanceof ZephyrCodeExplorerTreeItem) {
+				zephyrAppProvider.setExpandedExplorer(e.element.project.appRootPath);
+			}
+		}),
+		appTreeView.onDidCollapseElement((e) => {
+			if (e.element instanceof ZephyrCodeExplorerTreeItem
+				&& zephyrAppProvider.activeExplorerRoot === path.normalize(e.element.project.appRootPath)) {
+				zephyrAppProvider.setExpandedExplorer(undefined);
+			}
+		}),
+	);
+
+	// When a file that belongs to an app is the active editor, reveal it inside
+	// that app's Code Explorer (which also expands that app's explorer and, via
+	// the accordion, collapses the others). Silent no-op for files outside any
+	// app or under the build output.
+	const revealActiveEditorInCodeExplorer = async (editor: vscode.TextEditor | undefined): Promise<void> => {
+		if (!editor || editor.document.uri.scheme !== 'file') {
+			return;
+		}
+		const fsPath = editor.document.uri.fsPath;
+		const folders = vscode.workspace.workspaceFolders;
+		if (!folders) {
+			return;
+		}
+		let applications: ZephyrApplication[];
+		try {
+			applications = await ZephyrApplication.getApplications(folders);
+		} catch {
+			return;
+		}
+		// Longest-match wins, mirroring getZephyrApplication's tie-break for nested apps.
+		const owner = applications
+			.filter((app) => isPathWithinWorkspaceApplication(app.appRootPath, fsPath))
+			.sort((a, b) => b.appRootPath.length - a.appRootPath.length)[0];
+		if (!owner) {
+			return;
+		}
+		if (path.normalize(fsPath) === path.normalize(owner.appRootPath)) {
+			return;
+		}
+		// Build output isn't shown in the tree, so nothing to reveal.
+		if (isPathWithinWorkspaceApplication(path.join(owner.appRootPath, 'build'), fsPath)) {
+			return;
+		}
+		zephyrAppProvider.setExpandedExplorer(owner.appRootPath);
+		const item = new ZephyrCodeExplorerEntryTreeItem(owner, vscode.Uri.file(fsPath), false);
+		try {
+			await appTreeView.reveal(item, { select: true, focus: false, expand: true });
+		} catch {
+			// reveal can reject if the view isn't ready yet; ignore.
+		}
+	};
+	// Reveal the file that is already open at activation time.
+	void revealActiveEditorInCodeExplorer(vscode.window.activeTextEditor);
+
+	// ---- Code Explorer file operations -------------------------------------
+	// The passed node is a ZephyrCodeExplorerEntryTreeItem (file/folder) or a
+	// ZephyrCodeExplorerTreeItem (the app-root "Code Explorer" node).
+	const ceNodeUri = (node: unknown): vscode.Uri | undefined => {
+		if (node instanceof ZephyrCodeExplorerEntryTreeItem) {
+			return node.uri;
+		}
+		if (node instanceof ZephyrCodeExplorerTreeItem) {
+			return vscode.Uri.file(node.project.appRootPath);
+		}
+		return undefined;
+	};
+	// The directory to create children in / open a terminal at: the folder or
+	// root itself, or the parent folder of a file.
+	const ceNodeDir = (node: unknown): vscode.Uri | undefined => {
+		if (node instanceof ZephyrCodeExplorerTreeItem) {
+			return vscode.Uri.file(node.project.appRootPath);
+		}
+		if (node instanceof ZephyrCodeExplorerEntryTreeItem) {
+			return node.isDirectory ? node.uri : vscode.Uri.file(path.dirname(node.uri.fsPath));
+		}
+		return undefined;
+	};
+	const ceNodeProject = (node: unknown): ZephyrApplication | undefined => {
+		if (node instanceof ZephyrCodeExplorerEntryTreeItem || node instanceof ZephyrCodeExplorerTreeItem) {
+			return node.project;
+		}
+		return undefined;
+	};
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-code-explorer.new-file', async (node) => {
+			const dir = ceNodeDir(node);
+			if (!dir) { return; }
+			const name = await vscode.window.showInputBox({ prompt: 'New file name', placeHolder: 'main.c' });
+			if (!name) { return; }
+			const target = vscode.Uri.joinPath(dir, name);
+			try {
+				await vscode.workspace.fs.writeFile(target, new Uint8Array());
+				const doc = await vscode.workspace.openTextDocument(target);
+				await vscode.window.showTextDocument(doc);
+			} catch (e) {
+				vscode.window.showErrorMessage(`Could not create file: ${e}`);
+			}
+			zephyrAppProvider.refreshCodeExplorer();
+		}),
+		vscode.commands.registerCommand('zephyr-workbench-code-explorer.new-folder', async (node) => {
+			const dir = ceNodeDir(node);
+			if (!dir) { return; }
+			const name = await vscode.window.showInputBox({ prompt: 'New folder name', placeHolder: 'drivers' });
+			if (!name) { return; }
+			try {
+				await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(dir, name));
+			} catch (e) {
+				vscode.window.showErrorMessage(`Could not create folder: ${e}`);
+			}
+			zephyrAppProvider.refreshCodeExplorer();
+		}),
+		vscode.commands.registerCommand('zephyr-workbench-code-explorer.rename', async (node) => {
+			if (!(node instanceof ZephyrCodeExplorerEntryTreeItem)) { return; }
+			const oldName = path.basename(node.uri.fsPath);
+			const newName = await vscode.window.showInputBox({ prompt: 'New name', value: oldName });
+			if (!newName || newName === oldName) { return; }
+			const newUri = vscode.Uri.joinPath(vscode.Uri.file(path.dirname(node.uri.fsPath)), newName);
+			try {
+				await vscode.workspace.fs.rename(node.uri, newUri, { overwrite: false });
+			} catch (e) {
+				vscode.window.showErrorMessage(`Could not rename: ${e}`);
+			}
+			zephyrAppProvider.refreshCodeExplorer();
+		}),
+		vscode.commands.registerCommand('zephyr-workbench-code-explorer.delete', async (node) => {
+			if (!(node instanceof ZephyrCodeExplorerEntryTreeItem)) { return; }
+			const confirm = await vscode.window.showWarningMessage(
+				`Delete '${path.basename(node.uri.fsPath)}'? It will be moved to the trash.`,
+				{ modal: true },
+				'Delete',
+			);
+			if (confirm !== 'Delete') { return; }
+			try {
+				await vscode.workspace.fs.delete(node.uri, { recursive: true, useTrash: true });
+			} catch (e) {
+				vscode.window.showErrorMessage(`Could not delete: ${e}`);
+			}
+			zephyrAppProvider.refreshCodeExplorer();
+		}),
+		vscode.commands.registerCommand('zephyr-workbench-code-explorer.open-to-side', async (node) => {
+			const uri = ceNodeUri(node);
+			if (uri) { await vscode.commands.executeCommand('vscode.open', uri, vscode.ViewColumn.Beside); }
+		}),
+		vscode.commands.registerCommand('zephyr-workbench-code-explorer.reveal-in-os', async (node) => {
+			const uri = ceNodeUri(node);
+			if (uri) { await vscode.commands.executeCommand('revealFileInOS', uri); }
+		}),
+		vscode.commands.registerCommand('zephyr-workbench-code-explorer.open-terminal', async (node) => {
+			const dir = ceNodeDir(node);
+			if (dir) { await vscode.commands.executeCommand('openInIntegratedTerminal', dir); }
+		}),
+		vscode.commands.registerCommand('zephyr-workbench-code-explorer.copy-path', async (node) => {
+			const uri = ceNodeUri(node);
+			if (uri) { await vscode.env.clipboard.writeText(uri.fsPath); }
+		}),
+		vscode.commands.registerCommand('zephyr-workbench-code-explorer.copy-relative-path', async (node) => {
+			const uri = ceNodeUri(node);
+			const project = ceNodeProject(node);
+			if (uri && project) { await vscode.env.clipboard.writeText(path.relative(project.appRootPath, uri.fsPath)); }
+		}),
+		vscode.commands.registerCommand('zephyr-workbench-code-explorer.refresh', () => zephyrAppProvider.refreshCodeExplorer()),
+	);
+
+	// Keep the Code Explorer in sync with on-disk changes (from our file ops or
+	// external edits). To stay cheap in large west trees, only react when a Code
+	// Explorer is actually open and the change falls inside it; ignore build/git
+	// noise and debounce bursts.
+	let ceRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+	const scheduleCodeExplorerRefresh = (uri: vscode.Uri) => {
+		const active = zephyrAppProvider.activeExplorerRoot;
+		if (!active) { return; }
+		const p = uri.fsPath;
+		if (!isPathWithinWorkspaceApplication(active, p)) { return; }
+		if (p.includes(`${path.sep}build${path.sep}`) || p.includes(`${path.sep}.git${path.sep}`)) { return; }
+		if (ceRefreshTimer) { clearTimeout(ceRefreshTimer); }
+		ceRefreshTimer = setTimeout(() => zephyrAppProvider.refreshCodeExplorer(), 300);
+	};
+	const ceWatcher = vscode.workspace.createFileSystemWatcher('**/*');
+	context.subscriptions.push(
+		ceWatcher,
+		ceWatcher.onDidCreate(scheduleCodeExplorerRefresh),
+		ceWatcher.onDidDelete(scheduleCodeExplorerRefresh),
+	);
 	const dashboardViewProvider = new ZephyrDashboardViewProvider();
 	context.subscriptions.push(
 		dashboardViewProvider,
@@ -4387,9 +4583,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	/* Listeners on active editor */
 	context.subscriptions.push(
-		vscode.window.onDidChangeActiveTextEditor(() => {
+		vscode.window.onDidChangeActiveTextEditor((editor) => {
 			updateStatusBar();
 			void dashboardViewProvider.refresh();
+			void revealActiveEditorInCodeExplorer(editor);
 		})
 	);
 

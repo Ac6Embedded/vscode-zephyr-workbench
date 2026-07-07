@@ -47,7 +47,7 @@ interface AppTemplateDiscoveryTask {
   relativePath: string;
 }
 
-async function readDirectoryEntries(directory: vscode.Uri): Promise<[string, vscode.FileType][]> {
+export async function readDirectoryEntries(directory: vscode.Uri): Promise<[string, vscode.FileType][]> {
   try {
     const entries = await fs.promises.readdir(directory.fsPath, { withFileTypes: true });
     return entries.map(entry => {

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { ZephyrApplication } from '../models/ZephyrApplication';
-import { getWestWorkspace } from '../utils/utils';
+import { getWestWorkspace, readDirectoryEntries } from '../utils/utils';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY } from '../constants';
 import {
@@ -19,6 +19,11 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
 	private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | void>();
 	readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | void> = this._onDidChangeTreeData.event;
 
+  // Accordion state for the per-app Code Explorer: the appRootPath (normalized)
+  // of the single app whose Code Explorer sub-node is currently expanded, or
+  // undefined when none is. Opening one collapses the others (see extension.ts).
+  private expandedExplorerRoot: string | undefined;
+
   constructor() {
 
 	}
@@ -34,6 +39,9 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
         const applications = await ZephyrApplication.getApplications(vscode.workspace.workspaceFolders);
         for (const appProject of applications) {
           const item =  new ZephyrApplicationTreeItem(appProject, vscode.TreeItemCollapsibleState.Collapsed);
+          // Stable id so TreeView.reveal() can match this app node when walking
+          // up from a Code Explorer file node (getParent reconstructs the same id).
+          item.id = `app:${appProject.appRootPath}`;
           items.push(item);
         }
         return Promise.resolve(items);
@@ -81,8 +89,24 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
           items.push(envItem);
         }
       }
+      // Per-application Code Explorer: a plain, browsable file tree rooted at
+      // the app folder. Rendered last so it sits below the build info. Its
+      // expanded/collapsed state is driven by the accordion logic (extension.ts).
+      items.push(new ZephyrCodeExplorerTreeItem(element.project, this.isExplorerExpanded(element.project)));
+
       return Promise.resolve(items);
-    } 
+    }
+
+    if(element instanceof ZephyrCodeExplorerTreeItem) {
+      return this.listCodeExplorerDirectory(element.project, vscode.Uri.file(element.project.appRootPath), true);
+    }
+
+    if(element instanceof ZephyrCodeExplorerEntryTreeItem) {
+      if(!element.isDirectory) {
+        return Promise.resolve([]);
+      }
+      return this.listCodeExplorerDirectory(element.project, element.uri, false);
+    }
 
     if(element instanceof ZephyrConfigTreeItem) {
       const boardItem = new ZephyrConfigBoardTreeItem(element.project, element.buildConfig);
@@ -188,12 +212,94 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
     return Promise.resolve([]);
   }
 
-  getParent?(element: any): vscode.ProviderResult<vscode.TreeItem> {
+  getParent(element: any): vscode.ProviderResult<vscode.TreeItem> {
+    // Only the Code Explorer branch needs a real parent chain (TreeView.reveal
+    // walks it up to the root). Ancestors are reconstructed with the same ids
+    // that getChildren() produces so VS Code can match them.
+    if (element instanceof ZephyrCodeExplorerEntryTreeItem) {
+      const parentDir = path.dirname(element.uri.fsPath);
+      if (path.normalize(parentDir) === path.normalize(element.project.appRootPath)) {
+        return new ZephyrCodeExplorerTreeItem(element.project, this.isExplorerExpanded(element.project));
+      }
+      return new ZephyrCodeExplorerEntryTreeItem(element.project, vscode.Uri.file(parentDir), true);
+    }
+    if (element instanceof ZephyrCodeExplorerTreeItem) {
+      const appItem = new ZephyrApplicationTreeItem(element.project, vscode.TreeItemCollapsibleState.Collapsed);
+      appItem.id = `app:${element.project.appRootPath}`;
+      return appItem;
+    }
     return null;
   }
 
-  resolveTreeItem?(item: vscode.TreeItem, element: ZephyrApplicationTreeItem, token: vscode.CancellationToken): vscode.ProviderResult<vscode.TreeItem> {
-    throw new Error('Method not implemented.');
+  resolveTreeItem(item: vscode.TreeItem): vscode.ProviderResult<vscode.TreeItem> {
+    // Code Explorer folder items intentionally carry no tooltip/command; return
+    // them unchanged rather than throwing when VS Code asks to resolve them.
+    return item;
+  }
+
+  /**
+   * Whether the given app's Code Explorer sub-node is the currently expanded one.
+   */
+  private isExplorerExpanded(project: ZephyrApplication): boolean {
+    return this.expandedExplorerRoot !== undefined
+      && this.expandedExplorerRoot === path.normalize(project.appRootPath);
+  }
+
+  /** The normalized appRootPath whose Code Explorer is currently expanded, if any. */
+  get activeExplorerRoot(): string | undefined {
+    return this.expandedExplorerRoot;
+  }
+
+  /**
+   * Set which app's Code Explorer is expanded (accordion). Fires a lightweight
+   * tree refresh WITHOUT the cache-clearing that refresh() does, so the other
+   * apps' Code Explorer nodes re-render collapsed (their id encodes the state,
+   * which is what makes VS Code actually collapse an already-expanded node).
+   */
+  setExpandedExplorer(appRootPath: string | undefined): void {
+    const normalized = appRootPath ? path.normalize(appRootPath) : undefined;
+    if (this.expandedExplorerRoot === normalized) {
+      return;
+    }
+    this.expandedExplorerRoot = normalized;
+    this._onDidChangeTreeData.fire();
+  }
+
+  /** Lightweight refresh of the whole tree (used after file operations). */
+  refreshCodeExplorer(): void {
+    this._onDidChangeTreeData.fire();
+  }
+
+  /**
+   * List a directory as sorted Code Explorer entries (folders first, then files,
+   * case-insensitive). At the app root, hides the build output and .git folders.
+   */
+  private async listCodeExplorerDirectory(
+    project: ZephyrApplication,
+    dir: vscode.Uri,
+    isRoot: boolean,
+  ): Promise<vscode.TreeItem[]> {
+    let entries: [string, vscode.FileType][];
+    try {
+      entries = await readDirectoryEntries(dir);
+    } catch {
+      return [];
+    }
+    const dirs: ZephyrCodeExplorerEntryTreeItem[] = [];
+    const files: ZephyrCodeExplorerEntryTreeItem[] = [];
+    for (const [name, type] of entries) {
+      if (isRoot && CODE_EXPLORER_IGNORED_ROOT_ENTRIES.has(name)) {
+        continue;
+      }
+      const childUri = vscode.Uri.joinPath(dir, name);
+      const isDirectory = (type & vscode.FileType.Directory) === vscode.FileType.Directory;
+      (isDirectory ? dirs : files).push(new ZephyrCodeExplorerEntryTreeItem(project, childUri, isDirectory));
+    }
+    const byName = (a: ZephyrCodeExplorerEntryTreeItem, b: ZephyrCodeExplorerEntryTreeItem) =>
+      path.basename(a.uri.fsPath).toLowerCase().localeCompare(path.basename(b.uri.fsPath).toLowerCase());
+    dirs.sort(byName);
+    files.sort(byName);
+    return [...dirs, ...files];
   }
 
   refresh(): void {
@@ -589,4 +695,55 @@ export class ZephyrConfigWestFlagsDValueTreeItem extends vscode.TreeItem {
     this.tooltip = `-D${flagValue}`;
   }
   contextValue = 'zephyr-application-west-d-flag';
+}
+
+// Top-level entries hidden from the per-app Code Explorer: the build output
+// (build/<config>, all under 'build') and the git metadata folder.
+const CODE_EXPLORER_IGNORED_ROOT_ENTRIES = new Set<string>(['build', '.git']);
+
+/**
+ * Accordion "Code Explorer" node placed under each application. Expanding it
+ * lists the app's file tree; opening one collapses the others. The expanded
+ * state is encoded into the id so VS Code honors a forced collapse on refresh.
+ */
+export class ZephyrCodeExplorerTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly project: ZephyrApplication,
+    expanded: boolean,
+  ) {
+    super(
+      'Code Explorer',
+      expanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed,
+    );
+    this.id = `ce:${project.appRootPath}:${expanded ? 'x' : 'c'}`;
+    this.iconPath = new vscode.ThemeIcon('folder-library');
+    this.tooltip = project.appRootPath;
+  }
+
+  contextValue = 'zephyr-ce-root';
+}
+
+/**
+ * One filesystem entry (folder or file) in a Code Explorer. Files carry a
+ * `vscode.open` command; both set only `resourceUri` so the active file-icon
+ * theme paints them plainly (no badges, no recoloring). The id is prefixed with
+ * the owning app root so the same physical path under nested apps stays unique.
+ */
+export class ZephyrCodeExplorerEntryTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly project: ZephyrApplication,
+    public readonly uri: vscode.Uri,
+    public readonly isDirectory: boolean,
+  ) {
+    super(
+      uri,
+      isDirectory ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+    );
+    this.id = `ce-entry:${project.appRootPath}::${uri.fsPath}`;
+    this.resourceUri = uri;
+    this.contextValue = isDirectory ? 'zephyr-ce-folder' : 'zephyr-ce-file';
+    if (!isDirectory) {
+      this.command = { command: 'vscode.open', title: 'Open', arguments: [uri] };
+    }
+  }
 }

@@ -482,6 +482,61 @@
         "category": "Zephyr Workbench/Application"
       },
       {
+        "command": "zephyr-workbench-code-explorer.new-file",
+        "title": "New File...",
+        "icon": "$(new-file)",
+        "category": "Zephyr Workbench/Code Explorer"
+      },
+      {
+        "command": "zephyr-workbench-code-explorer.new-folder",
+        "title": "New Folder...",
+        "icon": "$(new-folder)",
+        "category": "Zephyr Workbench/Code Explorer"
+      },
+      {
+        "command": "zephyr-workbench-code-explorer.rename",
+        "title": "Rename...",
+        "category": "Zephyr Workbench/Code Explorer"
+      },
+      {
+        "command": "zephyr-workbench-code-explorer.delete",
+        "title": "Delete",
+        "icon": "$(trash)",
+        "category": "Zephyr Workbench/Code Explorer"
+      },
+      {
+        "command": "zephyr-workbench-code-explorer.open-to-side",
+        "title": "Open to the Side",
+        "icon": "$(split-horizontal)",
+        "category": "Zephyr Workbench/Code Explorer"
+      },
+      {
+        "command": "zephyr-workbench-code-explorer.reveal-in-os",
+        "title": "Reveal in File Explorer",
+        "category": "Zephyr Workbench/Code Explorer"
+      },
+      {
+        "command": "zephyr-workbench-code-explorer.open-terminal",
+        "title": "Open in Integrated Terminal",
+        "category": "Zephyr Workbench/Code Explorer"
+      },
+      {
+        "command": "zephyr-workbench-code-explorer.copy-path",
+        "title": "Copy Path",
+        "category": "Zephyr Workbench/Code Explorer"
+      },
+      {
+        "command": "zephyr-workbench-code-explorer.copy-relative-path",
+        "title": "Copy Relative Path",
+        "category": "Zephyr Workbench/Code Explorer"
+      },
+      {
+        "command": "zephyr-workbench-code-explorer.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Zephyr Workbench/Code Explorer"
+      },
+      {
         "command": "zephyr-workbench-app-explorer.add-config",
         "title": "Add Multibuild",
         "category": "Zephyr Workbench/Application"
@@ -1126,6 +1181,51 @@
       ],
       "editor/context": [],
       "view/item/context": [
+        {
+          "command": "zephyr-workbench-code-explorer.open-to-side",
+          "group": "1_open@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-ce-file"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.new-file",
+          "group": "2_new@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-ce-(folder|root)$/"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.new-folder",
+          "group": "2_new@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-ce-(folder|root)$/"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.rename",
+          "group": "5_mod@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-ce-(file|folder)$/"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.delete",
+          "group": "5_mod@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-ce-(file|folder)$/"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.open-terminal",
+          "group": "7_misc@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-ce-(folder|root)$/"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.reveal-in-os",
+          "group": "7_misc@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-ce-(file|folder|root)$/"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.copy-path",
+          "group": "8_copy@1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-ce-(file|folder)$/"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.copy-relative-path",
+          "group": "8_copy@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-ce-(file|folder)$/"
+        },
         {
           "command": "zephyr-workbench-app-explorer.select-application",
           "group": "0@view/item/context@0",
@@ -1847,6 +1947,46 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "zephyr-workbench-code-explorer.new-file",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.new-folder",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.rename",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.delete",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.open-to-side",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.reveal-in-os",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.open-terminal",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.copy-path",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.copy-relative-path",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-code-explorer.refresh",
+          "when": "false"
+        },
         {
           "command": "zephyr-workbench.pyocd-manager",
           "when": "false"
