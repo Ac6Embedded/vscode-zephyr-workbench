@@ -425,7 +425,14 @@ export class DebugToolsPanel {
                       </a>
                     </vscode-button>`;
       }
-      
+
+      // pyOCD's device support lives in CMSIS-Packs — link to its manager.
+      if(tool.tool === 'pyocd') {
+        toolHTML +=`<vscode-button appearance="icon" class="pyocd-manage-button no-icon-tooltip" data-tooltip="Open pyOCD Manager (packs, targets)" title="Open pyOCD Manager (packs, targets)">
+                      <span class="codicon codicon-settings-gear"></span>
+                    </vscode-button>`;
+      }
+
       toolHTML +=`  </td>
         <td>`;
         if(this.isToolCompatible(tool)) {
@@ -703,6 +710,9 @@ export class DebugToolsPanel {
           case 'install':
             let selectedTool = this.data.debug_tools.find((tool: { tool: string; }) => tool.tool === message.tool);
             vscode.commands.executeCommand("zephyr-workbench.run-install-debug-tools", this._panel, [ selectedTool ]);
+            break;
+          case 'pyocd-manage':
+            vscode.commands.executeCommand("zephyr-workbench.pyocd-manager");
             break;
           case 'set-default': {
             const { tool, alias } = message;

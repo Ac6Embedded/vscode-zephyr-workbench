@@ -404,6 +404,12 @@
         "category": "Zephyr Workbench"
       },
       {
+        "command": "zephyr-workbench.pyocd-manager",
+        "title": "pyOCD Manager",
+        "icon": "$(circuit-board)",
+        "category": "Zephyr Workbench"
+      },
+      {
         "command": "zephyr-workbench.west-manager",
         "title": "West Manager",
         "icon": {
@@ -1830,6 +1836,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "zephyr-workbench.pyocd-manager",
+          "when": "false"
+        },
         {
           "command": "zephyr-workbench-app-explorer.build-app",
           "when": "false"

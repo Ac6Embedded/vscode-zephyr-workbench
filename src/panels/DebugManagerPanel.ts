@@ -1,13 +1,14 @@
 import * as vscode from 'vscode';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugLaunchConfigurationName, getDebugManagerLaunchConfiguration, getDebugRunners, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getWestDebugArgsForProject, setupPyOCDTarget, writeLaunchJson, LaunchConfigurationArtifacts } from "../utils/debugTools/debugUtils";
+import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugLaunchConfigurationName, getDebugManagerLaunchConfiguration, getDebugRunners, getDebugSessionVenvPath, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getWestDebugArgsForProject, setupPyOCDTarget, writeLaunchJson, LaunchConfigurationArtifacts } from "../utils/debugTools/debugUtils";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { getZephyrApplication } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
 import { StlinkGdbserver } from '../debug/runners/StlinkGdbserver';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { getSetupCommands } from '../debug/gdbUtils';
+import { checkPyOCDTarget } from '../utils/execUtils';
 import { getOpenocdSelectionInfo } from '../utils/debugTools/debugToolSelectionUtils';
 import { CORTEX_NATIVE_RUNNER_NAMES, DebugBackendId, getDefaultGdbPort, runnerNameToNativeServer } from '../debug/backends/types';
 import { ensureCortexDebugAvailable, installCortexDebug, isCortexDebugInstalled } from '../debug/backends/cortexDebugExtension';
@@ -280,6 +281,9 @@ export class DebugManagerPanel {
                 <vscode-button appearance="icon" id="installRunnerButton" class="runner-install" style="vertical-align: top">
                   <span class="codicon codicon-desktop-download no-icon-tooltip" data-tooltip="Install debug runners"></span>
                 </vscode-button>
+                <vscode-button appearance="icon" id="pyocdManageButton" class="runner-install hidden" style="vertical-align: top">
+                  <span class="codicon codicon-settings-gear no-icon-tooltip" data-tooltip="Open pyOCD Manager (CMSIS-Packs, targets)"></span>
+                </vscode-button>
               </div>
 
               <div id="runnerPathRow" class="grid-group-div">
@@ -321,7 +325,13 @@ export class DebugManagerPanel {
                   </div>
                 </div>
               </div>
-            
+
+              <div id="pyocdTargetRow" class="grid-group-div" style="display: none;">
+                <div>
+                  <span id="pyocdTargetInfo" style="color: var(--vscode-descriptionForeground); font-size: calc(var(--type-ramp-base-font-size) - 2px);"></span>
+                </div>
+              </div>
+
               <div class="grid-group-div">
                 <vscode-text-field size="50" type="text" id="runnerArgs" value="" placeholder="(Optional)">Additional arguments:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Additional options to provide to debug server">?</span></vscode-text-field>
               </div>
@@ -412,6 +422,49 @@ export class DebugManagerPanel {
         applicable: backend === 'cppdbg' ? 'false' : 'true',
         installed: isCortexDebugInstalled() ? 'true' : 'false',
       });
+    }
+
+    // Tell the form whether pyOCD already has target support for this build,
+    // so the user knows before Apply whether a pack download is coming. The
+    // check reads the cached target catalog: cheap after the first call.
+    // The generation counter drops slow in-flight checks that resolve after
+    // the user already switched runner or build config: without it a stale
+    // response would re-show the row under a non-pyocd runner.
+    let pyocdStatusGeneration = 0;
+    async function postPyOCDTargetStatus(
+      runnerName: string | undefined,
+      project: ZephyrApplication | undefined,
+      buildConfig: ZephyrBuildConfig | undefined,
+    ) {
+      const generation = ++pyocdStatusGeneration;
+      const post = (message: any) => {
+        if (generation === pyocdStatusGeneration) {
+          webview.postMessage(message);
+        }
+      };
+      if (runnerName !== 'pyocd' || !project || !buildConfig) {
+        post({ command: 'updatePyOCDTargetDetect', visible: false });
+        return;
+      }
+      let target: string | undefined;
+      try {
+        target = buildConfig.getPyOCDTarget(project);
+      } catch {
+        target = undefined;
+      }
+      if (!target) {
+        post({ command: 'updatePyOCDTargetDetect', visible: true, target: '' });
+        return;
+      }
+      try {
+        // Check inside the venv the debug session will use (app or workspace
+        // local venv when present, global otherwise).
+        const installed = await checkPyOCDTarget(target, getDebugSessionVenvPath(project));
+        post({ command: 'updatePyOCDTargetDetect', visible: true, target, installed });
+      } catch {
+        // pyocd unavailable: the runner-detect row already reports that.
+        post({ command: 'updatePyOCDTargetDetect', visible: false });
+      }
     }
 
     function postDeviceDetect(project: ZephyrApplication | undefined, buildConfig: ZephyrBuildConfig | undefined) {
@@ -584,6 +637,7 @@ export class DebugManagerPanel {
               } else {
                 postRunnerDetectState(false, runnerName, runnerPath, runnerInfo.defaultInfo, runnerInfo.pathInfo);
               }
+              postPyOCDTargetStatus(runnerName, this.project, this.buildConfig);
               break;
             }
             case 'backendChanged': {
@@ -652,6 +706,24 @@ export class DebugManagerPanel {
               vscode.commands.executeCommand('zephyr-workbench.install-runners');
               break;
             }
+            case 'pyocdManage': {
+              // Resolve the form's project/config selection into model objects
+              // so the manager can show the target this build requires.
+              let project: ZephyrApplication | undefined;
+              let buildConfig: ZephyrBuildConfig | undefined;
+              try {
+                if (message.project) {
+                  project = await getZephyrApplication(message.project);
+                  if (project && message.buildConfig) {
+                    buildConfig = project.getBuildConfiguration(message.buildConfig);
+                  }
+                }
+              } catch {
+                // No valid selection — open the manager without build context.
+              }
+              vscode.commands.executeCommand('zephyr-workbench.pyocd-manager', { project, buildConfig });
+              break;
+            }
             case 'refreshApplications': {
               webview.postMessage({ command: 'applicationsLoading' });
               await loadApplications(webview);
@@ -663,6 +735,8 @@ export class DebugManagerPanel {
             }
             case 'apply': {
               await applyHandler(message);
+              // Apply may have just installed the pyOCD target pack.
+              postPyOCDTargetStatus(message.runner, this.project, this.buildConfig);
               break;
             }
             case 'debug': {
@@ -794,6 +868,7 @@ export class DebugManagerPanel {
         if (state.backend === 'cortex-native' && runnerName === 'jlink' && !(state.device ?? '').trim()) {
           postDeviceDetect(project, buildConfig);
         }
+        postPyOCDTargetStatus(runnerName, project, buildConfig);
       } catch (error) {
         console.error('Debug Manager: cannot update configuration', error);
         webview.postMessage({ command: 'updateConfigError' });
@@ -1106,13 +1181,11 @@ export class DebugManagerPanel {
               createOpenocdCfg(appProject);
               break;
             case 'pyocd':
-              await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: "Please wait... installing target support on pyOCD",
-                cancellable: false,
-              }, async () => {
-                await setupPyOCDTarget(appProject, buildConfigName);
-              });
+              // Failed or cancelled target-pack setup: don't write launch.json
+              // or let the caller start a session that cannot connect.
+              if (!(await setupPyOCDTarget(appProject, buildConfigName))) {
+                return false;
+              }
               break;
           }
         }
@@ -1162,17 +1235,15 @@ export class DebugManagerPanel {
         createWestWrapper(appProject, buildConfigName);
         
         switch(runner?.name) {
-          case 'openocd': 
+          case 'openocd':
             createOpenocdCfg(appProject);
             break;
           case 'pyocd':
-            await vscode.window.withProgress({
-              location: vscode.ProgressLocation.Notification,
-              title: "Please wait... installing target support on pyOCD",
-              cancellable: false,
-            }, async () => {
-              await setupPyOCDTarget(appProject, buildConfigName);
-            });
+            // Failed or cancelled target-pack setup: don't write launch.json
+            // or let the caller start a session that cannot connect.
+            if (!(await setupPyOCDTarget(appProject, buildConfigName))) {
+              return false;
+            }
             break;
         }
 

@@ -6,7 +6,7 @@ import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIP
 import { Linkserver } from "../../debug/runners/Linkserver";
 import { Openocd } from "../../debug/runners/Openocd";
 import { WestRunner } from "../../debug/runners/WestRunner";
-import { checkPyOCDTarget, concatCommands, expandEnvVariables, getConfiguredWorkbenchPath, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from '../execUtils';
+import { checkPyOCDTarget, concatCommands, dryRunInstallPyOCDPacks, expandEnvVariables, getConfiguredVenvPath, getConfiguredWorkbenchPath, getPyOCDOutputChannel, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from '../execUtils';
 import { ZephyrApplication } from "../../models/ZephyrApplication";
 import { prependRustBinPath } from '../../models/ToolchainInstallations';
 import { findBoardByHierarchicalIdentifier, getSupportedBoards } from '../zephyr/boardDiscovery';
@@ -995,24 +995,112 @@ export function createOpenocdCfg(project: ZephyrApplication) {
   Openocd.createWorkaroundCfg(project.appRootPath);
 }
 
-export async function setupPyOCDTarget(project: ZephyrApplication, buildConfigName?: string) {
-  let target;
+// Converts cmsis-pack-manager's (current/total) download ticks into cumulative
+// withProgress increments. The bar may saturate when several phases run in one
+// notification; the (NNN/MMM) message stays accurate throughout.
+function makePyOCDTickReporter(
+  progress: vscode.Progress<{ message?: string; increment?: number }>,
+  label: string,
+) {
+  let lastPercent = 0;
+  return (current: number, total: number | undefined) => {
+    if (total && total > 0) {
+      const percent = Math.min(100, (current / total) * 100);
+      progress.report({ increment: percent - lastPercent, message: `${label} (${current}/${total})` });
+      lastPercent = percent;
+    } else {
+      progress.report({ message: `${label} (${current}/?)` });
+    }
+  };
+}
+
+/**
+ * The venv the debug session will run west/pyocd in: per-app venv, else the
+ * west workspace venv, else the globally configured one. Must match the
+ * resolution in serverProcess.ts so target verification inspects the same
+ * pyocd installation the session will use.
+ */
+export function getDebugSessionVenvPath(project: ZephyrApplication): string | undefined {
+  return project.venvPath ?? getConfiguredVenvPath(project.appWorkspaceFolder);
+}
+
+/**
+ * Make sure pyOCD has target support for the build's `--target=`. Cheap when
+ * support is already installed (cached catalog lookup); otherwise resolves the
+ * CMSIS-Pack via a dry run first — `pyocd pack install` exits 0 even when the
+ * pattern matches nothing — downloads with cancellable progress, and verifies
+ * the target actually appeared afterwards. Runs pyocd inside the venv the
+ * debug session will use.
+ */
+export async function setupPyOCDTarget(project: ZephyrApplication, buildConfigName?: string): Promise<boolean> {
+  let target: string | undefined;
   if(buildConfigName) {
     let buildConfig = project.getBuildConfiguration(buildConfigName);
     if(buildConfig) {
       target = buildConfig.getPyOCDTarget(project);
     }
-  } 
-
-  if(target) { 
-    if(!(await checkPyOCDTarget(target))) {
-      await updatePyOCDPack();
-      await installPyOCDTarget(target);
-    }
   }
-  else {
+
+  if(!target) {
     vscode.window.showErrorMessage('Target not compatible with PyOCD. Please select a valid target in the build configuration.');
-    return;
+    return false;
+  }
+
+  const showSetupError = (message: string) => {
+    const openManager = 'Open pyOCD Manager';
+    const showLog = 'Show Log';
+    vscode.window.showErrorMessage(message, openManager, showLog).then(choice => {
+      if (choice === openManager) {
+        vscode.commands.executeCommand('zephyr-workbench.pyocd-manager', {
+          project,
+          buildConfig: buildConfigName ? project.getBuildConfiguration(buildConfigName) : undefined,
+        });
+      } else if (choice === showLog) {
+        getPyOCDOutputChannel().show();
+      }
+    });
+  };
+
+  const venvPath = getDebugSessionVenvPath(project);
+
+  try {
+    if (await checkPyOCDTarget(target, venvPath)) {
+      return true;
+    }
+
+    const installed = await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `pyOCD: installing target support for '${target}'`,
+      cancellable: true,
+    }, async (progress, token) => {
+      progress.report({ message: 'resolving CMSIS-Pack...' });
+      // The dry run downloads the pack index when it is missing; give it the
+      // tick reporter so that download is visible too.
+      let packs = await dryRunInstallPyOCDPacks(target!, { token, venvPath, onProgress: makePyOCDTickReporter(progress, 'downloading pack index') });
+      if (packs.length === 0) {
+        // The local pack index may be stale — refresh once and retry.
+        await updatePyOCDPack({ token, venvPath, onProgress: makePyOCDTickReporter(progress, 'updating pack index') });
+        packs = await dryRunInstallPyOCDPacks(target!, { token, venvPath });
+      }
+      if (packs.length === 0) {
+        return false;
+      }
+      const packLabel = packs.length > 1 ? `${packs.length} packs` : packs[0];
+      progress.report({ message: `downloading ${packLabel}...` });
+      await installPyOCDTarget(target!, { token, venvPath, onProgress: makePyOCDTickReporter(progress, `downloading ${packLabel}`) });
+      return await checkPyOCDTarget(target!, venvPath);
+    });
+
+    if (!installed) {
+      showSetupError(`pyOCD could not install target support for '${target}': no CMSIS-Pack provides this target. Check the target name or install a pack manually.`);
+    }
+    return installed;
+  } catch (e) {
+    if (e instanceof vscode.CancellationError) {
+      return false;
+    }
+    showSetupError(`pyOCD target setup for '${target}' failed: ${e instanceof Error ? e.message : e}`);
+    return false;
   }
 }
 

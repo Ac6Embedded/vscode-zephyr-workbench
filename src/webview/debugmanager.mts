@@ -57,6 +57,7 @@ function main() {
   browseRunnerButton?.addEventListener("click", browseRunnerHandler);
 
   installButton.addEventListener("click", installHandler);
+  document.getElementById('pyocdManageButton')?.addEventListener("click", pyocdManageHandler);
   runnerDetectInstallButton?.addEventListener("click", installHandler);
   changeRunnerDefaultButton?.addEventListener("click", installHandler);
   resetButton.addEventListener("click", resetHandler);
@@ -110,6 +111,13 @@ function applyBackendVisibility() {
   setRowVisible('deviceRow', native);
   setRowVisible('interfaceRow', native);
   setRowVisible('runnerPathRow', native || !(runnerName === 'stlink_gdbserver' || runnerName === 'pyocd'));
+  // pyOCD's target support (CMSIS-Packs) has its own manager panel.
+  document.getElementById('pyocdManageButton')?.classList.toggle('hidden', runnerName !== 'pyocd');
+  if (runnerName !== 'pyocd') {
+    // Hide immediately on runner switch; the panel re-posts the status when
+    // pyocd is (re)selected.
+    setRowVisible('pyocdTargetRow', false);
+  }
 }
 
 function runnerPathHiddenForSelectedRunner() {
@@ -396,6 +404,33 @@ function setVSCodeMessageListener() {
         );
         break;
       }
+      case 'updatePyOCDTargetDetect': {
+        const info = document.getElementById('pyocdTargetInfo');
+        if (!event.data.visible || !info) {
+          setRowVisible('pyocdTargetRow', false);
+          break;
+        }
+        if (!event.data.target) {
+          info.textContent = 'No pyOCD target detected for this build. Build the configuration first.';
+        } else if (event.data.installed) {
+          info.textContent = `pyOCD target '${event.data.target}': support installed`;
+        } else {
+          const link = document.createElement('a');
+          link.href = '#';
+          link.textContent = 'pyOCD Manager';
+          link.addEventListener('click', (e) => {
+            e.preventDefault();
+            postPyocdManage();
+          });
+          info.replaceChildren(
+            document.createTextNode(`pyOCD target '${event.data.target}': support not installed. The required CMSIS-Pack will be downloaded automatically and might take a while. You can customize it in the `),
+            link,
+            document.createTextNode('.'),
+          );
+        }
+        setRowVisible('pyocdTargetRow', true);
+        break;
+      }
       case 'resetStarted': {
         document.getElementById('resetSpinner')!.style.display = 'inline-block';
         break;
@@ -483,6 +518,20 @@ function browseRunnerHandler(this: HTMLElement, ev: MouseEvent) {
 
 function installHandler(this: HTMLElement, ev: MouseEvent) {
   webviewApi.postMessage({ command: 'install' });
+}
+
+function postPyocdManage() {
+  const applicationInput = document.getElementById('applicationInput') as HTMLInputElement | null;
+  const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement | null;
+  webviewApi.postMessage({
+    command: 'pyocdManage',
+    project: applicationInput?.getAttribute('data-value') ?? '',
+    buildConfig: buildConfigInput?.getAttribute('data-value') ?? '',
+  });
+}
+
+function pyocdManageHandler(this: HTMLElement, ev: MouseEvent) {
+  postPyocdManage();
 }
 
 function resetHandler(this: HTMLElement, ev: MouseEvent) {

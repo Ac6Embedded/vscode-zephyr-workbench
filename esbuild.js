@@ -107,6 +107,14 @@ const webviewAdvancedHostToolsConfig = {
   outfile: "./out/advancedhosttools.js",
 };
 
+const webviewPyocdManagerConfig = {
+  ...baseConfig,
+  target: "es2020",
+  format: "esm",
+  entryPoints: ["./src/webview/pyocdmanager.mts"],
+  outfile: "./out/pyocdmanager.js",
+};
+
 const buildConfigs = [
   extensionConfig,
   webviewCreateWestWorkspaceConfig,
@@ -118,6 +126,7 @@ const buildConfigs = [
   webviewHostToolsConfig,
   webviewEclairManagerConfig,
   webviewAdvancedHostToolsConfig,
+  webviewPyocdManagerConfig,
 ];
 
 function formatError(error) {

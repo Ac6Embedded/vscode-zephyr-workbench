@@ -84,6 +84,13 @@ function main() {
 
   setupJlinkTermsModal();
 
+  document.querySelectorAll('.pyocd-manage-button').forEach(button => {
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      webviewApi.postMessage({ command: 'pyocd-manage' });
+    });
+  });
+
   const installPackButtons = document.querySelectorAll('.install-pack-button');
   installPackButtons.forEach(button => {
     button.addEventListener('click', () => {

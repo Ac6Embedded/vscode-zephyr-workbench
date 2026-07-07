@@ -35,6 +35,7 @@ import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
 import { DebugManagerPanel } from './panels/DebugManagerPanel';
 import { DebugToolsPanel } from './panels/DebugToolsPanel';
+import { PyOCDManagerPanel } from './panels/PyOCDManagerPanel';
 import { WestManagerPanel } from './panels/WestManagerPanel';
 import { HostToolsPanel } from './panels/HostToolsPanel';
 import { AdvancedHostToolsPanel } from './panels/AdvancedHostToolsPanel';
@@ -2424,6 +2425,15 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench.install-runners", async () => {
 			DebugToolsPanel.render(context.extensionUri);
+		})
+	);
+
+	// Accepts an optional { project, buildConfig } payload (same convention as
+	// zephyr-workbench.debug-manager) so the panel can show the target the
+	// selected build requires.
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench.pyocd-manager", async (node: any) => {
+			PyOCDManagerPanel.render(context.extensionUri, node?.project, node?.buildConfig);
 		})
 	);
 
