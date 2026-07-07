@@ -1535,3 +1535,73 @@ vscode-button {
   max-width: calc(100vw - 40px);
   padding: 10px 12px;
 }
+
+/* pyOCD Manager panel */
+
+.pyocd-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+  flex-wrap: wrap;
+}
+
+.pyocd-inline-title {
+  margin: 0;
+}
+
+.pyocd-warning {
+  margin: 6px 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--vscode-editorWarning-foreground);
+  background-color: var(--vscode-inputValidation-warningBackground, rgba(255, 200, 0, 0.1));
+}
+
+.pyocd-note {
+  margin: 4px 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+.pyocd-installed-mark {
+  color: var(--vscode-testing-iconPassed, #73c991);
+}
+
+.pyocd-collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Column widths: reset the generic .debug-tools-table nth-child rules that
+   assume the runners-table layout (icon + name + version + status columns). */
+.debug-tools-table.pyocd-table th:nth-child(1), .debug-tools-table.pyocd-table td:nth-child(1),
+.debug-tools-table.pyocd-table th:nth-child(2), .debug-tools-table.pyocd-table td:nth-child(2),
+.debug-tools-table.pyocd-table th:nth-child(3), .debug-tools-table.pyocd-table td:nth-child(3),
+.debug-tools-table.pyocd-table th:nth-child(4), .debug-tools-table.pyocd-table td:nth-child(4) {
+  width: auto;
+  min-width: 90px;
+}
+
+.pyocd-progress-track {
+  width: 100%;
+  max-width: 480px;
+  height: 6px;
+  margin: 6px 0;
+  border-radius: 3px;
+  background-color: var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+  position: relative;
+  overflow: hidden;
+}
+
+.pyocd-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  border-radius: 3px;
+  background-color: var(--vscode-progressBar-background, #0e70c0);
+  transition: width 0.2s ease;
+}

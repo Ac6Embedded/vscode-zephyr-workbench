@@ -3,6 +3,7 @@ import path from "path";
 import { ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
 import { execCommandWithEnv } from '../../utils/execUtils';
 import { detectRunnerVersion } from '../../utils/debugTools/debugToolVersionUtils';
+import { tokenizeArgs, unquoteToken } from '../../utils/argsTokenizer';
 
 export const ZEPHYR_WORKBENCH_DEBUG_PATH_SETTING_KEY = 'pathExec';
 
@@ -94,7 +95,7 @@ export class WestRunner {
       }
 
       if (hasNext && tok === gdbPortFlag) {
-        this.serverPort = next;
+        this.serverPort = WestRunner.unquote(next);
         i += 2;
         continue;
       }
@@ -142,29 +143,13 @@ export class WestRunner {
    * (quotes are kept on the token; `unquote` strips them when needed). Sufficient for
    * the args VS Code stores in launch.json.
    */
-  protected static tokenizeArgs(input: string): string[] {
-    const tokens: string[] = [];
-    let i = 0;
-    while (i < input.length) {
-      while (i < input.length && /\s/.test(input[i])) {i++;}
-      if (i >= input.length) {break;}
-
-      let token = '';
-      if (input[i] === '"') {
-        token += input[i++];
-        while (i < input.length && input[i] !== '"') {token += input[i++];}
-        if (i < input.length) {token += input[i++];} // consume closing quote
-      } else {
-        while (i < input.length && !/\s/.test(input[i])) {token += input[i++];}
-      }
-      tokens.push(token);
-    }
-    return tokens;
+  static tokenizeArgs(input: string): string[] {
+    return tokenizeArgs(input);
   }
 
   /** Strip a single pair of surrounding double quotes, if any. */
   protected static unquote(value: string): string {
-    return value.replace(/^"(.*)"$/, '$1');
+    return unquoteToken(value);
   }
 
   async loadInternalArgs() {
@@ -251,6 +236,9 @@ export class WestRunner {
   }
 
   static extractRunner(args: any): string | undefined {
+    if (typeof args !== 'string') {
+      return undefined;
+    }
     const runnerRegex = /--runner\s+("[^"]+"|\S+)/;
     const runnerMatch = args.match(runnerRegex);
 

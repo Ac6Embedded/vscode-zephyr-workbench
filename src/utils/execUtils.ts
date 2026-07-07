@@ -1250,53 +1250,382 @@ export async function getGitBranches(gitUrl: string): Promise<string[]> {
 
 /* pyOCD helpers */
 
-async function execPyOCD(cmd: string, cwd?: string): Promise<string> {
-  pyOCDOutput.show(true);
-  pyOCDOutput.clear();
-  let full = '';
+export interface PyOCDExecOptions {
+  cwd?: string;
+  token?: vscode.CancellationToken;
+  /** Called on each cmsis-pack-manager download tick; `total` is undefined until known. */
+  onProgress?: (current: number, total: number | undefined) => void;
+  /** Clear the pyOCD output channel before running (default: append with a separator). */
+  clear?: boolean;
+  /** Reveal the pyOCD output channel (default: leave it in the background). */
+  show?: boolean;
+  /**
+   * Run pyocd inside this venv instead of the globally configured one. The env
+   * script activates whatever PYTHON_VENV_PATH points at, so an app or west
+   * workspace local venv gets its own pyocd (version and presence may differ).
+   */
+  venvPath?: string;
+}
 
-  const proc = await execCommandWithEnv(cmd, cwd);
-  proc.stdout?.on('data', c => {
-    const t = c.toString();
-    full += t;
-    pyOCDOutput.appendLine(t);
+export interface PyOCDTargetInfo {
+  name: string;
+  vendor?: string;
+  partNumber?: string;
+  source?: string;
+}
+
+export interface PyOCDPackInfo {
+  part?: string;
+  vendor?: string;
+  pack: string;
+  version?: string;
+  installed?: boolean;
+}
+
+export function getPyOCDOutputChannel(): vscode.OutputChannel {
+  return pyOCDOutput;
+}
+
+// cmsis-pack-manager emits "Downloading descriptors (NNN/MMM)\r" ticks (no
+// newline) on stdout for both index updates and pack downloads.
+const PYOCD_DOWNLOAD_TICK_REGEX = /Downloading descriptors \((\d+|\?+)\/(\d+|\?+)\)/;
+
+// Patterns are part-number globs or target names; anything outside this set is
+// not a valid pyocd pattern and would only be a shell-quoting hazard.
+function sanitizePyOCDPattern(pattern: string): string {
+  return pattern.trim().replace(/[^A-Za-z0-9._*?+-]/g, '');
+}
+
+// Builds the environment for a pyocd child. Cannot go through
+// spawnCommandWithEnv/execCommandWithEnv: those spread the globally configured
+// venv AFTER caller overrides, which would clobber opts.venvPath.
+function buildPyOCDSpawn(cmd: string, opts: PyOCDExecOptions) {
+  if (opts.venvPath && !fileExists(opts.venvPath)) {
+    throw new Error(`Python virtual environment not found: ${opts.venvPath}`);
+  }
+  const prepared = buildEnvSourcedShellCommand(cmd, opts.cwd);
+  const venvPath = opts.venvPath ?? prepared.venvPath;
+  return {
+    prepared,
+    env: {
+      ...process.env,
+      ...(prepared.needsChere ? { CHERE_INVOKING: '1' } : {}),
+      ...getProfileEnv(),
+      ...(venvPath ? { PYTHON_VENV_PATH: venvPath } : {}),
+    } as NodeJS.ProcessEnv,
+  };
+}
+
+function spawnPyOCDProcess(cmd: string, opts: PyOCDExecOptions): ChildProcess {
+  const { prepared, env } = buildPyOCDSpawn(cmd, opts);
+  return spawn(prepared.command, {
+    cwd: opts.cwd,
+    env,
+    shell: prepared.executable,
+    // Own process group on POSIX so cancellation can kill the pyocd child, not
+    // just the wrapping shell.
+    detached: process.platform !== 'win32',
   });
-  proc.stderr?.on('data', c => {
-    const t = c.toString();
-    full += t;
-    pyOCDOutput.append(t);
-  });
+}
+
+async function execPyOCD(cmd: string, opts: PyOCDExecOptions = {}): Promise<string> {
+  if (opts.clear) {
+    pyOCDOutput.clear();
+  }
+  if (opts.show) {
+    pyOCDOutput.show(true);
+  }
+  pyOCDOutput.appendLine(`--- ${cmd} ---`);
+  let full = '';
+  let lineBuf = '';
+  let lastTick: string | undefined;
+  let cancelled = false;
+  // Last few meaningful lines, kept to build an actionable error message
+  // ("No matching devices...") instead of a bare exit code.
+  const tail: string[] = [];
+  const pushTail = (line: string) => {
+    // Strip pyocd's "0000652 W " log prefix for readability.
+    tail.push(line.trim().replace(/^\d+\s+[A-Z]\s+/, ''));
+    if (tail.length > 8) {
+      tail.shift();
+    }
+  };
+
+  const proc = spawnPyOCDProcess(cmd, opts);
+
+  const killProc = () => {
+    cancelled = true;
+    try {
+      if (proc.pid) {
+        if (process.platform === 'win32') {
+          exec(`taskkill /pid ${proc.pid} /T /F`);
+        } else {
+          try {
+            process.kill(-proc.pid, 'SIGTERM');
+          } catch {
+            proc.kill('SIGTERM');
+          }
+        }
+      }
+    } catch {
+      // best effort
+    }
+  };
+  const cancelSub = opts.token?.onCancellationRequested(killProc);
+
+  const handleText = (text: string) => {
+    full += text;
+    lineBuf += text;
+    let sepIdx: number;
+    while ((sepIdx = lineBuf.search(/[\r\n]/)) !== -1) {
+      const line = lineBuf.slice(0, sepIdx);
+      const skip = lineBuf[sepIdx] === '\r' && lineBuf[sepIdx + 1] === '\n' ? 2 : 1;
+      lineBuf = lineBuf.slice(sepIdx + skip);
+      const tick = line.match(PYOCD_DOWNLOAD_TICK_REGEX);
+      if (tick) {
+        // Progress ticks arrive by the hundreds; report them, log only the last.
+        lastTick = line.trim();
+        const current = parseInt(tick[1], 10);
+        const total = /^\d+$/.test(tick[2]) ? parseInt(tick[2], 10) : undefined;
+        if (!Number.isNaN(current)) {
+          opts.onProgress?.(current, total);
+        }
+      } else if (line.trim()) {
+        pyOCDOutput.appendLine(line);
+        pushTail(line);
+      }
+    }
+  };
+  proc.stdout?.on('data', c => handleText(c.toString()));
+  proc.stderr?.on('data', c => handleText(c.toString()));
 
   return new Promise((res, rej) => {
+    const finishLog = () => {
+      if (lineBuf.trim()) {
+        pyOCDOutput.appendLine(lineBuf);
+        pushTail(lineBuf);
+      }
+      if (lastTick) {
+        pyOCDOutput.appendLine(lastTick);
+      }
+      cancelSub?.dispose();
+    };
     proc.on('error', e => {
-      pyOCDOutput.appendLine(`\n ${e.message}`);
+      finishLog();
+      pyOCDOutput.appendLine(` ${e.message}`);
       rej(e);
     });
     proc.on('close', code => {
-      if (code === 0) {
+      finishLog();
+      if (cancelled) {
+        pyOCDOutput.appendLine(' Cancelled');
+        rej(new vscode.CancellationError());
+      } else if (code === 0) {
         res(full);
       } else {
-        const e = new Error(`Process exited with code ${code}`);
-        pyOCDOutput.appendLine(`\n ${e.message}`);
+        const detail = tail.slice(-3).join(' | ');
+        const e = new Error(detail
+          ? `pyocd exited with code ${code}: ${detail}`
+          : `pyocd exited with code ${code}`);
+        pyOCDOutput.appendLine(` pyocd exited with code ${code}`);
         rej(e);
       }
     });
   });
 }
 
-export async function getPyOCDTargets(): Promise<string[]> {
-  const out = await execPyOCD('pyocd list --targets');
-  return out.split('\n').slice(2).filter(l => l.trim()).map(l => l.trim().split(/\s+/)[0]);
+/** Quiet one-shot capture — no output channel, never throws. */
+async function execPyOCDCapture(cmd: string, opts: PyOCDExecOptions = {}):
+  Promise<{ code: number; stdout: string; stderr: string }> {
+  try {
+    const { prepared, env } = buildPyOCDSpawn(cmd, opts);
+    return await new Promise((resolve) => {
+      exec(prepared.command, {
+        cwd: opts.cwd,
+        env,
+        shell: prepared.executable,
+        maxBuffer: 64 * 1024 * 1024,
+      }, (err, stdout, stderr) => {
+        resolve({
+          code: err ? (typeof err.code === 'number' ? err.code : 1) : 0,
+          stdout,
+          stderr,
+        });
+      });
+    });
+  } catch (e) {
+    // Env script/venv not configured — report as a failed run, not a crash.
+    return { code: -1, stdout: '', stderr: `${e}` };
+  }
 }
 
-export async function checkPyOCDTarget(name: string): Promise<boolean> {
-  return (await getPyOCDTargets()).includes(name.trim());
+/**
+ * Parse pyocd's table output (header line, dashed separator, rows whose columns
+ * are separated by 2+ spaces).
+ */
+function parsePyOCDTable(output: string): string[][] {
+  const lines = output.split(/\r?\n/);
+  const sepIdx = lines.findIndex(l => /^-{5,}$/.test(l.trim()));
+  if (sepIdx === -1) {
+    return [];
+  }
+  return lines.slice(sepIdx + 1)
+    .map(l => l.trim())
+    .filter(l => l.length > 0)
+    .map(l => l.split(/\s{2,}/));
 }
 
-export async function updatePyOCDPack(): Promise<string> {
-  return execPyOCD('pyocd pack update');
+export async function getPyOCDVersion(venvPath?: string): Promise<string | undefined> {
+  const { code, stdout } = await execPyOCDCapture('pyocd --version', { venvPath });
+  if (code !== 0) {
+    return undefined;
+  }
+  const m = stdout.match(/\b(\d+(?:\.\d+)+)\b/);
+  return m ? m[1] : undefined;
 }
 
-export async function installPyOCDTarget(name: string): Promise<string> {
-  return execPyOCD(`pyocd pack install ${name}`);
+// The full target catalog is stable between pack operations; caching it makes
+// repeated target checks (every Debug Manager Apply) free. Keyed per venv:
+// each venv has its own pyocd (version, builtins). The CMSIS pack store itself
+// is per-user, so pack operations invalidate every venv's entry at once.
+const pyOCDTargetsCache = new Map<string, PyOCDTargetInfo[]>();
+
+export function invalidatePyOCDTargetsCache(): void {
+  pyOCDTargetsCache.clear();
+}
+
+export async function getPyOCDTargetsJson(forceRefresh = false, venvPath?: string): Promise<PyOCDTargetInfo[]> {
+  const cacheKey = venvPath ?? '';
+  const cached = pyOCDTargetsCache.get(cacheKey);
+  if (cached && !forceRefresh) {
+    return cached;
+  }
+  const { code, stdout } = await execPyOCDCapture('pyocd json --targets', { venvPath });
+  if (code === 0) {
+    try {
+      const data = JSON.parse(stdout);
+      if (Array.isArray(data.targets)) {
+        const targets: PyOCDTargetInfo[] = data.targets.map((t: any) => ({
+          name: `${t.name}`,
+          vendor: t.vendor,
+          partNumber: t.part_number,
+          source: t.source,
+        }));
+        pyOCDTargetsCache.set(cacheKey, targets);
+        return targets;
+      }
+    } catch {
+      // fall through to the text scrape
+    }
+  }
+  // Older pyocd without the `json` subcommand.
+  const targets = (await getPyOCDTargets(venvPath)).map(name => ({ name }));
+  pyOCDTargetsCache.set(cacheKey, targets);
+  return targets;
+}
+
+export async function getPyOCDTargets(venvPath?: string): Promise<string[]> {
+  const { code, stdout, stderr } = await execPyOCDCapture('pyocd list --targets', { venvPath });
+  if (code !== 0) {
+    throw new Error(`pyocd list --targets failed: ${stderr || `exit code ${code}`}`);
+  }
+  return stdout.split('\n').slice(2).filter(l => l.trim()).map(l => l.trim().split(/\s+/)[0]);
+}
+
+export async function checkPyOCDTarget(name: string, venvPath?: string): Promise<boolean> {
+  const wanted = name.trim().toLowerCase();
+  return (await getPyOCDTargetsJson(false, venvPath)).some(t => t.name.toLowerCase() === wanted);
+}
+
+/**
+ * Whether the CMSIS pack index has ever been downloaded (it is per-user,
+ * shared by every venv). undefined when it cannot be determined (no python,
+ * no cmsis-pack-manager). Used to proactively suggest "Update index".
+ */
+export async function hasPyOCDPackIndex(venvPath?: string): Promise<boolean | undefined> {
+  const { code, stdout } = await execPyOCDCapture(
+    `python -c "import cmsis_pack_manager as m; c=m.Cache(True, False); print('IDX1' if c.index else 'IDX0')"`,
+    { venvPath },
+  );
+  if (code !== 0) {
+    return undefined;
+  }
+  if (stdout.includes('IDX1')) {
+    return true;
+  }
+  return stdout.includes('IDX0') ? false : undefined;
+}
+
+export async function getInstalledPyOCDPacks(venvPath?: string): Promise<PyOCDPackInfo[]> {
+  const { code, stdout, stderr } = await execPyOCDCapture('pyocd pack show', { venvPath });
+  if (code !== 0) {
+    throw new Error(`pyocd pack show failed: ${stderr || `exit code ${code}`}`);
+  }
+  return parsePyOCDTable(stdout)
+    .filter(row => row[0])
+    .map(row => ({ pack: row[0], version: row[1] }));
+}
+
+export async function findPyOCDPacks(pattern: string, opts: PyOCDExecOptions = {}): Promise<PyOCDPackInfo[]> {
+  // Streams via execPyOCD: a missing pack index makes `pack find` download it
+  // first, which is slow and emits progress ticks.
+  const out = await execPyOCD(`pyocd pack find "${sanitizePyOCDPattern(pattern)}"`, opts);
+  return parsePyOCDTable(out)
+    .filter(row => row.length >= 4)
+    .map(row => ({
+      part: row[0],
+      vendor: row[1],
+      pack: row[2],
+      version: row[3],
+      installed: row[4] !== undefined ? row[4].toLowerCase() === 'true' : undefined,
+    }));
+}
+
+/**
+ * `pyocd pack install -n`: report which pack(s) the pattern resolves to without
+ * downloading. Returns e.g. ["Keil.STM32H5xx_DFP.2.3.0"]; empty means pyocd
+ * found no matching device (it exits 0 in that case, so this is the only signal).
+ */
+export async function dryRunInstallPyOCDPacks(pattern: string, opts: PyOCDExecOptions = {}): Promise<string[]> {
+  const out = await execPyOCD(`pyocd pack install -n "${sanitizePyOCDPattern(pattern)}"`, opts);
+  const lines = out.split(/\r?\n/);
+  const startIdx = lines.findIndex(l => l.includes('Would download packs:'));
+  if (startIdx === -1) {
+    return [];
+  }
+  const packs: string[] = [];
+  for (const line of lines.slice(startIdx + 1)) {
+    if (!/^\s+\S/.test(line)) {
+      break;
+    }
+    packs.push(line.trim());
+  }
+  return packs;
+}
+
+// The mutating pack operations reveal the output channel by default (without
+// stealing focus) so downloads and their errors are visible as they happen.
+
+export async function updatePyOCDPack(opts: PyOCDExecOptions = {}): Promise<string> {
+  try {
+    return await execPyOCD('pyocd pack update', { show: true, ...opts });
+  } finally {
+    invalidatePyOCDTargetsCache();
+  }
+}
+
+export async function installPyOCDTarget(name: string, opts: PyOCDExecOptions = {}): Promise<string> {
+  try {
+    return await execPyOCD(`pyocd pack install "${sanitizePyOCDPattern(name)}"`, { show: true, ...opts });
+  } finally {
+    invalidatePyOCDTargetsCache();
+  }
+}
+
+export async function cleanPyOCDPacks(opts: PyOCDExecOptions = {}): Promise<string> {
+  try {
+    return await execPyOCD('pyocd pack clean', { show: true, ...opts });
+  } finally {
+    invalidatePyOCDTargetsCache();
+  }
 }
