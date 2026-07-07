@@ -71,23 +71,9 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
           const customArgsItem = new ZephyrConfigCustomArgsTreeItem(element.project, config);
           items.push(customArgsItem);
         }
-        const westArgsItem = new ZephyrConfigArgTreeItem(element.project, config, WEST_ARGUMENTS_LABEL, config.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
-        items.push(westArgsItem);
-        items.push(new ZephyrConfigWestFlagsDTreeItem(element.project, config));
-        items.push(new ZephyrConfigExtraEnvTreeItem(element.project, config));
-
-        for(let key of Object.keys(config.envVars)) {
-          if (EXTRA_ENV_KEYS.includes(key)) {
-            continue;
-          }
-          let envItem;
-          if(Array.isArray(config.envVars[key])) {
-            envItem = new ZephyrConfigEnvTreeItem(element.project, config, key);
-          } else {
-            envItem = new ZephyrConfigArgTreeItem(element.project, config, key, config.envVars[key]);
-          }
-          items.push(envItem);
-        }
+        // Arguments & Environment: collapsible group holding west Arguments,
+        // west Flags -D, EXTRA, and the env-var rows (SHIELD, SNIPPETS, ...).
+        items.push(new ZephyrConfigArgsEnvTreeItem(element.project, config));
       }
       // Per-application Code Explorer: a plain, browsable file tree rooted at
       // the app folder. Rendered last so it sits below the build info. Its
@@ -117,26 +103,14 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
         const customArgsItem = new ZephyrConfigCustomArgsTreeItem(element.project, element.buildConfig);
         items.push(customArgsItem);
       }
-      const westArgsItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, WEST_ARGUMENTS_LABEL, element.buildConfig.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY);
-      items.push(westArgsItem);
-      items.push(new ZephyrConfigWestFlagsDTreeItem(element.project, element.buildConfig));
-      items.push(new ZephyrConfigExtraEnvTreeItem(element.project, element.buildConfig));
-
-      for(let key of Object.keys(element.buildConfig.envVars)) {
-        if (EXTRA_ENV_KEYS.includes(key)) {
-          continue;
-        }
-        let envItem;
-        if(Array.isArray(element.buildConfig.envVars[key])) {
-          envItem = new ZephyrConfigEnvTreeItem(element.project, element.buildConfig, key);
-        } else {
-          envItem = new ZephyrConfigArgTreeItem(element.project, element.buildConfig, key, element.buildConfig.envVars[key]);
-        }
-        items.push(envItem);
-      }
+      items.push(new ZephyrConfigArgsEnvTreeItem(element.project, element.buildConfig));
 
       return Promise.resolve(items);
-    } 
+    }
+
+    if(element instanceof ZephyrConfigArgsEnvTreeItem) {
+      return Promise.resolve(this.configOptionRows(element.project, element.config));
+    }
 
     if(element instanceof ZephyrApplicationEnvTreeItem) {
       // Get Zephyr environment variables
@@ -268,6 +242,32 @@ export class ZephyrApplicationDataProvider implements vscode.TreeDataProvider<vs
   /** Lightweight refresh of the whole tree (used after file operations). */
   refreshCodeExplorer(): void {
     this._onDidChangeTreeData.fire();
+  }
+
+  /**
+   * Build the option rows grouped under a build config's "Arguments &
+   * Environment" node: west Arguments, west Flags -D, EXTRA (a sub-group), and
+   * the remaining env-var rows (SHIELD, SNIPPETS, ...). Shared by the
+   * single-config app node and each multi-config build-config node so both
+   * render identically. The rows keep their original classes/contextValues, so
+   * their existing right-click menus and edit commands keep working unchanged.
+   */
+  private configOptionRows(project: ZephyrApplication, config: ZephyrBuildConfig): vscode.TreeItem[] {
+    const rows: vscode.TreeItem[] = [];
+    rows.push(new ZephyrConfigArgTreeItem(project, config, WEST_ARGUMENTS_LABEL, config.westArgs, ZEPHYR_BUILD_CONFIG_WEST_ARGS_SETTING_KEY));
+    rows.push(new ZephyrConfigWestFlagsDTreeItem(project, config));
+    rows.push(new ZephyrConfigExtraEnvTreeItem(project, config));
+    for (const key of Object.keys(config.envVars)) {
+      if (EXTRA_ENV_KEYS.includes(key)) {
+        continue;
+      }
+      if (Array.isArray(config.envVars[key])) {
+        rows.push(new ZephyrConfigEnvTreeItem(project, config, key));
+      } else {
+        rows.push(new ZephyrConfigArgTreeItem(project, config, key, config.envVars[key]));
+      }
+    }
+    return rows;
   }
 
   /**
@@ -520,7 +520,7 @@ export class ZephyrConfigDefaultRunnerTreeItem extends vscode.TreeItem {
     public readonly project: ZephyrApplication,
     public readonly config: ZephyrBuildConfig,
   ) {
-    super('runner', vscode.TreeItemCollapsibleState.None);
+    super('Flash runner', vscode.TreeItemCollapsibleState.None);
     const hasDefaultRunner = !!(config.defaultRunner && config.defaultRunner.length > 0);
     this.description = hasDefaultRunner ? config.defaultRunner : '[not set]';
     this.tooltip = hasDefaultRunner ? `Default runner: ${config.defaultRunner}` : 'Default runner: not set';
@@ -575,6 +575,25 @@ export class ZephyrConfigExtraEnvTreeItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon('variable');
   }
   contextValue = 'zephyr-application-extra';
+}
+
+// Collapsible "Arguments & Environment" group under a build config. Holds no
+// value of its own; its children are the west Arguments / west Flags -D / EXTRA
+// / env-var rows. Its contextValue matches no menu, so no stray right-click
+// items leak onto the group header, and the moved rows keep their own
+// contextValues so their menus/commands are unaffected.
+export class ZephyrConfigArgsEnvTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly project: ZephyrApplication,
+    public readonly config: ZephyrBuildConfig,
+  ) {
+    super('Arguments & Environment', vscode.TreeItemCollapsibleState.Collapsed);
+    this.id = `args-env:${project.appRootPath}:${config.name}`;
+    this.tooltip = 'west arguments, -D flags, EXTRA files, and environment variables';
+    this.iconPath = new vscode.ThemeIcon('gear');
+  }
+
+  contextValue = 'zephyr-application-args-env';
 }
 
 export class ZephyrConfigWestFlagsDTreeItem extends vscode.TreeItem {
