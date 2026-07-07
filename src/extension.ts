@@ -660,9 +660,9 @@ export function activate(context: vscode.ExtensionContext) {
 			const uri = ceNodeUri(node);
 			if (uri) { await vscode.commands.executeCommand('vscode.open', uri, vscode.ViewColumn.Beside); }
 		}),
-		vscode.commands.registerCommand('zephyr-workbench-code-explorer.reveal-in-os', async (node) => {
+		vscode.commands.registerCommand('zephyr-workbench-code-explorer.reveal-in-explorer', async (node) => {
 			const uri = ceNodeUri(node);
-			if (uri) { await vscode.commands.executeCommand('revealFileInOS', uri); }
+			if (uri) { await vscode.commands.executeCommand('revealInExplorer', uri); }
 		}),
 		vscode.commands.registerCommand('zephyr-workbench-code-explorer.open-terminal', async (node) => {
 			const dir = ceNodeDir(node);

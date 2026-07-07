@@ -511,8 +511,8 @@
         "category": "Zephyr Workbench/Code Explorer"
       },
       {
-        "command": "zephyr-workbench-code-explorer.reveal-in-os",
-        "title": "Reveal in File Explorer",
+        "command": "zephyr-workbench-code-explorer.reveal-in-explorer",
+        "title": "Reveal in Explorer View",
         "category": "Zephyr Workbench/Code Explorer"
       },
       {
@@ -1212,7 +1212,7 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-ce-(folder|root)$/"
         },
         {
-          "command": "zephyr-workbench-code-explorer.reveal-in-os",
+          "command": "zephyr-workbench-code-explorer.reveal-in-explorer",
           "group": "7_misc@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-ce-(file|folder|root)$/"
         },
@@ -1968,7 +1968,7 @@
           "when": "false"
         },
         {
-          "command": "zephyr-workbench-code-explorer.reveal-in-os",
+          "command": "zephyr-workbench-code-explorer.reveal-in-explorer",
           "when": "false"
         },
         {
