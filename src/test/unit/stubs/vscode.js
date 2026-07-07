@@ -32,7 +32,9 @@ const workspace = {
 
 const Uri = {
 	file: (fsPath) => ({ fsPath }),
-	joinPath: (...parts) => ({ fsPath: parts.filter(Boolean).map(String).join('/') }),
+	joinPath: (base, ...parts) => ({
+		fsPath: [base && base.fsPath !== undefined ? base.fsPath : String(base), ...parts.map(String)].join('/'),
+	}),
 };
 
 module.exports = {

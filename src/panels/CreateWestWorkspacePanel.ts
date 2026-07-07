@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getGitTags, getGitBranches } from "../utils/execUtils";
-import { getMinimalTemplateProjectNames, getUpstreamProjectNames, listHals } from "../utils/zephyr/manifestUtils";
+import { getUpstreamProjectNames, loadTemplateConfig } from "../utils/zephyr/manifestUtils";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -112,11 +112,20 @@ export class CreateWestWorkspacePanel {
   const codiconUri = getUri(webview, extensionUri, ["out", "codicon.css"]);
   const nonce = getNonce();
     
+    // Vendor templates and base modules come from the bundled templates.yml.
+    // data-value carries the template's module list (west names cannot contain commas).
     let templatesHTML = '';
-    for(let hal of listHals) {
-      templatesHTML = templatesHTML.concat(`<div class="dropdown-item" data-value="${hal.name}" data-label="${hal.label}">${hal.label}</div>`);
+    let templateConfigJson = 'undefined';
+    try {
+      const templateConfig = loadTemplateConfig(extensionUri);
+      for(let template of templateConfig.templates) {
+        templatesHTML = templatesHTML.concat(`<div class="dropdown-item" data-value="${template.modules.join(',')}" data-label="${template.label}"${template.isDefault ? ' data-default="true"' : ''}>${template.label}</div>`);
+      }
+      templateConfigJson = JSON.stringify({ baseModules: templateConfig.baseModules, templates: templateConfig.templates });
+    } catch (error) {
+      vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
+      templatesHTML = `<div class="dropdown-item" data-value="" data-label="">Template data unavailable</div>`;
     }
-    const templateProjectNames = JSON.stringify(getMinimalTemplateProjectNames(extensionUri));
   
     return /*html*/ `
       <!DOCTYPE html>
@@ -264,7 +273,7 @@ export class CreateWestWorkspacePanel {
           </form>
           <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
           <script nonce="${nonce}">
-            window.zephyrWorkbenchTemplateProjects = ${templateProjectNames};
+            window.zephyrWorkbenchTemplateConfig = ${templateConfigJson};
             window.addEventListener('DOMContentLoaded', () => {
               const srcTypeGroup = document.getElementById('srcType');
               const templateModeGroup = document.getElementById('templateModeGroup');
@@ -439,7 +448,7 @@ export class CreateWestWorkspacePanel {
         let manifestPath;
         let manifestDir;
         let pathPrefix;
-        let templateHal;
+        let templateModules;
         let templateMode;
         let projects;
 
@@ -470,7 +479,7 @@ export class CreateWestWorkspacePanel {
             manifestPath = message.manifestPath;
             manifestDir = message.manifestDir;
             pathPrefix = message.pathPrefix;
-            templateHal = message.templateHal;
+            templateModules = Array.isArray(message.templateModules) ? message.templateModules : [];
             projects = Array.isArray(message.projects) ? message.projects : [];
             this._panel?.webview.postMessage({ command: 'folderSelected', folderUri: workspacePath, id: 'workspacePath'});
 
@@ -523,7 +532,7 @@ export class CreateWestWorkspacePanel {
             } else if(srcType === 'manifest') {
               vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestPath, message.enableRust === true, dedicatedVenv, fetchBlobs);
             } else if(srcType === 'template') {
-              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir, pathPrefix, projects, message.enableRust === true, dedicatedVenv, fetchBlobs);
+              vscode.commands.executeCommand("zephyr-workbench-west-workspace.import-from-template", remotePath, remoteBranch, workspacePath, templateModules, templateMode, manifestDir, pathPrefix, projects, message.enableRust === true, dedicatedVenv, fetchBlobs);
             }
             // Close the wizard as soon as the import is dispatched, so it can't
             // be submitted again while the (long-running) import is in flight.

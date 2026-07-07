@@ -1,159 +1,24 @@
-const assert = require('assert');
-const fs = require('fs');
-const path = require('path');
-const yaml = require('yaml');
+import assert from 'assert';
+import fs from 'fs';
+import path from 'path';
+import yaml from 'yaml';
+// Loads with the vscode stub (NODE_PATH=src/test/unit/stubs); the real bundled
+// west_manifests/templates.yml is read through the repo-root extensionUri below.
+import { generateWestManifest } from '../../utils/zephyr/manifestUtils';
+import { resolveBaseModules, validateTemplateConfig } from '../../utils/zephyr/templateData';
 
-/**
-* Auxiliary function to generate west.yml
-* (isolated, without vscode)
-*/
-function generateWestManifestTest(
-  remotePath: string,
-  remoteBranch: string,
-  workspacePath: string,
-  templateHal: string,
-  isFull: boolean
-) {
-  let manifestYaml: any;
-
-  if (isFull) {
-    manifestYaml = {
-      manifest: {
-        remotes: [
-          {
-            name: 'zephyrproject',
-            'url-base': 'https://github.com/zephyrproject-rtos',
-          },
-        ],
-        projects: [
-          {
-            name: 'zephyr',
-            'repo-path': 'zephyr',
-            remote: 'zephyrproject',
-            revision: remoteBranch,
-            import: {
-              'path-prefix': 'deps',
-            },
-          },
-        ],
-      },
-    };
-  } else {
-    // Minimum manifest based on expected file
-    const templateFile = fs.readFileSync(
-      path.join(__dirname, 'expected_minimal.yml'),
-      'utf8'
-    );
-
-    manifestYaml = yaml.parse(templateFile);
-
-    manifestYaml.manifest.remotes[0]['url-base'] = remotePath;
-    manifestYaml.manifest.projects[0].revision = remoteBranch;
-
-    if (
-      manifestYaml.manifest.projects[0].import &&
-      manifestYaml.manifest.projects[0].import['name-allowlist'] &&
-      !manifestYaml.manifest.projects[0].import['name-allowlist'].includes(templateHal)
-    ) {
-      manifestYaml.manifest.projects[0].import['name-allowlist'].push(templateHal);
-    }
-  }
-
-  // Create directories
-  if (!fs.existsSync(workspacePath)) {
-    fs.mkdirSync(workspacePath, { recursive: true });
-  }
-
-  const manifestDir = path.join(workspacePath, 'manifest');
-  if (!fs.existsSync(manifestDir)) {
-    fs.mkdirSync(manifestDir, { recursive: true });
-  }
-
-  const destFilePath = path.join(manifestDir, 'west.yml');
-  const westManifestContent = yaml.stringify(manifestYaml);
-
-  fs.writeFileSync(destFilePath, westManifestContent, 'utf8');
-
-  return destFilePath;
-}
-
-describe('Manifest output comparison', () => {
-  const tmpRoot = path.join(__dirname, 'tmp-workspace-compare');
-
-  const expectedFullPath = path.join(__dirname, 'expected_full.yml');
-  const expectedMinimalPath = path.join(__dirname, 'expected_minimal.yml');
-
+describe('generateWestManifest', () => {
+  const repoRoot = path.join(__dirname, '..', '..', '..');
+  // The stub's Uri only carries fsPath; good enough for the loader.
+  const extensionUri = { fsPath: repoRoot } as any;
+  const shippedConfig = validateTemplateConfig(
+    yaml.parse(fs.readFileSync(path.join(repoRoot, 'west_manifests', 'templates.yml'), 'utf8')),
+  );
+  // Expected allowlist prefix for a revision, straight from the shipped data:
+  // the tests stay valid when modules are added to templates.yml.
+  const baseFor = (revision: string) => resolveBaseModules(shippedConfig.baseModules, revision);
+  const tmpRoot = path.join(__dirname, 'tmp-workspace-generate');
   const remotePath = 'https://github.com/zephyrproject-rtos';
-  const remoteBranch = 'v4.3.0';
-  const templateHal = 'hal_stm32';
-
-  // Create expected files to test it
-  before(() => {
-    // FULL
-    const expectedFull = {
-      manifest: {
-        remotes: [
-          { name: 'zephyrproject', 'url-base': remotePath },
-        ],
-        projects: [
-          {
-            name: 'zephyr',
-            'repo-path': 'zephyr',
-            remote: 'zephyrproject',
-            revision: remoteBranch,
-            import: { 'path-prefix': 'deps' },
-          },
-        ],
-      },
-    };
-    fs.writeFileSync(
-      path.join(__dirname, 'expected_full.yml'),
-      yaml.stringify(expectedFull),
-      'utf8'
-    );
-
-    // MINIMAL 
-    const expectedMinimal = {
-      manifest: {
-        remotes: [
-          { name: 'zephyrproject', 'url-base': remotePath },
-        ],
-        projects: [
-          {
-            name: 'zephyr',
-            'repo-path': 'zephyr',
-            remote: 'zephyrproject',
-            revision: remoteBranch,
-            import: {
-              'path-prefix': 'deps',
-              'name-allowlist': [
-                'cmsis_6',
-                'percepio',
-                'picolibc',
-                'hal_stm32',
-              ],
-            },
-          },
-        ],
-      },
-    };
-    fs.writeFileSync(
-      path.join(__dirname, 'expected_minimal.yml'),
-      yaml.stringify(expectedMinimal),
-      'utf8'
-    );
-  });
-
-  // Delete expected files (expected_minimal.yml and expected_full.yml)
-  // If you want see them, comment this block
-  after(() => {
-    if (fs.existsSync(expectedFullPath)) {
-      fs.unlinkSync(expectedFullPath);
-    }
-    if (fs.existsSync(expectedMinimalPath)) {
-      fs.unlinkSync(expectedMinimalPath);
-    }
-  });
 
   afterEach(() => {
     if (fs.existsSync(tmpRoot)) {
@@ -161,45 +26,109 @@ describe('Manifest output comparison', () => {
     }
   });
 
-  it('should match FULL manifest with expected_full.yml', () => {
-    const workspacePath = path.join(tmpRoot, 'full');
+  interface GenerateOptions {
+    branch?: string;
+    modules?: string[];
+    isFull?: boolean;
+    manifestDir?: string;
+    projects?: string[];
+    enableRust?: boolean;
+  }
 
-    const manifestPath = generateWestManifestTest(
-      remotePath,
-      remoteBranch,
-      workspacePath,
-      templateHal,
-      true
+  function generate(name: string, options: GenerateOptions = {}) {
+    const {
+      branch = 'v4.3.0',
+      modules = ['hal_stm32'],
+      isFull = false,
+      manifestDir = undefined,
+      projects = undefined,
+      enableRust = false,
+    } = options;
+    const workspacePath = path.join(tmpRoot, name);
+    fs.mkdirSync(workspacePath, { recursive: true });
+    const manifestFile = generateWestManifest(
+      extensionUri, remotePath, branch, workspacePath, modules, isFull,
+      manifestDir, undefined, projects, enableRust,
     );
+    return yaml.parse(fs.readFileSync(manifestFile, 'utf8'));
+  }
 
-    const content = fs.readFileSync(manifestPath, 'utf8');
-    const parsed = yaml.parse(content);
+  function allowlistOf(parsed: any): string[] | undefined {
+    return parsed.manifest.projects[0].import['name-allowlist'];
+  }
 
-    const expected = yaml.parse(
-      fs.readFileSync(path.join(__dirname, 'expected_full.yml'), 'utf8')
-    );
-
-    assert.deepStrictEqual(parsed, expected);
+  it('generates the minimal manifest with cmsis for Zephyr < 4.1', () => {
+    const parsed = generate('minimal-old', { branch: 'v3.7.0' });
+    const zephyrProject = parsed.manifest.projects[0];
+    assert.strictEqual(zephyrProject.revision, 'v3.7.0');
+    assert.strictEqual(parsed.manifest.remotes[0]['url-base'], remotePath);
+    assert.strictEqual(zephyrProject.import['path-prefix'], 'deps');
+    assert.deepStrictEqual(parsed.manifest.self, { path: 'manifest' });
+    const allowlist = allowlistOf(parsed) ?? [];
+    assert.deepStrictEqual(allowlist, [...baseFor('v3.7.0'), 'hal_stm32']);
+    assert.ok(allowlist.includes('cmsis') && !allowlist.includes('cmsis_6'));
   });
 
-  it('should match MINIMAL manifest with expected_minimal.yml', () => {
-    const workspacePath = path.join(tmpRoot, 'minimal');
+  it('declares self.path as the chosen west.yml subfolder', () => {
+    const parsed = generate('minimal-subfolder', { manifestDir: 'mymanifest' });
+    assert.deepStrictEqual(parsed.manifest.self, { path: 'mymanifest' });
+  });
 
-    const manifestPath = generateWestManifestTest(
-      remotePath,
-      remoteBranch,
-      workspacePath,
-      templateHal,
-      false
+  it('generates the minimal manifest with cmsis_6 for Zephyr >= 4.1', () => {
+    const parsed = generate('minimal-new', { branch: 'v4.3.0' });
+    const allowlist = allowlistOf(parsed) ?? [];
+    assert.deepStrictEqual(allowlist, [...baseFor('v4.3.0'), 'hal_stm32']);
+    assert.ok(allowlist.includes('cmsis_6') && !allowlist.includes('cmsis'));
+  });
+
+  it('treats branches as the latest Zephyr', () => {
+    const parsed = generate('minimal-main', { branch: 'main' });
+    const allowlist = allowlistOf(parsed) ?? [];
+    assert.ok(allowlist.includes('cmsis_6'));
+    assert.ok(!allowlist.includes('cmsis'));
+  });
+
+  it('includes every module of a multi-module template', () => {
+    const parsed = generate('minimal-espressif', { modules: ['hal_espressif', 'hal_xtensa'] });
+    assert.deepStrictEqual(
+      allowlistOf(parsed),
+      [...baseFor('v4.3.0'), 'hal_espressif', 'hal_xtensa'],
     );
+  });
 
-    const content = fs.readFileSync(manifestPath, 'utf8');
-    const parsed = yaml.parse(content);
+  it('uses the caller-provided projects list verbatim', () => {
+    const parsed = generate('minimal-custom', { projects: ['picolibc', 'hal_nordic'] });
+    assert.deepStrictEqual(allowlistOf(parsed), ['picolibc', 'hal_nordic']);
+  });
 
-    const expected = yaml.parse(
-      fs.readFileSync(path.join(__dirname, 'expected_minimal.yml'), 'utf8')
+  it('appends zephyr-lang-rust when Rust is enabled', () => {
+    const parsed = generate('minimal-rust', { enableRust: true });
+    const allowlist = allowlistOf(parsed) ?? [];
+    assert.strictEqual(allowlist[allowlist.length - 1], 'zephyr-lang-rust');
+  });
+
+  it('generates the full manifest without an allowlist', () => {
+    const parsed = generate('full', { isFull: true });
+    const zephyrProject = parsed.manifest.projects[0];
+    assert.strictEqual(zephyrProject.revision, 'v4.3.0');
+    assert.deepStrictEqual(zephyrProject.import, { 'path-prefix': 'deps' });
+    assert.deepStrictEqual(parsed.manifest.self, { path: 'manifest' });
+  });
+
+  it('does not leak mutations between generations (cached config is cloned)', () => {
+    const first = generate('leak-first', { branch: 'v3.7.0', modules: ['hal_silabs'] });
+    const second = generate('leak-second', { branch: 'v4.3.0' });
+    assert.deepStrictEqual(allowlistOf(first), [...baseFor('v3.7.0'), 'hal_silabs']);
+    assert.deepStrictEqual(allowlistOf(second), [...baseFor('v4.3.0'), 'hal_stm32']);
+  });
+
+  it('strips a trailing /zephyr from the remote path for url-base', () => {
+    const workspacePath = path.join(tmpRoot, 'url-base');
+    fs.mkdirSync(workspacePath, { recursive: true });
+    const manifestFile = generateWestManifest(
+      extensionUri, 'https://github.com/zephyrproject-rtos/zephyr', 'v4.3.0', workspacePath, ['hal_stm32'], false,
     );
-
-    assert.deepStrictEqual(parsed, expected);
+    const parsed = yaml.parse(fs.readFileSync(manifestFile, 'utf8'));
+    assert.strictEqual(parsed.manifest.remotes[0]['url-base'], 'https://github.com/zephyrproject-rtos');
   });
 });

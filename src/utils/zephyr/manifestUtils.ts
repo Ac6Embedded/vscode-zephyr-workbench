@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import fs from "fs";
 import yaml from 'yaml';
-import { fileExists } from "../utils";
 import path from "path";
+import { TemplateConfig, resolveBaseModules, validateTemplateConfig } from "./templateData";
 
 type WestManifestProject = Record<string, any> & {
   name?: string;
@@ -12,6 +12,7 @@ type WestManifestData = Record<string, any> & {
   manifest?: {
     remotes?: Record<string, any>[];
     projects?: WestManifestProject[];
+    self?: Record<string, any>;
   };
 };
 
@@ -22,36 +23,26 @@ const upstreamManifestCache = new Map<string, WestManifestData>();
    when one is used) and activating it (manifest.project-filter in .west/config). */
 export const ZEPHYR_LANG_RUST_PROJECT_NAME = 'zephyr-lang-rust';
 
-export const listHals: any[] = [
-  { label: "Analog Devices", name: "hal_adi" },
-  { label: "Altera", name: "hal_altera" },
-  { label: "Ambiq", name: "hal_ambiq" },
-  { label: "Atmel", name: "hal_atmel" },
-  { label: "Espressif", name: "hal_espressif" },
-  { label: "Ethos-U", name: "hal_ethos_u" },
-  { label: "GigaDevice", name: "hal_gigadevice" },
-  { label: "Infineon", name: "hal_infineon" },
-  { label: "Intel", name: "hal_intel" },
-  { label: "Microchip", name: "hal_microchip" },
-  { label: "Nordic", name: "hal_nordic" },
-  { label: "Nuvoton", name: "hal_nuvoton" },
-  { label: "NXP", name: "hal_nxp" },
-  { label: "OpenISA", name: "hal_openisa" },
-  { label: "QuickLogic", name: "hal_quicklogic" },
-  { label: "Renesas", name: "hal_renesas" },
-  { label: "Raspberry Pi Pico", name: "hal_rpi_pico" },
-  { label: "Silicon Labs", name: "hal_silabs" },
-  { label: "STM32", name: "hal_stm32" },
-  { label: "Telink", name: "hal_telink" },
-  { label: "Texas Instruments", name: "hal_ti" },
-  { label: "Würth Elektronik", name: "hal_wurthelektronik" },
-  { label: "xtensa", name: "hal_xtensa" }
-];
+let cachedTemplateConfig: TemplateConfig | undefined;
 
-function readMinimalWestManifest(extensionUri: vscode.Uri): WestManifestData {
-  const templateManifestUri = vscode.Uri.joinPath(extensionUri, 'west_manifests', 'minimal_west.yml');
-  const templateFile = fs.readFileSync(templateManifestUri.fsPath, 'utf8');
-  return yaml.parse(templateFile) as WestManifestData;
+/**
+ * Loads and validates the bundled workspace template description
+ * (west_manifests/templates.yml): manifest skeleton, version-constrained base
+ * modules and the vendor templates of the wizard dropdown. Cached for the
+ * extension's lifetime; throws with the file path on a missing/malformed file.
+ */
+export function loadTemplateConfig(extensionUri: vscode.Uri): TemplateConfig {
+  if (!cachedTemplateConfig) {
+    const templateDataUri = vscode.Uri.joinPath(extensionUri, 'west_manifests', 'templates.yml');
+    try {
+      const templateFile = fs.readFileSync(templateDataUri.fsPath, 'utf8');
+      cachedTemplateConfig = validateTemplateConfig(yaml.parse(templateFile));
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Cannot load the workspace template data (${templateDataUri.fsPath}): ${reason}`);
+    }
+  }
+  return cachedTemplateConfig;
 }
 
 function normalizeRevision(revision: string): string {
@@ -121,23 +112,6 @@ export async function getUpstreamProjectNames(remotePath: string, revision: stri
     .sort((left, right) => left.localeCompare(right));
 }
 
-function getProjectAllowlist(zephyrProject: WestManifestProject | undefined): string[] {
-  const importBlock = zephyrProject?.import;
-  if (!importBlock || typeof importBlock !== 'object' || Array.isArray(importBlock)) {
-    return [];
-  }
-
-  const allowlist = importBlock['name-allowlist'];
-  return Array.isArray(allowlist)
-    ? allowlist.filter((entry: unknown): entry is string => typeof entry === 'string' && entry.length > 0)
-    : [];
-}
-
-export function getMinimalTemplateProjectNames(extensionUri: vscode.Uri): string[] {
-  const manifestYaml = readMinimalWestManifest(extensionUri);
-  return getProjectAllowlist(manifestYaml.manifest?.projects?.[0]);
-}
-
 function setProjectAllowlist(
   zephyrProject: WestManifestProject | undefined,
   projects: string[],
@@ -172,9 +146,22 @@ function setProjectAllowlist(
  * `enableRust` adds zephyr-lang-rust to the minimal manifest's name-allowlist so the
  * project survives the import filter (the full manifest imports everything, so only
  * the project-filter activation set by west.init is needed there).
+ *
+ * The minimal manifest's name-allowlist is `projects` when the caller provides it
+ * (the wizard always does); otherwise it is rebuilt from templates.yml: the base
+ * modules applicable to `remoteBranch` (e.g. cmsis vs cmsis_6) plus `templateModules`.
+ *
+ * Both manifest flavors declare `self.path` as the folder the west.yml is written
+ * into, so the manifest stays valid as a standalone manifest repository.
  */
-export function generateWestManifest(context: vscode.ExtensionContext, remotePath: string, remoteBranch: string, workspacePath: string, templateHal: string, isFull: boolean, manifestSubfolder?: string, pathPrefix?: string, projects?: string[], enableRust = false) {
+export function generateWestManifest(extensionUri: vscode.Uri, remotePath: string, remoteBranch: string, workspacePath: string, templateModules: string[], isFull: boolean, manifestSubfolder?: string, pathPrefix?: string, projects?: string[], enableRust = false) {
   const prefix = (pathPrefix ?? 'deps').trim();
+  // Empty / undefined falls back to the default 'manifest' folder.
+  const subfolder = (manifestSubfolder ?? '').trim() || 'manifest';
+  // self.path declares where the manifest repository lives relative to the
+  // workspace topdir. The wizard's `west init -l` ignores it, but it keeps the
+  // generated manifest correct if it is ever reused via `west init -m <url>`.
+  const selfPath = subfolder.replace(/\\/g, '/');
 
   let manifestYaml: WestManifestData;
   if (isFull) {
@@ -193,12 +180,15 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
             revision: remoteBranch,
             import: prefix.length > 0 ? { "path-prefix": prefix } : true
           }
-        ]
+        ],
+        self: { path: selfPath }
       }
     };
   } else {
-    // Minimal manifest structure
-    manifestYaml = readMinimalWestManifest(context.extensionUri);
+    // Minimal manifest structure. The loaded config is cached for the extension's
+    // lifetime, so clone the skeleton before the per-call mutations below.
+    const templateConfig = loadTemplateConfig(extensionUri);
+    manifestYaml = JSON.parse(JSON.stringify({ manifest: templateConfig.manifest })) as WestManifestData;
     const manifest = manifestYaml.manifest!;
     // Do not duplicate zephyr in url-base
     manifest.remotes![0]['url-base'] = remotePath.replace(/\/zephyr\/?$/, '');
@@ -212,21 +202,20 @@ export function generateWestManifest(context: vscode.ExtensionContext, remotePat
       }
       const allowlist = Array.isArray(projects)
         ? [...projects]
-        : [...getProjectAllowlist(manifest.projects![0]), templateHal];
+        : [...resolveBaseModules(templateConfig.baseModules, remoteBranch), ...templateModules];
       if (enableRust) {
         allowlist.push(ZEPHYR_LANG_RUST_PROJECT_NAME);
       }
       setProjectAllowlist(manifest.projects![0], allowlist);
     }
+    manifest.self = { ...manifest.self, path: selfPath };
   }
 
-  if(!fileExists(workspacePath)) {
+  if(!fs.existsSync(workspacePath)) {
     fs.mkdirSync(workspacePath);
   }
-  // Empty / undefined falls back to the default 'manifest' folder.
-  const subfolder = (manifestSubfolder ?? '').trim() || 'manifest';
   const manifestDir = path.join(workspacePath, subfolder);
-  if (!fileExists(manifestDir)) {
+  if (!fs.existsSync(manifestDir)) {
     fs.mkdirSync(manifestDir, { recursive: true });
   }
 

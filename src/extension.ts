@@ -4093,13 +4093,16 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateHal, templateMode, manifestDir?: string, pathPrefix?: string, projects?: string[], enableRust = false, createWorkspaceVenvFlag = false, fetchBlobsFlag = false) => {
-			if (remotePath && remoteBranch && workspacePath && templateHal) {
+		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-from-template", async (remotePath, remoteBranch, workspacePath, templateModules, templateMode, manifestDir?: string, pathPrefix?: string, projects?: string[], enableRust = false, createWorkspaceVenvFlag = false, fetchBlobsFlag = false) => {
+			// Accept a single module name too, for callers of the old templateHal signature.
+			const modules: string[] = typeof templateModules === 'string' ? [templateModules]
+				: Array.isArray(templateModules) ? templateModules : [];
+			// Determine if mode is 'full' or 'minimal'
+			const isFull = templateMode === 'full';
+			if (remotePath && remoteBranch && workspacePath && (isFull || modules.length > 0)) {
 				try {
-					// Determine if mode is 'full' or 'minimal'
-					const isFull = templateMode === 'full';
-					// Generate west.xml from template
-					let manifestFile = generateWestManifest(context, remotePath, remoteBranch, workspacePath, templateHal, isFull, manifestDir, pathPrefix, projects, enableRust === true);
+					// Generate west.yml from template
+					let manifestFile = generateWestManifest(context.extensionUri, remotePath, remoteBranch, workspacePath, modules, isFull, manifestDir, pathPrefix, projects, enableRust === true);
 					// Run west init to the newly create manifest
 					vscode.commands.executeCommand("west.init", '', '', workspacePath, manifestFile, enableRust, createWorkspaceVenvFlag, fetchBlobsFlag);
 				} catch (error) {

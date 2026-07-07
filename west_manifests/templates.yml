@@ -1,0 +1,99 @@
+# Data for the "Add West Workspace" template wizard.
+# Loaded and validated by src/utils/zephyr/manifestUtils.ts (loadTemplateConfig).
+#
+# manifest:
+#   Skeleton of the generated minimal west.yml. url-base, revision,
+#   import.path-prefix, import.name-allowlist and self.path (the west.yml
+#   subfolder chosen in the wizard) are filled in at generation time from
+#   the wizard's selections.
+#
+# base-modules:
+#   West project names always included in the generated minimal manifest's
+#   name-allowlist, before the selected template's modules. Optional
+#   constraints (inclusive, "major.minor") select entries by the Zephyr
+#   revision chosen in the wizard:
+#     since-zephyr: included only for revisions >= this version
+#     until-zephyr: included only for revisions <= this version
+#   Branches (main, collab-*) and other unparseable refs (e.g. commit SHAs)
+#   are treated as the latest Zephyr; the wizard's "Projects" list under
+#   "Customize template" is the escape hatch when that guess is wrong.
+#
+# templates:
+#   Entries of the wizard's "Template" dropdown, shown in the order they
+#   are listed here.
+#     label:   text shown in the dropdown
+#     modules: west project names appended to the allowlist (one or more)
+#     default: 'true' marks the entry preselected when the wizard opens
+#              (at most one; without it the first entry is preselected)
+
+manifest:
+  remotes:
+    - name: zephyrproject
+      url-base: https://github.com/zephyrproject-rtos
+  projects:
+    - name: zephyr
+      repo-path: zephyr
+      remote: zephyrproject
+      import:
+        path-prefix: deps
+
+base-modules:
+  - name: cmsis           # CMSIS 5, superseded by cmsis_6 in Zephyr v4.1.0
+    until-zephyr: "4.0"
+  - name: cmsis_6         # added upstream in Zephyr v4.1.0
+    since-zephyr: "4.1"
+  - name: percepio
+  - name: picolibc
+  - name: mcuboot
+  - name: trusted-firmware-m
+  - name: segger
+  - name: mbedtls         # TLS + crypto; MCUboot and TF-M builds link against it
+  - name: tf-psa-crypto   # PSA crypto core, split out of Mbed TLS 4 after Zephyr v4.3
+    since-zephyr: "4.4"
+
+templates:
+  - label: STM32
+    modules: [hal_stm32]
+    default: true
+  - label: NXP
+    modules: [hal_nxp]
+  - label: Silicon Labs
+    modules: [hal_silabs]
+  - label: Texas Instruments
+    modules: [hal_ti]
+  - label: Espressif
+    modules: [hal_espressif, hal_xtensa]   # ESP32 classic/S-series are Xtensa cores
+  - label: Infineon
+    modules: [hal_infineon]
+  - label: Analog Devices
+    modules: [hal_adi]
+  - label: Microchip
+    modules: [hal_microchip]
+  - label: Altera
+    modules: [hal_altera]
+  - label: Ambiq
+    modules: [hal_ambiq]
+  - label: Atmel
+    modules: [hal_atmel]
+  - label: Ethos-U
+    modules: [hal_ethos_u]
+  - label: GigaDevice
+    modules: [hal_gigadevice]
+  - label: Intel
+    modules: [hal_intel]
+  - label: Nordic
+    modules: [hal_nordic]
+  - label: Nuvoton
+    modules: [hal_nuvoton]
+  - label: OpenISA
+    modules: [hal_openisa]
+  - label: QuickLogic
+    modules: [hal_quicklogic]
+  - label: Renesas
+    modules: [hal_renesas]
+  - label: Raspberry Pi Pico
+    modules: [hal_rpi_pico]
+  - label: Telink
+    modules: [hal_telink]
+  - label: Würth Elektronik
+    modules: [hal_wurthelektronik]

@@ -1,5 +1,6 @@
 import { Button, RadioGroup, TextField, allComponents,
   provideVSCodeDesignSystem } from "@vscode/webview-ui-toolkit/";
+import { BaseModuleSpec, WorkspaceTemplate, resolveBaseModules } from "../utils/zephyr/templateData.js";
 
 provideVSCodeDesignSystem().register(
   allComponents
@@ -7,10 +8,16 @@ provideVSCodeDesignSystem().register(
 
 const webviewApi = acquireVsCodeApi();
 
+interface TemplateWebviewConfig {
+  baseModules: BaseModuleSpec[];
+  templates: WorkspaceTemplate[];
+}
+
 let lastUrl = '';
 let inputTimeout: NodeJS.Timeout | null = null;
 let projects: string[] = [];
-let selectedTemplateProject = '';
+let selectedTemplateValue = '';
+let lastResolvedBaseModules: string[] = [];
 let projectRequestId = 0;
 let projectLoadingTimeout: ReturnType<typeof setTimeout> | undefined;
 
@@ -125,6 +132,10 @@ function initBranchDropdown() {
     filterFunction(branchInput, branchDropdown);
   });
 
+  // Fires on typing and on dropdown item clicks (which dispatch 'input');
+  // base modules may differ per revision (e.g. cmsis vs cmsis_6).
+  branchInput.addEventListener('input', onRevisionChanged);
+
   branchDropdown.addEventListener('mousedown', function(event) {
     event.preventDefault();
   });
@@ -181,12 +192,6 @@ function initTemplatesDropdown() {
 
   templateInput.addEventListener('input', () => {
     syncProjectsFromTemplate();
-    webviewApi.postMessage(
-      { 
-        command: 'templateChanged',
-        template: templateInput.getAttribute('data-value'),
-      }
-    );
   });
 
   templateInput.addEventListener('keyup', () => {
@@ -203,8 +208,9 @@ function initTemplatesDropdown() {
 
   addDropdownItemEventListeners(templatesDropdown, templateInput);
 
-  // Select "STM32" as default value (hal_stm32)
-  const defaultItem = templatesDropdown.querySelector(`.dropdown-item[data-value="hal_stm32"]`) as HTMLElement;
+  // Preselect the template flagged as default in templates.yml
+  const defaultItem = (templatesDropdown.querySelector('.dropdown-item[data-default="true"]')
+    ?? templatesDropdown.querySelector('.dropdown-item')) as HTMLElement | null;
   if (defaultItem) {
     defaultItem.click();
   }
@@ -351,6 +357,8 @@ async function updateBranchDropdown(branchHTML: string, branch: string) {
   if (typeof branch === 'string') {
     branchInput.value = branch || '';
     branchInput.setAttribute('data-value', branch || '');
+    // Programmatic value set: no 'input' event fires, recompute base modules.
+    onRevisionChanged();
   }
   branchDropdown.innerHTML = branchHTML;
   addDropdownItemEventListeners(branchDropdown, branchInput);
@@ -384,21 +392,37 @@ function initProjects() {
   syncProjectsFromTemplate(true);
 }
 
-function getTemplateProjectDefaults(): string[] {
-  const configuredProjects = (window as any).zephyrWorkbenchTemplateProjects;
-  return Array.isArray(configuredProjects)
-    ? configuredProjects.filter((projectName): projectName is string => typeof projectName === 'string' && projectName.length > 0)
-    : [];
+function getTemplateConfig(): TemplateWebviewConfig | undefined {
+  const config = (window as any).zephyrWorkbenchTemplateConfig;
+  return config && Array.isArray(config.baseModules) && Array.isArray(config.templates)
+    ? config as TemplateWebviewConfig
+    : undefined;
 }
 
-function getCurrentTemplateProject(): string {
+function getCurrentRevision(): string {
+  const branchInput = document.getElementById('branchInput') as HTMLInputElement | null;
+  return branchInput?.value || '';
+}
+
+/** Base modules applicable to the currently selected Zephyr revision (e.g. cmsis vs cmsis_6). */
+function getResolvedBaseModules(): string[] {
+  const config = getTemplateConfig();
+  return config ? resolveBaseModules(config.baseModules, getCurrentRevision()) : [];
+}
+
+function getCurrentTemplateValue(): string {
   const templateInput = document.getElementById('templateInput') as HTMLInputElement | null;
   return templateInput?.getAttribute('data-value') || '';
 }
 
-function buildTemplateProjects(templateProject: string): string[] {
+/** The selected template's module list (data-value holds comma-joined west names). */
+function getCurrentTemplateModules(): string[] {
+  return getCurrentTemplateValue().split(',').filter(name => name.length > 0);
+}
+
+function buildTemplateProjects(templateModules: string[]): string[] {
   const names: string[] = [];
-  for (const projectName of [...getTemplateProjectDefaults(), templateProject]) {
+  for (const projectName of [...lastResolvedBaseModules, ...templateModules]) {
     if (projectName && !names.includes(projectName)) {
       names.push(projectName);
     }
@@ -407,11 +431,30 @@ function buildTemplateProjects(templateProject: string): string[] {
 }
 
 function syncProjectsFromTemplate(force = false) {
-  const templateProject = getCurrentTemplateProject();
-  if (force || templateProject !== selectedTemplateProject) {
-    selectedTemplateProject = templateProject;
-    projects = buildTemplateProjects(templateProject);
+  const templateValue = getCurrentTemplateValue();
+  if (force || templateValue !== selectedTemplateValue) {
+    selectedTemplateValue = templateValue;
+    lastResolvedBaseModules = getResolvedBaseModules();
+    projects = buildTemplateProjects(getCurrentTemplateModules());
   }
+  renderProjects();
+}
+
+/* On a revision change only the base modules that changed applicability are
+   swapped (e.g. cmsis <-> cmsis_6); the user's own additions and removals in
+   the Projects list are preserved. */
+function onRevisionChanged() {
+  const resolved = getResolvedBaseModules();
+  const removed = lastResolvedBaseModules.filter(name => !resolved.includes(name));
+  const added = resolved.filter(name => !lastResolvedBaseModules.includes(name));
+  lastResolvedBaseModules = resolved;
+  if (removed.length === 0 && added.length === 0) {
+    return;
+  }
+  const remaining = projects.filter(name => !removed.includes(name));
+  const additions = added.filter(name => !remaining.includes(name));
+  // Keep base modules grouped at the front of the list.
+  projects = [...additions, ...remaining];
   renderProjects();
 }
 
@@ -644,7 +687,6 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const srcTypeRadioGroup = document.getElementById("srcType") as RadioGroup;
   const srcRemotePath = document.getElementById("remotePath") as TextField;
   const srcRemoteBranch = document.getElementById("branchInput") as TextField;
-  const templateInput = document.getElementById("templateInput") as TextField;
   const manifestPath = document.getElementById("manifestPath") as TextField;
   const manifestDirField = document.getElementById("manifestDir") as TextField | null;
   const pathPrefixField = document.getElementById("pathPrefix") as TextField | null;
@@ -668,7 +710,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
       srcType: srcTypeRadioGroup.value,
       remotePath: srcRemotePath.value,
       remoteBranch: srcRemoteBranch.value,
-      templateHal: templateInput.getAttribute('data-value'),
+      templateModules: getCurrentTemplateModules(),
       manifestPath: manifestPath.value,
       manifestDir: manifestDirField ? manifestDirField.value : undefined,
       pathPrefix: pathPrefixField ? pathPrefixField.value : undefined,
