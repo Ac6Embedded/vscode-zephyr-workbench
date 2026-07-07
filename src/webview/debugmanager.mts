@@ -131,13 +131,17 @@ function repopulateRunnersDropdown() {
   let html = getSelectedBackend() === 'cortex-native' ? cachedNativeRunnersHTML : cachedWestRunnersHTML;
   if (getSelectedBackend() === 'cortex-native' && !html && cachedWestRunnersHTML) {
     // No native list received yet — derive it by filtering the west list to
-    // the servers cortex-debug can spawn natively.
+    // the servers cortex-debug can spawn natively. Drop the "(compatible)"
+    // annotation: it describes west runners, not natively launched servers.
     const container = document.createElement('div');
     container.innerHTML = cachedWestRunnersHTML;
     for (const item of Array.from(container.children)) {
-      const value = (item as HTMLElement).getAttribute('data-value');
+      const element = item as HTMLElement;
+      const value = element.getAttribute('data-value');
       if (value !== 'jlink' && value !== 'stlink_gdbserver') {
-        item.remove();
+        element.remove();
+      } else {
+        element.textContent = element.getAttribute('data-label') || element.textContent;
       }
     }
     html = container.innerHTML;

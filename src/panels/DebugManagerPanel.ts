@@ -392,17 +392,16 @@ export class DebugManagerPanel {
     }
 
     // Restricted runner list for the native Cortex-Debug backend. Labels come
-    // from the same runner classes as the full list — no duplication.
-    function getNativeRunnersHtml(compatibleRunners: string[]): string {
+    // from the same runner classes as the full list — no duplication. No
+    // "(compatible)" annotation here: that flag describes west runners from
+    // runners.yaml, while these servers are launched by cortex-debug directly.
+    function getNativeRunnersHtml(): string {
       let runnersHtml = '';
       for (const runner of getDebugRunners()) {
         if (!(CORTEX_NATIVE_RUNNER_NAMES as readonly string[]).includes(runner.name)) {
           continue;
         }
-        const runnerLabel = compatibleRunners.includes(runner.name)
-          ? `${runner.label} (compatible)`
-          : runner.label;
-        runnersHtml = runnersHtml.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runnerLabel}</div>`);
+        runnersHtml = runnersHtml.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runner.label}</div>`);
       }
       return runnersHtml;
     }
@@ -746,7 +745,7 @@ export class DebugManagerPanel {
           gdbPort: `${state.gdbPort}`,
           gdbMode: `${state.gdbMode}`,
           runnersHTML: `${getRunnersHtml(compatibleRunners)}`,
-          nativeRunnersHTML: `${getNativeRunnersHtml(compatibleRunners)}`,
+          nativeRunnersHTML: `${getNativeRunnersHtml()}`,
           runnerName: `${runnerLabel}`,
           runnerValue: `${runnerValue}`,
           runnerPath: `${runnerPath}`,
@@ -870,7 +869,7 @@ export class DebugManagerPanel {
         gdbPort: `${gdbPort}`,
         gdbMode: 'program',
         runnersHTML: `${getRunnersHtml(compatibleRunners)}`,
-        nativeRunnersHTML: `${getNativeRunnersHtml(compatibleRunners)}`,
+        nativeRunnersHTML: `${getNativeRunnersHtml()}`,
         runnerName: `${runnerLabel}`,
         runnerValue: `${runnerValue}`,
         runnerPath: `${runnerPath}`,
