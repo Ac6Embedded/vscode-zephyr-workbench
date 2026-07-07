@@ -550,13 +550,29 @@ export class DebugManagerPanel {
               const runnerPath = message.runnerPath;
               const runner = getRunner(runnerName);
               const runnerInfo = getRunnerInfo(runnerName);
-              // Never auto-adjust the port for the historical cppdbg backend —
-              // its behavior must stay identical to previous releases.
-              if (message.backend === 'cortex-west' || message.backend === 'cortex-native') {
+              const backend: DebugBackendId = message.backend === 'cortex-west' || message.backend === 'cortex-native'
+                ? message.backend
+                : 'cppdbg';
+              if (this.project && this.buildConfig && runnerName) {
+                // Changing the runner starts over from a clean setup — same
+                // behavior as Reset Default, but keeping the chosen runner.
+                const project = this.project;
+                const buildConfig = this.buildConfig;
+                await vscode.window.withProgress({
+                  location: vscode.ProgressLocation.Notification,
+                  title: 'Debug Manager',
+                  cancellable: false,
+                }, async (progress) => {
+                  progress.report({ message: 'Loading runner defaults' });
+                  await resetConfiguration(project, buildConfig, backend, runnerName);
+                });
+              } else if (backend === 'cortex-west' || backend === 'cortex-native') {
+                // No build configuration yet: only refresh the lightweight
+                // runner-derived hints.
                 webview.postMessage({ command: 'updateDefaultPort', defaultPort: getDefaultGdbPort(runnerName) });
-              }
-              if (message.backend === 'cortex-native' && runnerName === 'jlink') {
-                postDeviceDetect(this.project, this.buildConfig);
+                if (backend === 'cortex-native' && runnerName === 'jlink') {
+                  postDeviceDetect(this.project, this.buildConfig);
+                }
               }
               if(runner) {
                 if(runnerPath && runnerPath.length > 0) {
@@ -571,13 +587,31 @@ export class DebugManagerPanel {
               break;
             }
             case 'backendChanged': {
-              const backend = typeof message.backend === 'string' ? message.backend : 'cppdbg';
-              postCortexDetect(backend);
-              if (backend === 'cortex-west' || backend === 'cortex-native') {
-                webview.postMessage({ command: 'updateDefaultPort', defaultPort: getDefaultGdbPort(message.runner) });
-              }
-              if (backend === 'cortex-native' && message.runner === 'jlink') {
-                postDeviceDetect(this.project, this.buildConfig);
+              const backend: DebugBackendId = message.backend === 'cortex-west' || message.backend === 'cortex-native'
+                ? message.backend
+                : 'cppdbg';
+              if (this.project && this.buildConfig) {
+                // Switching backend starts over from that backend's clean
+                // defaults — same behavior as Reset Default (including the
+                // backend-appropriate default runner).
+                const project = this.project;
+                const buildConfig = this.buildConfig;
+                await vscode.window.withProgress({
+                  location: vscode.ProgressLocation.Notification,
+                  title: 'Debug Manager',
+                  cancellable: false,
+                }, async (progress) => {
+                  progress.report({ message: 'Loading backend defaults' });
+                  await resetConfiguration(project, buildConfig, backend);
+                });
+              } else {
+                postCortexDetect(backend);
+                if (backend === 'cortex-west' || backend === 'cortex-native') {
+                  webview.postMessage({ command: 'updateDefaultPort', defaultPort: getDefaultGdbPort(message.runner) });
+                }
+                if (backend === 'cortex-native' && message.runner === 'jlink') {
+                  postDeviceDetect(this.project, this.buildConfig);
+                }
               }
               break;
             }
@@ -820,7 +854,7 @@ export class DebugManagerPanel {
 
     // Reset keeps the selected backend and restores backend-appropriate
     // defaults (form-only — nothing is written until Apply).
-    async function resetConfiguration(project: ZephyrApplication, buildConfig?: ZephyrBuildConfig, backend: DebugBackendId = 'cppdbg') {
+    async function resetConfiguration(project: ZephyrApplication, buildConfig?: ZephyrBuildConfig, backend: DebugBackendId = 'cppdbg', runnerOverride?: string) {
       // Without a build configuration there are no defaults to restore —
       // leave the form untouched instead of blanking user-entered values.
       if (!buildConfig) {
@@ -838,7 +872,10 @@ export class DebugManagerPanel {
       // they are backend-independent artifact paths.
       const state = readPanelStateFromConfig(config);
 
-      let runnerName = buildConfig ? (defaultDebugRunner ?? getDefaultDebugRunner(project, buildConfig)) : undefined;
+      // A runner override keeps the user's runner selection while everything
+      // else resets (runner-change flow); without it the backend default wins.
+      let runnerName = runnerOverride
+        ?? (buildConfig ? (defaultDebugRunner ?? getDefaultDebugRunner(project, buildConfig)) : undefined);
       if (backend === 'cortex-native'
         && !(runnerName && (CORTEX_NATIVE_RUNNER_NAMES as readonly string[]).includes(runnerName))) {
         runnerName = compatibleRunners.includes('stlink_gdbserver') && !compatibleRunners.includes('jlink')

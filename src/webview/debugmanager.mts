@@ -120,8 +120,12 @@ function runnerPathHiddenForSelectedRunner() {
  * Install the runner list matching the selected backend and keep the current
  * selection when it is still available; otherwise prefer the first runner
  * marked compatible with the board, else clear the selection.
+ *
+ * `silentSelection` updates the input without dispatching its 'input' event —
+ * used on backend switches, where the backendChanged reset settles the final
+ * runner and a second runnerChanged message would race it.
  */
-function repopulateRunnersDropdown() {
+function repopulateRunnersDropdown(silentSelection = false) {
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement | null;
   const runnersDropdown = document.getElementById('runnersDropdown') as HTMLElement | null;
   if (!runnerInput || !runnersDropdown) {
@@ -161,7 +165,9 @@ function repopulateRunnersDropdown() {
   if (preferred) {
     runnerInput.value = preferred.getAttribute('data-label') || '';
     runnerInput.setAttribute('data-value', preferred.getAttribute('data-value') || '');
-    runnerInput.dispatchEvent(new Event('input'));
+    if (!silentSelection) {
+      runnerInput.dispatchEvent(new Event('input'));
+    }
     return;
   }
 
@@ -181,13 +187,20 @@ function initBackendRadioGroup() {
       return;
     }
     const backend = getSelectedBackend();
-    repopulateRunnersDropdown();
+    repopulateRunnersDropdown(true);
     applyBackendVisibility();
 
     const runnerInput = document.getElementById('runnerInput') as HTMLInputElement | null;
     const runner = runnerInput?.getAttribute('data-value') ?? '';
     if (backend === 'cortex-native' && runner === 'jlink') {
       showSpinner('deviceNameSpinner');
+    }
+    // A backend switch resets the form server-side; surface the same loading
+    // feedback as a build-config change while the defaults are recomputed.
+    const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement | null;
+    if (buildConfigInput?.getAttribute('data-value')) {
+      showBrowseSpinnersWhileLoading();
+      updateRunnerDefaultInfo('', '');
     }
     webviewApi.postMessage({ command: 'backendChanged', backend, runner });
   });
@@ -665,6 +678,13 @@ function initRunnersDropdown() {
     }
     if (backend === 'cortex-native' && runnerInput.getAttribute('data-value') === 'jlink') {
       showSpinner('deviceNameSpinner');
+    }
+    // A runner change resets the form server-side (keeping the runner);
+    // surface the same loading feedback as a build-config change.
+    const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement | null;
+    if (buildConfigInput?.getAttribute('data-value') && runnerInput.getAttribute('data-value')) {
+      showBrowseSpinnersWhileLoading();
+      updateRunnerDefaultInfo('', '');
     }
     webviewApi.postMessage({
       command: 'runnerChanged',
