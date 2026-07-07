@@ -9,10 +9,11 @@ import { WestWorkspace } from '../models/WestWorkspace';
 import { ZephyrApplication } from '../models/ZephyrApplication';
 import { ZephyrBoard } from '../models/ZephyrBoard';
 import type { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
-import { ArmGnuToolchainInstallation, ensureWindowsExecutableExtension, normalizeZephyrSdkVariant, prependRustBinPath, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from '../models/ToolchainInstallations';
+import { ArmGnuToolchainInstallation, ensureWindowsExecutableExtension, GlobalZephyrSdkInstallation, normalizeZephyrSdkVariant, prependRustBinPath, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from '../models/ToolchainInstallations';
 import {
   ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
   ZEPHYR_PROJECT_RUST_SETTING_KEY,
+  ZEPHYR_PROJECT_SDK_GLOBAL_VALUE,
   ZEPHYR_PROJECT_SDK_SETTING_KEY,
   ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY,
   ZEPHYR_PROJECT_IAR_SETTING_KEY,
@@ -602,7 +603,11 @@ function buildDefaultApplicationSettings(
 
   if (toolchainInstallation instanceof ZephyrSdkInstallation) {
     values[ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY] = toolchainVariant;
-    values[ZEPHYR_PROJECT_SDK_SETTING_KEY] = formatPath(toolchainInstallation.rootUri.fsPath);
+    // A global SDK is stored as the 'global' sentinel: the build then omits
+    // ZEPHYR_SDK_INSTALL_DIR and the build system auto-discovers the SDK.
+    values[ZEPHYR_PROJECT_SDK_SETTING_KEY] = toolchainInstallation instanceof GlobalZephyrSdkInstallation
+      ? ZEPHYR_PROJECT_SDK_GLOBAL_VALUE
+      : formatPath(toolchainInstallation.rootUri.fsPath);
     deleteKeys.push(ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_RUST_SETTING_KEY);
   } else if (toolchainInstallation instanceof IarToolchainInstallation) {
     values[ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY] = 'iar';

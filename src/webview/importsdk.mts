@@ -10,6 +10,8 @@ import {
   TextField,
   vsCodeButton,
   vsCodeCheckbox,
+  vsCodeDropdown,
+  vsCodeOption,
   vsCodeTextField,
   vsCodeRadio,
   vsCodeRadioGroup,
@@ -21,6 +23,8 @@ import {
 provideVSCodeDesignSystem().register(
   vsCodeButton(),
   vsCodeCheckbox(),
+  vsCodeDropdown(),
+  vsCodeOption(),
   vsCodeTextField(),
   vsCodeRadio(),
   vsCodeRadioGroup(),
@@ -154,6 +158,10 @@ window.addEventListener("load", () => {
   sdkTypeSub.addEventListener("click", modifySdkTypeHandler);
   sdkTypeSub.addEventListener("select", modifySdkTypeHandler);
 
+  const installDestSub = getEl<RadioGroup>("installDest");
+  installDestSub.addEventListener("click", modifySrcTypeHandler);
+  installDestSub.addEventListener("select", modifySrcTypeHandler);
+
   getEl<Button>("browseLocationButton")
     .addEventListener("click", () => {
       vscode.postMessage({ command: "openLocationDialog", id: "workspacePath" });
@@ -280,6 +288,15 @@ function modifySrcTypeHandler(): void {
   if (catRadio.value === "zephyr") {
     if (zephyrGroup.value === "official") {
       officialForm.style.display = "block";
+      // Global installs pick among the auto-discovered locations (dropdown);
+      // the free-form Location field only applies to the custom mode.
+      const installDest = (getEl<RadioGroup>("installDest") as unknown as { value: string }).value;
+      const isGlobal = installDest === "global";
+      commonLocationForm.style.display = isGlobal ? "none" : "";
+      const globalBaseRow = document.getElementById("globalBaseRow");
+      if (globalBaseRow) {
+        globalBaseRow.style.display = isGlobal ? "" : "none";
+      }
     } else if (zephyrGroup.value === "remote") {
       remotePath.removeAttribute("disabled");
       remotePath.style.display = "block";
@@ -1186,6 +1203,8 @@ function importHandler(): void {
   vscode.postMessage({
     command: "import",
     srcType,
+    installDest: (getEl<RadioGroup>("installDest") as unknown as { value: string }).value,
+    globalInstallBase: (document.getElementById("globalBaseSelect") as unknown as { value?: string } | null)?.value ?? "",
     remotePath: (getEl<TextField>("remotePath") as unknown as { value: string }).value,
     workspacePath: (getEl<TextField>("workspacePath") as unknown as { value: string }).value,
     sdkType: (getEl<RadioGroup>("sdkType") as unknown as { value: string }).value,

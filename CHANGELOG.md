@@ -4,6 +4,15 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [Unreleased]
+
+### Global Zephyr SDK support (new)
+- The Zephyr SDK can now be installed **globally**: installed once (via the standard `west sdk` mechanism) and found automatically by every Zephyr project, with no per-project SDK path to configure. The Add Toolchain wizard gains a Destination choice (Custom location or Global) with a dropdown of standard install locations.
+- The Toolchains view detects global SDKs on the machine, including ones installed outside the extension, and marks them with a **[global]** badge. They can be customized (add toolchains, add LLVM) like any other SDK.
+- Applications can select **Global Zephyr SDK** as their toolchain (New Application wizard and Change Toolchain): the build then picks the right SDK by itself, and the application view shows which one will likely be used. This also works on machines where no SDK was ever imported into the extension.
+- Everything around it follows: compatibility warnings, debugging, IntelliSense, and Rust/IAR toolchain links all work with global SDKs.
+- Global SDKs can also be deleted: **Delete from disk** removes the SDK files and cleans up its global registration in one step.
+
 ## [3.2.1]
 
 ### Board selection

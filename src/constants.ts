@@ -15,6 +15,9 @@ export const ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY = 'listRustToolch
 export const ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY = 'westWorkspace';
 export const ZEPHYR_PROJECT_BOARD_SETTING_KEY = 'board';
 export const ZEPHYR_PROJECT_SDK_SETTING_KEY = 'sdk';
+// Sentinel value for the per-app 'sdk' setting: use a globally installed SDK
+// (auto-discovered by the build system, ZEPHYR_SDK_INSTALL_DIR is not set).
+export const ZEPHYR_PROJECT_SDK_GLOBAL_VALUE = 'global';
 export const ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY = "toolchain";
 export const ZEPHYR_PROJECT_IAR_SETTING_KEY = "iar";
 export const ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY = 'gnuarmemb';

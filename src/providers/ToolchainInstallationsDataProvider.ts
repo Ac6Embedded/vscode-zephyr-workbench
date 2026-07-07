@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ArmGnuToolchainInstallation, RustToolchainInstallation, ToolchainInstallation, IarToolchainInstallation, ZephyrSdkInstallation } from '../models/ToolchainInstallations';
-import { getInternalZephyrSdkInstallation, getRegisteredArmGnuToolchainInstallations, getRegisteredRustToolchainInstallations, getRegisteredZephyrSdkInstallations, getRegisteredIarToolchainInstallations} from '../utils/utils';
+import { ArmGnuToolchainInstallation, GlobalZephyrSdkInstallation, RustToolchainInstallation, ToolchainInstallation, IarToolchainInstallation, ZephyrSdkInstallation } from '../models/ToolchainInstallations';
+import { getAllZephyrSdkInstallations, getInternalZephyrSdkInstallation, getRegisteredArmGnuToolchainInstallations, getRegisteredRustToolchainInstallations, getRegisteredIarToolchainInstallations, normalizeSdkPathKey} from '../utils/utils';
+import { getCachedGlobalSdks } from '../utils/zephyr/globalSdkService';
 import { friendlyToolchainId, isSdkV1OrLater } from '../utils/zephyr/sdkUtils';
 
 export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvider<ToolchainInstallationTreeItem> {
@@ -18,12 +19,18 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
   async getChildren(element?: ToolchainInstallationTreeItem): Promise<ToolchainInstallationTreeItem[]> {
 	const items: ToolchainInstallationTreeItem[] = [];
   
-	const zephyrSDKs = await getRegisteredZephyrSdkInstallations();
+	// Registered SDKs merged with auto-detected global ones (registered win the
+	// dedup); the same merged list backs the IAR and Rust link child lookups so
+	// links to a global SDK render too.
+	const zephyrSDKs = await getAllZephyrSdkInstallations();
 	const iars = await getRegisteredIarToolchainInstallations();
 	const armGnuToolchains = await getRegisteredArmGnuToolchainInstallations();
 	const rustToolchains = await getRegisteredRustToolchainInstallations();
 	const internal = await getInternalZephyrSdkInstallation();
-  
+	// Keyed like the merge dedup (realpath + case folding) so a registered
+	// symlink or case-variant of a detected global SDK still gets the badge.
+	const globalSdkPaths = new Set(getCachedGlobalSdks().map(sdk => normalizeSdkPathKey(sdk.rootUri.fsPath)));
+
 	if (!element) {
 	  // Top-level SDKs
 	  for (const zephyrSdkInstallation of zephyrSDKs) {
@@ -35,7 +42,14 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
 		const collapsibleState = hasChildren
 		  ? vscode.TreeItemCollapsibleState.Collapsed
 		  : vscode.TreeItemCollapsibleState.None;
-		items.push(new ToolchainInstallationTreeItem(zephyrSdkInstallation, isInternal, collapsibleState));
+		const item = new ToolchainInstallationTreeItem(zephyrSdkInstallation, isInternal, collapsibleState);
+		// A registered SDK that is also globally discoverable keeps its normal
+		// context value (still removable) but gets the same badge.
+		if (!(zephyrSdkInstallation instanceof GlobalZephyrSdkInstallation)
+			&& globalSdkPaths.has(normalizeSdkPathKey(zephyrSdkInstallation.rootUri.fsPath))) {
+		  item.description = '[global]';
+		}
+		items.push(item);
 	  }
   
 	  // Top-level IARs
@@ -115,7 +129,7 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
 		const isInternal = element.isInternal;
 
 		// The SDK root node: v1.0+ groups toolchains under GNU / LLVM; older SDKs stay flat.
-		if (element.contextValue === 'zephyr-sdk' || element.contextValue === 'zephyr-sdk-internal') {
+		if (element.contextValue === 'zephyr-sdk' || element.contextValue === 'zephyr-sdk-internal' || element.contextValue === 'zephyr-sdk-global') {
 			if (isSdkV1OrLater(sdk.version)) {
 				return [
 					this.makeCategoryItem(sdk, isInternal, 'GNU', 'zephyr-sdk-gnu-group'),
@@ -246,7 +260,15 @@ export class ToolchainInstallationTreeItem extends vscode.TreeItem {
 	  } else {
 		this.label = `Zephyr SDK ${installation.version}`;
 		this.tooltip = `Zephyr SDK ${installation.version} @ ${installation.rootUri.fsPath}`;
-		this.contextValue = isInternal ? "zephyr-sdk-internal" : "zephyr-sdk";
+		if (installation instanceof GlobalZephyrSdkInstallation) {
+		  // Auto-detected via the build system's global discovery channels:
+		  // not registered in listSDKs, so not removable from here.
+		  this.contextValue = 'zephyr-sdk-global';
+		  this.description = '[global]';
+		  this.tooltip += '\nAuto-detected global SDK (CMake package registry, default install locations, or ZEPHYR_SDK_INSTALL_DIR)';
+		} else {
+		  this.contextValue = isInternal ? "zephyr-sdk-internal" : "zephyr-sdk";
+		}
 		this.iconPath = {
           light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'toolchain_icon_light.svg'),
           dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'toolchain_icon_dark.svg')

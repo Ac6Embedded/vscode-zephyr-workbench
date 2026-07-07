@@ -6,11 +6,13 @@ import {
   getWestWorkspace,
   getZephyrSdkInstallation,
   hasPrjConfLikeFile,
+  isGlobalSdkSettingValue,
   tryGetZephyrSdkInstallation,
   findArmGnuToolchainInstallation,
   findIarToolchainInstallation,
   findRustToolchainInstallation,
 } from '../utils/utils';
+import { resolveGlobalSdkForZephyr } from '../utils/zephyr/globalSdkService';
 import {
   ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
   ZEPHYR_PROJECT_IAR_SETTING_KEY,
@@ -81,6 +83,9 @@ export class ZephyrApplication {
   westWorkspaceRootPath!: string;
   zephyrSdkPath!: string;
   zephyrSdkVersion?: string;
+  // True when the 'sdk' setting holds the 'global' sentinel: the build omits
+  // ZEPHYR_SDK_INSTALL_DIR and the build system auto-discovers the SDK.
+  isGlobalSdk: boolean = false;
   toolchainVariant: ToolchainVariantId = 'zephyr';
   venvPath?: string;
   selectedIarToolchainInstallation!: IarToolchainInstallation;
@@ -235,6 +240,7 @@ export class ZephyrApplication {
     } else {
       this.zephyrSdkPath = getPathSetting(ZEPHYR_PROJECT_SDK_SETTING_KEY) ?? '';
     }
+    this.isGlobalSdk = isGlobalSdkSettingValue(this.zephyrSdkPath);
 
     // Rust toolchain (orthogonal to the C toolchain): resolve the per-app
     // setting when present; when unset the system rust on PATH is used.
@@ -267,7 +273,19 @@ export class ZephyrApplication {
     }
 
     this.zephyrSdkVersion = undefined;
-    if (this.zephyrSdkPath) {
+    if (this.isGlobalSdk) {
+      // Advisory: the version of the detected global SDK the build would pick
+      // (compatibility-aware), used for the compat badge and display only.
+      let kernelPath: string | undefined;
+      try {
+        kernelPath = this.westWorkspaceRootPath
+          ? getWestWorkspace(this.westWorkspaceRootPath).kernelUri.fsPath
+          : undefined;
+      } catch {
+        kernelPath = undefined;
+      }
+      this.zephyrSdkVersion = resolveGlobalSdkForZephyr(kernelPath)?.version.trim();
+    } else if (this.zephyrSdkPath) {
       try {
         this.zephyrSdkVersion = getZephyrSdkInstallation(this.zephyrSdkPath).version.trim();
       } catch {

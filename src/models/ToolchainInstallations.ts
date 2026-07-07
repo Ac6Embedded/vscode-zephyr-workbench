@@ -271,6 +271,17 @@ export class ZephyrSdkInstallation {
   }
 }
 
+/**
+ * A Zephyr SDK discovered through the build system's own global channels
+ * (CMake user package registry, recommended install locations, or
+ * ZEPHYR_SDK_INSTALL_DIR) rather than registered in `listSDKs`. It has a real
+ * root path so every inherited behavior works; the subclass only marks the
+ * provenance so UI and settings writers can treat it as non-removable and
+ * store the 'global' sentinel instead of the path where appropriate.
+ */
+export class GlobalZephyrSdkInstallation extends ZephyrSdkInstallation {
+}
+
 export class IarToolchainInstallation {
   constructor(
     public readonly zephyrSdkPath: string,

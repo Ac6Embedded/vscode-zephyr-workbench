@@ -7,6 +7,7 @@ import { WestWorkspace } from "../models/WestWorkspace";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { ZephyrBoard } from "../models/ZephyrBoard";
 import { ArmGnuToolchainInstallation, normalizeArmGnuTargetTriple, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from "../models/ToolchainInstallations";
+import { getCachedGlobalSdks } from "./zephyr/globalSdkService";
 import { ZephyrAppTemplateKind, ZephyrSample } from "../models/ZephyrSample";
 import { getEnvVarFormat, getOutputChannel, getShell } from "./execUtils";
 import { checkHostTools, checkEnvFile } from "./installUtils";
@@ -16,6 +17,7 @@ import {
   ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
   ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY,
+  ZEPHYR_PROJECT_SDK_GLOBAL_VALUE,
   ZINSTALLER_MINIMUM_VERSION,
 } from '../constants';
 import { buildDirectTask, checkOrCreateTask, isDirectTask, resolveFlashRunnerSelection, ZephyrTaskProvider } from '../providers/ZephyrTaskProvider';
@@ -635,8 +637,22 @@ export function getZephyrSdkInstallation(zephyrSdkPath: string): ZephyrSdkInstal
   throw new Error('Cannot parse the Zephyr SDK');
 }
 
+/**
+ * True when the per-app 'sdk' setting holds the 'global' sentinel: the app
+ * uses a globally installed SDK and no ZEPHYR_SDK_INSTALL_DIR is exported.
+ */
+export function isGlobalSdkSettingValue(value: string | undefined): boolean {
+  return typeof value === 'string' && value.trim() === ZEPHYR_PROJECT_SDK_GLOBAL_VALUE;
+}
+
 export function tryGetZephyrSdkInstallation(zephyrSdkPath: string | undefined): ZephyrSdkInstallation | undefined {
   if (!zephyrSdkPath) {
+    return undefined;
+  }
+  // The 'global' sentinel must never resolve to an installation here, even if
+  // a folder named 'global' happens to exist relative to the cwd: build env
+  // composition relies on getting undefined so ZEPHYR_SDK_INSTALL_DIR is omitted.
+  if (isGlobalSdkSettingValue(zephyrSdkPath)) {
     return undefined;
   }
   if (fileExists(zephyrSdkPath)) {
@@ -758,6 +774,50 @@ export async function getRegisteredZephyrSdkInstallations(): Promise<ZephyrSdkIn
   }
 
   return zephyrSdkInstallations;
+}
+
+/**
+ * Comparison key for SDK paths: realpath (symlinks), normalized, case-folded on
+ * the case-insensitive platforms (win32 and default macOS). Shared by the
+ * registered-vs-global merge and the tree's '[global]' badge so both agree.
+ */
+export function normalizeSdkPathKey(p: string): string {
+  let resolved = p;
+  try {
+    resolved = fs.realpathSync(p);
+  } catch {
+    // Keep the original path when realpath fails (dangling entries).
+  }
+  const normalized = path.normalize(resolved);
+  return process.platform === 'win32' || process.platform === 'darwin'
+    ? normalized.toLowerCase()
+    : normalized;
+}
+
+/**
+ * Registered SDKs (listSDKs) merged with the auto-detected global SDKs, deduped
+ * by normalized real path. Registered entries win the dedup so Remove/Delete
+ * stays available on them; detected-only entries keep their
+ * GlobalZephyrSdkInstallation identity (non-removable in the UI).
+ */
+export async function getAllZephyrSdkInstallations(): Promise<ZephyrSdkInstallation[]> {
+  let registered: ZephyrSdkInstallation[] = [];
+  try {
+    registered = await getRegisteredZephyrSdkInstallations();
+  } catch {
+    registered = [];
+  }
+
+  const merged: ZephyrSdkInstallation[] = [...registered];
+  const seen = new Set(registered.map(sdk => normalizeSdkPathKey(sdk.rootUri.fsPath)));
+  for (const globalSdk of getCachedGlobalSdks()) {
+    const key = normalizeSdkPathKey(globalSdk.rootUri.fsPath);
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(globalSdk);
+    }
+  }
+  return merged;
 }
 
 export async function getRegisteredIarToolchainInstallations(): Promise<IarToolchainInstallation[]> {

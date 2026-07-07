@@ -1,11 +1,14 @@
 import * as vscode from "vscode";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getMinimalToolchainsForVersion, getSdkVersion } from "../utils/zephyr/sdkUtils";
 import { fetchArmGnuDownloadCatalog, filterArmGnuCatalogForHost, getArmGnuHostTarget } from "../utils/zephyr/armGnuToolchainUtils";
 import { getRustupStatus } from "../utils/zephyr/rustupUtils";
 import { fetchLlvmVersions, fetchRustVersions, fetchZephyrRustTargetDetails, RUST_STABLE_CHANNEL } from "../utils/zephyr/rustToolchainUtils";
-import { getRegisteredArmGnuToolchainInstallations, getRegisteredZephyrSdkInstallations } from "../utils/utils";
+import { getAllZephyrSdkInstallations, getRegisteredArmGnuToolchainInstallations } from "../utils/utils";
 
 export class ImportZephyrSDKPanel {
   public static currentPanel: ImportZephyrSDKPanel | undefined;
@@ -191,6 +194,24 @@ export class ImportZephyrSDKPanel {
   </form>
 
   <form id="official-form">
+    <div class="grid-group-div">
+      <vscode-radio-group id="installDest" orientation="vertical">
+        <label slot="label">Destination:</label>
+        <vscode-radio value="location" checked>Custom location</vscode-radio>
+        <vscode-radio value="global">Global (auto-discovered)</vscode-radio>
+      </vscode-radio-group>
+    </div>
+
+    <div class="grid-group-div" id="globalBaseRow" style="display:none">
+      <div class="grid-header-div">
+        <label for="globalBaseSelect">Install location:</label>
+      </div>
+      <vscode-dropdown id="globalBaseSelect" class="grid-value-div">
+        ${getRecommendedGlobalInstallBases().map((base, index) =>
+          `<vscode-option value="${base}"${index === 0 ? ' selected' : ''}>${base}</vscode-option>`).join('')}
+      </vscode-dropdown>
+    </div>
+
     <div class="grid-group-div">
       <vscode-radio-group id="sdkType" orientation="horizontal">
         <label slot="label">SDK Type:</label>
@@ -517,14 +538,25 @@ ${process.platform === 'win32' ? `
 
             switch (srcType) {
               case "official":
-                vscode.commands.executeCommand(
-                  "zephyr-workbench-sdk-explorer.import-official-sdk",
-                  msg.sdkType,
-                  msg.sdkVersion,
-                  msg.listToolchains,
-                  workspacePath,
-                  !!msg.includeLlvm,
-                );
+                if (msg.installDest === "global") {
+                  vscode.commands.executeCommand(
+                    "zephyr-workbench-sdk-explorer.install-global-sdk",
+                    msg.sdkType,
+                    msg.sdkVersion,
+                    msg.listToolchains,
+                    !!msg.includeLlvm,
+                    msg.globalInstallBase,
+                  );
+                } else {
+                  vscode.commands.executeCommand(
+                    "zephyr-workbench-sdk-explorer.import-official-sdk",
+                    msg.sdkType,
+                    msg.sdkVersion,
+                    msg.listToolchains,
+                    workspacePath,
+                    !!msg.includeLlvm,
+                  );
+                }
                 break;
 
               case "remote":
@@ -626,7 +658,7 @@ ${process.platform === 'win32' ? `
           case "fetchImportSdkData": {
             const [versionsResult, sdkResult, armGnuResult, rustupResult, rustResult, armGnuRegisteredResult, llvmResult] = await Promise.allSettled([
               getSdkVersion(),
-              getRegisteredZephyrSdkInstallations(),
+              getAllZephyrSdkInstallations(),
               getArmGnuImportData(),
               getRustupStatus(),
               getRustImportData(),
@@ -720,6 +752,48 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
+/**
+ * Install bases the Zephyr build system discovers automatically, per OS.
+ * The user's home directory comes first and is the default on every platform.
+ */
+export function getRecommendedGlobalInstallBases(): string[] {
+  const home = os.homedir();
+  if (process.platform === 'win32') {
+    const bases = [home];
+    if (process.env.ProgramFiles) {
+      bases.push(process.env.ProgramFiles);
+    }
+    return bases;
+  }
+  return [
+    home,
+    path.join(home, '.local'),
+    path.join(home, '.local', 'opt'),
+    path.join(home, 'bin'),
+    '/opt',
+    '/usr/local',
+  ];
+}
+
+// True when the user can create files under targetPath (checking the nearest
+// existing ancestor when the directory itself does not exist yet).
+function isWritableLocation(targetPath: string): boolean {
+  let probe = path.resolve(targetPath);
+  while (!fs.existsSync(probe)) {
+    const parent = path.dirname(probe);
+    if (parent === probe) {
+      return false;
+    }
+    probe = parent;
+  }
+  try {
+    fs.accessSync(probe, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function getRustImportData() {
   // fetchZephyrRustTargetDetails never throws (falls back to a static list);
   // only a version fetch failure rejects.
@@ -800,7 +874,25 @@ export async function checkParameters(msg: any): Promise<boolean> {
     return true;
   }
 
-  if (!workspacePath) {
+  // Global installs pick among the auto-discovered locations instead of the
+  // free-form Location field; the chosen base must be writable by the user.
+  const isGlobalOfficialInstall = srcType === "official" && msg.installDest === "global";
+  if (isGlobalOfficialInstall) {
+    const base = typeof msg.globalInstallBase === "string" ? msg.globalInstallBase.trim() : "";
+    if (!base) {
+      vscode.window.showErrorMessage(
+        "Missing install location, please choose where to install the SDK.",
+      );
+      return false;
+    }
+    if (!isWritableLocation(base)) {
+      vscode.window.showErrorMessage(
+        `You do not have permission to write to ${base}. Choose another install location.`,
+      );
+      return false;
+    }
+  }
+  if (!workspacePath && !isGlobalOfficialInstall) {
     if (srcType === "arm-gnu-local") {
       vscode.window.showErrorMessage(
         "Missing Arm GNU toolchain location, please select its install folder.",

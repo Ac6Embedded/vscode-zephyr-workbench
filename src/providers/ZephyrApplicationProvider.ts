@@ -9,6 +9,7 @@ import {
   resolveWorkspaceApplicationPath,
 } from '../utils/zephyr/workspaceApplications';
 import { checkSdkCompatibility, clearSdkCompatCache, formatSdkCompatMessage } from '../utils/zephyr/sdkCompatUtils';
+import { resolveGlobalSdkForZephyr } from '../utils/zephyr/globalSdkService';
 
 const EXTRA_ENV_KEYS = ['EXTRA_CONF_FILE', 'EXTRA_DTC_OVERLAY_FILE', 'EXTRA_ZEPHYR_MODULES'];
 const WEST_ARGUMENTS_LABEL = 'west Arguments';
@@ -288,6 +289,17 @@ export class ZephyrApplicationToolchainTreeItem extends ZephyrApplicationTreeIte
     } else if (variant === 'gnuarmemb') {
       installationName = project.selectedArmGnuToolchainInstallation?.name;
       detailPath = project.selectedArmGnuToolchainInstallation?.toolchainPath;
+    } else if (project.isGlobalSdk) {
+      // 'global' sentinel: show which detected SDK the build would pick
+      // (advisory; the build system makes the final pick at build time).
+      installationName = 'Global Zephyr SDK';
+      let kernelPath: string | undefined;
+      try {
+        kernelPath = getWestWorkspace(project.westWorkspaceRootPath).kernelUri.fsPath;
+      } catch {
+        kernelPath = undefined;
+      }
+      detailPath = resolveGlobalSdkForZephyr(kernelPath)?.rootUri.fsPath;
     } else {
       // 'zephyr' / 'zephyr/llvm': the SDK installation isn't loaded eagerly,
       // so derive the install folder name from the configured path the same
@@ -305,10 +317,19 @@ export class ZephyrApplicationToolchainTreeItem extends ZephyrApplicationTreeIte
     this.description = installationName
       ? (rustInstallation ? `[${variant} + rust]` : `[${variant}]`)
       : '[not set]';
+    if (project.isGlobalSdk) {
+      this.description += detailPath
+        ? ` auto-detected: ${path.basename(detailPath)}`
+        : ' (no global SDK detected)';
+    }
     const rustDetail = rustInstallation ? `\nRust toolchain: ${rustInstallation.toolchainPath}` : '';
     this.tooltip = detailPath
-      ? `${installationName} (${variant})\n${detailPath}${rustDetail}`
-      : `Toolchain not set (${variant})${rustDetail}`;
+      ? project.isGlobalSdk
+        ? `${installationName} (${variant})\nAuto-detected: ${detailPath}\nThe build system makes the final pick at build time.${rustDetail}`
+        : `${installationName} (${variant})\n${detailPath}${rustDetail}`
+      : project.isGlobalSdk
+        ? `Global Zephyr SDK (${variant}): no global SDK detected on this machine${rustDetail}`
+        : `Toolchain not set (${variant})${rustDetail}`;
     // Mirror the Toolchains sidebar's icon-per-vendor convention so the row
     // tells the user which toolchain family is in use at a glance:
     //   - IAR uses the IAR logo (raster, no theme variants).

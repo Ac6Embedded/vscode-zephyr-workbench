@@ -11,6 +11,7 @@ import { ZephyrApplication } from "../../models/ZephyrApplication";
 import { prependRustBinPath } from '../../models/ToolchainInstallations';
 import { findBoardByHierarchicalIdentifier, getSupportedBoards } from '../zephyr/boardDiscovery';
 import { findArmGnuToolchainInstallation, getWestWorkspace, deleteFolder, fileExists, tryGetZephyrSdkInstallation } from '../utils';
+import { resolveGlobalSdkForZephyr } from '../zephyr/globalSdkService';
 import { STM32CubeProgrammer } from '../../debug/runners/STM32CubeProgrammer';
 import { StlinkGdbserver } from '../../debug/runners/StlinkGdbserver';
 import { Nrfutil } from '../../debug/runners/Nrfutil';
@@ -314,6 +315,26 @@ function resolveSdkConfigVariablePath(value: string, sdkPath: string): string {
   return path.normalize(value.replace(ZEPHYR_SDK_CONFIG_VARIABLE, sdkPath));
 }
 
+/**
+ * The SDK installation the project's 'sdk' setting effectively points at: the
+ * 'global' sentinel resolves (advisory) to the detected global SDK the build
+ * would pick; a path resolves normally.
+ */
+function resolveEffectiveSdkInstallation(project: ZephyrApplication): ReturnType<typeof tryGetZephyrSdkInstallation> {
+  if (project.isGlobalSdk) {
+    let kernelPath: string | undefined;
+    try {
+      kernelPath = project.westWorkspaceRootPath
+        ? getWestWorkspace(project.westWorkspaceRootPath).kernelUri.fsPath
+        : undefined;
+    } catch {
+      kernelPath = undefined;
+    }
+    return resolveGlobalSdkForZephyr(kernelPath);
+  }
+  return tryGetZephyrSdkInstallation(project.zephyrSdkPath);
+}
+
 function resolveExistingSdkDebuggerPath(
   project: ZephyrApplication,
   zephyrSdkInstallation: ReturnType<typeof tryGetZephyrSdkInstallation>,
@@ -325,8 +346,18 @@ function resolveExistingSdkDebuggerPath(
     return sdkDebuggerPath;
   }
 
+  // A global app's 'sdk' setting is the literal 'global': substituting it into
+  // the ${config:...} token would build a bogus path, so use the resolved
+  // installation's real root instead.
+  const sdkRootPath = project.isGlobalSdk
+    ? (zephyrSdkInstallation?.rootUri.fsPath ?? '')
+    : project.zephyrSdkPath;
+  if (!sdkRootPath) {
+    return '';
+  }
+
   const concreteDebuggerPath = sdkDebuggerPath.includes(ZEPHYR_SDK_CONFIG_VARIABLE)
-    ? resolveSdkConfigVariablePath(sdkDebuggerPath, project.zephyrSdkPath)
+    ? resolveSdkConfigVariablePath(sdkDebuggerPath, sdkRootPath)
     : sdkDebuggerPath;
 
   if (!fileExists(concreteDebuggerPath)) {
@@ -335,8 +366,9 @@ function resolveExistingSdkDebuggerPath(
 
   // VS Code's `${config:...}` token can resolve freestanding app SDK settings,
   // but workspace applications store SDK/toolchain values inside their
-  // application entry. They therefore need the concrete executable path.
-  return project.isWestWorkspaceApplication ? concreteDebuggerPath : sdkDebuggerPath;
+  // application entry, and global apps have no path behind the token. Both
+  // therefore need the concrete executable path.
+  return (project.isWestWorkspaceApplication || project.isGlobalSdk) ? concreteDebuggerPath : sdkDebuggerPath;
 }
 
 function getFallbackMiDebuggerPath(
@@ -377,7 +409,9 @@ function getMiDebuggerPath(
     return strippedGeneratedPath;
   }
 
-  return project.zephyrSdkPath
+  // Global apps keep concrete gdb paths: there is no SDK path behind the
+  // ${config:...} token to rewrite against.
+  return (project.zephyrSdkPath && !project.isGlobalSdk)
     ? normalizeSdkRelativeDetectedPath(strippedGeneratedPath, project.zephyrSdkPath)
     : strippedGeneratedPath;
 }
@@ -873,11 +907,14 @@ function getWorkspaceApplicationMiDebuggerPath(
   const currentPath = typeof config.miDebuggerPath === 'string'
     ? config.miDebuggerPath
     : '';
-  if (!currentPath.includes(ZEPHYR_SDK_CONFIG_VARIABLE) || !project.zephyrSdkPath) {
+  const sdkRootPath = project.isGlobalSdk
+    ? resolveEffectiveSdkInstallation(project)?.rootUri.fsPath
+    : project.zephyrSdkPath;
+  if (!currentPath.includes(ZEPHYR_SDK_CONFIG_VARIABLE) || !sdkRootPath) {
     return undefined;
   }
 
-  const resolvedPath = resolveSdkConfigVariablePath(currentPath, project.zephyrSdkPath);
+  const resolvedPath = resolveSdkConfigVariablePath(currentPath, sdkRootPath);
   return fileExists(resolvedPath) ? resolvedPath : '';
 }
 
@@ -926,6 +963,33 @@ function getLaunchConfigurationPaths(
     ),
     workspaceRelativeBuildDir,
   };
+}
+
+// A freestanding launch entry written while the app used a path SDK stores the
+// gdb path in ${config:zephyr-workbench.sdk} token form. Once the app's sdk
+// setting is the 'global' sentinel that token would resolve to the literal
+// 'global', so repair such entries to a concrete gdb path.
+function repairGlobalSdkMiDebuggerPath(
+  config: any,
+  project: ZephyrApplication,
+  buildConfigName?: string,
+  artifacts?: LaunchConfigurationArtifacts,
+): void {
+  if (!config || config.type && config.type !== 'cppdbg') {
+    return;
+  }
+  const currentPath = typeof config.miDebuggerPath === 'string' ? config.miDebuggerPath : '';
+  if (!currentPath.includes(ZEPHYR_SDK_CONFIG_VARIABLE) || !buildConfigName) {
+    return;
+  }
+  const buildConfig = project.getBuildConfiguration(buildConfigName);
+  if (!buildConfig) {
+    return;
+  }
+  const miDebuggerPath = getWorkspaceApplicationMiDebuggerPath(config, project, buildConfig, artifacts);
+  if (typeof miDebuggerPath === 'string') {
+    config.miDebuggerPath = miDebuggerPath;
+  }
 }
 
 export function syncLaunchConfigurationProjectPaths(
@@ -1111,7 +1175,7 @@ export async function createLaunchConfiguration(
 ): Promise<any> {
   const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
   const toolchainVariant = project.toolchainVariant;
-  const zephyrSdkInstallation = tryGetZephyrSdkInstallation(project.zephyrSdkPath);
+  const zephyrSdkInstallation = resolveEffectiveSdkInstallation(project);
   const armGnuToolchainInstallation = toolchainVariant === 'gnuarmemb'
     ? findArmGnuToolchainInstallation(project.selectedArmGnuToolchainInstallation?.toolchainPath ?? '')
     : undefined;
@@ -1400,6 +1464,8 @@ export async function findLaunchConfiguration(
   if (matchingConfigurations.length > 0) {
     if (project.isWestWorkspaceApplication) {
       syncLaunchConfigurationProjectPaths(matchingConfigurations[0], project, buildConfigName, artifacts);
+    } else if (project.isGlobalSdk) {
+      repairGlobalSdkMiDebuggerPath(matchingConfigurations[0], project, buildConfigName, artifacts);
     }
     return matchingConfigurations[0];
   }

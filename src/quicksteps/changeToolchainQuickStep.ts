@@ -1,7 +1,9 @@
 import vscode, { ExtensionContext, QuickPickItem } from "vscode";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { ToolchainVariantId, ZephyrSdkVariantId } from "../models/ToolchainInstallations";
-import { getRegisteredArmGnuToolchainInstallations, getRegisteredRustToolchainInstallations, getRegisteredZephyrSdkInstallations, getRegisteredIarToolchainInstallations } from "../utils/utils";
+import { getAllZephyrSdkInstallations, getRegisteredArmGnuToolchainInstallations, getRegisteredRustToolchainInstallations, getRegisteredIarToolchainInstallations, getWestWorkspace } from "../utils/utils";
+import { getCachedGlobalSdks, resolveDefaultGlobalSdk, resolveGlobalSdkForZephyr } from "../utils/zephyr/globalSdkService";
+import { ZEPHYR_PROJECT_SDK_GLOBAL_VALUE } from "../constants";
 import path from "path";
 
 export interface ToolchainVariantPick {
@@ -16,11 +18,25 @@ type ToolchainVariantQuickPickItem = QuickPickItem & ToolchainVariantPick;
 
 export async function changeToolchainQuickStep(
     _ctx: ExtensionContext,
-    _project: ZephyrApplication
+    project: ZephyrApplication
 ): Promise<ToolchainVariantPick | undefined> {
 
     const items: ToolchainVariantQuickPickItem[] = [];
-    const sdks = await getRegisteredZephyrSdkInstallations();
+    // Registered SDKs plus auto-detected global ones (each pickable as a
+    // pinned path), preceded by the pathless "use whatever is global" entry.
+    const sdks = await getAllZephyrSdkInstallations();
+
+    const newestGlobal = resolveDefaultGlobalSdk();
+    if (getCachedGlobalSdks().length > 0) {
+        items.push({
+            label: "Global Zephyr SDK",
+            description: newestGlobal
+                ? `auto-detected at build time (currently Zephyr SDK ${newestGlobal.version.trim()})`
+                : "auto-detected at build time",
+            selectedVariant: "zephyr",
+            zephyrSdkPath: ZEPHYR_PROJECT_SDK_GLOBAL_VALUE,
+        });
+    }
 
     for (const sdk of sdks) {
         items.push({
@@ -82,7 +98,23 @@ export async function changeToolchainQuickStep(
         return selection;
     }
 
-    const selectedSdk = sdks.find(sdk => sdk.rootUri.fsPath === selection.zephyrSdkPath);
+    // For the global pick, gate the LLVM sub-step on the SDK the build would
+    // actually use (newest COMPATIBLE with the app's Zephyr, like every other
+    // global resolution), not simply the newest detected one.
+    let selectedSdk;
+    if (selection.zephyrSdkPath === ZEPHYR_PROJECT_SDK_GLOBAL_VALUE) {
+        let kernelPath: string | undefined;
+        try {
+            kernelPath = project.westWorkspaceRootPath
+                ? getWestWorkspace(project.westWorkspaceRootPath).kernelUri.fsPath
+                : undefined;
+        } catch {
+            kernelPath = undefined;
+        }
+        selectedSdk = resolveGlobalSdkForZephyr(kernelPath);
+    } else {
+        selectedSdk = sdks.find(sdk => sdk.rootUri.fsPath === selection.zephyrSdkPath);
+    }
     if (!selectedSdk?.hasLlvmToolchain()) {
         return { ...selection, selectedVariant: "zephyr" };
     }

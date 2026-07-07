@@ -6,7 +6,9 @@ import { WestWorkspace } from "../models/WestWorkspace";
 import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
 import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
-import { describeZephyrApplicationDetectionFailure, fileExists, findRustToolchainInstallation, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredRustToolchainInstallations, getListSamples, getRegisteredZephyrSdkInstallations, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, tryGetZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
+import { describeZephyrApplicationDetectionFailure, fileExists, findRustToolchainInstallation, getAllZephyrSdkInstallations, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredRustToolchainInstallations, getListSamples, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, isGlobalSdkSettingValue, tryGetZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
+import { resolveDefaultGlobalSdk, resolveGlobalSdkForZephyr } from "../utils/zephyr/globalSdkService";
+import { ZEPHYR_PROJECT_SDK_GLOBAL_VALUE } from "../constants";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { isPathWithin as isPathWithinWorkspaceApplication } from "../utils/zephyr/workspaceApplications";
@@ -94,7 +96,13 @@ export class CreateZephyrAppPanel {
     }
 
     let sdkHTML = '';
-    for (const sdk of await getRegisteredZephyrSdkInstallations()) {
+    // Pathless global entry first: usable even when no SDK is registered, so
+    // app creation works on machines that only have a globally installed SDK.
+    const newestGlobalSdk = resolveDefaultGlobalSdk();
+    if (newestGlobalSdk) {
+      sdkHTML += `<div class="dropdown-item" data-value="${ZEPHYR_PROJECT_SDK_GLOBAL_VALUE}" data-label="Global Zephyr SDK" data-has-llvm="${newestGlobalSdk.hasLlvmToolchain() ? 'true' : 'false'}">Global Zephyr SDK<span class="description">auto-detected: ${newestGlobalSdk.name}</span></div>`;
+    }
+    for (const sdk of await getAllZephyrSdkInstallations()) {
       sdkHTML += `<div class="dropdown-item" data-value="${sdk.rootUri}" data-label="${sdk.name}" data-has-llvm="${sdk.hasLlvmToolchain() ? 'true' : 'false'}">${sdk.name}<span class="description">${sdk.rootUri.fsPath}</span></div>`;
     }
 
@@ -512,6 +520,33 @@ async function updateBoardImage(webview: vscode.Webview, boardYamlPath: string) 
   webview.postMessage({ command: 'updateBoardImage', imgPath: 'noImg' });
 }
 
+/**
+ * Resolve the toolchain the webview selected. The 'global' sentinel resolves
+ * to the detected global SDK the build would pick (compatibility-aware when a
+ * workspace is selected); everything else follows the usual path-based lookup.
+ */
+function resolveToolchainInstallationFromMessage(toolchainInstallationPath: string, westWorkspaceRootPath: string) {
+  if (isGlobalSdkSettingValue(toolchainInstallationPath)) {
+    let kernelPath: string | undefined;
+    try {
+      kernelPath = westWorkspaceRootPath
+        ? getWestWorkspace(vscode.Uri.parse(westWorkspaceRootPath, true).fsPath).kernelUri.fsPath
+        : undefined;
+    } catch {
+      kernelPath = undefined;
+    }
+    const globalSdk = resolveGlobalSdkForZephyr(kernelPath);
+    if (!globalSdk) {
+      throw new Error('No global Zephyr SDK detected on this machine. Install one with Add Toolchain (Destination: Global) first.');
+    }
+    return globalSdk;
+  }
+  return findRustToolchainInstallation(toolchainInstallationPath)
+    ?? getArmGnuToolchainInstallationByPath(toolchainInstallationPath)
+    ?? getIarToolchainInstallationByPath(toolchainInstallationPath)
+    ?? getZephyrSdkInstallation(vscode.Uri.parse(toolchainInstallationPath, true).fsPath);
+}
+
 async function handleCreateMessage(message: any) {
   const isCreate = message.appFrom === "create";
   const toolchainVariant = getRequestedToolchainVariant(message.toolchainVariant);
@@ -534,11 +569,7 @@ async function handleCreateMessage(message: any) {
     );
     const board = resolveBoardFromMessage(message);
     const sample = await getSample(message.samplePath);
-    const toolchainInstallation =
-      findRustToolchainInstallation(toolchainInstallationPath)
-      ?? getArmGnuToolchainInstallationByPath(toolchainInstallationPath)
-      ?? getIarToolchainInstallationByPath(toolchainInstallationPath)
-      ?? getZephyrSdkInstallation(vscode.Uri.parse(toolchainInstallationPath, true).fsPath);
+    const toolchainInstallation = resolveToolchainInstallationFromMessage(toolchainInstallationPath, westWorkspaceRootPath);
 
     await vscode.commands.executeCommand(
       "zephyr-workbench-app-explorer.create-app",
@@ -619,12 +650,7 @@ async function handleCreateMessage(message: any) {
     ? getWestWorkspace(vscode.Uri.parse(westWorkspaceRootPath, true).fsPath)
     : undefined;
   const toolchainInstallation = hasToolchainInstallation
-    ? (
-        findRustToolchainInstallation(toolchainInstallationPath)
-        ?? getArmGnuToolchainInstallationByPath(toolchainInstallationPath)
-        ?? getIarToolchainInstallationByPath(toolchainInstallationPath)
-        ?? getZephyrSdkInstallation(vscode.Uri.parse(toolchainInstallationPath, true).fsPath)
-      )
+    ? resolveToolchainInstallationFromMessage(toolchainInstallationPath, westWorkspaceRootPath)
     : undefined;
 
   await vscode.commands.executeCommand(
@@ -1088,17 +1114,24 @@ function getSdkCompatWarningMessage(westWorkspaceUri: unknown, toolchainUri: unk
     }
     // Only Zephyr SDK toolchains carry an SDK version to check (mirror the
     // resolution order used on submit in handleCreateMessage).
-    const otherToolchain = findRustToolchainInstallation(toolchainInstallationPath)
-      ?? getArmGnuToolchainInstallationByPath(toolchainInstallationPath)
-      ?? getIarToolchainInstallationByPath(toolchainInstallationPath);
+    const isGlobalPick = isGlobalSdkSettingValue(toolchainInstallationPath);
+    const otherToolchain = isGlobalPick
+      ? undefined
+      : (findRustToolchainInstallation(toolchainInstallationPath)
+        ?? getArmGnuToolchainInstallationByPath(toolchainInstallationPath)
+        ?? getIarToolchainInstallationByPath(toolchainInstallationPath));
     if (otherToolchain) {
       return undefined;
     }
-    const sdk = tryGetZephyrSdkInstallation(vscode.Uri.parse(toolchainInstallationPath, true).fsPath);
+    const westWorkspace = getWestWorkspace(vscode.Uri.parse(westWorkspaceRootPath, true).fsPath);
+    // The build picks the newest compatible global SDK, so only warn when no
+    // detected global SDK is compatible with this workspace's Zephyr.
+    const sdk = isGlobalPick
+      ? resolveGlobalSdkForZephyr(westWorkspace.kernelUri.fsPath)
+      : tryGetZephyrSdkInstallation(vscode.Uri.parse(toolchainInstallationPath, true).fsPath);
     if (!sdk) {
       return undefined;
     }
-    const westWorkspace = getWestWorkspace(vscode.Uri.parse(westWorkspaceRootPath, true).fsPath);
     return formatSdkCompatMessage(
       checkSdkCompatibility(sdk.version, westWorkspace.kernelUri.fsPath),
       sdk.version,

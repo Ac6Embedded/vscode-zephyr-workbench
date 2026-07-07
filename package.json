@@ -143,7 +143,7 @@
           "zephyr-workbench.sdk": {
             "type": "string",
             "default": "",
-            "markdownDescription": "The path to the Zephyr SDK that provides toolchains. Exposed to the build as `ZEPHYR_SDK_INSTALL_DIR`.",
+            "markdownDescription": "The path to the Zephyr SDK that provides toolchains. Exposed to the build as `ZEPHYR_SDK_INSTALL_DIR`. Set to the literal value `global` to use a globally installed SDK: `ZEPHYR_SDK_INSTALL_DIR` is then not set and the build system auto-discovers the SDK (CMake package registry, recommended install locations, or your own `ZEPHYR_SDK_INSTALL_DIR` environment variable).",
             "scope": "resource"
           },
           "zephyr-workbench.toolchain": {
@@ -809,6 +809,12 @@
         "category": "Zephyr Workbench/SDK"
       },
       {
+        "command": "zephyr-workbench-sdk-explorer.delete-global-sdk",
+        "title": "Delete from disk",
+        "icon": "$(trash)",
+        "category": "Zephyr Workbench/SDK"
+      },
+      {
         "command": "zephyr-workbench-sdk-explorer.remove-iar",
         "title": "Remove IAR Toolchain",
         "icon": "$(remove)",
@@ -1433,12 +1439,17 @@
         {
           "command": "zephyr-workbench-sdk-explorer.add-sdk-toolchain",
           "group": "0@view/item/context@0",
-          "when": "view == zephyr-workbench-sdk-explorer && (viewItem == zephyr-sdk || viewItem == zephyr-sdk-internal)"
+          "when": "view == zephyr-workbench-sdk-explorer && (viewItem == zephyr-sdk || viewItem == zephyr-sdk-internal || viewItem == zephyr-sdk-global)"
         },
         {
           "command": "zephyr-workbench-sdk-explorer.remove-sdk",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.delete-global-sdk",
+          "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-sdk-explorer && viewItem == zephyr-sdk-global"
         },
         {
           "command": "zephyr-workbench-sdk-explorer.remove-iar",
@@ -2042,6 +2053,10 @@
         },
         {
           "command": "zephyr-workbench-sdk-explorer.delete",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-sdk-explorer.delete-global-sdk",
           "when": "false"
         },
         {

@@ -1115,7 +1115,7 @@ function getManagedVenvPythonPath(venvDir: string): string {
     : path.join(venvDir, 'bin', 'python3');
 }
 
-function getManagedVenvWestPath(venvDir: string): string {
+export function getManagedVenvWestPath(venvDir: string): string {
   return process.platform === 'win32'
     ? path.join(venvDir, 'Scripts', 'west.exe')
     : path.join(venvDir, 'bin', 'west');
@@ -1143,7 +1143,7 @@ function prependPathEntry(currentPath: string | undefined, entry: string): strin
 // Env for a process that should run "inside" a managed venv without sourcing the
 // Zephyr env script: activate by setting VIRTUAL_ENV and putting the venv bin dir
 // first on PATH. Extra keys (e.g. ZEPHYR_BASE) are merged last.
-function managedVenvProcessEnv(
+export function managedVenvProcessEnv(
   venvDir: string,
   extraEnv: NodeJS.ProcessEnv = {},
 ): NodeJS.ProcessEnv {
@@ -1482,16 +1482,17 @@ export async function download(url: string, destDir: string, context: vscode.Ext
     }
   };
 
+  // A previously downloaded copy may be stale or truncated: always re-download
+  // and overwrite it, without prompting.
   const destFileUri: vscode.Uri | undefined = await fileDownloader.tryGetItem(fileName, context);
   if(destFileUri) {
-    const overwriteItem = 'Overwrite';
-    const cancelItem = 'Use existing';
-    const choice = await vscode.window.showInformationMessage(fileName + ' already exists, Do you want to download it again ?', overwriteItem, cancelItem);
-    if(choice === cancelItem) {
-      return destFileUri;
+    try {
+      await fileDownloader.deleteItem(fileName, context);
+    } catch {
+      // downloadFile overwrites in place; a failed pre-delete is not fatal.
     }
   }
- 
+
   const file: vscode.Uri = await fileDownloader.downloadFile(
     vscode.Uri.parse(url),
     fileName,

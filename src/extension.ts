@@ -12,7 +12,7 @@ import { ZephyrCortexNativeDebugConfigurationProvider } from './providers/Zephyr
 import { attachDebugSessionLifecycle, disposeAllManagedServers } from './debug/backends/serverRegistry';
 import { ZW_DEBUG_TYPE } from './debug/backends/types';
 import { ZephyrBuildConfig } from './models/ZephyrBuildConfig';
-import { ArmGnuToolchainInstallation, normalizeArmGnuTargetTriple, normalizeZephyrSdkVariant, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
+import { ArmGnuToolchainInstallation, GlobalZephyrSdkInstallation, normalizeArmGnuTargetTriple, normalizeZephyrSdkVariant, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
 import { checkAndCreateTasksJson, isReservedTaskLabel, removeCppToolsConfiguration, saveCustomTaskDefinition, setDefaultProjectSettings, setDefaultWorkspaceApplicationSettings, updateCppToolsConfiguration, updateTasks, ZephyrTaskDefinition, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep } from './quicksteps/changeEnvVarQuickStep';
@@ -52,13 +52,17 @@ import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsComma
 import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ToolchainInstallationsDataProvider, ToolchainInstallationTreeItem } from "./providers/ToolchainInstallationsDataProvider";
 import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
-import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain, getMinimalToolchainsForVersion, friendlyToolchainId, isSdkV1OrLater } from './utils/zephyr/sdkUtils';
+import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain, getMinimalToolchainsForVersion, friendlyToolchainId, isSdkV1OrLater, mapToolchainIdToPackage } from './utils/zephyr/sdkUtils';
+import { getGlobalSdkSources, refreshGlobalSdkDetection, resolveGlobalSdkForZephyr } from './utils/zephyr/globalSdkService';
+import { removeCmakeRegistryEntriesForSdk } from './utils/zephyr/globalSdkUtils';
+import { runSdkSetup, runWestSdkInstall, WestSdkInstallError } from './utils/zephyr/westSdkRunner';
+import os from 'os';
 import { checkSdkCompatibility, showSdkCompatWarning } from './utils/zephyr/sdkCompatUtils';
 import { registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zephyr/armGnuToolchainUtils';
 import { checkRustPrerequisites, findRustup, getManagedRustupRootDir, installManagedRustup, installMsvcBuildTools, installRustToolchainViaRustup, MSVC_BUILD_TOOLS_MANUAL_URL, resolveRustupToolchainName, uninstallRustToolchainViaRustup } from './utils/zephyr/rustupUtils';
 import { buildLlvmDownloadUrl, buildRustDistUrls, detectRustVersion, getLlvmTopLevelDirName, getRustDistTopLevelDirName, getRustHostTriple, installMingwToolchain, installRustDistComponents, isLlvmPath, registerRustToolchain, unregisterRustToolchain, updateRustToolchainLink, updateRustToolchainLlvm, WINLIBS_MANUAL_URL } from './utils/zephyr/rustToolchainUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
-import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, getZephyrSdkInstallation, isWorkspaceFolder, msleep, pruneMissingToolchains, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
+import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getAllZephyrSdkInstallations, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, isGlobalSdkSettingValue, isWorkspaceFolder, msleep, pruneMissingToolchains, removeWorkspaceFolder, tryGetZephyrSdkInstallation, checkZinstallerVersion } from './utils/utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
 import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
@@ -116,6 +120,19 @@ function warnIfSdkIncompatible(westWorkspace: WestWorkspace, toolchainInstallati
 	} catch {
 		// Unknown compatibility must never break app creation/import.
 	}
+}
+
+// Resolve the SDK installation a per-app 'sdk' setting value stands for: the
+// 'global' sentinel resolves (advisory, for display/IntelliSense/compat only)
+// to the detected global SDK the build would pick; paths resolve normally.
+function resolveSdkInstallationForSetting(sdkSettingValue: string | undefined, zephyrBasePath?: string): ZephyrSdkInstallation | undefined {
+	if (!sdkSettingValue) {
+		return undefined;
+	}
+	if (isGlobalSdkSettingValue(sdkSettingValue)) {
+		return resolveGlobalSdkForZephyr(zephyrBasePath);
+	}
+	return tryGetZephyrSdkInstallation(sdkSettingValue);
 }
 
 function hasApplicationToolchainChanged(project: ZephyrApplication, pick: ToolchainVariantPick): boolean {
@@ -471,6 +488,17 @@ export function activate(context: vscode.ExtensionContext) {
 		.then(changed => { if (changed) { toolchainInstallationsProvider.refresh(); } })
 		.catch(() => { /* ignore */ });
 
+	// Detect globally installed Zephyr SDKs (CMake package registry, default
+	// install locations, ZEPHYR_SDK_INSTALL_DIR) and re-render once known.
+	void refreshGlobalSdkDetection()
+		.then(detected => {
+			if (detected.length > 0) {
+				toolchainInstallationsProvider.refresh();
+				requestAppRefresh();
+			}
+		})
+		.catch(() => { /* detection must never break activation */ });
+
 	const westWorkspaceProvider = new WestWorkspaceDataProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-west-workspace', westWorkspaceProvider);
 
@@ -535,6 +563,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// TODO: Could be refactored / Optimized
 	vscode.commands.registerCommand('zephyr-workbench-sdk-explorer.refresh', async () => {
 		await pruneMissingToolchains();
+		await refreshGlobalSdkDetection();
 		toolchainInstallationsProvider.refresh();
 	});
 	vscode.commands.registerCommand('zephyr-workbench-west-workspace.refresh', () => westWorkspaceProvider.refresh());
@@ -1480,12 +1509,15 @@ export function activate(context: vscode.ExtensionContext) {
 					// Non-blocking: warn if the newly assigned SDK doesn't match the app's Zephyr version
 					if (pick.zephyrSdkPath) {
 						try {
-							const sdkVersion = getZephyrSdkInstallation(pick.zephyrSdkPath).version;
 							const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
-							showSdkCompatWarning(
-								checkSdkCompatibility(sdkVersion, westWorkspace.kernelUri.fsPath),
-								sdkVersion,
-							);
+							const effectiveSdk = resolveSdkInstallationForSetting(pick.zephyrSdkPath, westWorkspace.kernelUri.fsPath);
+							if (effectiveSdk) {
+								const sdkVersion = effectiveSdk.version;
+								showSdkCompatWarning(
+									checkSdkCompatibility(sdkVersion, westWorkspace.kernelUri.fsPath),
+									sdkVersion,
+								);
+							}
 						} catch {
 							// Unknown compatibility must never break the toolchain change.
 						}
@@ -1495,19 +1527,21 @@ export function activate(context: vscode.ExtensionContext) {
 						const activeConfig = node.project.buildConfigs.find(config => config.active) ?? node.project.buildConfigs[0];
 						if (activeConfig?.boardIdentifier) {
 							try {
-								const zephyrSdkInstallation = getZephyrSdkInstallation(pick.zephyrSdkPath);
 								const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
-								const board = await getBoardFromIdentifier(
-									activeConfig.boardIdentifier,
-									westWorkspace,
-									node.project,
-									activeConfig
-								);
-								const socToolchainName = activeConfig.getKConfigValue(node.project, 'SOC_TOOLCHAIN_NAME');
-								if (isSelectedIntelliSenseApplication(node.project)) {
-									await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
-										compilerPath: zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, pick.selectedVariant),
-									});
+								const zephyrSdkInstallation = resolveSdkInstallationForSetting(pick.zephyrSdkPath, westWorkspace.kernelUri.fsPath);
+								if (zephyrSdkInstallation) {
+									const board = await getBoardFromIdentifier(
+										activeConfig.boardIdentifier,
+										westWorkspace,
+										node.project,
+										activeConfig
+									);
+									const socToolchainName = activeConfig.getKConfigValue(node.project, 'SOC_TOOLCHAIN_NAME');
+									if (isSelectedIntelliSenseApplication(node.project)) {
+										await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
+											compilerPath: zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, pick.selectedVariant),
+										});
+									}
 								}
 							} catch {
 								// Keep the variant change even if the compiler path cannot be refreshed yet.
@@ -2985,6 +3019,99 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.install-global-sdk", async (sdkType, sdkVersion, listToolchains, includeLlvm = false, globalInstallBase?: string) => {
+			if (!sdkType || !sdkVersion) {
+				vscode.window.showErrorMessage('Missing information to download SDK');
+				return;
+			}
+			ImportZephyrSDKPanel.currentPanel?.dispose();
+			const version = String(sdkVersion).replace(/^v/, '');
+
+			// Default to the home directory; the wizard offers the auto-discovered
+			// locations in a dropdown. Verify the base is writable before starting.
+			const installBase = typeof globalInstallBase === 'string' && globalInstallBase.trim().length > 0
+				? globalInstallBase.trim()
+				: os.homedir();
+			try {
+				if (!fs.existsSync(installBase)) {
+					fs.mkdirSync(installBase, { recursive: true });
+				}
+				fs.accessSync(installBase, fs.constants.W_OK);
+			} catch {
+				vscode.window.showErrorMessage(`You do not have permission to write to ${installBase}. Choose another install location.`);
+				return;
+			}
+
+			const selectedToolchains: string[] = typeof listToolchains === 'string'
+				? listToolchains.split(' ').filter((toolchain: string) => toolchain.length > 0)
+				: (Array.isArray(listToolchains) ? listToolchains : []);
+			const gnuToolchains = sdkType === 'minimal'
+				? selectedToolchains.map(mapToolchainIdToPackage)
+				: undefined;
+
+			// An SDK of this version that is already globally discoverable is reused
+			// (like west sdk install does): its setup script still runs with the
+			// requested components, downloading any missing toolchains into it.
+			const detected = await refreshGlobalSdkDetection();
+			const existing = detected.find(sdk => sdk.version.trim() === version);
+			if (existing) {
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: `Zephyr SDK ${version} is already installed globally: adding the selected components`,
+					cancellable: false,
+				}, async () => {
+					try {
+						await runSdkSetup(existing.rootUri.fsPath, {
+							gnuToolchains: sdkType === 'minimal' ? gnuToolchains : ['all'],
+							llvm: !!includeLlvm,
+							hostTools: true,
+						});
+						vscode.window.showInformationMessage(
+							`Zephyr SDK ${version} was already installed globally at ${existing.rootUri.fsPath}. The selected components were installed into it.`
+						);
+					} catch (e: any) {
+						const message = e instanceof Error ? e.message : String(e);
+						vscode.window.showErrorMessage(`Updating the global Zephyr SDK failed: ${message}`);
+					}
+					await refreshGlobalSdkDetection();
+					toolchainInstallationsProvider.refresh();
+				});
+				return;
+			}
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: `Installing Zephyr SDK ${version} globally`,
+				cancellable: true,
+			}, async (progress, token) => {
+				try {
+					const result = await runWestSdkInstall(context, {
+						version,
+						installBase,
+						gnuToolchains,
+						noGnuToolchains: sdkType === 'minimal' && (gnuToolchains?.length ?? 0) === 0,
+						llvm: !!includeLlvm,
+					}, progress, token);
+					await refreshGlobalSdkDetection();
+					toolchainInstallationsProvider.refresh();
+					vscode.window.showInformationMessage(
+						`Zephyr SDK ${version} installed globally at ${result.sdkPath}. The Zephyr build system discovers it automatically.`
+					);
+				} catch (e: any) {
+					if (e instanceof WestSdkInstallError && e.kind === 'cancelled') {
+						vscode.window.showInformationMessage('Zephyr SDK install cancelled.');
+					} else {
+						const message = e instanceof Error ? e.message : String(e);
+						vscode.window.showErrorMessage(`Global Zephyr SDK install failed: ${message} (see the Zephyr Workbench output for details)`);
+					}
+					await refreshGlobalSdkDetection();
+					toolchainInstallationsProvider.refresh();
+				}
+			});
+		})
+	);
+
+	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.import-remote-sdk", async (remotePath, parentPath) => {
 			if (!parentPath) {
 				vscode.window.showErrorMessage("No folder path was provided.");
@@ -3257,12 +3384,54 @@ export function activate(context: vscode.ExtensionContext) {
 				if (await showConfirmMessage(`Remove ${node.installation.name} from workspace?`)) {
 					if (node.installation instanceof ZephyrSdkInstallation) {
 						await unregisterZephyrSDK(node.installation.rootUri.fsPath);
+						// A removed listSDKs entry may still be globally discoverable;
+						// refresh detection so it reappears as a [global] item right away.
+						await refreshGlobalSdkDetection();
 						toolchainInstallationsProvider.refresh();
 					} else {
 						vscode.window.showWarningMessage("Cannot remove IAR Toolchain using this command.");
 					}
 				}
 			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("zephyr-workbench-sdk-explorer.delete-global-sdk", async (node: ToolchainInstallationTreeItem) => {
+			const sdk = node?.installation;
+			if (!(sdk instanceof GlobalZephyrSdkInstallation)) {
+				return;
+			}
+			const sdkPath = sdk.rootUri.fsPath;
+			const sources = await getGlobalSdkSources(sdkPath) ?? [];
+
+			if (!(await showConfirmMessage(`Delete ${sdk.name} permanently? This removes ${sdkPath} from disk and its CMake package registration.`))) {
+				return;
+			}
+			vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: "Deleting Zephyr SDK",
+					cancellable: false,
+				},
+				async () => {
+					try {
+						deleteFolder(sdkPath);
+					} catch (e: any) {
+						vscode.window.showErrorMessage(`Could not delete ${sdkPath}: ${e?.message ?? e}`);
+					}
+					// Clean up the registration even if the folder was already gone,
+					// so no stale registry entry is left behind.
+					await removeCmakeRegistryEntriesForSdk(sdkPath);
+					await refreshGlobalSdkDetection();
+					toolchainInstallationsProvider.refresh();
+					if (sources.includes('env')) {
+						vscode.window.showInformationMessage(
+							'Note: your ZEPHYR_SDK_INSTALL_DIR environment variable still points at this SDK location. Unset it to avoid confusing builds.'
+						);
+					}
+				}
+			);
 		})
 	);
 
@@ -3416,6 +3585,10 @@ export function activate(context: vscode.ExtensionContext) {
 						async () => {
 							await unregisterZephyrSDK(sdkPath);
 							deleteFolder(sdkPath);
+							// Good practice: if this SDK was also registered in the CMake
+							// package registry, do not leave a stale entry behind.
+							await removeCmakeRegistryEntriesForSdk(sdkPath);
+							await refreshGlobalSdkDetection();
 							toolchainInstallationsProvider.refresh();
 						}
 					);
@@ -3557,10 +3730,14 @@ export function activate(context: vscode.ExtensionContext) {
 					cToolchainPath: string;
 				};
 				const items: LinkPickItem[] = [];
-				for (const sdk of await getRegisteredZephyrSdkInstallations()) {
+				// Links store the concrete path, so detected global SDKs are
+				// linkable exactly like registered ones.
+				for (const sdk of await getAllZephyrSdkInstallations()) {
 					items.push({
 						label: `Zephyr SDK ${sdk.version.trim()}`,
-						description: sdk.rootUri.fsPath,
+						description: sdk instanceof GlobalZephyrSdkInstallation
+							? `${sdk.rootUri.fsPath} (global)`
+							: sdk.rootUri.fsPath,
 						cToolchainType: 'zephyr-sdk',
 						cToolchainPath: sdk.rootUri.fsPath,
 					});
@@ -4605,7 +4782,7 @@ async function updateCompileSetting(project: ZephyrApplication, configName: stri
 	const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
 	const board = await getBoardFromIdentifier(boardIdentifier, westWorkspace);
 	const toolchainVariantId = project.toolchainVariant;
-	const zephyrSdkInstallation = project.zephyrSdkPath ? getZephyrSdkInstallation(project.zephyrSdkPath) : undefined;
+	const zephyrSdkInstallation = resolveSdkInstallationForSetting(project.zephyrSdkPath, westWorkspace.kernelUri.fsPath);
 	const toolchainVariant = normalizeZephyrSdkVariant(toolchainVariantId, zephyrSdkInstallation);
 
 	if (buildConfig) {

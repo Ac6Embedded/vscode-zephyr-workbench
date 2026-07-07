@@ -5,6 +5,8 @@ import os from "os";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { execCommandWithEnv, execShellCommandWithEnv, getConfiguredWorkbenchPath, getOutputChannel, resolveConfiguredPath } from "../utils/execUtils";
+import { isGlobalSdkSettingValue } from "../utils/utils";
+import { resolveDefaultGlobalSdk } from "../utils/zephyr/globalSdkService";
 import { getExtraPaths, normalizePath } from "../utils/env/envYamlUtils";
 import { readEnvYamlObject, writeEnvYamlObject } from "../utils/env/envYamlFileUtils";
 import type { BuildConfigInfo, ExtensionMessage, RpcRequestMessage, WebviewMessage } from "../utils/eclair/eclairEvent";
@@ -1273,6 +1275,11 @@ function getWestWorkspacePath(folderUri: vscode.Uri): string | undefined {
 function detectZephyrSdkDir(folderUri: vscode.Uri): string | undefined {
   // Try reading settings.json (user/project configuration)
   const sdkFromSettings = getConfiguredWorkbenchPath('sdk', folderUri);
+  // The 'global' sentinel is not a path: resolve it to the detected global SDK
+  // (ECLAIR needs a concrete directory for its analysis environment).
+  if (isGlobalSdkSettingValue(sdkFromSettings)) {
+    return resolveDefaultGlobalSdk()?.rootUri.fsPath;
+  }
   if (sdkFromSettings && fs.existsSync(sdkFromSettings)) {
     return sdkFromSettings;
   }

@@ -70,11 +70,14 @@ This process creates then parse the west manifest file to set up your west works
 2. Open the newly opened page, enter information about your Zephyr SDK.
    1. For example:
         Source location: Official SDK
+        Destination: Custom location (or Global, see below)
         SDK Type: Minimal
         Version: v0.16.8
         Toolchains: aarch64 arm
         Location: enter the parent location where to import the Zephyr SDK
 3. Click on "Import"
+
+With **Destination: Global**, the SDK is installed once in a standard location (your home folder by default) and every Zephyr project finds it automatically: no per-project SDK path to configure. Global SDKs already present on the machine, including ones installed outside the extension, appear in the Toolchains view with a **[global]** badge, and applications can simply select **Global Zephyr SDK** as their toolchain.
 
 <p align="center">
   <img alt="Zephyr SDK" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_2_sdk_new.png" width="80%">
