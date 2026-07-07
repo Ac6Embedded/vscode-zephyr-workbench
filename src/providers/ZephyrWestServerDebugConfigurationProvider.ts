@@ -134,7 +134,7 @@ export class ZephyrWestServerDebugConfigurationProvider implements vscode.DebugC
     const port = runner?.serverPort ?? target.port ?? getDefaultGdbPort(runnerName);
     const gdbTarget = `${host}:${port}`;
 
-    const finishTransform = async (serverToken?: string) => {
+    const finishTransform = async (serverToken?: string): Promise<undefined> => {
       await activateCortexDebug();
       const transformed = transformToExternalCortexConfig(config, {
         program: typeof config.program === 'string' ? config.program : '',
@@ -143,17 +143,36 @@ export class ZephyrWestServerDebugConfigurationProvider implements vscode.DebugC
         runnerName,
         serverToken,
       });
-      // Returning the transformed config swaps the session over to
-      // cortex-debug. If a future VS Code version rejects the type change,
-      // switch to: `void vscode.debug.startDebugging(folder, transformed);
-      // return undefined;`
-      return transformed;
+      // Returning a config whose `type` differs from the provider's is not
+      // honored by VS Code (the session keeps the adapter-less
+      // zephyr-workbench type and dies silently). Use the sanctioned redirect
+      // instead: explicitly start the cortex-debug session and abort this one
+      // by returning undefined.
+      getDebugServerOutputChannel().appendLine(`[session] starting cortex-debug (servertype external) against ${gdbTarget}`);
+      const started = await vscode.debug.startDebugging(folder, transformed);
+      if (!started) {
+        void vscode.window.showErrorMessage(
+          'Zephyr Workbench Debug: VS Code could not start the Cortex-Debug session. Check the "Zephyr Workbench: Debug Server" output for details.',
+          'Show Log',
+        ).then(choice => {
+          if (choice === 'Show Log') {
+            getDebugServerOutputChannel().show(true);
+          }
+        });
+        if (serverToken) {
+          await disposeServerForToken(serverToken);
+        }
+      }
+      return undefined;
     };
 
     if (!LOCAL_HOSTS.includes(host)) {
       // Remote GDB server: never spawn or probe (single-connection servers
-      // treat any probe as their one client) — attach straight to it.
-      return finishTransform();
+      // treat any probe as their one client) — attach straight to it. The
+      // token marks the session as prepared so the cortex-debug pre-launch
+      // provider does not run the West Build a second time (no registry entry
+      // exists for it, so lifecycle disposal is a no-op).
+      return finishTransform(randomUUID());
     }
 
     const portNumber = Number(port);
