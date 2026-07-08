@@ -666,8 +666,12 @@ export function activate(context: vscode.ExtensionContext) {
 			if (uri) { await vscode.commands.executeCommand('revealInExplorer', uri); }
 		}),
 		vscode.commands.registerCommand('zephyr-workbench-code-explorer.open-terminal', async (node) => {
-			const dir = ceNodeDir(node);
-			if (dir) { await vscode.commands.executeCommand('openInIntegratedTerminal', dir); }
+			// Open the app's sourced Zephyr Workbench terminal (same as the app's
+			// own Open in Terminal), not a plain shell. Delegating to the app
+			// command reuses ZephyrApplication/ZephyrBuildConfig.getTerminal so the
+			// environment matches exactly.
+			const project = ceNodeProject(node);
+			if (project) { await vscode.commands.executeCommand('zephyr-workbench-app-explorer.open-terminal', project); }
 		}),
 		vscode.commands.registerCommand('zephyr-workbench-code-explorer.copy-path', async (node) => {
 			const uri = ceNodeUri(node);
