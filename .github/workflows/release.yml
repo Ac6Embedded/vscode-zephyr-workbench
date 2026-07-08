@@ -1,0 +1,120 @@
+# Release automation: triggered by pushing a version tag (vX.Y.Z).
+#
+# Channel is decided by the MINOR version number (the VS Code Marketplace does
+# not accept semver suffixes like -beta.1, so the official convention is):
+#   - ODD minor  (v3.3.x) -> pre-release on all channels
+#   - EVEN minor (v3.4.x) -> stable release on all channels
+#
+# Steps: version guard, package VSIX, GitHub Release with the VSIX attached,
+# then publish the same VSIX to the VS Code Marketplace and Open VSX.
+#
+# Required repository secrets (Settings > Secrets and variables > Actions):
+#   VSCE_PAT  Azure DevOps personal access token (Marketplace > Manage scope)
+#   OVSX_PAT  open-vsx.org access token
+#
+# Publish steps are isolated: if one store fails (expired token, outage), the
+# GitHub Release and the other store still succeed; the job is then marked
+# failed so the problem is visible.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify tag and detect release channel
+        id: meta
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version ${PKG_VERSION}"
+            exit 1
+          fi
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          if [ $((MINOR % 2)) -eq 1 ]; then
+            PRERELEASE=true
+          else
+            PRERELEASE=false
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+          echo "vsix=zephyr-workbench-${VERSION}.vsix" >> "$GITHUB_OUTPUT"
+          echo "Version ${VERSION}, pre-release: ${PRERELEASE} (odd minor = pre-release)"
+
+      - name: Package VSIX
+        run: |
+          FLAGS=""
+          if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
+            FLAGS="--pre-release"
+          fi
+          npx vsce package $FLAGS --out "${{ steps.meta.outputs.vsix }}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          FLAGS="--generate-notes"
+          if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
+            FLAGS="$FLAGS --prerelease"
+          fi
+          gh release create "${GITHUB_REF_NAME}" \
+            "${{ steps.meta.outputs.vsix }}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md) for details." \
+            $FLAGS
+
+      - name: Publish to VS Code Marketplace
+        id: vsce
+        continue-on-error: true
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          FLAGS=""
+          if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
+            FLAGS="--pre-release"
+          fi
+          npx vsce publish $FLAGS --packagePath "${{ steps.meta.outputs.vsix }}"
+
+      - name: Publish to Open VSX
+        id: ovsx
+        continue-on-error: true
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          FLAGS=""
+          if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
+            FLAGS="--pre-release"
+          fi
+          npx ovsx publish "${{ steps.meta.outputs.vsix }}" $FLAGS
+
+      - name: Report publish failures
+        if: steps.vsce.outcome == 'failure' || steps.ovsx.outcome == 'failure'
+        run: |
+          if [ "${{ steps.vsce.outcome }}" = "failure" ]; then
+            echo "::error::VS Code Marketplace publish failed (check the VSCE_PAT secret and the step log above)."
+          fi
+          if [ "${{ steps.ovsx.outcome }}" = "failure" ]; then
+            echo "::error::Open VSX publish failed (check the OVSX_PAT secret and the step log above)."
+          fi
+          exit 1

@@ -1,5 +1,7 @@
+.github/**
 .vscode/**
 .vscode-test/**
+RELEASING.md
 src/**
 docs/**
 images/**

@@ -1,0 +1,22 @@
+# Weekly dependency updates. Minor and patch npm updates are grouped into a
+# single PR to limit noise; major updates get individual PRs.
+# Note: Dependabot only reads this file from the default branch (main).
+
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
