@@ -115,6 +115,23 @@ const webviewPyocdManagerConfig = {
   outfile: "./out/pyocdmanager.js",
 };
 
+const webviewKconfigManagerConfig = {
+  ...baseConfig,
+  target: "es2020",
+  format: "esm",
+  entryPoints: ["./src/webview/kconfigmanager/index.mts"],
+  outfile: "./out/kconfigmanager.js",
+  plugins: [
+    copy({
+      resolveFrom: "cwd",
+      assets: {
+        from: ["./src/webview/kconfigmanager/*.css"],
+        to: ["./out"],
+      },
+    }),
+  ],
+};
+
 const buildConfigs = [
   extensionConfig,
   webviewCreateWestWorkspaceConfig,
@@ -127,6 +144,7 @@ const buildConfigs = [
   webviewEclairManagerConfig,
   webviewAdvancedHostToolsConfig,
   webviewPyocdManagerConfig,
+  webviewKconfigManagerConfig,
 ];
 
 function formatError(error) {

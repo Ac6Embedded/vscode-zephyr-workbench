@@ -23,6 +23,8 @@ export interface PrepareWestBuildExecutionOptions {
   additionalWestArgs?: string;
   additionalCmakeArgs?: string;
   target?: string;
+  /** Run only the CMake configure stage (west build --cmake-only); never compiles. */
+  cmakeOnly?: boolean;
 }
 
 export interface PreparedWestBuildExecution {
@@ -115,6 +117,7 @@ export function prepareWestBuildExecution(
   const command =
     `west build` +
     (runOptions.target ? ` -t ${runOptions.target}` : '') +
+    (runOptions.cmakeOnly ? ' --cmake-only' : '') +
     ` --pristine ${runOptions.pristine}` +
     (needsConfigure && buildDirConfigured ? ' --cmake' : '') +
     (needsConfigure ? ` --board ${buildConfig.boardIdentifier}` : '') +

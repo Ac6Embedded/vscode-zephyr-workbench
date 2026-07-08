@@ -41,6 +41,7 @@ import { HostToolsPanel } from './panels/HostToolsPanel';
 import { AdvancedHostToolsPanel } from './panels/AdvancedHostToolsPanel';
 import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { EclairManagerPanel } from './panels/EclairManagerPanel';
+import { KconfigManagerPanel } from './panels/KconfigManagerPanel';
 import { ZephyrDashboardViewProvider } from './panels/ZephyrDashboardViewProvider';
 import { changeToolchainQuickStep, ToolchainVariantPick } from "./quicksteps/changeToolchainQuickStep";
 import { getBoardFromIdentifier } from './utils/zephyr/boardDiscovery';
@@ -1096,6 +1097,13 @@ export function activate(context: vscode.ExtensionContext) {
 				const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
 				westConfigCommand(node.project, westWorkspace, "hardenconfig");
 			}
+		})
+	);
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.kconfig-manager-app', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
+			const project = node?.project;
+			const buildConfig = node instanceof ZephyrConfigTreeItem ? node.buildConfig : undefined;
+			await KconfigManagerPanel.render(context.extensionUri, project, buildConfig);
 		})
 	);
 	context.subscriptions.push(

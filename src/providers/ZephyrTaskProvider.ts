@@ -130,6 +130,23 @@ const hardenConfigTask: ZephyrTaskDefinition = {
   ]
 };
 
+// Runs only the CMake configure stage (no compilation), the same first step
+// `west build -t menuconfig` performs before launching the TUI. The Kconfig Manager
+// uses it to configure a fresh/pristine build so `.config` and edt.pickle exist.
+const cmakeOnlyTask: ZephyrTaskDefinition = {
+  label: "Configure (CMake only)",
+  type: ZEPHYR_TASK_TYPE,
+  problemMatcher: [],
+  command: "west",
+  config: "primary",
+  args: [
+    "build",
+    "--cmake-only",
+    "--board ${config:zephyr-workbench.build.configurations.0.board}",
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
+  ]
+};
+
 const flashTask: ZephyrTaskDefinition = {
   label: "West Flash",
   type: ZEPHYR_TASK_TYPE,
@@ -272,6 +289,7 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [guiConfigTask.label, guiConfigTask],
   [menuconfigTask.label, menuconfigTask],
   [hardenConfigTask.label, hardenConfigTask],
+  [cmakeOnlyTask.label, cmakeOnlyTask],
   [flashTask.label, flashTask],
   [ramReportTask.label, ramReportTask],
   [romReportTask.label, romReportTask],
@@ -302,6 +320,7 @@ interface ParsedWestBuildTaskOptions {
   pristine: 'never' | 'always';
   target?: string;
   additionalCmakeArgs?: string;
+  cmakeOnly?: boolean;
 }
 
 function parseWestBuildTaskOptions(args: string[] | undefined): ParsedWestBuildTaskOptions {
@@ -316,6 +335,11 @@ function parseWestBuildTaskOptions(args: string[] | undefined): ParsedWestBuildT
 
     if (arg === '-p always' || arg === '--pristine always' || arg === '-p=always' || arg === '--pristine=always') {
       parsed.pristine = 'always';
+      continue;
+    }
+
+    if (arg === '--cmake-only') {
+      parsed.cmakeOnly = true;
       continue;
     }
 
@@ -1130,6 +1154,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
           pristine: parsedTaskOptions.pristine,
           target: parsedTaskOptions.target,
           additionalCmakeArgs: parsedTaskOptions.additionalCmakeArgs,
+          cmakeOnly: parsedTaskOptions.cmakeOnly,
           rawWestArgsOverride,
         },
       );
