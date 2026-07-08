@@ -1,11 +1,16 @@
 import * as vscode from 'vscode';
 
 export const CORTEX_DEBUG_EXTENSION_ID = 'marus25.cortex-debug';
-const CORTEX_DEBUG_MARKETPLACE_URL =
-  'https://marketplace.visualstudio.com/items?itemName=marus25.cortex-debug';
 
 export function isCortexDebugInstalled(): boolean {
   return !!vscode.extensions.getExtension(CORTEX_DEBUG_EXTENSION_ID);
+}
+
+// Open the Cortex-Debug details page in whichever gallery the client uses
+// (VS Code Marketplace, Open VSX on VSCodium/code-server), rather than a
+// hardcoded Marketplace URL that Open VSX clients cannot install from.
+function showCortexDebugExtension(): void {
+  void vscode.commands.executeCommand('extension.open', CORTEX_DEBUG_EXTENSION_ID);
 }
 
 /**
@@ -45,7 +50,7 @@ async function installCortexDebugWithProgress(): Promise<boolean> {
       },
     );
   } catch {
-    void vscode.env.openExternal(vscode.Uri.parse(CORTEX_DEBUG_MARKETPLACE_URL));
+    showCortexDebugExtension();
   }
   return isCortexDebugInstalled();
 }
@@ -65,12 +70,12 @@ export async function ensureCortexDebugAvailable(reason: 'apply' | 'resolve'): P
     ? 'This debug session requires the Cortex-Debug extension (marus25.cortex-debug), which is not installed or is disabled.'
     : 'This debug backend requires the Cortex-Debug extension (marus25.cortex-debug), which is not installed or is disabled.';
 
-  const choice = await vscode.window.showErrorMessage(message, 'Install Cortex-Debug', 'Open Marketplace');
+  const choice = await vscode.window.showErrorMessage(message, 'Install Cortex-Debug', 'Show Extension');
   if (choice === 'Install Cortex-Debug') {
     return installCortexDebugWithProgress();
   }
-  if (choice === 'Open Marketplace') {
-    void vscode.env.openExternal(vscode.Uri.parse(CORTEX_DEBUG_MARKETPLACE_URL));
+  if (choice === 'Show Extension') {
+    showCortexDebugExtension();
   }
   return false;
 }
