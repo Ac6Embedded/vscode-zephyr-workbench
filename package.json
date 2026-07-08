@@ -55,7 +55,9 @@
   ],
   "extensionPack": [
     "Ac6.devicetree-manager-for-zephyr",
-    "ms-vscode.vscode-serial-monitor"
+    "ms-vscode.vscode-serial-monitor",
+    "ms-vscode.cpptools",
+    "marus25.cortex-debug"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -167,6 +169,20 @@
             ],
             "default": "zephyr",
             "markdownDescription": "ZEPHYR_TOOLCHAIN_VARIANT to use for this project. The legacy value `zephyr_sdk` is automatically migrated to `zephyr` on first use.",
+            "scope": "resource"
+          },
+          "zephyr-workbench.intellisense.provider": {
+            "type": "string",
+            "enum": [
+              "cpptools",
+              "clangd"
+            ],
+            "enumDescriptions": [
+              "C/C++ extension (ms-vscode.cpptools): uses the generated c_cpp_properties.json",
+              "clangd (llvm-vs-code-extensions.vscode-clangd): uses a generated .clangd file pointing at the active build's compile_commands.json"
+            ],
+            "default": "cpptools",
+            "description": "IntelliSense provider configured for this application. The workbench generates the matching configuration files for the chosen provider; they stay inert until that provider's extension is installed.",
             "scope": "resource"
           },
           "zephyr-workbench.gnuarmemb": {
@@ -721,6 +737,11 @@
         "command": "zephyr-workbench-app-explorer.change-toolchain",
         "title": "Change Toolchain",
         "icon": "$(wrench)",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.change-intellisense",
+        "title": "Change IntelliSense Provider",
         "category": "Zephyr Workbench/Application"
       },
       {
@@ -1698,6 +1719,11 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
+          "command": "zephyr-workbench-app-explorer.change-intellisense",
+          "group": "0@view/item/context@6.1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
           "submenu": "zephyr-workbench-app-explorer.sysbuild-submenu",
           "group": "0@view/item/context@7",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
@@ -1737,6 +1763,11 @@
         {
           "command": "zephyr-workbench-app-explorer.change-toolchain",
           "group": "0@view/item/context@6",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.change-intellisense",
+          "group": "0@view/item/context@6.1",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
@@ -2112,6 +2143,10 @@
           "when": "false"
         },
         {
+          "command": "zephyr-workbench-app-explorer.change-intellisense",
+          "when": "false"
+        },
+        {
           "command": "zephyr-workbench-app-explorer.sysbuild.enable",
           "when": "false"
         },
@@ -2427,8 +2462,6 @@
     "zod": "^4.3.6"
   },
   "extensionDependencies": [
-    "ms-vscode.cpptools",
-    "ms-vscode.cpptools-extension-pack",
     "mindaro-dev.file-downloader",
     "KyleMicallefBonnici.dts-lsp"
   ]

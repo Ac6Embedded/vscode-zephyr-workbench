@@ -761,6 +761,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
   const appFromGroup = document.getElementById('appFromGroup') as RadioGroup;
   const localVenvCheckbox = document.getElementById('localVenvCheckbox') as HTMLInputElement | null;
   const settingsPathModeGroup = document.getElementById('settingsPathMode') as RadioGroup;
+  const intellisenseProviderGroup = document.getElementById('intellisenseProvider') as RadioGroup | null;
   const toolchainVariantGroup = document.getElementById('toolchainVariantGroup') as RadioGroup;
   const appLocationTypeGroup = document.getElementById('appLocationType') as RadioGroup | null;
   const applicationsSubfolderField = document.getElementById('applicationsSubfolder') as TextField | null;
@@ -791,6 +792,7 @@ function createHandler(this: HTMLElement, ev: MouseEvent) {
 	      applicationsSubfolder: applicationsSubfolderField?.value ?? 'applications',
 	      venv:               localVenvCheckbox?.checked ? 'local' : 'global',
 	      settingsPathMode:   settingsPathModeGroup?.value ?? 'relative',
+	      intellisenseProvider: intellisenseProviderGroup?.value ?? 'cpptools',
 	      debugPreset:        !!debugPresetCheckbox?.checked,
 	    }
 	  );

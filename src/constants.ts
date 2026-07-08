@@ -22,6 +22,7 @@ export const ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY = "toolchain";
 export const ZEPHYR_PROJECT_IAR_SETTING_KEY = "iar";
 export const ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY = 'gnuarmemb';
 export const ZEPHYR_PROJECT_RUST_SETTING_KEY = 'rust';
+export const ZEPHYR_PROJECT_INTELLISENSE_PROVIDER_SETTING_KEY = 'intellisense.provider';
 export const ZEPHYR_PROJECT_EXTRA_WEST_ARGS_SETTING_KEY = 'build.west-args';
 export const ZEPHYR_WEST_WORKSPACE_APPLICATIONS_SETTING_KEY = 'westWorkspace.applications';
 export const ZEPHYR_WEST_WORKSPACE_SELECTED_APPLICATION_SETTING_KEY = 'westWorkspace.selectedApplication';

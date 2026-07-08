@@ -462,7 +462,9 @@ export async function westBuildCommand(
   extraWestArgs = '',
   configName?: string,
 ): Promise<void> {
-  const refreshCppProperties = await createCppPropertiesCompileCommandsRefresh(zephyrProject.appWorkspaceFolder);
+  const refreshCppProperties = zephyrProject.intellisenseProvider === 'clangd'
+    ? async () => {}
+    : await createCppPropertiesCompileCommandsRefresh(zephyrProject.appWorkspaceFolder);
   try {
     await runWestBuildCommand(zephyrProject, westWorkspace, {
       configName,
@@ -479,7 +481,9 @@ export async function westRebuildCommand(
   westWorkspace: WestWorkspace,
   configName?: string,
 ): Promise<void> {
-  const refreshCppProperties = await createCppPropertiesCompileCommandsRefresh(zephyrProject.appWorkspaceFolder);
+  const refreshCppProperties = zephyrProject.intellisenseProvider === 'clangd'
+    ? async () => {}
+    : await createCppPropertiesCompileCommandsRefresh(zephyrProject.appWorkspaceFolder);
   try {
     await runWestBuildCommand(zephyrProject, westWorkspace, {
       configName,

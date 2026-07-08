@@ -840,6 +840,12 @@ vscode-button {
   text-align: right;
 }
 
+.intellisense-availability-hint {
+  color: var(--vscode-descriptionForeground);
+  font-size: calc(var(--type-ramp-base-font-size) - 2px);
+  margin: 4px 0 0 0;
+}
+
 @keyframes spinner {
   to { transform: rotate(360deg); }
 }

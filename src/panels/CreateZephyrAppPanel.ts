@@ -13,6 +13,7 @@ import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { isPathWithin as isPathWithinWorkspaceApplication } from "../utils/zephyr/workspaceApplications";
 import { checkSdkCompatibility, formatSdkCompatMessage } from "../utils/zephyr/sdkCompatUtils";
+import { describeIntelliSenseAvailability, pickDefaultIntelliSenseProvider } from "../utils/intellisense/providerAvailability";
 
 type CreateAppDiscoveryTarget = 'board' | 'sample';
 type CreateAppDiscoveryIssueCode = 'invalid-workspace' | 'missing-workspace-content' | 'env-script' | 'invalid-venv' | 'generic';
@@ -127,6 +128,9 @@ export class CreateZephyrAppPanel {
         : undefined;
       sdkHTML += `<div class="dropdown-item" data-type="rust" data-value="${rustToolchain.toolchainPath}" data-label="${label}" data-has-llvm="${linkedSdk?.hasLlvmToolchain() ? 'true' : 'false'}">${label}<span class="description">${rustToolchain.toolchainPath}</span></div>`;
     }
+
+    const intellisenseDefault = pickDefaultIntelliSenseProvider();
+    const intellisenseAvailability = describeIntelliSenseAvailability();
 
     return /*html*/ `
       <!DOCTYPE html>
@@ -322,6 +326,16 @@ export class CreateZephyrAppPanel {
 	                          <vscode-radio value="relative" checked>relative</vscode-radio>
 	                          <vscode-radio value="absolute">absolute</vscode-radio>
 	                        </vscode-radio-group>
+                      </div>
+	                      <div class="grid-group-div">
+	                        <vscode-radio-group id="intellisenseProvider" orientation="horizontal">
+	                          <label slot="label">IntelliSense provider:&nbsp;&nbsp;
+	                            <span class="tooltip stable-tooltip" data-tooltip="Choose which extension provides code completion and diagnostics for this application. The C/C++ extension uses a generated c_cpp_properties.json. clangd uses a generated .clangd file pointing at the active build's compile_commands.json. The generated files stay inert until the matching extension is installed.">?</span>
+	                          </label>
+	                          <vscode-radio value="cpptools" ${intellisenseDefault === 'cpptools' ? 'checked' : ''}>C/C++ extension</vscode-radio>
+	                          <vscode-radio value="clangd" ${intellisenseDefault === 'clangd' ? 'checked' : ''}>clangd</vscode-radio>
+	                        </vscode-radio-group>
+	                        <p class="intellisense-availability-hint">${intellisenseAvailability}</p>
                       </div>
                       <div class="grid-group-div" id="applicationsSubfolderRow">
                         <vscode-text-field size="50" type="text" id="applicationsSubfolder" value="applications" placeholder="(empty for workspace root)">Applications subfolder:&nbsp;&nbsp;<span class="tooltip stable-tooltip" data-tooltip="Subfolder under the west workspace where the application will be created (default 'applications', matching Zephyr's reference workspace-app convention). Leave empty to place the application directly at the workspace root. Only used for West workspace applications.">?</span></vscode-text-field>
@@ -584,6 +598,7 @@ async function handleCreateMessage(message: any) {
       toRequestedVariantFor(toolchainInstallation, toolchainVariant),
       getSettingsPathMode(message.settingsPathMode),
       applicationType,
+      getIntellisenseProvider(message.intellisenseProvider),
     );
     return;
   }
@@ -662,6 +677,7 @@ async function handleCreateMessage(message: any) {
     message.venv,
     toRequestedVariantFor(toolchainInstallation, toolchainVariant),
     getSettingsPathMode(message.settingsPathMode),
+    getIntellisenseProvider(message.intellisenseProvider),
   );
   CreateZephyrAppPanel.currentPanel?.dispose();
 }
@@ -713,6 +729,10 @@ function toRequestedVariantFor(
 
 function getSettingsPathMode(rawMode: unknown): 'relative' | 'absolute' {
   return rawMode === 'absolute' ? 'absolute' : 'relative';
+}
+
+function getIntellisenseProvider(raw: unknown): 'cpptools' | 'clangd' {
+  return raw === 'clangd' ? 'clangd' : 'cpptools';
 }
 
 function resolveSelectedWorkspace(workspaceUri: string): WestWorkspace {

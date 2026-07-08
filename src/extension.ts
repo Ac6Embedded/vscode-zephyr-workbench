@@ -14,10 +14,20 @@ import { ZW_DEBUG_TYPE } from './debug/backends/types';
 import { ZephyrBuildConfig } from './models/ZephyrBuildConfig';
 import { ArmGnuToolchainInstallation, GlobalZephyrSdkInstallation, normalizeArmGnuTargetTriple, normalizeZephyrSdkVariant, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
 import { checkAndCreateTasksJson, isReservedTaskLabel, removeCppToolsConfiguration, saveCustomTaskDefinition, setDefaultProjectSettings, setDefaultWorkspaceApplicationSettings, updateCppToolsConfiguration, updateTasks, ZephyrTaskDefinition, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
+import {
+	applyCppToolsSuppression,
+	clearManagedClangdArtifacts,
+	ensureManagedClangdArguments,
+	getQueryDriverFallbackGlob,
+	getQueryDriverGlobForCompiler,
+	restartClangdServer,
+	updateClangdConfigFile,
+} from './utils/intellisense/clangdConfig';
+import { IntelliSenseProviderId } from './utils/intellisense/providerAvailability';
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
-import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_APPLICATIONS_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_SELECTED_APPLICATION_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_RUST_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
+import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_APPLICATIONS_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_SELECTED_APPLICATION_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_INTELLISENSE_PROVIDER_SETTING_KEY, ZEPHYR_PROJECT_RUST_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
 import {
 	extractDebugBuildConfigName,
 	getLaunchConfiguration,
@@ -44,6 +54,7 @@ import { EclairManagerPanel } from './panels/EclairManagerPanel';
 import { KconfigManagerPanel } from './panels/KconfigManagerPanel';
 import { ZephyrDashboardViewProvider } from './panels/ZephyrDashboardViewProvider';
 import { changeToolchainQuickStep, ToolchainVariantPick } from "./quicksteps/changeToolchainQuickStep";
+import { changeIntellisenseQuickStep } from "./quicksteps/changeIntellisenseQuickStep";
 import { getBoardFromIdentifier } from './utils/zephyr/boardDiscovery';
 import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
@@ -527,6 +538,38 @@ export function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
+	// Converge clangd query-driver arguments for existing clangd apps. The
+	// clangd.arguments setting can only be written while the clangd extension is
+	// present, so re-ensuring it on every activation is what lets a user install
+	// clangd after an app was created. Fire-and-forget; never blocks startup.
+	void (async () => {
+		const folders = vscode.workspace.workspaceFolders;
+		if (!folders) {
+			return;
+		}
+		let applications: ZephyrApplication[];
+		try {
+			applications = await ZephyrApplication.getApplications(folders);
+		} catch {
+			return;
+		}
+		let changed = false;
+		for (const app of applications) {
+			if (app.intellisenseProvider !== 'clangd' || !isSelectedIntelliSenseApplication(app)) {
+				continue;
+			}
+			// Both self-gate on clangd being installed, so this only takes effect
+			// once the user has installed clangd (the app's config is inert until then).
+			await applyCppToolsSuppression(app.appWorkspaceFolder);
+			if (await ensureManagedClangdArguments(collectQueryDriverGlobsFor(app))) {
+				changed = true;
+			}
+		}
+		if (changed) {
+			await restartClangdServer();
+		}
+	})();
+
 	// When a file that belongs to an app is the active editor, reveal it inside
 	// that app's Code Explorer (which also expands that app's explorer and, via
 	// the accordion, collapses the others). Silent no-op for files outside any
@@ -972,17 +1015,26 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			if (folder) {
-				let gccPath: string | undefined = vscode.workspace.getConfiguration('C_Cpp', folder).get('default.compilerPath');
-				if (gccPath && gccPath.includes('undefined')) {
-					const project = await getZephyrApplication(folder.uri.fsPath);
-
-					// Use-case if build out of APPLICATIONS view, means from WorkspaceFolder 
-					// Cannot know board identifier beforehand so detect if after parsing settings.json
-					// On non-legacy project, assume first config can be the "master"
-					if (boardIdentifier.length === 0) {
+				const project = await getZephyrApplication(folder.uri.fsPath);
+				if (project.intellisenseProvider === 'clangd') {
+					// clangd apps do not carry a C_Cpp.default.compilerPath heuristic;
+					// re-resolve so the built config's exact compiler joins the
+					// query-driver allowlist (idempotent after the first build).
+					if (boardIdentifier.length === 0 && project.buildConfigs[0]) {
 						boardIdentifier = project.buildConfigs[0].boardIdentifier;
 					}
 					await updateCompileSetting(project, configName, boardIdentifier);
+				} else {
+					let gccPath: string | undefined = vscode.workspace.getConfiguration('C_Cpp', folder).get('default.compilerPath');
+					if (gccPath && gccPath.includes('undefined')) {
+						// Use-case if build out of APPLICATIONS view, means from WorkspaceFolder
+						// Cannot know board identifier beforehand so detect if after parsing settings.json
+						// On non-legacy project, assume first config can be the "master"
+						if (boardIdentifier.length === 0) {
+							boardIdentifier = project.buildConfigs[0].boardIdentifier;
+						}
+						await updateCompileSetting(project, configName, boardIdentifier);
+					}
 				}
 			}
 		})
@@ -1746,9 +1798,10 @@ export function activate(context: vscode.ExtensionContext) {
 									);
 									const socToolchainName = activeConfig.getKConfigValue(node.project, 'SOC_TOOLCHAIN_NAME');
 									if (isSelectedIntelliSenseApplication(node.project)) {
-										await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
-											compilerPath: zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, pick.selectedVariant),
-										});
+										await applyIntelliSenseCompilerPath(
+											node.project,
+											zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, pick.selectedVariant),
+										);
 									}
 								}
 							} catch {
@@ -1773,9 +1826,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 					try {
 						if (isSelectedIntelliSenseApplication(node.project)) {
-							await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
-								compilerPath: armGnuToolchainInstallation.compilerPath,
-							});
+							await applyIntelliSenseCompilerPath(node.project, armGnuToolchainInstallation.compilerPath);
 						}
 					} catch {
 						// Keep the toolchain change even if the compiler path cannot be refreshed yet.
@@ -1793,9 +1844,7 @@ export function activate(context: vscode.ExtensionContext) {
 						try {
 							if (iarToolchainInstallation) {
 								if (isSelectedIntelliSenseApplication(node.project)) {
-									await updateCppToolsConfiguration(node.project.appWorkspaceFolder, {
-										compilerPath: iarToolchainInstallation.compilerPath,
-									});
+									await applyIntelliSenseCompilerPath(node.project, iarToolchainInstallation.compilerPath);
 								}
 							}
 						} catch {
@@ -1812,6 +1861,36 @@ export function activate(context: vscode.ExtensionContext) {
 						vscode.window.showWarningMessage('Toolchain changed, but stale debug launch configurations could not be removed.');
 					}
 				}
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"zephyr-workbench-app-explorer.change-intellisense",
+			async (node: ZephyrApplicationTreeItem) => {
+				if (!node?.project) { return; }
+
+				const pick = await changeIntellisenseQuickStep(node.project);
+				if (!pick || pick === node.project.intellisenseProvider) { return; }
+
+				await updateApplicationSettings(node.project, {
+					[ZEPHYR_PROJECT_INTELLISENSE_PROVIDER_SETTING_KEY]: pick,
+				});
+
+				// Re-hydrate so the provider-aware sync sees the new choice, then
+				// reconfigure the active build config. Switching to clangd writes
+				// the .clangd file plus the folder-scoped cpptools suppression;
+				// switching back removes them and refreshes c_cpp_properties.json.
+				const refreshed = await getZephyrApplication(node.project.appRootPath);
+				const activeConfig = refreshed.buildConfigs.find(config => config.active) ?? refreshed.buildConfigs[0];
+				if (activeConfig) {
+					await updateBuildConfigCompileCommandsSetting(refreshed, activeConfig);
+					if (pick === 'cpptools') {
+						await updateCompileSetting(refreshed, activeConfig.name, activeConfig.boardIdentifier);
+					}
+				}
+				requestAppRefresh();
 			}
 		)
 	);
@@ -4123,7 +4202,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchainInstallation, venvMode = 'global', debugPreset = false, toolchainVariant = 'zephyr', settingsPathMode = 'relative', applicationType = 'freestanding') => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.create-app", async (westWorkspace, zephyrSample, zephyrBoard, projectLoc = '', projectName = '', toolchainInstallation, venvMode = 'global', debugPreset = false, toolchainVariant = 'zephyr', settingsPathMode = 'relative', applicationType = 'freestanding', intellisenseProvider = 'cpptools') => {
 			if (!westWorkspace) {
 				vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
 				return;
@@ -4211,6 +4290,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 						await setDefaultWorkspaceApplicationSettings(workspaceFolder, projLoc, westWorkspace, zephyrBoard, toolchainInstallation, {
 							toolchainVariant,
+							intellisenseProvider,
 							venvPath,
 							pathMode: settingsPathMode,
 						});
@@ -4237,6 +4317,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, {
 						toolchainVariant,
+						intellisenseProvider,
 						venvPath,
 						pathMode: settingsPathMode,
 					});
@@ -4256,7 +4337,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-app", async (projectLoc, westWorkspace, zephyrBoard, toolchainInstallation, venvMode = 'global', toolchainVariant = 'zephyr', settingsPathMode = 'relative') => {
+		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-app", async (projectLoc, westWorkspace, zephyrBoard, toolchainInstallation, venvMode = 'global', toolchainVariant = 'zephyr', settingsPathMode = 'relative', intellisenseProvider = 'cpptools') => {
 			if (hasPathSpace(projectLoc)) {
 				showPathSpaceError('The application path');
 				return;
@@ -4301,6 +4382,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 					await setDefaultWorkspaceApplicationSettings(workspaceFolder, projectLoc, detectedWestWorkspace, zephyrBoard, toolchainInstallation, {
 						toolchainVariant,
+						intellisenseProvider,
 						venvPath,
 						pathMode: settingsPathMode,
 					});
@@ -4320,6 +4402,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, {
 						toolchainVariant,
+						intellisenseProvider,
 						venvPath,
 						pathMode: settingsPathMode,
 					});
@@ -4940,6 +5023,7 @@ async function removeWorkspaceApplicationAndGeneratedConfig(project: ZephyrAppli
 
 	if (readWorkspaceApplicationEntries(project.appWorkspaceFolder).length === 0) {
 		await removeCppToolsConfiguration(project.appWorkspaceFolder);
+		await clearManagedClangdArtifacts(project.appWorkspaceFolder);
 	}
 }
 
@@ -4970,6 +5054,35 @@ function isSelectedIntelliSenseApplication(project: ZephyrApplication): boolean 
 	return !!effectivePath && path.normalize(effectivePath) === path.normalize(project.appRootPath);
 }
 
+// Query-driver globs that let clangd trust this application's cross-compiler.
+// Broad by design (an allowlist): the exact per-compiler glob is merged in by
+// updateCompileSetting after the first build resolves SOC_TOOLCHAIN_NAME.
+function collectQueryDriverGlobsFor(project: ZephyrApplication): Array<string | undefined> {
+	if (project.toolchainVariant === 'gnuarmemb') {
+		return [getQueryDriverGlobForCompiler(project.selectedArmGnuToolchainInstallation?.compilerPath ?? '')];
+	}
+	if (project.zephyrSdkPath && !project.isGlobalSdk) {
+		return [getQueryDriverFallbackGlob(project.zephyrSdkPath)];
+	}
+	return [];
+}
+
+// Route a resolved compiler path to whichever IntelliSense provider the app
+// uses. cpptools keeps its existing c_cpp_properties.json write; clangd merges
+// the compiler's query-driver glob (idempotent) and restarts only on change.
+async function applyIntelliSenseCompilerPath(project: ZephyrApplication, compilerPath: string): Promise<void> {
+	if (!compilerPath) {
+		return;
+	}
+	if (project.intellisenseProvider === 'clangd') {
+		if (await ensureManagedClangdArguments([getQueryDriverGlobForCompiler(compilerPath)])) {
+			await restartClangdServer();
+		}
+		return;
+	}
+	await updateCppToolsConfiguration(project.appWorkspaceFolder, { compilerPath });
+}
+
 async function updateBuildConfigCompileCommandsSetting(
 	project: ZephyrApplication,
 	buildConfig: ZephyrBuildConfig,
@@ -4978,8 +5091,23 @@ async function updateBuildConfigCompileCommandsSetting(
 	if (!isSelectedIntelliSenseApplication(project)) {
 		return;
 	}
+	const compileCommandsPath = getBuildConfigCompileCommandsPath(project, buildConfig, sysbuildOverride);
+	if (project.intellisenseProvider === 'clangd') {
+		await updateClangdConfigFile(project.appWorkspaceFolder, {
+			compileCommandsDir: path.dirname(compileCommandsPath),
+		});
+		await applyCppToolsSuppression(project.appWorkspaceFolder);
+		if (await ensureManagedClangdArguments(collectQueryDriverGlobsFor(project))) {
+			await restartClangdServer();
+		}
+		return;
+	}
+	// cpptools app: reconcile a shared west root that a workbench-managed clangd
+	// app configured. Gated on a managed .clangd, so a folder the workbench never
+	// configured for clangd (including a user's own C_Cpp settings) is untouched.
+	await clearManagedClangdArtifacts(project.appWorkspaceFolder);
 	await updateCppToolsConfiguration(project.appWorkspaceFolder, {
-		compileCommandsPath: getBuildConfigCompileCommandsPath(project, buildConfig, sysbuildOverride),
+		compileCommandsPath,
 	});
 }
 
@@ -5004,7 +5132,7 @@ async function updateCompileSetting(project: ZephyrApplication, configName: stri
 				compilerPath = zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, toolchainVariant);
 			}
 			if (compilerPath) {
-				await updateCppToolsConfiguration(project.appWorkspaceFolder, { compilerPath });
+				await applyIntelliSenseCompilerPath(project, compilerPath);
 			}
 		}
 	}

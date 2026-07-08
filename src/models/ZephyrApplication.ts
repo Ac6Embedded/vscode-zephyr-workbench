@@ -16,6 +16,7 @@ import { resolveGlobalSdkForZephyr } from '../utils/zephyr/globalSdkService';
 import {
   ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
   ZEPHYR_PROJECT_IAR_SETTING_KEY,
+  ZEPHYR_PROJECT_INTELLISENSE_PROVIDER_SETTING_KEY,
   ZEPHYR_PROJECT_RUST_SETTING_KEY,
   ZEPHYR_PROJECT_SDK_SETTING_KEY,
   ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY,
@@ -25,6 +26,7 @@ import {
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
   ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
 } from '../constants';
+import { IntelliSenseProviderId, normalizeIntelliSenseProvider } from '../utils/intellisense/providerAvailability';
 import {
   buildStartupSetupShellArgs,
   buildTerminalEnvCommands,
@@ -87,6 +89,7 @@ export class ZephyrApplication {
   // ZEPHYR_SDK_INSTALL_DIR and the build system auto-discovers the SDK.
   isGlobalSdk: boolean = false;
   toolchainVariant: ToolchainVariantId = 'zephyr';
+  intellisenseProvider: IntelliSenseProviderId = 'cpptools';
   venvPath?: string;
   selectedIarToolchainInstallation!: IarToolchainInstallation;
   selectedArmGnuToolchainInstallation!: ArmGnuToolchainInstallation;
@@ -208,6 +211,10 @@ export class ZephyrApplication {
       ? normalizeStoredToolchainVariant(cfg, getSetting<string>(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY) ?? 'zephyr')
       : normalizeStoredToolchainVariant(cfg, cfg.get<string>(ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY) ?? 'zephyr');
     this.toolchainVariant = toolchainVariant;
+
+    this.intellisenseProvider = normalizeIntelliSenseProvider(
+      getSetting<string>(ZEPHYR_PROJECT_INTELLISENSE_PROVIDER_SETTING_KEY),
+    );
 
     if (toolchainVariant === "iar") {
       const selectedIarPath = getPathSetting(ZEPHYR_PROJECT_IAR_SETTING_KEY) ?? '';

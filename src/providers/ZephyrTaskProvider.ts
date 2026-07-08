@@ -12,6 +12,7 @@ import type { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { ArmGnuToolchainInstallation, ensureWindowsExecutableExtension, GlobalZephyrSdkInstallation, normalizeZephyrSdkVariant, prependRustBinPath, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from '../models/ToolchainInstallations';
 import {
   ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY,
+  ZEPHYR_PROJECT_INTELLISENSE_PROVIDER_SETTING_KEY,
   ZEPHYR_PROJECT_RUST_SETTING_KEY,
   ZEPHYR_PROJECT_SDK_GLOBAL_VALUE,
   ZEPHYR_PROJECT_SDK_SETTING_KEY,
@@ -22,6 +23,15 @@ import {
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
   ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
 } from '../constants';
+import { IntelliSenseProviderId } from '../utils/intellisense/providerAvailability';
+import {
+  applyCppToolsSuppression,
+  ensureManagedClangdArguments,
+  getQueryDriverFallbackGlob,
+  getQueryDriverGlobForCompiler,
+  restartClangdServer,
+  updateClangdConfigFile,
+} from '../utils/intellisense/clangdConfig';
 import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, getShellExe, getShellSourceCommand, isCygwin, normalizePathForShell, resolveConfiguredPath, toPortableWorkspaceFolderPath } from '../utils/execUtils';
 import { findArmGnuToolchainInstallation, getWestWorkspace, msleep, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
@@ -403,6 +413,7 @@ export interface CreateTasksJsonOptions {
 
 export interface DefaultProjectSettingsOptions {
   toolchainVariant?: string;
+  intellisenseProvider?: IntelliSenseProviderId;
   venvPath?: string;
   pathMode?: 'relative' | 'absolute';
   preferConfigurationApi?: boolean;
@@ -605,6 +616,45 @@ function getDefaultCompilerPath(
     : toolchainInstallation.compilerPath;
 }
 
+/**
+ * When an application selects clangd, generate its .clangd file, disable the
+ * cpptools engine for the folder so the two providers do not double up, and
+ * register the toolchain's query-driver glob. No-op for cpptools apps, so the
+ * existing c_cpp_properties.json flow is left byte-for-byte unchanged.
+ */
+async function applyIntelliSenseProviderExtras(
+  workspaceFolder: vscode.WorkspaceFolder,
+  compilerPath: string,
+  compileCommandsPath: string,
+  sdkRootPath: string,
+  options: DefaultProjectSettingsOptions,
+): Promise<void> {
+  if (options.intellisenseProvider !== 'clangd') {
+    return;
+  }
+  await updateClangdConfigFile(workspaceFolder, {
+    compileCommandsDir: path.dirname(compileCommandsPath),
+    pathMode: options.pathMode,
+  });
+  await applyCppToolsSuppression(workspaceFolder);
+  const glob = getQueryDriverGlobForCompiler(compilerPath) ?? getQueryDriverFallbackGlob(sdkRootPath);
+  if (await ensureManagedClangdArguments([glob])) {
+    await restartClangdServer();
+  }
+}
+
+function getToolchainSdkRootPath(
+  toolchainInstallation: ZephyrSdkInstallation | IarToolchainInstallation | ArmGnuToolchainInstallation | RustToolchainInstallation,
+): string {
+  if (toolchainInstallation instanceof GlobalZephyrSdkInstallation) {
+    return '';
+  }
+  if (toolchainInstallation instanceof ZephyrSdkInstallation) {
+    return toolchainInstallation.rootUri.fsPath;
+  }
+  return '';
+}
+
 function buildDefaultApplicationSettings(
   workspaceFolder: vscode.WorkspaceFolder,
   westWorkspace: WestWorkspace,
@@ -660,6 +710,10 @@ function buildDefaultApplicationSettings(
 
   if (options.venvPath) {
     values[ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY] = formatPath(options.venvPath);
+  }
+
+  if (options.intellisenseProvider) {
+    values[ZEPHYR_PROJECT_INTELLISENSE_PROVIDER_SETTING_KEY] = options.intellisenseProvider;
   }
 
   return { values, deleteKeys };
@@ -1592,10 +1646,19 @@ export async function setDefaultWorkspaceApplicationSettings(
     entries.length > 1 ? applicationRootPath : undefined,
   );
 
+  const workspaceAppCompilerPath = getDefaultCompilerPath(toolchainInstallation, zephyrBoard, options.toolchainVariant);
+  const workspaceAppCompileCommandsPath = path.join(applicationRootPath, 'build', 'primary', 'compile_commands.json');
   await writeDefaultCppPropertiesFile(
     workspaceFolder,
-    getDefaultCompilerPath(toolchainInstallation, zephyrBoard, options.toolchainVariant),
-    path.join(applicationRootPath, 'build', 'primary', 'compile_commands.json'),
+    workspaceAppCompilerPath,
+    workspaceAppCompileCommandsPath,
+    options,
+  );
+  await applyIntelliSenseProviderExtras(
+    workspaceFolder,
+    workspaceAppCompilerPath,
+    workspaceAppCompileCommandsPath,
+    getToolchainSdkRootPath(toolchainInstallation),
     options,
   );
 }
@@ -1621,10 +1684,19 @@ export async function setDefaultProjectSettings(
     await applyDefaultProjectSettingsViaConfigurationApi(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, options);
   }
 
+  const freestandingCompilerPath = getDefaultCompilerPath(toolchainInstallation, zephyrBoard, options.toolchainVariant);
+  const freestandingCompileCommandsPath = path.join(workspaceFolder.uri.fsPath, 'build', 'primary', 'compile_commands.json');
   await writeDefaultCppPropertiesFile(
     workspaceFolder,
-    getDefaultCompilerPath(toolchainInstallation, zephyrBoard, options.toolchainVariant),
-    path.join(workspaceFolder.uri.fsPath, 'build', 'primary', 'compile_commands.json'),
+    freestandingCompilerPath,
+    freestandingCompileCommandsPath,
+    options,
+  );
+  await applyIntelliSenseProviderExtras(
+    workspaceFolder,
+    freestandingCompilerPath,
+    freestandingCompileCommandsPath,
+    getToolchainSdkRootPath(toolchainInstallation),
     options,
   );
 }
