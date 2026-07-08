@@ -588,8 +588,12 @@ export class WestManagerPanel {
                 </div>
 
                 <div class="grid-group-div">
-                  <label>Manifest projects:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Projects are read from the local zephyr/west.yml and zephyr/submanifests/*.yaml when present. Checked projects are written to the manifest name-allowlist. Use Import all modules for a full workspace.">?</span></label>
-                  <vscode-checkbox id="importAllCheckbox">Import all modules (full)&nbsp;&nbsp;<span class="tooltip" data-tooltip="Full workspace: the zephyr project imports every module (import: true). Uncheck to manage a specific set through the manifest name-allowlist.">?</span></vscode-checkbox>
+                  <div class="grid-header-div">
+                    <vscode-checkbox id="importAllCheckbox">Import all modules (full)&nbsp;&nbsp;<span class="tooltip" data-tooltip="Full workspace: the zephyr project imports every module (import: true). Uncheck to manage a specific set through the manifest name-allowlist.">?</span></vscode-checkbox>
+                  </div>
+                  <div class="grid-header-div">
+                    <label>Manifest projects:&nbsp;&nbsp;<span class="tooltip" data-tooltip="Projects are read from the local zephyr/west.yml and zephyr/submanifests/*.yaml when present. Checked projects are written to the manifest name-allowlist. Use Import all modules for a full workspace.">?</span></label>
+                  </div>
                   <div id="importAllHint" class="projects-empty" style="display:none;">All modules are imported. Uncheck &quot;Import all modules&quot; to pick individual modules.</div>
                   <div class="project-toolbar">
                     <vscode-text-field id="projectFilter" type="text" placeholder="Filter projects"></vscode-text-field>
