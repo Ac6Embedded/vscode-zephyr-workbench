@@ -952,20 +952,59 @@ export async function execShellCommand(
 }
 
 /**
+ * Kill a spawned command together with its descendants. A directly spawned
+ * installer/shell forks children (bash -> install.sh -> pip/cmake), so killing
+ * only the direct child would orphan the real work. Callers that want this to
+ * work on POSIX must spawn the child detached (its own process group) so the
+ * whole tree is addressable as `-pid`.
+ */
+export function killProcessTree(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
+  if (!child.pid) {
+    child.kill(signal);
+    return;
+  }
+  if (process.platform === 'win32') {
+    try {
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    } catch {
+      child.kill(signal);
+    }
+    return;
+  }
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    child.kill(signal);
+  }
+}
+
+/**
  * Runs a `vscode.Task` and resolves with the process exit code (undefined if the task's
  * process never started, e.g. shell resolution failure). Unlike `executeTask`, which only
  * waits for the task to end, this listens to `onDidEndTaskProcess` so callers can detect
  * failure by exit code. Mirrors the pattern used for `west update` in WestCommands.ts.
+ *
+ * When a `token` is supplied, cancelling it terminates the running task via
+ * `execution.terminate()`; the task then ends with `exitCode === undefined`,
+ * which callers treat as a cancel/failure.
  */
-export async function executeTaskWithExitCode(task: vscode.Task): Promise<number | undefined> {
+export async function executeTaskWithExitCode(task: vscode.Task, token?: vscode.CancellationToken): Promise<number | undefined> {
   const execution = await vscode.tasks.executeTask(task);
   return new Promise(resolve => {
-    const disp = vscode.tasks.onDidEndTaskProcess(e => {
+    const disposables: vscode.Disposable[] = [];
+    const dispose = () => disposables.forEach(d => d.dispose());
+    disposables.push(vscode.tasks.onDidEndTaskProcess(e => {
       if (e.execution === execution) {
-        disp.dispose();
+        dispose();
         resolve(e.exitCode);
       }
-    });
+    }));
+    if (token) {
+      disposables.push(token.onCancellationRequested(() => execution.terminate()));
+      if (token.isCancellationRequested) {
+        execution.terminate();
+      }
+    }
   });
 }
 
@@ -977,7 +1016,8 @@ export async function executeTaskWithExitCode(task: vscode.Task): Promise<number
 export async function execShellCommandCapturingExit(
   cmdName: string,
   cmd: string,
-  options: vscode.ShellExecutionOptions
+  options: vscode.ShellExecutionOptions,
+  token?: vscode.CancellationToken
 ): Promise<number | undefined> {
   if (!cmd) {
     throw new Error('Missing command to execute');
@@ -993,7 +1033,7 @@ export async function execShellCommandCapturingExit(
     shExec
   );
   task.presentationOptions.echo = true;
-  return executeTaskWithExitCode(task);
+  return executeTaskWithExitCode(task, token);
 }
 
 /**

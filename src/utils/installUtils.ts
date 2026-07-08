@@ -9,7 +9,7 @@ import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
 import yaml from 'yaml';
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
-import { execShellCommand, execShellCommandCapturingExit, execShellCommandWithEnv, getConfiguredWorkbenchPath, getShellArgs, getShellExe, execCommandWithEnv, resolveConfiguredPath, toPortableWorkspaceFolderPath } from "./execUtils";
+import { execShellCommand, execShellCommandCapturingExit, execShellCommandWithEnv, getConfiguredWorkbenchPath, getShellArgs, getShellExe, execCommandWithEnv, killProcessTree, resolveConfiguredPath, toPortableWorkspaceFolderPath } from "./execUtils";
 import { detectGuiSudoAvailability } from "./environmentUtils";
 import { syncAutoDetectEnv } from "./debugTools/autoDetectSyncUtils";
 import { fileExists, findDefaultEnvScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSdkInstallation, getWestWorkspace } from "./utils";
@@ -203,8 +203,10 @@ export async function verifyInstallScript(): Promise<void> {
 }
 
 /**
- * TODO: better progress tracking and support cancel token
  * @param context
+ * @param token cancellation token from the progress notification; cancelling it
+ *              terminates the running installer process (see the launch paths in
+ *              installHostTools) and reports a neutral "cancelled" outcome.
  * @returns true when the host tools setup ended up fully usable (no failed
  *          install step and the environment file exists), false otherwise.
  */
@@ -217,7 +219,7 @@ export async function runInstallHostTools(context: vscode.ExtensionContext,
                                           token: vscode.CancellationToken,
                                           selectTools?: string[],
                                           pythonOpts?: HostToolsPythonOptions): Promise<boolean> {
-  return installHostToolsWithOutcome(context, listToolchains, progress, false, selectTools, pythonOpts);
+  return installHostToolsWithOutcome(context, listToolchains, progress, false, token, selectTools, pythonOpts);
 }
 
 export async function forceInstallHostTools(context: vscode.ExtensionContext,
@@ -228,7 +230,7 @@ export async function forceInstallHostTools(context: vscode.ExtensionContext,
                                           }>,
                                           token: vscode.CancellationToken,
                                           pythonOpts?: HostToolsPythonOptions): Promise<boolean> {
-  return installHostToolsWithOutcome(context, listToolchains, progress, true, undefined, pythonOpts);
+  return installHostToolsWithOutcome(context, listToolchains, progress, true, token, undefined, pythonOpts);
 }
 
 async function installHostToolsWithOutcome(
@@ -236,13 +238,12 @@ async function installHostToolsWithOutcome(
   listToolchains: string,
   progress: vscode.Progress<{ message?: string | undefined; increment?: number | undefined }>,
   force: boolean,
+  token: vscode.CancellationToken,
   selectTools?: string[],
   pythonOpts?: HostToolsPythonOptions
 ): Promise<boolean> {
   const activeTerminal = await getZephyrTerminal();
   activeTerminal.show();
-
-  // To implement: token.onCancellationRequested()
 
   // A selection means "repair these parts": it never wipes the install like
   // force does, and it must bypass the already-installed short-circuit.
@@ -257,14 +258,18 @@ async function installHostToolsWithOutcome(
     }
   }
 
+  if (token.isCancellationRequested) {
+    return reportHostToolsInstallCancelled(progress);
+  }
+
   let result: HostToolsInstallResult = { ran: false };
   if (force) {
     removeHostTools();
     progress.report({ message: "Reinstalling host tools into user directory" });
-    result = await installHostTools(context, listToolchains, undefined, pythonOpts);
+    result = await installHostTools(context, listToolchains, undefined, pythonOpts, token);
   } else if (selection.length > 0) {
     progress.report({ message: "Installing selected host tools parts" });
-    result = await installHostTools(context, listToolchains, selection, pythonOpts);
+    result = await installHostTools(context, listToolchains, selection, pythonOpts, token);
   } else {
     progress.report({ message: "Installing host tools into user directory" });
     // The tools directory alone is not proof of a completed install: the script
@@ -275,12 +280,33 @@ async function installHostToolsWithOutcome(
     if (await checkHostTools() && await checkEnvFile() && fileExists(getZinstallerVersionStampPath())) {
       progress.report({ message: "Host tools already installed", increment: 100 });
     } else {
-      result = await installHostTools(context, listToolchains, undefined, pythonOpts);
+      result = await installHostTools(context, listToolchains, undefined, pythonOpts, token);
     }
+  }
+
+  // A cancel terminates the installer mid-run, so the process usually exits with
+  // no code (result.cancelled) or the token is simply flagged. Report it as a
+  // neutral outcome instead of letting reportHostToolsInstallOutcome surface the
+  // aborted run as an installation failure.
+  if (result.cancelled || token.isCancellationRequested) {
+    return reportHostToolsInstallCancelled(progress);
   }
 
   progress.report({ message: "Check if environment is well set up", increment: 80 });
   return reportHostToolsInstallOutcome(context, result, progress, selection.length > 0);
+}
+
+/**
+ * Neutral feedback for a user-initiated cancel: not a success, not an error.
+ * Any parts that did install before the cancel are left in place.
+ */
+function reportHostToolsInstallCancelled(
+  progress: vscode.Progress<{ message?: string | undefined; increment?: number | undefined }>
+): boolean {
+  progress.report({ message: "Host tools installation cancelled", increment: 100 });
+  output.appendLine('Host tools installation cancelled by user.');
+  vscode.window.showInformationMessage('Host tools installation cancelled.');
+  return false;
 }
 
 /**
@@ -359,7 +385,8 @@ async function reportHostToolsInstallOutcome(
  */
 async function runNonRootHostToolsCommand(
   command: string,
-  shellOpts: vscode.ShellExecutionOptions
+  shellOpts: vscode.ShellExecutionOptions,
+  token?: vscode.CancellationToken
 ): Promise<number> {
   const executable = shellOpts.executable ?? getShellExe();
   const args = [...(shellOpts.shellArgs ?? []), command];
@@ -369,11 +396,31 @@ async function runNonRootHostToolsCommand(
   output.appendLine('Starting non-root host tools installation...');
 
   return await new Promise<number>((resolve) => {
+    // Spawn detached so the whole install.sh -> pip/cmake tree lands in its own
+    // process group and can be killed as a unit on cancel (see killProcessTree).
     const child = spawn(executable, args, {
       cwd,
       env,
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32'
     });
+
+    let cancelled = false;
+    let escalation: NodeJS.Timeout | undefined;
+    const cancellation = token?.onCancellationRequested(() => {
+      cancelled = true;
+      output.appendLine('Cancelling non-root host tools installation...');
+      killProcessTree(child, 'SIGTERM');
+      // Escalate if part of the tree survives the polite signal.
+      escalation = setTimeout(() => killProcessTree(child, 'SIGKILL'), 5000);
+    });
+
+    const cleanup = () => {
+      if (escalation) {
+        clearTimeout(escalation);
+      }
+      cancellation?.dispose();
+    };
 
     child.stdout?.on('data', (data: Buffer) => {
       output.append(data.toString());
@@ -384,12 +431,17 @@ async function runNonRootHostToolsCommand(
     });
 
     child.on('error', (error) => {
+      cleanup();
       output.appendLine(`Failed to launch non-root installer: ${error.message}`);
       resolve(1);
     });
 
     child.on('close', (code, signal) => {
-      if (code === 0) {
+      cleanup();
+      if (cancelled) {
+        output.appendLine('Non-root host tools installation cancelled.');
+        resolve(code ?? 1);
+      } else if (code === 0) {
         output.appendLine('Non-root host tools installation finished.');
         resolve(0);
       } else {
@@ -491,7 +543,8 @@ function appendElevatedBlock(header: string, content?: string | Buffer): void {
  */
 async function runElevatedCommand(
   command: string,
-  opts: { taskName: string; shellOpts: vscode.ShellExecutionOptions }
+  opts: { taskName: string; shellOpts: vscode.ShellExecutionOptions },
+  token?: vscode.CancellationToken
 ): Promise<number> {
   await focusInstallerOutputChannel();
   const availability = detectGuiSudoAvailability();
@@ -512,7 +565,7 @@ async function runElevatedCommand(
   // Interactive terminal fallback: sudo prompts for the password on the terminal's stdin.
   output.appendLine('You will be prompted for your sudo password in the integrated terminal.');
   vscode.window.showInformationMessage(`${opts.taskName}: enter your sudo password in the terminal.`);
-  const exitCode = await execShellCommandCapturingExit(opts.taskName, `sudo ${command}`, opts.shellOpts);
+  const exitCode = await execShellCommandCapturingExit(opts.taskName, `sudo ${command}`, opts.shellOpts, token);
   if (exitCode !== 0) {
     output.appendLine(`${opts.taskName} failed (exit code ${exitCode ?? 'unknown'}). See terminal/log for details.`);
   }
@@ -523,6 +576,10 @@ async function runElevatedCommand(
  * Elevate `command` via sudo-prompt's graphical password dialog. Captures stdout/stderr
  * into the output channel and rejects on error WITHOUT showing its own dialog, so that
  * runElevatedCommand can fall back to the terminal transparently.
+ *
+ * Cancellation limitation: sudo-prompt's `sudo.exec` exposes no PID or handle, so an
+ * in-flight graphical elevation cannot be force-killed. Cancel is handled at the step
+ * boundary instead (installHostTools skips the non-root step once the token trips).
  */
 function runSudoPromptGui(command: string, taskName: string): Promise<void> {
   output.appendLine(`${taskName} (graphical elevation). This might take a while; root logs appear once the step completes.`);
@@ -567,6 +624,9 @@ async function runElevatedDebugToolsCommand(
 export interface HostToolsInstallResult {
   ran: boolean;
   exitCode?: number;
+  // True when a launch path was terminated by the cancellation token. The
+  // outcome is then reported as a neutral cancel rather than a failure.
+  cancelled?: boolean;
 }
 
 /**
@@ -665,7 +725,7 @@ export function buildHostToolsSelectionArgs(
   return args;
 }
 
-export async function installHostTools(context: vscode.ExtensionContext, listTools: string = "", selectTools?: string[], pythonOpts?: HostToolsPythonOptions): Promise<HostToolsInstallResult> {
+export async function installHostTools(context: vscode.ExtensionContext, listTools: string = "", selectTools?: string[], pythonOpts?: HostToolsPythonOptions, token?: vscode.CancellationToken): Promise<HostToolsInstallResult> {
   let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   if(installDirUri) {
     let installScript: string = "";
@@ -754,7 +814,10 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
       const runRoot = selected.length === 0 || selected.includes('system');
       if (runRoot) {
         // Root step: GUI prompt where possible, otherwise interactive terminal sudo.
-        const rootExit = await runElevatedCommand(rootCommand, { taskName: 'Installing sudo host tools', shellOpts });
+        const rootExit = await runElevatedCommand(rootCommand, { taskName: 'Installing sudo host tools', shellOpts }, token);
+        if (token?.isCancellationRequested) {
+          return { ran: true, exitCode: rootExit, cancelled: true };
+        }
         if (rootExit !== 0) {
           // A failed or cancelled root step still skips the non-root step
           // (previous semantics), but now flows through the standard outcome
@@ -767,15 +830,22 @@ export async function installHostTools(context: vscode.ExtensionContext, listToo
         output.appendLine('Selection does not include the System packages row: skipping the elevated step (no sudo prompt).');
       }
 
+      // A cancel during (or right after) the root step must not start the
+      // non-root step. The graphical sudo dialog cannot be force-killed, so this
+      // guard is what keeps cancel responsive on that path.
+      if (token?.isCancellationRequested) {
+        return { ran: true, cancelled: true };
+      }
+
       // Non-root step runs without sudo and already works in every environment.
-      const nonRootExit = await runNonRootHostToolsCommand(nonRootCommand, shellOpts);
-      return { ran: true, exitCode: nonRootExit };
+      const nonRootExit = await runNonRootHostToolsCommand(nonRootCommand, shellOpts, token);
+      return { ran: true, exitCode: nonRootExit, cancelled: token?.isCancellationRequested };
     } else {
       // Capture the exit code: the hardened installers never abort on a single
       // failed step; they exit non-zero when at least one step failed (or a
       // selected part was skipped) and print the per-step summary themselves.
-      const exitCode = await execShellCommandCapturingExit('Installing Host tools', installCmd + " " + installArgs, shellOpts);
-      return { ran: true, exitCode };
+      const exitCode = await execShellCommandCapturingExit('Installing Host tools', installCmd + " " + installArgs, shellOpts, token);
+      return { ran: true, exitCode, cancelled: token?.isCancellationRequested };
     }
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");

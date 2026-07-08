@@ -33,6 +33,7 @@ import {
   getConfiguredVenvPath,
   getConfiguredWorkbenchPath,
   getOutputChannel,
+  killProcessTree,
   spawnCommandWithEnv,
 } from '../execUtils';
 import { getManagedVenvWestPath, managedVenvProcessEnv } from '../installUtils';
@@ -129,31 +130,6 @@ function quote(p: string): string {
 // normal character is preserved, and cmd.exe/PowerShell accept quoted args.
 function shellQuoteArg(arg: string): string {
   return `"${arg.replace(/"/g, '')}"`;
-}
-
-// Kill a spawned command together with its descendants: in env-script mode the
-// direct child is a wrapper shell and west/python is a grandchild, and even a
-// directly spawned west forks setup/cmake children.
-function killProcessTree(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
-  if (!child.pid) {
-    child.kill(signal);
-    return;
-  }
-  if (process.platform === 'win32') {
-    try {
-      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-    } catch {
-      child.kill(signal);
-    }
-    return;
-  }
-  try {
-    // Children are spawned detached (own process group) so the whole tree is
-    // addressable as -pid.
-    process.kill(-child.pid, signal);
-  } catch {
-    child.kill(signal);
-  }
 }
 
 function stripAnsi(input: string): string {
