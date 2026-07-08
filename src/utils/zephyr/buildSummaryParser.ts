@@ -94,6 +94,42 @@ export interface ZephyrBuildSummaryInput {
 	statPath?: string;
 }
 
+export interface ZephyrStatFileContent {
+	path: string;
+	sizeBytes: number;
+	text: string;
+	truncated: boolean;
+}
+
+const STAT_TEXT_LIMIT = 512_000;
+
+const statFileCache = new Map<string, { fingerprint: string; content: ZephyrStatFileContent }>();
+
+export function readZephyrStatFile(statPath?: string): ZephyrStatFileContent | undefined {
+	if (!statPath || !fs.existsSync(statPath)) {
+		return undefined;
+	}
+
+	const stat = fs.statSync(statPath);
+	const fingerprint = `${statPath}:${stat.size}:${stat.mtimeMs}`;
+	const cached = statFileCache.get(statPath);
+	if (cached && cached.fingerprint === fingerprint) {
+		return cached.content;
+	}
+
+	const raw = fs.readFileSync(statPath, 'utf8');
+	const truncated = raw.length > STAT_TEXT_LIMIT;
+	const content: ZephyrStatFileContent = {
+		path: statPath,
+		sizeBytes: stat.size,
+		text: truncated ? raw.slice(0, STAT_TEXT_LIMIT) : raw,
+		truncated,
+	};
+
+	statFileCache.set(statPath, { fingerprint, content });
+	return content;
+}
+
 interface ZephyrStatSection {
 	name: string;
 	type: string;
@@ -228,7 +264,7 @@ function getLastBuildTimestamp(filePaths: Array<string | undefined>): number | u
 	return timestamps.length > 0 ? Math.max(...timestamps) : undefined;
 }
 
-function parseDotConfig(dotConfigPath?: string): Map<string, string> {
+export function parseDotConfig(dotConfigPath?: string): Map<string, string> {
 	const config = new Map<string, string>();
 	if (!dotConfigPath || !fs.existsSync(dotConfigPath)) {
 		return config;
