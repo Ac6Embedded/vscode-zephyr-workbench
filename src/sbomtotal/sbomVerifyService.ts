@@ -31,7 +31,6 @@ const DEFAULT_BASE_URL = 'https://sbomtotal.com';
 // Shipped on purpose as a revocable default: it only associates scans with the
 // Ac6 account (scanning itself is public). Rotate in a patch release if abused.
 const DEFAULT_SBOM_TOTAL_TOKEN = 'sct_vcv1Pw7LbUm0Sdq3TNP1HKZmpBFx2SRNSNWjR1g8HJc';
-const SPDX_VERSION_SETTING_KEY = 'sbomTotal.spdxVersion';
 const OUTPUT_DIR_NAME = 'sbom-total';
 const SDK_DOC_NAME = 'sdk.spdx';
 const SDK_DOC3_NAME = 'sdk.jsonld';
@@ -66,19 +65,25 @@ interface ScanOutcome {
 }
 
 /**
- * SPDX version for this run: 'auto' (default) follows what the Zephyr tree can
- * generate, using the existing file-based capability check
- * (WestWorkspace.supportsSpdx3); '2.3'/'3.0' are explicit user pins.
+ * SPDX version for this run, decided once by the existing file-based check
+ * (WestWorkspace.supportsSpdx3 looks for the zspdx spdx3 serializer in the
+ * Zephyr tree): the file exists means 3.0, otherwise 2.3. No settings, no
+ * fallbacks. The details are returned so the decision can be logged.
  */
-function resolveSpdxVersion(ctx: SpdxContext): '2.3' | '3.0' {
-  const configured = getSbomTotalConfig().get<'auto' | '2.3' | '3.0'>(SPDX_VERSION_SETTING_KEY, 'auto');
-  if (configured === '2.3' || configured === '3.0') {
-    return configured;
-  }
+function resolveSpdxVersion(ctx: SpdxContext): { version: '2.3' | '3.0'; workspacePath: string; zephyrVersion?: string; error?: string } {
   try {
-    return getWestWorkspace(ctx.project.westWorkspaceRootPath).supportsSpdx3 ? '3.0' : '2.3';
-  } catch {
-    return '2.3';
+    const ws = getWestWorkspace(ctx.project.westWorkspaceRootPath);
+    return {
+      version: ws.supportsSpdx3 ? '3.0' : '2.3',
+      workspacePath: ctx.project.westWorkspaceRootPath,
+      zephyrVersion: ws.version,
+    };
+  } catch (error) {
+    return {
+      version: '2.3',
+      workspacePath: ctx.project.westWorkspaceRootPath,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -186,19 +191,22 @@ async function ensureSpdxDocs(
   cancel: vscode.CancellationToken,
 ): Promise<string[] | undefined> {
   const pick = (docs: ReturnType<typeof listGeneratedDocs>) => (spdxVersion === '3.0' ? docs.jsonld : docs.spdx);
+  const fail = (message: string) => {
+    if (!cancel.isCancellationRequested) {
+      vscode.window.showErrorMessage(message);
+    }
+    return undefined;
+  };
+
   let docs = listGeneratedDocs(ctx.spdxDir);
   if (pick(docs).length > 0) {
     return pick(docs);
   }
 
   try {
+    // No capability re-check here: the version was already decided by the same
+    // file-based test in resolveSpdxVersion.
     const westWorkspace = getWestWorkspace(ctx.project.westWorkspaceRootPath);
-    if (spdxVersion === '3.0' && !westWorkspace.supportsSpdx3) {
-      vscode.window.showErrorMessage(
-        `SPDX 3 SBOM generation is not supported by this Zephyr version (detected: ${westWorkspace.version}). Set zephyr-workbench.sbomTotal.spdxVersion to 2.3.`,
-      );
-      return undefined;
-    }
     if (docs.spdx.length === 0 && docs.jsonld.length === 0) {
       // Nothing generated yet: run the full SPDX pipeline (deletes and rebuilds).
       progress.report({ message: `building the application and generating SPDX ${spdxVersion} documents (this can take a while)...` });
@@ -211,18 +219,15 @@ async function ensureSpdxDocs(
       await westSpdxGenerateCommand(ctx.project, westWorkspace, ctx.config, spdxVersion);
     }
   } catch (error) {
-    vscode.window.showErrorMessage(`Could not generate SPDX ${spdxVersion} documents: ${error}`);
-    return undefined;
+    return fail(`Could not generate SPDX ${spdxVersion} documents: ${error}`);
   }
 
   docs = listGeneratedDocs(ctx.spdxDir);
   if (pick(docs).length === 0) {
-    if (!cancel.isCancellationRequested) {
-      vscode.window.showErrorMessage(
-        `No SPDX ${spdxVersion} documents were generated. Check the SPDX generation output in the terminal, then try again.`,
-      );
+    if (cancel.isCancellationRequested) {
+      return undefined;
     }
-    return undefined;
+    return fail(`No SPDX ${spdxVersion} documents were generated. Check the SPDX generation output in the terminal, then try again.`);
   }
   return pick(docs);
 }
@@ -251,7 +256,7 @@ function buildSpdx3ScanInput(ctx: SpdxContext, jsonldFiles: string[]): ScanInput
   }));
   const merged = mergeSpdx3Set(inputDocs);
   if (!merged.ok) {
-    getOutputChannel().appendLine(`[sbom-total] SPDX 3.0 merge failed, falling back to SPDX 2.3: ${merged.reason}`);
+    getOutputChannel().appendLine(`[sbom-total] SPDX 3.0 merge failed: ${merged.reason}`);
     return undefined;
   }
   const mergedName = `merged-${sanitizeFileName(ctx.appName)}-${sanitizeFileName(ctx.config.name)}.spdx3.json`;
@@ -324,7 +329,12 @@ async function scanBytes(
   bundle: ClientBundle,
   bytes: Buffer,
   name: string,
-  options: { force?: boolean; signal?: AbortSignal },
+  options: {
+    force?: boolean;
+    signal?: AbortSignal;
+    progress?: vscode.Progress<{ message?: string }>;
+    label?: string;
+  },
 ): Promise<{ result: ScanResult; hash: string; fromProbe: boolean }> {
   const contentHash = sha256(bytes);
 
@@ -335,7 +345,24 @@ async function scanBytes(
     }
   }
 
-  const result = await bundle.client.scanSbom(bytes, name, options);
+  // Stream the scan so the notification reflects each engine as it finishes,
+  // instead of a static "can take a few minutes" while the connection blocks.
+  const label = options.label ?? 'scanning';
+  let total = 0;
+  let done = 0;
+  const result = await bundle.client.scanSbomStream(new Uint8Array(bytes), name, {
+    force: options.force,
+    signal: options.signal,
+    onPending: engines => {
+      total = engines.length;
+      options.progress?.report({ message: `${label}: waiting for ${total} engines...` });
+    },
+    onEngine: engine => {
+      done += 1;
+      const counter = total > 0 ? ` (${Math.min(done, total)}/${total})` : ` (${done})`;
+      options.progress?.report({ message: `${label}: ${engine.name ?? 'engine'} done${counter}...` });
+    },
+  });
   return { result, hash: result.hash ?? contentHash, fromProbe: false };
 }
 
@@ -344,11 +371,11 @@ async function scanSdkSeparately(
   bundle: ClientBundle,
   sdkFileName: string,
   uploadName: string,
-  options: { force?: boolean; signal?: AbortSignal },
+  options: { force?: boolean; signal?: AbortSignal; progress?: vscode.Progress<{ message?: string }> },
 ): Promise<ScanResult | undefined> {
   try {
     const sdkBytes = fs.readFileSync(path.join(ctx.spdxDir, sdkFileName));
-    return (await scanBytes(bundle, sdkBytes, uploadName, options)).result;
+    return (await scanBytes(bundle, sdkBytes, uploadName, { ...options, label: 'scanning the SDK document' })).result;
   } catch (error) {
     if (!isAbortError(error)) {
       getOutputChannel().appendLine(`[sbom-total] SDK scan failed: ${error instanceof Error ? error.message : error}`);
@@ -372,9 +399,9 @@ async function generateSdkDoc(ctx: SpdxContext, spdxVersion: '2.3' | '3.0', prog
 }
 
 /**
- * Verify with exactly ONE SPDX version, chosen by the sbomTotal.spdxVersion
- * setting. There is deliberately no automatic fallback between versions: the
- * flow generates and scans either 3.0 or 2.3, never both.
+ * Verify with exactly ONE SPDX version, decided upfront by the Zephyr tree's
+ * capability (resolveSpdxVersion). There is deliberately no fallback between
+ * versions: the flow generates and scans either 3.0 or 2.3, never both.
  */
 async function runScanPipeline(
   context: vscode.ExtensionContext,
@@ -387,7 +414,16 @@ async function runScanPipeline(
   const abort = new AbortController();
   cancel.onCancellationRequested(() => abort.abort());
 
-  const spdxVersion = resolveSpdxVersion(ctx);
+  // One decision, made upfront: SPDX 3.0 when the Zephyr tree has the spdx3
+  // serializer, 2.3 otherwise. The whole run uses that single version.
+  const resolved = resolveSpdxVersion(ctx);
+  const spdxVersion = resolved.version;
+  getOutputChannel().appendLine(
+    `[sbom-total] scan format: SPDX ${spdxVersion} ` +
+    `(Zephyr ${resolved.zephyrVersion ?? 'unknown'}, west workspace=${resolved.workspacePath || 'unset'}` +
+    `${resolved.error ? `, workspace error: ${resolved.error}` : ''})`,
+  );
+
   const includeSdk = getSbomTotalConfig().get<boolean>(INCLUDE_SDK_SETTING_KEY, false);
   const bundle = await createClientFromConfig(context);
   const reportDir = path.join(ctx.spdxDir, OUTPUT_DIR_NAME);
@@ -417,14 +453,15 @@ async function runScanPipeline(
     return undefined;
   }
 
-  progress.report({ message: `scanning ${input.name} (the scan can take up to a few minutes)...` });
-  const scan = await scanBytes(bundle, input.bytes, input.name, { force, signal: abort.signal });
+  progress.report({ message: `scanning ${input.name}...` });
+  const scan = await scanBytes(bundle, input.bytes, input.name, {
+    force, signal: abort.signal, progress, label: `scanning ${input.name}`,
+  });
 
   let sdkResult: ScanResult | undefined;
   if (includeSdk && files.includes(sdkDocName) && !cancel.isCancellationRequested) {
-    progress.report({ message: 'scanning the SDK document (build environment)...' });
     const sdkUploadName = spdxVersion === '3.0' ? 'sdk.spdx3.json' : SDK_DOC_NAME;
-    sdkResult = await scanSdkSeparately(ctx, bundle, sdkDocName, sdkUploadName, { force, signal: abort.signal });
+    sdkResult = await scanSdkSeparately(ctx, bundle, sdkDocName, sdkUploadName, { force, signal: abort.signal, progress });
   }
   if (cancel.isCancellationRequested) {
     return undefined;
@@ -549,12 +586,12 @@ async function presentOutcome(
     buttons.push('Rescan (force)');
   }
 
+  // Scan results are notifications, not errors: clean verdicts show as info,
+  // anything with findings (including a failed gate) as a warning.
   const show = (text: string, ...items: string[]): Thenable<string | undefined> =>
-    gate.failed
-      ? vscode.window.showErrorMessage(text, ...items)
-      : result.verdict === 'clean'
-        ? vscode.window.showInformationMessage(text, ...items)
-        : vscode.window.showWarningMessage(text, ...items);
+    result.verdict === 'clean' && !gate.failed
+      ? vscode.window.showInformationMessage(text, ...items)
+      : vscode.window.showWarningMessage(text, ...items);
 
   const choice = await show(message, ...buttons);
   try {
@@ -594,42 +631,6 @@ function showScanError(error: unknown): void {
   vscode.window.showErrorMessage(`SBOM verification failed: ${error instanceof Error ? error.message : error}`);
 }
 
-/**
- * Version-aware error handling: when an SPDX 3.0 upload is rejected by the
- * service, offer to pin the setting to 2.3 and retry. The switch is always
- * the user's explicit click, never automatic.
- *
- * TODO(sbom-total): SBOM Total does not accept SPDX 3.0 yet (verified
- * 2026-07-10: 415 for .jsonld uploads, 422 for JSON-LD content under .json).
- * Requested from the service developer: allow .jsonld in the upload
- * allow-list, detect SPDX 3 by content (@context containing spdx.org/rdf/3.
- * plus a @graph array) and map software_Package elements. Once deployed,
- * re-verify the 3.0 path end-to-end (auto mode already selects 3.0 on capable
- * Zephyr trees) and drop the pin-to-2.3 guidance below.
- */
-async function handleScanError(ctx: SpdxContext, error: unknown, retry: () => Promise<void>): Promise<void> {
-  if (
-    error instanceof SbomTotalError &&
-    (error.kind === 'unparseable' || error.kind === 'unsupported-type') &&
-    resolveSpdxVersion(ctx) === '3.0'
-  ) {
-    if (error.detail) {
-      getOutputChannel().appendLine(`[sbom-total] ${error.kind}${error.status ? ` (HTTP ${error.status})` : ''}: ${error.detail}`);
-    }
-    const switchAction = 'Use SPDX 2.3 and retry';
-    const choice = await vscode.window.showErrorMessage(
-      'The service rejected the SPDX 3.0 SBOM; it probably does not support SPDX 3.0 yet. Switch the scan format setting (zephyr-workbench.sbomTotal.spdxVersion) to 2.3?',
-      switchAction,
-    );
-    if (choice === switchAction) {
-      await getSbomTotalConfig().update(SPDX_VERSION_SETTING_KEY, '2.3', vscode.ConfigurationTarget.Global);
-      await retry();
-    }
-    return;
-  }
-  showScanError(error);
-}
-
 async function runVerifyFlow(
   context: vscode.ExtensionContext,
   ctx: SpdxContext,
@@ -651,7 +652,7 @@ async function runVerifyFlow(
     const bundle = await createClientFromConfig(context);
     await presentOutcome(bundle, outcome, () => runVerifyFlow(context, ctx, runSpdxBuild, true));
   } catch (error) {
-    await handleScanError(ctx, error, () => runVerifyFlow(context, ctx, runSpdxBuild, force));
+    showScanError(error);
   }
 }
 
@@ -699,8 +700,8 @@ async function scanSingleFile(
 ): Promise<void> {
   try {
     const bytes = fs.readFileSync(fileUri.fsPath);
-    // .jsonld is not in the service's extension allow-list; upload SPDX 3.0
-    // documents under a .json name and let the service decide by content.
+    // Upload SPDX 3.0 documents under a .spdx3.json name so the service detects
+    // them by content (a .json name is accepted on every deployment).
     const name = path.basename(fileUri.fsPath).replace(/\.jsonld$/, '.spdx3.json');
     const outcome = await vscode.window.withProgress(
       {
@@ -712,8 +713,8 @@ async function scanSingleFile(
         const abort = new AbortController();
         cancel.onCancellationRequested(() => abort.abort());
         const bundle = await createClientFromConfig(context);
-        progress.report({ message: 'scanning (the scan can take up to a few minutes)...' });
-        const scan = await scanBytes(bundle, bytes, name, { force, signal: abort.signal });
+        progress.report({ message: `scanning ${name}...` });
+        const scan = await scanBytes(bundle, bytes, name, { force, signal: abort.signal, progress, label: `scanning ${name}` });
         return {
           result: scan.result,
           hash: scan.hash,
@@ -771,6 +772,6 @@ export async function createReport(
       },
     );
   } catch (error) {
-    await handleScanError(ctx, error, () => createReport(context, node, format, runSpdxBuild));
+    showScanError(error);
   }
 }

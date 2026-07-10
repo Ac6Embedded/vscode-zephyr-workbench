@@ -108,29 +108,165 @@ export class SbomTotalClient {
   }
 
   /**
-   * Upload one SBOM and wait for the full scan result (the endpoint is synchronous
-   * and may take tens of seconds).
+   * Upload one SBOM and stream the scan (VirusTotal style): the service emits
+   * one Server-Sent event per engine as it finishes, then a final result. This
+   * both surfaces live progress and keeps the connection alive, so a scan that
+   * runs for minutes never trips a fixed total timeout; only a silent
+   * connection (no frame within timeoutMs) aborts.
+   *
+   * Validation failures (415/422/429/...) come back as a normal HTTP status
+   * before the stream opens and are mapped identically to the other endpoints.
    */
-  async scanSbom(
+  async scanSbomStream(
     bytes: Uint8Array,
     fileName: string,
-    options?: { force?: boolean; signal?: AbortSignal },
+    options?: {
+      force?: boolean;
+      signal?: AbortSignal;
+      onPending?: (engineNames: string[]) => void;
+      onEngine?: (engine: ScanEngine) => void;
+    },
   ): Promise<ScanResult> {
     const form = new FormData();
     // Copy into a plain ArrayBuffer-backed view so Node Buffers pool offsets never leak.
-    const payload = new Uint8Array(bytes);
-    form.append('file', new Blob([payload]), fileName);
-
+    form.append('file', new Blob([new Uint8Array(bytes)]), fileName);
     const query = options?.force ? '?force=true' : '';
-    // redirect: 'error' because following a redirect would resend the POST as a
-    // bodyless GET; a redirecting baseUrl must be fixed in the setting instead.
-    const result = await this.perform(
-      `/api/v1/scan-sbom${query}`,
-      { method: 'POST', body: form, redirect: 'error' },
-      options?.signal,
-      'json',
-    );
-    return result.json as ScanResult;
+
+    const controller = new AbortController();
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const armIdle = () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, this.timeoutMs);
+    };
+    const onOuterAbort = () => controller.abort();
+    if (options?.signal) {
+      if (options.signal.aborted) {
+        controller.abort();
+      } else {
+        options.signal.addEventListener('abort', onOuterAbort);
+      }
+    }
+    const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      options?.signal?.removeEventListener('abort', onOuterAbort);
+    };
+    const abortError = (error: unknown): Error => {
+      if (controller.signal.aborted) {
+        if (timedOut) {
+          return new SbomTotalError(
+            `The SBOM Total scan made no progress for ${Math.round(this.timeoutMs / 1000)} seconds. The service may still finish and cache it, so trying again shortly is cheap.`,
+            'timeout',
+          );
+        }
+        return error instanceof Error ? error : new Error(String(error));
+      }
+      return new SbomTotalError(
+        `Could not reach the SBOM Total service at ${this.baseUrl}. Check the URL in Settings (zephyr-workbench.sbomTotal.baseUrl) and your network connection.`,
+        'network', undefined, error instanceof Error ? error.message : String(error),
+      );
+    };
+
+    armIdle();
+    let response: Response;
+    try {
+      const headers: Record<string, string> = {};
+      if (this.token) {
+        headers['Authorization'] = `Bearer ${this.token}`;
+      }
+      response = await fetch(`${this.baseUrl}/api/v1/scan-sbom/stream${query}`, {
+        method: 'POST', body: form, headers, redirect: 'error', signal: controller.signal,
+      });
+    } catch (error) {
+      cleanup();
+      throw abortError(error);
+    }
+
+    if ((response.status === 401 || response.status === 403) && this.anonymousFallback && this.token) {
+      cleanup();
+      // Release the rejected response's connection back to the pool.
+      void response.body?.cancel().catch(() => {});
+      this.token = undefined;
+      return this.scanSbomStream(bytes, fileName, options);
+    }
+    if (!response.ok || !response.body) {
+      let detail = '';
+      try {
+        detail = (await response.text()).slice(0, 2000);
+      } catch {
+        // Keep the status-based message when the body is unreadable.
+      }
+      cleanup();
+      if (!response.ok) {
+        throw this.errorFromStatus(response.status, response.headers, detail);
+      }
+      throw new SbomTotalError('The SBOM Total service did not return a scan stream.', 'unexpected', response.status);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: ScanResult | undefined;
+    try {
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          break;
+        }
+        armIdle();
+        buffer += decoder.decode(chunk.value, { stream: true });
+        let sep: number;
+        while ((sep = buffer.indexOf('\n\n')) >= 0) {
+          const frame = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          const parsed = parseSseFrame(frame);
+          if (!parsed) {
+            continue;
+          }
+          if (parsed.event === 'pending') {
+            const engines = Array.isArray(parsed.data?.engines)
+              ? parsed.data.engines.map((e: ScanEngine) => e?.name ?? '').filter((n: string) => n.length > 0)
+              : [];
+            options?.onPending?.(engines);
+          } else if (parsed.event === 'engine') {
+            options?.onEngine?.(parsed.data as ScanEngine);
+          } else if (parsed.event === 'result') {
+            result = parsed.data as ScanResult;
+          } else if (parsed.event === 'error') {
+            throw new SbomTotalError(
+              typeof parsed.data?.detail === 'string' ? parsed.data.detail : 'The SBOM Total scan failed.',
+              'server',
+            );
+          }
+        }
+      }
+    } catch (error) {
+      // Map the error BEFORE aborting (abortError classifies by signal state),
+      // then close the connection so an abandoned stream (for example after a
+      // mid-stream error frame) does not pin the socket.
+      const mapped = error instanceof SbomTotalError ? error : abortError(error);
+      controller.abort();
+      throw mapped;
+    } finally {
+      cleanup();
+      try {
+        reader.releaseLock();
+      } catch {
+        // Reader may already be released after an abort.
+      }
+    }
+
+    if (!result) {
+      throw new SbomTotalError('The SBOM Total scan stream ended without a result.', 'unexpected');
+    }
+    return result;
   }
 
   /** Download a generated report for a stored scan into destPath. */
@@ -214,6 +350,7 @@ export class SbomTotalClient {
       if ((response.status === 401 || response.status === 403) && this.anonymousFallback && this.token) {
         // The (built-in) token was rejected, probably revoked. Every endpoint
         // used here is public, so drop it and retry once without credentials.
+        void response.body?.cancel().catch(() => {});
         this.token = undefined;
         return await this.perform(apiPath, init, signal, read, options);
       }
@@ -273,7 +410,7 @@ export class SbomTotalClient {
         );
       case 422:
         return new SbomTotalError(
-          'SBOM Total could not parse this file. Note: SPDX 3.0 JSON-LD is not supported yet; generate SPDX 2.3 documents (Only Build SPDX 2.3) and verify again.',
+          'SBOM Total could not parse this SBOM. If it is an SPDX 3.0 document, this service deployment may not support SPDX 3.0 yet; check that the instance at zephyr-workbench.sbomTotal.baseUrl is up to date.',
           'unparseable', status, detail,
         );
       case 429: {
@@ -301,4 +438,26 @@ export class SbomTotalClient {
 
 export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError';
+}
+
+/** Parse one Server-Sent-Events frame ("event: x\ndata: {...}"). */
+function parseSseFrame(frame: string): { event: string; data: any } | undefined {
+  let event = 'message';
+  const dataLines: string[] = [];
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event:')) {
+      event = line.slice('event:'.length).trim();
+    } else if (line.startsWith('data:')) {
+      dataLines.push(line.slice('data:'.length).replace(/^ /, ''));
+    }
+  }
+  if (dataLines.length === 0) {
+    return undefined;
+  }
+  const raw = dataLines.join('\n');
+  try {
+    return { event, data: JSON.parse(raw) };
+  } catch {
+    return { event, data: raw };
+  }
 }

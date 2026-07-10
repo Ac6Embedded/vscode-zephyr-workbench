@@ -213,6 +213,28 @@ describe('spdxSetMerger', () => {
 		}
 	});
 
+	it('resolves cross-document DESCRIBES targets and drops unresolvable ones', () => {
+		// A build-style doc that DESCRIBES a package living in another document,
+		// plus one DESCRIBES pointing at a document outside the merged set.
+		const describerDoc = BUILD_DOC.replace(
+			'Relationship: SPDXRef-DOCUMENT DESCRIBES SPDXRef-zephyr-final',
+			'Relationship: SPDXRef-DOCUMENT DESCRIBES SPDXRef-zephyr-final\nRelationship: SPDXRef-DOCUMENT DESCRIBES DocumentRef-zephyr:SPDXRef-zephyr-sources\nRelationship: SPDXRef-DOCUMENT DESCRIBES DocumentRef-sdk:SPDXRef-sdk-sources',
+		);
+		const outcome = mergeSpdxSet(
+			[
+				{ fileName: 'zephyr.spdx', content: ZEPHYR_DOC },
+				{ fileName: 'build.spdx', content: describerDoc },
+			],
+			{ documentName: 'x' },
+		);
+		assert.equal(outcome.ok, true);
+		if (!outcome.ok) { return; }
+		// Cross-doc target inside the set: rewritten to an internal reference.
+		assert.match(outcome.content, /Relationship: SPDXRef-DOCUMENT DESCRIBES SPDXRef-zephyr-sources/);
+		// Cross-doc target outside the set: dropped, never emitted verbatim.
+		assert.doesNotMatch(outcome.content, /DESCRIBES DocumentRef-/);
+	});
+
 	it('keeps multi-line text values inside package blocks verbatim', () => {
 		const doc = ZEPHYR_DOC.replace(
 			'PackageCopyrightText: NOASSERTION',

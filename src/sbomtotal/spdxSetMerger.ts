@@ -59,7 +59,8 @@ interface ParsedDoc {
   created: string;
   /** DocumentRef-<name> -> referenced DocumentNamespace. */
   externalDocRefs: Map<string, string>;
-  describesLines: string[];
+  /** Targets of document-level DESCRIBES relationships (may be cross-document refs). */
+  describesTargets: string[];
   packages: ParsedPackage[];
   fileIds: Set<string>;
   fileCount: number;
@@ -87,7 +88,7 @@ function parseDoc(fileName: string, content: string): ParsedDoc | { error: strin
     documentNamespace: '',
     created: '',
     externalDocRefs: new Map(),
-    describesLines: [],
+    describesTargets: [],
     packages: [],
     fileIds: new Set(),
     fileCount: 0,
@@ -149,7 +150,7 @@ function parseDoc(fileName: string, content: string): ParsedDoc | { error: strin
       }
       const rel: ParsedRelationship = { from, type, to, raw: line };
       if (from === 'SPDXRef-DOCUMENT' && type === 'DESCRIBES') {
-        doc.describesLines.push(line);
+        doc.describesTargets.push(to);
       } else {
         doc.relationships.push(rel);
       }
@@ -400,9 +401,30 @@ export function mergeSpdxSet(
   out.push(`Created: ${created}`);
   out.push('');
 
+  // DESCRIBES targets go through the same cross-document resolution and
+  // kept-id filtering as every other relationship, so a cross-doc or dropped
+  // target can never leak into the merged document unresolved.
   const seenDescribes = new Set<string>();
   for (const doc of docs) {
-    for (const line of doc.describesLines) {
+    for (const rawTarget of doc.describesTargets) {
+      let target = rawTarget;
+      const crossDocMatch = rawTarget.match(/^(DocumentRef-[^:]+):(\S+)$/);
+      if (crossDocMatch) {
+        const refNamespace = doc.externalDocRefs.get(crossDocMatch[1]);
+        const targetDoc = refNamespace ? namespaceToDoc.get(refNamespace) : undefined;
+        if (!targetDoc) {
+          stats.crossDocRefsDropped += 1;
+          stats.relationshipsDropped += 1;
+          continue;
+        }
+        stats.crossDocRefsResolved += 1;
+        target = crossDocMatch[2];
+      }
+      if (!packageIds.has(target)) {
+        stats.relationshipsDropped += 1;
+        continue;
+      }
+      const line = `Relationship: SPDXRef-DOCUMENT DESCRIBES ${target}`;
       if (!seenDescribes.has(line)) {
         seenDescribes.add(line);
         out.push(line);

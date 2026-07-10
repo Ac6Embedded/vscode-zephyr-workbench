@@ -94,17 +94,6 @@
             "markdownDescription": "Base URL of the SBOM Total verification service. Change this if you use a self-hosted instance (for example `http://localhost:8000`).",
             "scope": "machine-overridable"
           },
-          "zephyr-workbench.sbomTotal.spdxVersion": {
-            "type": "string",
-            "enum": [
-              "auto",
-              "2.3",
-              "3.0"
-            ],
-            "default": "auto",
-            "markdownDescription": "SPDX version that Full SBOM Total generates and analyzes. `auto` uses SPDX 3.0 when the Zephyr tree can generate it and SPDX 2.3 otherwise. Pin `2.3` or `3.0` to force a specific version (for example `2.3` if the verification service does not accept SPDX 3.0). There is no scan-time fallback between versions.",
-            "scope": "machine-overridable"
-          },
           "zephyr-workbench.sbomTotal.failOn": {
             "type": "string",
             "enum": [
@@ -2219,6 +2208,10 @@
         },
         {
           "command": "zephyr-workbench-app-explorer.spdx.report.md",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
           "when": "false"
         },
         {
