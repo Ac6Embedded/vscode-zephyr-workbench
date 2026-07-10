@@ -811,14 +811,17 @@ vscode-button {
   user-select: none;
 }
 
-/* Keep the "Enter custom board..." escape hatch as a fixed footer below the
-   scrolling board list: the list scrolls inside #boardDropdownItems while the
-   footer stays put, so it is always reachable and never overlaps the rows. */
-#boardDropdown {
+/* Keep the escape hatches ("Enter custom board...", "Add new toolchain...")
+   as fixed footers below their scrolling lists: the list scrolls inside the
+   inner items container while the footer stays put, so it is always
+   reachable and never overlaps the rows. The sdk rules are scoped to the
+   create-app panel: the import wizard reuses the #sdkDropdown id for a flat
+   list that must keep the default .dropdown-content scroll cap. */
+#boardDropdown, .create-app-panel #sdkDropdown {
   max-height: none;
   overflow: visible;
 }
-#boardDropdownItems {
+#boardDropdownItems, .create-app-panel #sdkDropdownItems {
   max-height: var(--dropdown-list-max-height);
   overflow-y: auto;
 }

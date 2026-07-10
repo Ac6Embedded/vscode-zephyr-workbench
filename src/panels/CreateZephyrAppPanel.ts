@@ -1,13 +1,13 @@
 import * as vscode from "vscode";
 import path from "path";
-import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from "../constants";
+import { ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from "../constants";
 import { normalizeZephyrSdkVariant, RustToolchainInstallation, ZephyrSdkVariantId } from "../models/ToolchainInstallations";
 import { WestWorkspace } from "../models/WestWorkspace";
 import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
 import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
 import { describeZephyrApplicationDetectionFailure, fileExists, findRustToolchainInstallation, getAllZephyrSdkInstallations, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredRustToolchainInstallations, getListSamples, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, isGlobalSdkSettingValue, tryGetZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
-import { resolveDefaultGlobalSdk, resolveGlobalSdkForZephyr } from "../utils/zephyr/globalSdkService";
+import { refreshGlobalSdkDetection, resolveDefaultGlobalSdk, resolveGlobalSdkForZephyr } from "../utils/zephyr/globalSdkService";
 import { ZEPHYR_PROJECT_SDK_GLOBAL_VALUE } from "../constants";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
@@ -41,6 +41,7 @@ export class CreateZephyrAppPanel {
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _workspaceLoadRequestId = 0;
+  private _wasPanelVisible = true;
   private _disposables: vscode.Disposable[] = [];
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
@@ -52,6 +53,34 @@ export class CreateZephyrAppPanel {
   public async createContent() {
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
     this._setWebviewMessageListener(this._panel.webview);
+
+    // Keep the toolchain dropdown current: registered toolchains live in the
+    // four list settings, while global SDKs only live in the detection cache,
+    // hence the additional refresh whenever the panel becomes visible again.
+    this._disposables.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        const listKeys = [
+          ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY,
+          ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY,
+          ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY,
+          ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY,
+        ];
+        if (listKeys.some(key => event.affectsConfiguration(`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${key}`))) {
+          void this._pushToolchainList();
+        }
+      })
+    );
+    this._panel.onDidChangeViewState(async () => {
+      // The event also fires when only focus (active) changes; refresh solely
+      // on the hidden-to-visible transition.
+      const visible = this._panel.visible;
+      const wasVisible = this._wasPanelVisible;
+      this._wasPanelVisible = visible;
+      if (visible && !wasVisible) {
+        await refreshGlobalSdkDetection();
+        void this._pushToolchainList();
+      }
+    }, null, this._disposables);
   }
 
   public static render(extensionUri: vscode.Uri) {
@@ -85,17 +114,7 @@ export class CreateZephyrAppPanel {
     }
   }
 
-  private async _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
-    const webviewUri = getUri(webview, extensionUri, ["out", "createzephyrapp.js"]);
-    const styleUri = getUri(webview, extensionUri, ["out", "style.css"]);
-    const codiconUri = getUri(webview, extensionUri, ["out", "codicon.css"]);
-
-    const nonce = getNonce();
-    let workspacesHTML = '';
-    for (const westWorkspace of getWestWorkspaces()) {
-      workspacesHTML += `<div class="dropdown-item" data-value="${westWorkspace.rootUri}" data-label="${westWorkspace.name}" data-path="${westWorkspace.rootUri.fsPath}">${westWorkspace.name}<span class="description">${westWorkspace.rootUri.fsPath}</span></div>`;
-    }
-
+  private async _buildToolchainItemsHTML(): Promise<string> {
     let sdkHTML = '';
     // Pathless global entry first: usable even when no SDK is registered, so
     // app creation works on machines that only have a globally installed SDK.
@@ -128,6 +147,36 @@ export class CreateZephyrAppPanel {
         : undefined;
       sdkHTML += `<div class="dropdown-item" data-type="rust" data-value="${rustToolchain.toolchainPath}" data-label="${label}" data-has-llvm="${linkedSdk?.hasLlvmToolchain() ? 'true' : 'false'}">${label}<span class="description">${rustToolchain.toolchainPath}</span></div>`;
     }
+    return sdkHTML;
+  }
+
+  /** Push a freshly built toolchain list to the webview's dropdown. */
+  private async _pushToolchainList(): Promise<void> {
+    try {
+      const html = await this._buildToolchainItemsHTML();
+      this._panel.webview.postMessage({ command: 'updateToolchainList', html });
+    } catch {
+      // A failed refresh must never break the panel; the stale list stays.
+    }
+  }
+
+  /** Called by the extension after global SDK installs/deletions, which write no settings. */
+  public async refreshToolchains(): Promise<void> {
+    await this._pushToolchainList();
+  }
+
+  private async _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
+    const webviewUri = getUri(webview, extensionUri, ["out", "createzephyrapp.js"]);
+    const styleUri = getUri(webview, extensionUri, ["out", "style.css"]);
+    const codiconUri = getUri(webview, extensionUri, ["out", "codicon.css"]);
+
+    const nonce = getNonce();
+    let workspacesHTML = '';
+    for (const westWorkspace of getWestWorkspaces()) {
+      workspacesHTML += `<div class="dropdown-item" data-value="${westWorkspace.rootUri}" data-label="${westWorkspace.name}" data-path="${westWorkspace.rootUri.fsPath}">${westWorkspace.name}<span class="description">${westWorkspace.rootUri.fsPath}</span></div>`;
+    }
+
+    const sdkHTML = await this._buildToolchainItemsHTML();
 
     const intellisenseDefault = pickDefaultIntelliSenseProvider();
     const intellisenseAvailability = describeIntelliSenseAvailability();
@@ -182,7 +231,8 @@ export class CreateZephyrAppPanel {
                       </slot>
                     </div>
                     <div id="sdkDropdown" class="dropdown-content" style="display: none;">
-                      ${sdkHTML}
+                      <div id="sdkDropdownItems">${sdkHTML}</div>
+                      <div id="sdkAddToolchainItem" class="dropdown-item dropdown-item-custom" data-add-toolchain="true">Add new toolchain...<span class="description">Open the Add Toolchain wizard</span></div>
                     </div>
                   </div>
                   <div id="sdkCompatStatus" class="combo-status" role="status" aria-live="polite"></div>
@@ -390,6 +440,13 @@ export class CreateZephyrAppPanel {
             }
             break;
           }
+          case 'openAddToolchainWizard':
+            await vscode.commands.executeCommand('zephyr-workbench-sdk-explorer.open-wizard');
+            break;
+          case 'toolchainListRequest':
+            await refreshGlobalSdkDetection();
+            await this._pushToolchainList();
+            break;
           case "create":
             try {
               await handleCreateMessage(message);
@@ -1182,7 +1239,7 @@ function checkCreateParameters(message: any, projectParentPath: string) {
   }
 
   if (isMissingValue(message.toolchainInstallationPath)) {
-    vscode.window.showErrorMessage('Missing toolchain, please select a toolchain for your project');
+    vscode.window.showErrorMessage('Missing toolchain, please select a toolchain for your project. Use "Add new toolchain..." in the toolchain list to install one.');
     return false;
   }
 

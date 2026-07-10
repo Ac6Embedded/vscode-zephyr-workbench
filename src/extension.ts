@@ -74,7 +74,7 @@ import { registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zeph
 import { checkRustPrerequisites, findRustup, getManagedRustupRootDir, installManagedRustup, installMsvcBuildTools, installRustToolchainViaRustup, MSVC_BUILD_TOOLS_MANUAL_URL, resolveRustupToolchainName, uninstallRustToolchainViaRustup } from './utils/zephyr/rustupUtils';
 import { buildLlvmDownloadUrl, buildRustDistUrls, detectRustVersion, getLlvmTopLevelDirName, getRustDistTopLevelDirName, getRustHostTriple, installMingwToolchain, installRustDistComponents, isLlvmPath, registerRustToolchain, unregisterRustToolchain, updateRustToolchainLink, updateRustToolchainLlvm, WINLIBS_MANUAL_URL } from './utils/zephyr/rustToolchainUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
-import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getAllZephyrSdkInstallations, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, isGlobalSdkSettingValue, isWorkspaceFolder, msleep, pruneMissingToolchains, removeWorkspaceFolder, tryGetZephyrSdkInstallation, checkZinstallerVersion } from './utils/utils';
+import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getAllZephyrSdkInstallations, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, isGlobalSdkSettingValue, isWorkspaceFolder, msleep, pruneMissingToolchains, removeWorkspaceFolder, tryGetZephyrSdkInstallation, checkZinstallerVersion } from './utils/utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
 import { createReport, setApiToken, verifySbomFile, verifySbomSet } from './sbomtotal/sbomVerifyService';
@@ -3332,6 +3332,7 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 					await refreshGlobalSdkDetection();
 					toolchainInstallationsProvider.refresh();
+					void CreateZephyrAppPanel.currentPanel?.refreshToolchains();
 				});
 				return;
 			}
@@ -3351,6 +3352,7 @@ export function activate(context: vscode.ExtensionContext) {
 					}, progress, token);
 					await refreshGlobalSdkDetection();
 					toolchainInstallationsProvider.refresh();
+					void CreateZephyrAppPanel.currentPanel?.refreshToolchains();
 					vscode.window.showInformationMessage(
 						`Zephyr SDK ${version} installed globally at ${result.sdkPath}. The Zephyr build system discovers it automatically.`
 					);
@@ -3363,6 +3365,7 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 					await refreshGlobalSdkDetection();
 					toolchainInstallationsProvider.refresh();
+					void CreateZephyrAppPanel.currentPanel?.refreshToolchains();
 				}
 			});
 		})
@@ -3682,6 +3685,7 @@ export function activate(context: vscode.ExtensionContext) {
 					await removeCmakeRegistryEntriesForSdk(sdkPath);
 					await refreshGlobalSdkDetection();
 					toolchainInstallationsProvider.refresh();
+					void CreateZephyrAppPanel.currentPanel?.refreshToolchains();
 					if (sources.includes('env')) {
 						vscode.window.showInformationMessage(
 							'Note: your ZEPHYR_SDK_INSTALL_DIR environment variable still points at this SDK location. Unset it to avoid confusing builds.'
@@ -4144,29 +4148,10 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 				return;
 			}
-			const [
-				zephyrSdkInstallations,
-				iarToolchainInstallations,
-				armGnuToolchainInstallations,
-			] = await Promise.all([
-				getRegisteredZephyrSdkInstallations(),
-				getRegisteredIarToolchainInstallations(),
-				getRegisteredArmGnuToolchainInstallations(),
-			]);
-
-			if (
-				zephyrSdkInstallations.length === 0
-				&& iarToolchainInstallations.length === 0
-				&& armGnuToolchainInstallations.length === 0
-			) {
-				const importToolchainItem = 'Import Toolchain';
-				const choice = await vscode.window.showErrorMessage("No toolchain found. Please import a toolchain first.", importToolchainItem);
-				if (choice === importToolchainItem) {
-					vscode.commands.executeCommand('zephyr-workbench-sdk-explorer.open-wizard');
-				}
-				return;
-			}
-
+			// No toolchain gate here: the wizard offers an "Add new toolchain..."
+			// entry, so it must open even on a machine with nothing installed yet.
+			// Refresh detection first so the Global Zephyr SDK entry is current.
+			await refreshGlobalSdkDetection();
 			CreateZephyrAppPanel.render(context.extensionUri);
 		})
 	);

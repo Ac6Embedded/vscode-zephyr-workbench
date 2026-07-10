@@ -41,6 +41,12 @@ function main() {
 
   setVSCodeMessageListener();
 
+  // Pull a fresh toolchain list on every (re)load: the panel is not retained
+  // while hidden, so a reload restores the originally baked list and any
+  // update pushed while hidden was dropped. Requesting it from here means the
+  // reply always arrives after the message listener above is registered.
+  webviewApi.postMessage({ command: 'toolchainListRequest' });
+
   const workspaceInput = document.getElementById('workspaceInput') as HTMLInputElement;
   const sdkInput = document.getElementById('sdkInput') as HTMLInputElement;
   const workspaceDropdown = document.getElementById('workspaceDropdown') as HTMLElement;
@@ -141,8 +147,20 @@ function main() {
     event.preventDefault();
   });
 
-  addDropdownItemEventListeners(sdkDropdown, sdkInput);
+  // Wire only the inner list: the "Add new toolchain..." footer must not get
+  // the generic pick handler (which would copy its label into the input).
+  const sdkDropdownItems = document.getElementById('sdkDropdownItems') as HTMLElement;
+  addDropdownItemEventListeners(sdkDropdownItems, sdkInput, sdkDropdown);
   updateToolchainVariantVisibility();
+
+  const sdkAddToolchainItem = document.getElementById('sdkAddToolchainItem');
+  if (sdkAddToolchainItem) {
+    sdkAddToolchainItem.addEventListener('pointerdown', function (event) {
+      event.preventDefault();
+      webviewApi.postMessage({ command: 'openAddToolchainWizard' });
+      sdkDropdown.style.display = 'none';
+    });
+  }
 
 
   boardInput.addEventListener('focusin', function () {
@@ -487,6 +505,47 @@ function updateToolchainVariantVisibility() {
   }
 }
 
+/**
+ * Replace the toolchain list with a fresh one from the extension (sent after
+ * toolchains are added or removed). A still-valid selection is kept; a
+ * selection whose entry disappeared is cleared.
+ */
+function applyToolchainList(html: string) {
+  const sdkInput = document.getElementById('sdkInput') as HTMLInputElement;
+  const sdkDropdown = document.getElementById('sdkDropdown') as HTMLElement;
+  const items = document.getElementById('sdkDropdownItems') as HTMLElement | null;
+  if (!items) {
+    return;
+  }
+  items.innerHTML = html;
+  addDropdownItemEventListeners(items, sdkInput, sdkDropdown);
+
+  const selectedValue = sdkInput.getAttribute('data-value') ?? '';
+  if (selectedValue.length > 0) {
+    const match = Array.from(items.getElementsByClassName('dropdown-item'))
+      .map(el => el as HTMLElement)
+      .find(el => (el.dataset.value ?? '') === selectedValue);
+    if (match) {
+      // Re-sync LLVM availability: a refreshed SDK may have gained or lost it.
+      const hasLlvm = match.dataset.hasLlvm ?? '';
+      if (hasLlvm) {
+        sdkInput.setAttribute('data-has-llvm', hasLlvm);
+      } else {
+        sdkInput.removeAttribute('data-has-llvm');
+      }
+    } else {
+      resetComboInput(sdkInput);
+    }
+  }
+  // Mid-filter (text typed, nothing picked) the fresh items arrive unfiltered;
+  // re-apply the filter so the list keeps matching the input.
+  if ((sdkInput.getAttribute('data-value') ?? '') === '' && sdkInput.value.length > 0) {
+    filterFunction(sdkInput, sdkDropdown);
+  }
+  updateToolchainVariantVisibility();
+  notifySdkCompatCheck();
+}
+
 function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
   const filter = input.value.toUpperCase();
   const items = dropdown.getElementsByClassName('dropdown-item');
@@ -494,8 +553,8 @@ function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i] as HTMLElement;
-    // The custom-board escape hatch stays visible regardless of the filter.
-    if (item.dataset.customBoard === 'true') {
+    // Escape hatches (custom board, add toolchain) stay visible regardless of the filter.
+    if (item.dataset.customBoard === 'true' || item.dataset.addToolchain === 'true') {
       item.style.display = '';
       continue;
     }
@@ -740,6 +799,9 @@ function setVSCodeMessageListener() {
         break;
       case 'sdkCompatResult':
         updateSdkCompatStatus(event.data.message);
+        break;
+      case 'updateToolchainList':
+        applyToolchainList(event.data.html ?? '');
         break;
     }
 
