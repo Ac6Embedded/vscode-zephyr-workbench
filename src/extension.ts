@@ -575,6 +575,12 @@ export function activate(context: vscode.ExtensionContext) {
 	// the accordion, collapses the others). Silent no-op for files outside any
 	// app or under the build output.
 	const revealActiveEditorInCodeExplorer = async (editor: vscode.TextEditor | undefined): Promise<void> => {
+		// Only sync the tree when the Applications view is already showing. reveal() would
+		// otherwise force the sidebar to switch to the Zephyr Workbench container even for files
+		// opened from the built-in File Explorer, Go to File, search results, etc.
+		if (!appTreeView.visible) {
+			return;
+		}
 		if (!editor || editor.document.uri.scheme !== 'file') {
 			return;
 		}
