@@ -7,7 +7,7 @@ import { prependRustBinPath } from '../models/ToolchainInstallations';
 import { ZephyrApplication } from '../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
-import { concatCommands, executeTask, execShellCommandWithEnv, getConfiguredVenvPath, getConfiguredWorkbenchPath, getOutputChannel, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars, spawnCommandWithEnv } from '../utils/execUtils';
+import { concatCommands, executeTask, executeTaskCollectExitCode, execShellCommandWithEnv, getConfiguredVenvPath, getConfiguredWorkbenchPath, getOutputChannel, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars, spawnCommandWithEnv } from '../utils/execUtils';
 import { fileExists, getWestWorkspace, normalizePath, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { composeWestBuildArgs, hasWestBuildSourceDirArg } from '../utils/zephyr/westArgUtils';
 import { ZEPHYR_LANG_RUST_PROJECT_NAME } from '../utils/zephyr/manifestUtils';
@@ -461,12 +461,12 @@ export async function westBuildCommand(
   westWorkspace: WestWorkspace,
   extraWestArgs = '',
   configName?: string,
-): Promise<void> {
+): Promise<number | undefined> {
   const refreshCppProperties = zephyrProject.intellisenseProvider === 'clangd'
     ? async () => {}
     : await createCppPropertiesCompileCommandsRefresh(zephyrProject.appWorkspaceFolder);
   try {
-    await runWestBuildCommand(zephyrProject, westWorkspace, {
+    return await runWestBuildCommand(zephyrProject, westWorkspace, {
       configName,
       extraWestArgs,
       pristine: 'never',
@@ -504,7 +504,7 @@ async function runWestBuildCommand(
   zephyrProject: ZephyrApplication,
   _westWorkspace: WestWorkspace,
   runOptions: WestBuildRunOptions,
-): Promise<void> {
+): Promise<number | undefined> {
   const buildConfig = resolveBuildConfig(zephyrProject, runOptions.configName);
   if (!buildConfig?.boardIdentifier || !zephyrProject.appRootPath) {
     return;
@@ -522,7 +522,7 @@ async function runWestBuildCommand(
     return;
   }
 
-  await executeTask(task);
+  return await executeTaskCollectExitCode(task);
 }
 
 function resolveBuildConfig(
@@ -547,7 +547,10 @@ export async function westSpdxInitCommand(
   if (!task) {
     return;
   }
-  await executeTask(task);
+  const exitCode = await executeTaskCollectExitCode(task);
+  if (typeof exitCode === 'number' && exitCode !== 0) {
+    throw new Error(`'west spdx --init' failed with exit code ${exitCode}. See the terminal output.`);
+  }
 }
 
 export async function westSpdxGenerateCommand(
@@ -560,11 +563,20 @@ export async function westSpdxGenerateCommand(
     return;
   }
   const taskName = spdxVersion === '3.0' ? 'SPDX generate 3.0' : 'SPDX generate';
-  const task = buildDirectTask(zephyrProject.appWorkspaceFolder, taskName, buildConfig.name, {}, zephyrProject);
+  // sdk.spdx is opt-in for `west spdx`; follow the SBOM Total verification setting
+  // so every generation path (manual build or auto-verify) stays consistent.
+  const includeSdk = vscode.workspace
+    .getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
+    .get<boolean>('sbomTotal.includeSdk', false);
+  const options = includeSdk ? { extraArgs: ['--include-sdk'] } : {};
+  const task = buildDirectTask(zephyrProject.appWorkspaceFolder, taskName, buildConfig.name, options, zephyrProject);
   if (!task) {
     return;
   }
-  await executeTask(task);
+  const exitCode = await executeTaskCollectExitCode(task);
+  if (typeof exitCode === 'number' && exitCode !== 0) {
+    throw new Error(`'west spdx' failed with exit code ${exitCode}. See the terminal output.`);
+  }
 }
 
 function makeWestArgs(

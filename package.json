@@ -88,6 +88,40 @@
             "description": "Path to your Python virtual environment directory (root). Leave empty to use the default internal environment.",
             "scope": "machine-overridable"
           },
+          "zephyr-workbench.sbomTotal.baseUrl": {
+            "type": "string",
+            "default": "https://sbomtotal.com",
+            "markdownDescription": "Base URL of the SBOM Total verification service. Change this if you use a self-hosted instance (for example `http://localhost:8000`).",
+            "scope": "machine-overridable"
+          },
+          "zephyr-workbench.sbomTotal.spdxVersion": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "2.3",
+              "3.0"
+            ],
+            "default": "auto",
+            "markdownDescription": "SPDX version that Full SBOM Total generates and analyzes. `auto` uses SPDX 3.0 when the Zephyr tree can generate it and SPDX 2.3 otherwise. Pin `2.3` or `3.0` to force a specific version (for example `2.3` if the verification service does not accept SPDX 3.0). There is no scan-time fallback between versions.",
+            "scope": "machine-overridable"
+          },
+          "zephyr-workbench.sbomTotal.failOn": {
+            "type": "string",
+            "enum": [
+              "actionable",
+              "risk",
+              "never"
+            ],
+            "default": "actionable",
+            "description": "When SBOM verification is reported as failed: 'actionable' fails if any actionable vulnerabilities are found, 'risk' fails only on a risk verdict, 'never' always reports as informational.",
+            "scope": "machine-overridable"
+          },
+          "zephyr-workbench.sbomTotal.includeSdk": {
+            "type": "boolean",
+            "default": false,
+            "description": "Also generate sdk.spdx (west spdx --include-sdk) and scan it separately as build environment information. It never changes the firmware verdict.",
+            "scope": "machine-overridable"
+          },
           "zephyr-workbench.listSDKs": {
             "type": "array",
             "default": [],
@@ -646,33 +680,43 @@
       },
       {
         "command": "zephyr-workbench-app-explorer.spdx.build",
-        "title": "Build SPDX",
+        "title": "Only Build SPDX 2.3",
         "category": "Zephyr Workbench/Application"
       },
       {
         "command": "zephyr-workbench-app-explorer.spdx.build3",
-        "title": "Build SPDX 3",
+        "title": "Only Build SPDX 3",
         "category": "Zephyr Workbench/Application"
       },
       {
-        "command": "zephyr-workbench-app-explorer.spdx.install-dependencies",
-        "title": "Install dependencies",
+        "command": "zephyr-workbench-app-explorer.spdx.verify",
+        "title": "Full SBOM Total",
         "category": "Zephyr Workbench/Application"
       },
       {
-        "command": "zephyr-workbench-app-explorer.spdx.analyze.ntia-checker",
-        "title": "ntia-checker",
+        "command": "zephyr-workbench-app-explorer.spdx.verify.file",
+        "title": "Verify Single SPDX File",
         "category": "Zephyr Workbench/Application"
       },
       {
-        "command": "zephyr-workbench-app-explorer.spdx.analyze.sbom2doc",
-        "title": "sbom2doc",
+        "command": "zephyr-workbench-app-explorer.spdx.report.pdf",
+        "title": "PDF Report",
         "category": "Zephyr Workbench/Application"
       },
       {
-        "command": "zephyr-workbench-app-explorer.spdx.analyze.cve-bin-tool",
-        "title": "cve-bin-tool",
+        "command": "zephyr-workbench-app-explorer.spdx.report.docx",
+        "title": "Word Report (DOCX)",
         "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench-app-explorer.spdx.report.md",
+        "title": "Markdown Report",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
+        "command": "zephyr-workbench.sbom-total.set-token",
+        "title": "Set SBOM Total API Token",
+        "category": "Zephyr Workbench"
       },
       {
         "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
@@ -1148,7 +1192,11 @@
       },
       {
         "id": "zephyr-workbench-app-explorer.spdx.analyze",
-        "label": "Analyze SPDX"
+        "label": "Analysis"
+      },
+      {
+        "id": "zephyr-workbench-app-explorer.spdx.report",
+        "label": "Create Report"
       },
       {
         "id": "zephyr-workbench-app-explorer.sysbuild-submenu",
@@ -1956,59 +2004,69 @@
       ],
       "zephyr-workbench-app-explorer.spdx": [
         {
-          "command": "zephyr-workbench-app-explorer.spdx.install-dependencies",
+          "command": "zephyr-workbench-app-explorer.spdx.build",
           "group": "0@view/item/context@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.spdx.build",
+          "command": "zephyr-workbench-app-explorer.spdx.build3",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "command": "zephyr-workbench-app-explorer.spdx.build3",
+          "submenu": "zephyr-workbench-app-explorer.spdx.analyze",
           "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "submenu": "zephyr-workbench-app-explorer.spdx.analyze",
+          "submenu": "zephyr-workbench-app-explorer.spdx.report",
           "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ],
       "zephyr-workbench-app-explorer.config.spdx": [
         {
-          "command": "zephyr-workbench-app-explorer.spdx.install-dependencies",
+          "command": "zephyr-workbench-app-explorer.spdx.build",
           "group": "0@view/item/context@0",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
-          "command": "zephyr-workbench-app-explorer.spdx.build",
+          "command": "zephyr-workbench-app-explorer.spdx.build3",
           "group": "0@view/item/context@1",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
-          "command": "zephyr-workbench-app-explorer.spdx.build3",
+          "submenu": "zephyr-workbench-app-explorer.spdx.analyze",
           "group": "0@view/item/context@2",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
-          "submenu": "zephyr-workbench-app-explorer.spdx.analyze",
+          "submenu": "zephyr-workbench-app-explorer.spdx.report",
           "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         }
       ],
       "zephyr-workbench-app-explorer.spdx.analyze": [
         {
-          "command": "zephyr-workbench-app-explorer.spdx.analyze.ntia-checker",
+          "command": "zephyr-workbench-app-explorer.spdx.verify",
           "group": "0@view/item/context@0"
         },
         {
-          "command": "zephyr-workbench-app-explorer.spdx.analyze.sbom2doc",
+          "command": "zephyr-workbench-app-explorer.spdx.verify.file",
+          "group": "0@view/item/context@1"
+        }
+      ],
+      "zephyr-workbench-app-explorer.spdx.report": [
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.report.pdf",
+          "group": "0@view/item/context@0"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.report.docx",
           "group": "0@view/item/context@1"
         },
         {
-          "command": "zephyr-workbench-app-explorer.spdx.analyze.cve-bin-tool",
+          "command": "zephyr-workbench-app-explorer.spdx.report.md",
           "group": "0@view/item/context@2"
         }
       ],
@@ -2122,19 +2180,23 @@
           "when": "false"
         },
         {
-          "command": "zephyr-workbench-app-explorer.spdx.install-dependencies",
+          "command": "zephyr-workbench-app-explorer.spdx.verify",
           "when": "false"
         },
         {
-          "command": "zephyr-workbench-app-explorer.spdx.analyze.ntia-checker",
+          "command": "zephyr-workbench-app-explorer.spdx.verify.file",
           "when": "false"
         },
         {
-          "command": "zephyr-workbench-app-explorer.spdx.analyze.sbom2doc",
+          "command": "zephyr-workbench-app-explorer.spdx.report.pdf",
           "when": "false"
         },
         {
-          "command": "zephyr-workbench-app-explorer.spdx.analyze.cve-bin-tool",
+          "command": "zephyr-workbench-app-explorer.spdx.report.docx",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.report.md",
           "when": "false"
         },
         {
@@ -2438,7 +2500,7 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
-    "test:unit": "cross-env NODE_PATH=src/test/unit/stubs mocha -r ts-node/register src/test/unit/**/*.test.ts",
+    "test:unit": "cross-env NODE_PATH=src/test/unit/stubs mocha -r ts-node/register \"src/test/unit/**/*.test.ts\"",
     "test:integration": "node ./out/test/runTest.js",
     "coverage": "nyc npm run test:unit"
   },

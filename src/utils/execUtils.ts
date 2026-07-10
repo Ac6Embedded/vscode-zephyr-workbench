@@ -858,6 +858,32 @@ export async function executeTask(task: vscode.Task): Promise<vscode.TaskExecuti
   });
 }
 
+/**
+ * Like `executeTask` (including the west-build-state persistence side effect)
+ * but resolves with the process exit code so callers can detect failure.
+ * Resolves undefined when the platform does not report an exit code.
+ */
+export async function executeTaskCollectExitCode(task: vscode.Task): Promise<number | undefined> {
+  const execution = await vscode.tasks.executeTask(task);
+  return new Promise(resolve => {
+    const disp = vscode.tasks.onDidEndTaskProcess(e => {
+      if (e.execution === execution) {
+        disp.dispose();
+        const buildStatePath = e.execution.task.definition.__westBuildStatePath;
+        const buildState = e.execution.task.definition.__westBuildState;
+        if (typeof buildStatePath === 'string' && typeof buildState === 'string') {
+          try {
+            writeWestBuildState(buildStatePath, JSON.parse(buildState) as WestBuildState);
+          } catch {
+            // Ignore malformed build-state metadata and just report the exit code.
+          }
+        }
+        resolve(e.exitCode);
+      }
+    });
+  });
+}
+
 export function isCygwin(shellPath: string): boolean {
   return /\\cygwin[^\\]*\\bin\\bash.exe$/i.test(shellPath);
 }

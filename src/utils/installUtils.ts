@@ -1150,12 +1150,6 @@ export async function installOpenOcdRunnerSilently(context: vscode.ExtensionCont
   }
 }
 
-const SPDX_VENV_EXTRA_PACKAGES = [
-  'ntia-conformance-checker',
-  'cve-bin-tool',
-  'sbom2doc',
-];
-
 interface CreateLocalManagedVenvOptions {
   venvDirName: string;
   westWorkspacePathOverride?: string;
@@ -1453,16 +1447,6 @@ export async function createLocalVenv(
   });
 }
 
-export async function createLocalVenvSPDX(
-  context: vscode.ExtensionContext,
-  workbenchFolder: vscode.WorkspaceFolder
-): Promise<string | undefined> {
-  return createLocalManagedVenv(context, workbenchFolder, {
-    venvDirName: '.venv-spdx',
-    extraPackages: SPDX_VENV_EXTRA_PACKAGES,
-  });
-}
-
 /**
  * Create a `.venv` at the root of a west workspace (topdir), shared by every
  * application of that workspace. Installs the `tools.yml` base packages always,
@@ -1517,17 +1501,6 @@ export function findManagedVenvExecutablePath(
   );
 
   return fileExists(executablePath) ? executablePath : undefined;
-}
-
-export function findVenvSPDXDirectory(destDir: string): string | undefined {
-  return findManagedVenvDirectory(destDir, '.venv-spdx');
-}
-
-export function findVenvSPDXExecutablePath(
-  destDir: string,
-  executableName: string,
-): string | undefined {
-  return findManagedVenvExecutablePath(destDir, '.venv-spdx', executableName);
 }
 
 export async function cleanupDownloadDir(context: vscode.ExtensionContext) {

@@ -1339,6 +1339,8 @@ export interface BuildDirectTaskOptions {
   flashRunner?: string;
   flashRunnerArgs?: string;
   rawWestArgsOverride?: string;
+  /** Extra command-line arguments appended verbatim (e.g. `--include-sdk` for `west spdx`). */
+  extraArgs?: string[];
 }
 
 function getFlashRunnerPickItems(
@@ -1452,6 +1454,9 @@ export function buildDirectTask(
     }
     if (taskName === 'West Flash' && options.flashRunner) {
       args.push(`--runner ${options.flashRunner}`);
+    }
+    if (options.extraArgs?.length) {
+      args.push(...options.extraArgs);
     }
     const subcommand = taskDef.command === 'west' ? taskDef.args[0]?.split(' ')[0] : undefined;
     const skipBoard = subcommand !== undefined && WEST_SUBCOMMANDS_WITHOUT_BOARD.has(subcommand);

@@ -38,7 +38,7 @@ import {
 	removeApplicationLaunchConfigurations,
 } from './utils/debugTools/debugUtils';
 import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
-import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, createLocalVenvSPDX, createWorkspaceVenv, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
+import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, createWorkspaceVenv, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
 import { probeHomebrew } from './utils/hostToolsStatusUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
@@ -77,7 +77,7 @@ import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
 import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getAllZephyrSdkInstallations, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredZephyrSdkInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, isGlobalSdkSettingValue, isWorkspaceFolder, msleep, pruneMissingToolchains, removeWorkspaceFolder, tryGetZephyrSdkInstallation, checkZinstallerVersion } from './utils/utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
-import { execCveBinToolCommand, execNtiaCheckerCommand, execSBom2DocCommand } from './commands/SPDXCommands';
+import { createReport, setApiToken, verifySbomFile, verifySbomSet } from './sbomtotal/sbomVerifyService';
 import { syncAutoDetectEnv } from './utils/debugTools/autoDetectSyncUtils';
 import { initDtsIntegration } from './utils/zephyr/dtsIntegration';
 import { normalizeWestFlagDValue } from './utils/zephyr/westArgUtils';
@@ -1431,110 +1431,44 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.install-dependencies', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			vscode.window.withProgress({
-				location: vscode.ProgressLocation.Notification,
-				title: "Create new local environment for SPDX",
-				cancellable: false,
-			}, async () => {
-				await createLocalVenvSPDX(context, node.project.appWorkspaceFolder);
-			}
-			);
+		vscode.commands.registerCommand('zephyr-workbench.sbom-total.set-token', async () => {
+			await setApiToken(context);
 		})
 	);
 
-	function getSpdxParentUri(node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem): vscode.Uri | undefined {
-		if (!node.project) {
-			return undefined;
-		}
-
-		const targetConfig =
-			node instanceof ZephyrConfigTreeItem
-				? node.buildConfig
-				: node.project.buildConfigs.find(config => config.active) ?? node.project.buildConfigs[0];
-		if (!targetConfig) {
-			return undefined;
-		}
-
-		const buildUri = vscode.Uri.file(targetConfig.getBuildDir(node.project));
-		return vscode.Uri.joinPath(buildUri, 'spdx');
-	}
-
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.analyze.ntia-checker', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.verify', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
 			if (node.project) {
-				const parentUri = getSpdxParentUri(node);
-				if (parentUri && fileExists(parentUri.fsPath)) {
-					const spdxFile = await openSPDXDialog(parentUri);
-					if (spdxFile) {
-						await execNtiaCheckerCommand(spdxFile.fsPath, node.project);
-					}
-				} else {
-					vscode.window.showErrorMessage("No SPDX file to analyze");
-				}
+				await verifySbomSet(context, node, runSpdxBuild);
 			}
 		})
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.analyze.sbom2doc', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.verify.file', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
 			if (node.project) {
-				const parentUri = getSpdxParentUri(node);
-				if (parentUri && fileExists(parentUri.fsPath)) {
-					const spdxFile = await openSPDXDialog(parentUri);
-					if (spdxFile) {
-						await execSBom2DocCommand(spdxFile.fsPath, node.project);
-					}
-				} else {
-					vscode.window.showErrorMessage("No SPDX file to analyze");
-				}
+				await verifySbomFile(context, node);
 			}
 		})
 	);
 
-	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.analyze.cve-bin-tool', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			if (node.project) {
-				const parentUri = getSpdxParentUri(node);
-				if (parentUri && fileExists(parentUri.fsPath)) {
-					const spdxFile = await openSPDXDialog(parentUri);
-					if (spdxFile) {
-						await execCveBinToolCommand(spdxFile.fsPath, node.project);
-					}
-				} else {
-					vscode.window.showErrorMessage("No SPDX file to analyze");
+	for (const reportFormat of ['pdf', 'docx', 'md'] as const) {
+		context.subscriptions.push(
+			vscode.commands.registerCommand(`zephyr-workbench-app-explorer.spdx.report.${reportFormat}`, async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
+				if (node.project) {
+					await createReport(context, node, reportFormat, runSpdxBuild);
 				}
-			}
-		})
-	);
-
-	async function openSPDXDialog(parentDir?: vscode.Uri): Promise<vscode.Uri | undefined> {
-		const fileUri = await vscode.window.showOpenDialog({
-			defaultUri: parentDir,
-			canSelectFiles: true,
-			canSelectFolders: false,
-			canSelectMany: false,
-			openLabel: 'Select',
-			filters: {
-				'SPDX files': ['spdx'],
-				'All files': ['*']
-			}
-		});
-
-		if (fileUri && fileUri[0]) {
-			return fileUri[0];
-		} else {
-			return undefined;
-		}
+			})
+		);
 	}
 
 	async function runSpdxBuild(
 		node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem,
 		spdxVersion: '2.3' | '3.0' = '2.3',
-	): Promise<void> {
+	): Promise<boolean> {
 		const project = node.project;
 		if (!project) {
-			return;
+			return false;
 		}
 
 		const targetConfig =
@@ -1543,7 +1477,7 @@ export function activate(context: vscode.ExtensionContext) {
 				: project.buildConfigs.find(config => config.active) ?? project.buildConfigs[0];
 		if (!targetConfig) {
 			vscode.window.showErrorMessage('No build configuration available for SPDX generation.');
-			return;
+			return false;
 		}
 
 		// Gate SPDX 3 support before the build-directory delete below, so an
@@ -1557,11 +1491,11 @@ export function activate(context: vscode.ExtensionContext) {
 				fallbackAction, learnMoreAction
 			);
 			if (choice === fallbackAction) {
-				await runSpdxBuild(node, '2.3');
+				return await runSpdxBuild(node, '2.3');
 			} else if (choice === learnMoreAction) {
 				vscode.env.openExternal(vscode.Uri.parse('https://docs.zephyrproject.org/latest/develop/west/zephyr-cmds.html#software-bill-of-materials-west-spdx'));
 			}
-			return;
+			return false;
 		}
 
 		const buildDirToDelete =
@@ -1590,10 +1524,16 @@ export function activate(context: vscode.ExtensionContext) {
 				config.active = config.name === targetConfig.name;
 			}
 
-			await westBuildCommand(project, westWorkspace, extraArgs, targetConfig.name);
+			const buildExitCode = await westBuildCommand(project, westWorkspace, extraArgs, targetConfig.name);
+			if (typeof buildExitCode === 'number' && buildExitCode !== 0) {
+				vscode.window.showErrorMessage(`West build failed with exit code ${buildExitCode}. See the terminal output.`);
+				return false;
+			}
 			await westSpdxGenerateCommand(project, westWorkspace, targetConfig, spdxVersion);
+			return true;
 		} catch (error) {
 			vscode.window.showErrorMessage(`Error generating SPDX: ${error}`);
+			return false;
 		} finally {
 			for (const state of previousActiveStates) {
 				state.config.active = state.active;
