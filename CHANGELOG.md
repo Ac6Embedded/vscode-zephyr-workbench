@@ -4,17 +4,43 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
+## [3.9.0]
+
+### Kconfig Manager (new)
+- Added a Kconfig Manager to the Applications view: a menuconfig/guiconfig-style GUI for editing an application's Kconfig options.
+
+### Debug Manager
+- Added Cortex-Debug backends as an alternative to the built-in debug setup, with per-backend and per-runner options.
+- Added a pyOCD Manager and reworked pyOCD target-pack setup.
+
+### Host Tools
+- Added an Advanced (selective) installation mode: choose individual tools, Python source, and requirements, with per-OS panels for Windows, Linux, and macOS.
+- Made installs more robust: mirror fallback for downloads, continue-and-report on step failures, working Cancel, and better error reporting.
+
+### West Manager
+- Added west blobs support (fetch on import, plus a Blobs list/fetch/clean menu).
+- Manifest editing in place, full/minimal module modes, data-driven version-aware templates, and workspace creation in a named subfolder.
+- Added an optional dedicated Python venv per west workspace (and per application).
 
 ### SPDX
-- Added **Build SPDX 3** to the SPDX menu: generates an SPDX 3.0 (JSON-LD) SBOM with `west spdx --spdx-version 3.0` into `build/<config>/spdx/*.jsonld`. Requires a Zephyr with SPDX 3.0 support (4.5.0 or newer, or a recent main checkout); on older versions a warning offers to generate SPDX 2.3 instead or open the documentation. The SPDX Analyze tools (ntia-checker, sbom2doc, cve-bin-tool) still operate on SPDX 2 `.spdx` documents only.
+- Added Build SPDX 3: generates an SPDX 3.0 (JSON-LD) SBOM on supported Zephyr versions (4.5.0+), with an SPDX 2.3 fallback offer on older ones.
 
-### Global Zephyr SDK support (new)
-- The Zephyr SDK can now be installed **globally**: installed once (via the standard `west sdk` mechanism) and found automatically by every Zephyr project, with no per-project SDK path to configure. The Add Toolchain wizard gains a Destination choice (Custom location or Global) with a dropdown of standard install locations.
-- The Toolchains view detects global SDKs on the machine, including ones installed outside the extension, and marks them with a **[global]** badge. They can be customized (add toolchains, add LLVM) like any other SDK.
-- Applications can select **Global Zephyr SDK** as their toolchain (New Application wizard and Change Toolchain): the build then picks the right SDK by itself, and the application view shows which one will likely be used. This also works on machines where no SDK was ever imported into the extension.
-- Everything around it follows: compatibility warnings, debugging, IntelliSense, and Rust/IAR toolchain links all work with global SDKs.
-- Global SDKs can also be deleted: **Delete from disk** removes the SDK files and cleans up its global registration in one step.
+### Global Zephyr SDK (new)
+- The Zephyr SDK can now be installed and used globally (via `west sdk`): detected automatically, shown with a [global] badge in the Toolchains view, selectable as an application toolchain, and removable from disk.
+
+### Toolchains and IntelliSense
+- Show installed toolchains under each Zephyr SDK and prune entries whose folder no longer exists.
+- Warn on Zephyr SDK / Zephyr version incompatibility.
+- Added a clangd IntelliSense option; cpptools/cortex-debug extension installs no longer block.
+
+### Applications view
+- Added a per-application Code Explorer (reveals files in the Explorer view, opens the app's Zephyr terminal).
+- Added build-insight tabs to the Workbench Dashboard.
+- Grouped build-configuration options under "Arguments & Environment".
+
+### Other
+- Added GitHub Actions CI with tag-driven release automation.
+- Various fixes: environment variable handling in board discovery, Homebrew-based macOS installs, form resets in the Debug Manager, sidebar layout and ordering.
 
 ## [3.2.1]
 
