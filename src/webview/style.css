@@ -359,6 +359,25 @@ form {
   width: 10%;
 }
 
+/* Install column: fixed 3-slot grid so the download / website / gear icons of
+   every row line up in the same three columns; empty slots hold their place.
+   Kept within the 10% col-5 above (three 28px slots = 84px, the same space the
+   old inline icons needed) so the shared .debug-tools-table column math that the
+   Host Tools / Packs / pyOCD tables rely on is unchanged. */
+.install-slots {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 28px);
+  justify-content: center;   /* group stays centered under the "Install" header */
+  align-items: center;
+}
+.install-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Keep static positioning: setting position:relative here would re-anchor the
+     .no-icon-tooltip::after bubble to the slot instead of the button. */
+}
+
 .packs-table th:nth-child(2), .packs-table td:nth-child(2) {
   width: 72%;
 }

@@ -344,7 +344,7 @@ export class DebugToolsPanel {
           <td id="detect-${tool.tool}">${tool.found || ''}</td>
           <td id="buttons-${tool.tool}">`;
         
-        // Add install/website buttons to OpenOCDs child rows 
+        // Add install/website buttons to OpenOCDs child rows
         let hasSource = false;
         if (tool.os) {
           switch(process.platform) {
@@ -358,19 +358,9 @@ export class DebugToolsPanel {
               hasSource = tool.os.darwin ? true : false;
               break;
           }
-          if (hasSource) {
-            toolsHTML += `<vscode-button appearance="icon" class="install-button no-icon-tooltip" data-tool="${tool.tool}" data-tooltip="Download and Install automatically" title="Download and Install automatically">
-              <span class="codicon codicon-desktop-download"></span>
-            </vscode-button>`;
-          }
         }
-        
-        if (tool.website) {
-          toolsHTML += `<vscode-button appearance="icon" class="website-button" data-tool="${tool.tool}">
-            <a href="${tool.website}"><span class="codicon codicon-link"></span></a>
-          </vscode-button>`;
-        }
-        
+        toolsHTML += this.renderInstallSlots(tool, hasSource);
+
         toolsHTML += `</td>
           <td><div class="progress-wheel" id="progress-${tool.tool}"><vscode-progress-ring></vscode-progress-ring></div></td>
         </tr>`;
@@ -412,27 +402,9 @@ export class DebugToolsPanel {
             hasSource = tool.os.darwin ? true : false;
             break;
         }
-        if(hasSource) {
-          toolHTML +=`<vscode-button appearance="icon" class="install-button no-icon-tooltip" data-tool="${tool.tool}" data-tooltip="Download and Install automatically" title="Download and Install automatically">
-                         <span class="codicon codicon-desktop-download"></span>
-                       </vscode-button>`;
-        }
       }
 
-      if(tool.website) {
-        toolHTML +=`<vscode-button appearance="icon" class="website-button" data-tool="${tool.tool}">
-                      <a href="${tool.website}">
-                        <span class="codicon codicon-link"></span>
-                      </a>
-                    </vscode-button>`;
-      }
-
-      // pyOCD's device support lives in CMSIS-Packs — link to its manager.
-      if(tool.tool === 'pyocd') {
-        toolHTML +=`<vscode-button appearance="icon" class="pyocd-manage-button no-icon-tooltip" data-tooltip="Open pyOCD Manager (packs, targets)" title="Open pyOCD Manager (packs, targets)">
-                      <span class="codicon codicon-settings-gear"></span>
-                    </vscode-button>`;
-      }
+      toolHTML += this.renderInstallSlots(tool, hasSource);
 
       toolHTML +=`  </td>
         <td>`;
@@ -478,6 +450,33 @@ export class DebugToolsPanel {
       }
     }
     return toolsHTML;
+  }
+
+  // Renders the fixed 3-slot Install cell: [download] [website] [gear].
+  // Every icon-bearing row emits all three slots in the same order; empty
+  // slots keep their column so like icons align vertically down the column.
+  private renderInstallSlots(tool: any, hasSource: boolean): string {
+    const download = hasSource
+      ? `<vscode-button appearance="icon" class="install-button no-icon-tooltip" data-tool="${tool.tool}" data-tooltip="Download and Install automatically" title="Download and Install automatically">
+           <span class="codicon codicon-desktop-download"></span>
+         </vscode-button>`
+      : '';
+    const website = tool.website
+      ? `<vscode-button appearance="icon" class="website-button" data-tool="${tool.tool}">
+           <a href="${tool.website}"><span class="codicon codicon-link"></span></a>
+         </vscode-button>`
+      : '';
+    // pyOCD's device support lives in CMSIS-Packs — link to its manager.
+    const manage = tool.tool === 'pyocd'
+      ? `<vscode-button appearance="icon" class="pyocd-manage-button no-icon-tooltip" data-tooltip="Open pyOCD Manager (packs, targets)" title="Open pyOCD Manager (packs, targets)">
+           <span class="codicon codicon-settings-gear"></span>
+         </vscode-button>`
+      : '';
+    return `<div class="install-slots">
+      <span class="install-slot">${download}</span>
+      <span class="install-slot">${website}</span>
+      <span class="install-slot">${manage}</span>
+    </div>`;
   }
 
   private escapeHtmlAttribute(value: string): string {
