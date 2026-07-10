@@ -554,11 +554,13 @@ export async function westSpdxGenerateCommand(
   zephyrProject: ZephyrApplication,
   _westWorkspace: WestWorkspace,
   buildConfig: ZephyrBuildConfig,
+  spdxVersion: '2.3' | '3.0' = '2.3',
 ): Promise<void> {
   if (!zephyrProject.appRootPath) {
     return;
   }
-  const task = buildDirectTask(zephyrProject.appWorkspaceFolder, 'SPDX generate', buildConfig.name, {}, zephyrProject);
+  const taskName = spdxVersion === '3.0' ? 'SPDX generate 3.0' : 'SPDX generate';
+  const task = buildDirectTask(zephyrProject.appWorkspaceFolder, taskName, buildConfig.name, {}, zephyrProject);
   if (!task) {
     return;
   }

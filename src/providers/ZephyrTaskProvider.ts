@@ -293,6 +293,19 @@ const spdxGenerateTask: ZephyrTaskDefinition = {
   ]
 };
 
+const spdxGenerate3Task: ZephyrTaskDefinition = {
+  label: "SPDX generate 3.0",
+  type: ZEPHYR_TASK_TYPE,
+  problemMatcher: [],
+  command: "west",
+  config: "primary",
+  args: [
+    "spdx",
+    "--spdx-version 3.0",
+    "--build-dir \"${workspaceFolder}/build/${config:zephyr-workbench.build.configurations.0.name}\""
+  ]
+};
+
 const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [westBuildTask.label, westBuildTask],
   [rebuildTask.label, rebuildTask],
@@ -309,7 +322,8 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
   [dtDoctorTask.label, dtDoctorTask],
   [westDashboardTask.label, westDashboardTask],
   [spdxInitTask.label, spdxInitTask],
-  [spdxGenerateTask.label, spdxGenerateTask]
+  [spdxGenerateTask.label, spdxGenerateTask],
+  [spdxGenerate3Task.label, spdxGenerate3Task]
 ]);
 
 // Subcommands of `west` that don't take --board. We skip auto-injection of --board for these

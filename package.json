@@ -650,6 +650,11 @@
         "category": "Zephyr Workbench/Application"
       },
       {
+        "command": "zephyr-workbench-app-explorer.spdx.build3",
+        "title": "Build SPDX 3",
+        "category": "Zephyr Workbench/Application"
+      },
+      {
         "command": "zephyr-workbench-app-explorer.spdx.install-dependencies",
         "title": "Install dependencies",
         "category": "Zephyr Workbench/Application"
@@ -1961,8 +1966,13 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
-          "submenu": "zephyr-workbench-app-explorer.spdx.analyze",
+          "command": "zephyr-workbench-app-explorer.spdx.build3",
           "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.spdx.analyze",
+          "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ],
@@ -1978,8 +1988,13 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
-          "submenu": "zephyr-workbench-app-explorer.spdx.analyze",
+          "command": "zephyr-workbench-app-explorer.spdx.build3",
           "group": "0@view/item/context@2",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.spdx.analyze",
+          "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         }
       ],
@@ -2100,6 +2115,10 @@
         },
         {
           "command": "zephyr-workbench-app-explorer.spdx.build",
+          "when": "false"
+        },
+        {
+          "command": "zephyr-workbench-app-explorer.spdx.build3",
           "when": "false"
         },
         {

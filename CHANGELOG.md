@@ -6,6 +6,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+### SPDX
+- Added **Build SPDX 3** to the SPDX menu: generates an SPDX 3.0 (JSON-LD) SBOM with `west spdx --spdx-version 3.0` into `build/<config>/spdx/*.jsonld`. Requires a Zephyr with SPDX 3.0 support (4.5.0 or newer, or a recent main checkout); on older versions a warning offers to generate SPDX 2.3 instead or open the documentation. The SPDX Analyze tools (ntia-checker, sbom2doc, cve-bin-tool) still operate on SPDX 2 `.spdx` documents only.
+
 ### Global Zephyr SDK support (new)
 - The Zephyr SDK can now be installed **globally**: installed once (via the standard `west sdk` mechanism) and found automatically by every Zephyr project, with no per-project SDK path to configure. The Add Toolchain wizard gains a Destination choice (Custom location or Global) with a dropdown of standard install locations.
 - The Toolchains view detects global SDKs on the machine, including ones installed outside the extension, and marks them with a **[global]** badge. They can be customized (add toolchains, add LLVM) like any other SDK.

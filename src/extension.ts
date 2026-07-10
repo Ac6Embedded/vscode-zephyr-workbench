@@ -1528,72 +1528,102 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}
 
+	async function runSpdxBuild(
+		node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem,
+		spdxVersion: '2.3' | '3.0' = '2.3',
+	): Promise<void> {
+		const project = node.project;
+		if (!project) {
+			return;
+		}
+
+		const targetConfig =
+			node instanceof ZephyrConfigTreeItem
+				? node.buildConfig
+				: project.buildConfigs.find(config => config.active) ?? project.buildConfigs[0];
+		if (!targetConfig) {
+			vscode.window.showErrorMessage('No build configuration available for SPDX generation.');
+			return;
+		}
+
+		// Gate SPDX 3 support before the build-directory delete below, so an
+		// unsupported click is a no-op.
+		const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
+		if (spdxVersion === '3.0' && !westWorkspace.supportsSpdx3) {
+			const fallbackAction = 'Generate SPDX 2.3 instead';
+			const learnMoreAction = 'Learn more';
+			const choice = await vscode.window.showWarningMessage(
+				`SPDX 3 SBOM generation is not supported by this Zephyr version (detected: ${westWorkspace.version}). It requires Zephyr 4.5.0 or newer.`,
+				fallbackAction, learnMoreAction
+			);
+			if (choice === fallbackAction) {
+				await runSpdxBuild(node, '2.3');
+			} else if (choice === learnMoreAction) {
+				vscode.env.openExternal(vscode.Uri.parse('https://docs.zephyrproject.org/latest/develop/west/zephyr-cmds.html#software-bill-of-materials-west-spdx'));
+			}
+			return;
+		}
+
+		const buildDirToDelete =
+			node instanceof ZephyrConfigTreeItem
+				? targetConfig.getBuildDir(project)
+				: path.join(project.appRootPath, 'build');
+
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: "Deleting Zephyr Application build directory",
+			cancellable: false,
+		}, async () => {
+			deleteFolder(buildDirToDelete);
+		});
+
+		const extraArgs = appendBuildOutputMeta(targetConfig.westArgs);
+		const previousActiveStates = project.buildConfigs.map(config => ({
+			config,
+			active: config.active,
+		}));
+
+		try {
+			await westSpdxInitCommand(project, westWorkspace, targetConfig);
+
+			for (const config of project.buildConfigs) {
+				config.active = config.name === targetConfig.name;
+			}
+
+			await westBuildCommand(project, westWorkspace, extraArgs, targetConfig.name);
+			await westSpdxGenerateCommand(project, westWorkspace, targetConfig, spdxVersion);
+		} catch (error) {
+			vscode.window.showErrorMessage(`Error generating SPDX: ${error}`);
+		} finally {
+			for (const state of previousActiveStates) {
+				state.config.active = state.active;
+			}
+		}
+
+		function appendBuildOutputMeta(input: string): string {
+			if (input) {
+				if (input.includes('CONFIG_BUILD_OUTPUT_META=y')) {
+					return input;
+				} else if (input.includes('--')) {
+					return `${input} -DCONFIG_BUILD_OUTPUT_META=y`;
+				} else {
+					return `${input} -- -DCONFIG_BUILD_OUTPUT_META=y`;
+				}
+			} else {
+				return '-- -DCONFIG_BUILD_OUTPUT_META=y';
+			}
+		}
+	}
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.build', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			const project = node.project;
-			if (!project) {
-				return;
-			}
+			await runSpdxBuild(node);
+		})
+	);
 
-			const targetConfig =
-				node instanceof ZephyrConfigTreeItem
-					? node.buildConfig
-					: project.buildConfigs.find(config => config.active) ?? project.buildConfigs[0];
-			if (!targetConfig) {
-				vscode.window.showErrorMessage('No build configuration available for SPDX generation.');
-				return;
-			}
-
-			const buildDirToDelete =
-				node instanceof ZephyrConfigTreeItem
-					? targetConfig.getBuildDir(project)
-					: path.join(project.appRootPath, 'build');
-
-			await vscode.window.withProgress({
-				location: vscode.ProgressLocation.Notification,
-				title: "Deleting Zephyr Application build directory",
-				cancellable: false,
-			}, async () => {
-				deleteFolder(buildDirToDelete);
-			});
-
-			const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
-			const extraArgs = appendBuildOutputMeta(targetConfig.westArgs);
-			const previousActiveStates = project.buildConfigs.map(config => ({
-				config,
-				active: config.active,
-			}));
-
-			try {
-				await westSpdxInitCommand(project, westWorkspace, targetConfig);
-
-				for (const config of project.buildConfigs) {
-					config.active = config.name === targetConfig.name;
-				}
-
-				await westBuildCommand(project, westWorkspace, extraArgs, targetConfig.name);
-				await westSpdxGenerateCommand(project, westWorkspace, targetConfig);
-			} catch (error) {
-				vscode.window.showErrorMessage(`Error generating SPDX: ${error}`);
-			} finally {
-				for (const state of previousActiveStates) {
-					state.config.active = state.active;
-				}
-			}
-
-			function appendBuildOutputMeta(input: string): string {
-				if (input) {
-					if (input.includes('CONFIG_BUILD_OUTPUT_META=y')) {
-						return input;
-					} else if (input.includes('--')) {
-						return `${input} -DCONFIG_BUILD_OUTPUT_META=y`;
-					} else {
-						return `${input} -- -DCONFIG_BUILD_OUTPUT_META=y`;
-					}
-				} else {
-					return '-- -DCONFIG_BUILD_OUTPUT_META=y';
-				}
-			}
+	context.subscriptions.push(
+		vscode.commands.registerCommand('zephyr-workbench-app-explorer.spdx.build3', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
+			await runSpdxBuild(node, '3.0');
 		})
 	);
 

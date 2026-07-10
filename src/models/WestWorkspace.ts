@@ -167,6 +167,14 @@ export class WestWorkspace {
     return major > 4 || (major === 4 && minor >= 2);
   }
 
+  // SPDX 3.0 output (west spdx --spdx-version 3.0) landed on Zephyr main after
+  // v4.4.1 and first ships in v4.5.0, so a version threshold can't tell apart
+  // main checkouts (4.4.99) from before/after the merge. Detect the capability
+  // directly: the PR that added it introduced the spdx3 serializer package.
+  get supportsSpdx3(): boolean {
+    return fileExists(path.join(this.kernelUri.fsPath, 'scripts', 'pylib', 'zspdx', 'serializers', 'spdx3'));
+  }
+
   get westDirUri(): vscode.Uri {
     return vscode.Uri.joinPath(this.rootUri, '.west');
   }
