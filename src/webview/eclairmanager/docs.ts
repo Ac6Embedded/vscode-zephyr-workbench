@@ -1,4 +1,6 @@
-export const ECLAIR_MANAGER_DOC_URL = "https://z-workbench.com/docs/documentation/static-code-analysis/eclair-manager";
+import { ZEPHYR_DOCS_BASE_URL } from "../../constants";
+
+export const ECLAIR_MANAGER_DOC_URL = `${ZEPHYR_DOCS_BASE_URL}/analysis/static-code-analysis/eclair-manager`;
 export const BUGSENG_ECLAIR_OVERVIEW_URL = "https://www.bugseng.com/eclair-static-analysis-tool/";
 export const ZEPHYR_ECLAIR_DOC_URL = "https://docs.zephyrproject.org/latest/develop/sca/eclair.html";
 

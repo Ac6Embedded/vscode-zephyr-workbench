@@ -9,6 +9,7 @@ import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
 import { describeZephyrApplicationDetectionFailure, fileExists, findRustToolchainInstallation, getAllZephyrSdkInstallations, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredRustToolchainInstallations, getListSamples, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, isGlobalSdkSettingValue, tryGetZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
 import { refreshGlobalSdkDetection, resolveDefaultGlobalSdk, resolveGlobalSdkForZephyr } from "../utils/zephyr/globalSdkService";
 import { ZEPHYR_PROJECT_SDK_GLOBAL_VALUE } from "../constants";
+import { ZEPHYR_DOCS_BASE_URL } from "../constants";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
 import { isPathWithin as isPathWithinWorkspaceApplication } from "../utils/zephyr/workspaceApplications";
@@ -194,7 +195,7 @@ export class CreateZephyrAppPanel {
         </head>
         <body class="create-app-panel">
           <h1>Add Application</h1>
-          <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/application">Read Docs</a>
+          <a class="help-link" href="${ZEPHYR_DOCS_BASE_URL}/application">Read Docs</a>
           <form>
             <div class="app-form-layout">
               <div class="app-form-main">
@@ -511,7 +512,7 @@ async function updateForm(
           )
           .then(choice => {
             if (choice === 'Read more') {
-              vscode.env.openExternal(vscode.Uri.parse('https://z-workbench.com/docs/documentation/known-issues#slow-builds---exclude-workspace-from-antivirus'));
+              vscode.env.openExternal(vscode.Uri.parse(`${ZEPHYR_DOCS_BASE_URL}/known-issues#slow-builds---exclude-workspace-from-antivirus`));
             }
           });
       }

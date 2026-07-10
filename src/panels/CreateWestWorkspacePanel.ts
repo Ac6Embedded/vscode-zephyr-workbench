@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { ZEPHYR_DOCS_BASE_URL } from "../constants";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getGitTags, getGitBranches } from "../utils/execUtils";
@@ -141,7 +142,7 @@ export class CreateWestWorkspacePanel {
         
         <body>
           <h1>Add West Workspace</h1>
-          <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/west-workspace">Read Docs</a>
+          <a class="help-link" href="${ZEPHYR_DOCS_BASE_URL}/west-workspace">Read Docs</a>
           <form>
             <div class="grid-group-div">
               <vscode-radio-group id="srcType" orientation="vertical">

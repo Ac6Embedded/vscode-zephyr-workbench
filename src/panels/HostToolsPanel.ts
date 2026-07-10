@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { fetchHostToolsCheckedVersions } from "../utils/hostToolsStatusUtils";
-import { ZINSTALLER_MINIMUM_VERSION } from "../constants";
+import { ZINSTALLER_MINIMUM_VERSION, ZEPHYR_DOCS_BASE_URL } from "../constants";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/env/envYamlUtils";
 import { createWritableEnvYamlDocument, loadEnvYamlState, writeEnvYamlDocument } from "../utils/env/envYamlFileUtils";
 import { checkPathSpace } from "../utils/utils";
@@ -292,6 +292,7 @@ export class HostToolsPanel {
         </head>
         <body>
           <h1>Host Tools Manager</h1>
+          <a class="help-link" href="${ZEPHYR_DOCS_BASE_URL}/host-tools-manager">Read Docs</a>
           <div class="summary">
             <div class="summary-title"><strong>Zinstaller</strong></div>
             <div>

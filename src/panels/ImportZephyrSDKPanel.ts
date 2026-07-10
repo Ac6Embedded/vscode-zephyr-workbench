@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { ZEPHYR_DOCS_BASE_URL } from "../constants";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -149,7 +150,7 @@ export class ImportZephyrSDKPanel {
 <body>
   <h1>Add Toolchain</h1>
   <a class="help-link"
-     href="https://zephyr-workbench.com/docs/documentation/sdk">Read Docs</a>
+     href="${ZEPHYR_DOCS_BASE_URL}/sdk">Read Docs</a>
 
   <form>
     <div class="grid-group-div">

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { ZEPHYR_DOCS_BASE_URL, ZEPHYR_DOCS_SITE_URL } from '../constants';
 
 class MenuItem extends vscode.TreeItem {
   constructor(
@@ -49,6 +50,17 @@ const awesomeMenuItem = new MenuItem(
   }
 );
 
+const workbenchDocsMenuItem = new MenuItem(
+  'Workbench Documentation',
+  vscode.TreeItemCollapsibleState.None,
+  'book',
+  {
+    command: 'zephyr-workbench.open-webpage',
+    title: 'Workbench Documentation',
+    arguments: [`${ZEPHYR_DOCS_BASE_URL}/zephyr-workbench`]
+  }
+);
+
 const tutorialMenuItem = new MenuItem(
   'Tutorials',
   vscode.TreeItemCollapsibleState.None,
@@ -56,7 +68,7 @@ const tutorialMenuItem = new MenuItem(
   {
     command: 'zephyr-workbench.open-webpage',
     title: 'Tutorials',
-    arguments: ['https://zephyr-workbench.com/']
+    arguments: [`${ZEPHYR_DOCS_SITE_URL}/docs/tutorials/intro`]
   }
 );
 
@@ -71,6 +83,7 @@ export class ZephyrOtherResourcesCommandProvider implements vscode.TreeDataProvi
   async getChildren(element?: any): Promise<MenuItem[]> {
     const items: MenuItem[] = [];
 
+    items.push(workbenchDocsMenuItem);
     items.push(trainingProgramMenuItem);
     items.push(tutorialMenuItem);
     items.push(documentationMenuItem);

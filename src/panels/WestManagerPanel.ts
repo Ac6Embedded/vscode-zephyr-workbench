@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { ZEPHYR_DOCS_BASE_URL } from '../constants';
 import * as fs from 'fs';
 import * as path from 'path';
 import yaml, { isMap, isSeq, YAMLSeq } from 'yaml';
@@ -552,6 +553,7 @@ export class WestManagerPanel {
         </head>
         <body>
           <h1>West Manager</h1>
+          <a class="help-link" href="${ZEPHYR_DOCS_BASE_URL}/west-manager">Read Docs</a>
           <form class="west-manager-panel">
             <div class="grid-group-div west-manager-workspace-field">
               <div class="grid-header-div">

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { ZEPHYR_DOCS_BASE_URL } from "../constants";
 import { execFile } from "child_process";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
@@ -599,6 +600,7 @@ export class AdvancedHostToolsPanel {
         </head>
         <body>
           <h1>Advanced Host Tools Installation</h1>
+          <a class="help-link" href="${ZEPHYR_DOCS_BASE_URL}/advanced-host-tools">Read Docs</a>
           <p class="panel-lead">${leadText}</p>
 
           <form>

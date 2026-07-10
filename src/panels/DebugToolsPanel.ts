@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { ZEPHYR_DOCS_BASE_URL } from "../constants";
 import fs from "fs";
 import yaml from 'yaml';
 import { getUri } from "../utilities/getUri";
@@ -567,7 +568,7 @@ export class DebugToolsPanel {
         
         <body>
           <h1>Install Runners</h1>
-          <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/debug-tools">Read Docs</a>
+          <a class="help-link" href="${ZEPHYR_DOCS_BASE_URL}/install-runners">Read Docs</a>
           <form>
             <h2>Packs</h2>
             <table class="debug-tools-table packs-table">

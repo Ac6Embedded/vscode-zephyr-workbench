@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KconfigRpc, getVsCodeApi, loadPersistedState, savePersistedState } from './rpc';
+import { ZEPHYR_DOCS_BASE_URL } from '../../constants';
 import { KcStore, compileQuery, type FlatRow, type CompiledQuery } from './store';
 import type {
   KcNode, KcNodeInfo, KcTarget, KcExprLine, KcChange, KcDriftEntry, NodeId, Tri, KcDeltaSet,
@@ -502,6 +503,9 @@ function Toolbar(p: {
         <button className="kc-btn" data-tip="Jump to a symbol by name or prompt (shortcut: / or Ctrl+F)" onClick={p.onJump}><span className="codicon codicon-target" /></button>
         <Toggle on={p.showName} label="name" title="Show the CONFIG_ symbol names next to prompts (shortcut: C)" onClick={p.onToggleShowName} />
         <Toggle on={p.showAll} label="all" title="Also show invisible options, dimmed (shortcut: A)" onClick={p.onToggleShowAll} />
+        <a className="kc-btn kc-docs-link" href={`${ZEPHYR_DOCS_BASE_URL}/configuration/kconfig-manager`} data-tip="Open the Kconfig Manager documentation">
+          <span className="codicon codicon-book" /> Read Docs
+        </a>
       </div>
       <div className="kc-toolbar-row">
         <button className="kc-btn" data-tip="Undo the last value change (Ctrl+Z)" onClick={p.onUndo}><span className="codicon codicon-discard" /></button>

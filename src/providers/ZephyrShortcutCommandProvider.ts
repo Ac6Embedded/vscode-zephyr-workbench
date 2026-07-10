@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { checkHostTools } from '../utils/installUtils';
+import { ZEPHYR_DOCS_BASE_URL } from '../constants';
 import path from 'path';
 
 class MenuItem extends vscode.TreeItem {
@@ -104,6 +105,9 @@ const devicetreeManagerMenuItem = new MenuItem(
     command: 'zephyr-workbench.devicetree-manager',
     title: 'Devicetree Manager',
   }
+);
+devicetreeManagerMenuItem.tooltip = new vscode.MarkdownString(
+  `Open the Devicetree Manager.\n\n[Read the documentation](${ZEPHYR_DOCS_BASE_URL}/devicetree-manager)`
 );
 
 const westManagerMenuItem = new MenuItem(

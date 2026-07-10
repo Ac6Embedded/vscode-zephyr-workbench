@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { ZEPHYR_DOCS_BASE_URL } from '../constants';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugLaunchConfigurationName, getDebugManagerLaunchConfiguration, getDebugRunners, getDebugSessionVenvPath, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getWestDebugArgsForProject, setupPyOCDTarget, writeLaunchJson, LaunchConfigurationArtifacts } from "../utils/debugTools/debugUtils";
@@ -150,7 +151,7 @@ export class DebugManagerPanel {
         
         <body>
           <h1>Debug Manager</h1>
-          <a class="help-link" href="https://zephyr-workbench.com/docs/documentation/debug-session">Read Docs</a>
+          <a class="help-link" href="${ZEPHYR_DOCS_BASE_URL}/debug-session">Read Docs</a>
           <form>
             <!-- Select Application Project -->
             <div class="grid-group-div">

@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { WestWorkspace } from '../models/WestWorkspace';
 import { ZephyrApplication } from '../models/ZephyrApplication';
+import { ZEPHYR_DOCS_BASE_URL } from '../constants';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import {
 	getEffectiveWorkspaceApplicationEntry,
@@ -1470,6 +1471,7 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 					<div class="toolbar-info-row">
 						<div class="title-row">
 							<div id="tabTitle" class="title">Summary</div>
+								<a class="doc-link" title="Open the Workbench Dashboard documentation" data-open-external="true" data-url="${ZEPHYR_DOCS_BASE_URL}/analysis/workbench-dashboard">Read Docs</a>
 							<div class="meta-row">
 								<span id="projectTag" class="tag hidden"><span class="tag-label">App</span><span id="projectValue"></span></span>
 								<span id="configTag" class="tag hidden"><span class="tag-label">Cfg</span><span id="configValue"></span></span>

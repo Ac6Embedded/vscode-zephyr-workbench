@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { ZEPHYR_DOCS_BASE_URL } from "../constants";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import {
@@ -412,7 +413,8 @@ export class PyOCDManagerPanel {
 
         <body>
           <h1>pyOCD Manager</h1>
-          <a class="help-link" href="https://pyocd.io/docs/target_support.html">Read Docs</a>
+          <a class="help-link" href="${ZEPHYR_DOCS_BASE_URL}/pyocd-manager">Read Docs</a>
+          <a class="help-link" href="https://pyocd.io/docs/target_support.html">pyOCD target support</a>
 
           <form id="version-section">
             <h2>pyOCD</h2>

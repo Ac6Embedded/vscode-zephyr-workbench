@@ -38,3 +38,9 @@ export const ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY = 'default-runner';
 export const ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY = 'custom-args';
 
 export const ZINSTALLER_MINIMUM_VERSION = '2.0';
+
+// Documentation site. Build every docs link from these so the domain and base
+// path live in one place. This module has no vscode import, so both the host
+// and the bundled webviews can import it.
+export const ZEPHYR_DOCS_SITE_URL = 'https://z-workbench.com';
+export const ZEPHYR_DOCS_BASE_URL = `${ZEPHYR_DOCS_SITE_URL}/docs/documentation`;

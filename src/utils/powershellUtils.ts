@@ -1,5 +1,6 @@
 import { ExecException, exec } from "child_process";
 import * as vscode from "vscode";
+import { ZEPHYR_DOCS_BASE_URL } from "../constants";
 
 // Run a PowerShell command with Bypass execution policy and no profile
 export type PowerShellFlavor = 'powershell' | 'pwsh';
@@ -37,7 +38,7 @@ export function isExecutionPolicyAllowed(policy: string): boolean {
 export async function ensurePowershellExecutionPolicy(): Promise<boolean> {
   if (process.platform !== 'win32') { return true; }
 
-  const docsUrl = 'https://z-workbench.com/docs/documentation/known-issues#powershell-script-execution-disabled';
+  const docsUrl = `${ZEPHYR_DOCS_BASE_URL}/known-issues#powershell-script-execution-disabled`;
 
   const current = await getCurrentUserExecutionPolicy();
   if (isExecutionPolicyAllowed(current)) {
