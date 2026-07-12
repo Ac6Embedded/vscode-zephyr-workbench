@@ -130,6 +130,34 @@ debug_tools:
     darwin:
       source: https://github.com/xpack-dev-tools/openocd-xpack/releases/download/v0.12.0-7/xpack-openocd-0.12.0-7-darwin-x64.tar.gz
       sha256: 668ad25350103a4357e11629ec833eae5982e973889ce25bad0c2963e37fa8bf
+- tool: openocd-ti
+  alias: openocd
+  name: OpenOCD TI
+  version: 0.12.0+dev-00003-gcb22a31e5
+  tooltip: TI OpenOCD 1.5.0 (CCSTUDIO-OPENOCD), supports XDS110 probes
+  website: https://www.ti.com/tool/CCSTUDIO-OPENOCD
+  vendor: Texas Instruments
+  type: debug_server
+  group: Openocds/TI
+  install_dir: openocds/openocd-ti
+  explicit-detect:
+    windows:
+      - "${zi_base_dir}/tools/openocds/openocd-ti/bin"
+    linux:
+      - "${zi_base_dir}/tools/openocds/openocd-ti/bin"
+    darwin:
+      - "${zi_base_dir}/tools/openocds/openocd-ti/bin"
+  root: false
+  os:
+    windows:
+      source: https://dr-download.ti.com/software-development/ide-configuration-compiler-or-debugger/MD-NsfxBoR0Rv/1.5.0/openocd_win_1.5.0.75.zip
+      sha256: e5cc61ae20c3e44a5e19d9a8e9a9208253281587ee2243e7b52710c1b01056dd
+    linux:
+      source: https://dr-download.ti.com/software-development/ide-configuration-compiler-or-debugger/MD-NsfxBoR0Rv/1.5.0/openocd_linux_1.5.0.75.zip
+      sha256: 54bc7183f7f03c6380aeb2b08183509885e3c08e7153d8554c4a41b02617025c
+    darwin:
+      source: https://dr-download.ti.com/software-development/ide-configuration-compiler-or-debugger/MD-NsfxBoR0Rv/1.5.0/openocd_mac_1.5.0.75.zip
+      sha256: 0ba6c28b47aa0e8611e3bd05ef7bfd8903177e9f33e21017912fd7f0346f2538
 - tool: openocd-modustoolbox
   alias: openocd
   name: OpenOCD Infineon
@@ -444,6 +472,9 @@ packs:
 - pack: infineon
   name: Infineon
   tools: [openocd-modustoolbox]
+- pack: ti
+  name: Texas Instruments
+  tools: [openocd-ti]
 
 aliases:
 - alias: openocd
