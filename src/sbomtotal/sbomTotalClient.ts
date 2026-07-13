@@ -34,6 +34,12 @@ export interface ScanResult {
   [key: string]: unknown;
 }
 
+export interface SbomProject {
+  projectId: string;
+  name: string;
+  owner?: string | null;
+}
+
 export type SbomReportFormat = 'pdf' | 'docx' | 'md';
 
 export type SbomTotalErrorKind =
@@ -41,7 +47,6 @@ export type SbomTotalErrorKind =
   | 'unsupported-type'
   | 'unparseable'
   | 'rate-limited'
-  | 'auth'
   | 'network'
   | 'timeout'
   | 'server'
@@ -61,14 +66,6 @@ export class SbomTotalError extends Error {
 
 export interface SbomTotalClientOptions {
   baseUrl: string;
-  token?: string;
-  /**
-   * When true, a 401/403 response drops the token and retries the request once
-   * anonymously (every endpoint the client uses is public; the token only adds
-   * account attribution). Meant for the built-in default token, which may have
-   * been revoked server side.
-   */
-  anonymousFallback?: boolean;
   timeoutMs?: number;
 }
 
@@ -82,19 +79,41 @@ interface PerformResult {
 
 export class SbomTotalClient {
   private readonly baseUrl: string;
-  private token?: string;
-  private readonly anonymousFallback: boolean;
   private readonly timeoutMs: number;
 
   constructor(options: SbomTotalClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
-    this.token = options.token;
-    this.anonymousFallback = options.anonymousFallback ?? false;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   permalinkUrl(hash: string): string {
     return `${this.baseUrl}/en/scan/${hash}`;
+  }
+
+  projectUrl(projectId: string): string {
+    return `${this.baseUrl}/en/project/${projectId}`;
+  }
+
+  async createProject(name: string, signal?: AbortSignal): Promise<SbomProject> {
+    const result = await this.perform(
+      '/api/v1/projects',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      },
+      signal,
+      'json',
+    );
+    const project = result.json as Partial<SbomProject> | undefined;
+    if (!project || typeof project.projectId !== 'string' || !project.projectId.startsWith('proj_')) {
+      throw new SbomTotalError('SBOM Total returned an invalid project identifier.', 'unexpected', result.status);
+    }
+    return {
+      projectId: project.projectId,
+      name: typeof project.name === 'string' ? project.name : name,
+      owner: project.owner,
+    };
   }
 
   /**
@@ -122,6 +141,8 @@ export class SbomTotalClient {
     fileName: string,
     options?: {
       force?: boolean;
+      projectId?: string;
+      projectLabel?: string;
       signal?: AbortSignal;
       onPending?: (engineNames: string[]) => void;
       onEngine?: (engine: ScanEngine) => void;
@@ -130,6 +151,12 @@ export class SbomTotalClient {
     const form = new FormData();
     // Copy into a plain ArrayBuffer-backed view so Node Buffers pool offsets never leak.
     form.append('file', new Blob([new Uint8Array(bytes)]), fileName);
+    if (options?.projectId) {
+      form.append('project', options.projectId);
+    }
+    if (options?.projectLabel) {
+      form.append('label', options.projectLabel);
+    }
     const query = options?.force ? '?force=true' : '';
 
     const controller = new AbortController();
@@ -177,25 +204,14 @@ export class SbomTotalClient {
     armIdle();
     let response: Response;
     try {
-      const headers: Record<string, string> = {};
-      if (this.token) {
-        headers['Authorization'] = `Bearer ${this.token}`;
-      }
       response = await fetch(`${this.baseUrl}/api/v1/scan-sbom/stream${query}`, {
-        method: 'POST', body: form, headers, redirect: 'error', signal: controller.signal,
+        method: 'POST', body: form, redirect: 'error', signal: controller.signal,
       });
     } catch (error) {
       cleanup();
       throw abortError(error);
     }
 
-    if ((response.status === 401 || response.status === 403) && this.anonymousFallback && this.token) {
-      cleanup();
-      // Release the rejected response's connection back to the pool.
-      void response.body?.cancel().catch(() => {});
-      this.token = undefined;
-      return this.scanSbomStream(bytes, fileName, options);
-    }
     if (!response.ok || !response.body) {
       let detail = '';
       try {
@@ -335,24 +351,11 @@ export class SbomTotalClient {
     };
 
     try {
-      const headers: Record<string, string> = {};
-      if (this.token) {
-        headers['Authorization'] = `Bearer ${this.token}`;
-      }
-
       let response: Response;
       try {
-        response = await fetch(`${this.baseUrl}${apiPath}`, { ...init, headers, signal: controller.signal });
+        response = await fetch(`${this.baseUrl}${apiPath}`, { ...init, signal: controller.signal });
       } catch (error) {
         throw transportError(error);
-      }
-
-      if ((response.status === 401 || response.status === 403) && this.anonymousFallback && this.token) {
-        // The (built-in) token was rejected, probably revoked. Every endpoint
-        // used here is public, so drop it and retry once without credentials.
-        void response.body?.cancel().catch(() => {});
-        this.token = undefined;
-        return await this.perform(apiPath, init, signal, read, options);
       }
 
       if (options?.allow404 && response.status === 404) {
@@ -392,12 +395,6 @@ export class SbomTotalClient {
 
   private errorFromStatus(status: number, headers: Headers, detail: string): SbomTotalError {
     switch (status) {
-      case 401:
-      case 403:
-        return new SbomTotalError(
-          'SBOM Total rejected the API token. Update it with the "Set SBOM Total API Token" command.',
-          'auth', status, detail,
-        );
       case 413:
         return new SbomTotalError(
           'The SBOM file is larger than 50 MB, which SBOM Total does not accept.',
@@ -417,7 +414,7 @@ export class SbomTotalClient {
         const retryAfter = headers.get('retry-after');
         const retryHint = retryAfter ? ` Retry after about ${retryAfter} seconds.` : '';
         return new SbomTotalError(
-          `SBOM Total rate limit reached (about 30 scans per hour per IP).${retryHint} Unchanged SBOMs are served from cache, so try again later or use a self-hosted instance.`,
+          `SBOM Total rate limit reached (about 30 scans or project creations per hour per IP).${retryHint} Unchanged SBOMs are served from cache, so try again later or use a self-hosted instance.`,
           'rate-limited', status, detail,
         );
       }

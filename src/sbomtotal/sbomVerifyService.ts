@@ -26,11 +26,8 @@ export type SpdxBuildRunner = (node: SpdxTreeNode, spdxVersion: '2.3' | '3.0') =
 const BASE_URL_SETTING_KEY = 'sbomTotal.baseUrl';
 const FAIL_ON_SETTING_KEY = 'sbomTotal.failOn';
 const INCLUDE_SDK_SETTING_KEY = 'sbomTotal.includeSdk';
-const TOKEN_SECRET_KEY = 'zephyr-workbench.sbom-total.token';
 const DEFAULT_BASE_URL = 'https://sbomtotal.com';
-// Shipped on purpose as a revocable default: it only associates scans with the
-// Ac6 account (scanning itself is public). Rotate in a patch release if abused.
-const DEFAULT_SBOM_TOTAL_TOKEN = 'sct_vcv1Pw7LbUm0Sdq3TNP1HKZmpBFx2SRNSNWjR1g8HJc';
+const PROJECT_STORAGE_KEY_PREFIX = 'zephyr-workbench.sbom-total.project-id.v1';
 const OUTPUT_DIR_NAME = 'sbom-total';
 const SDK_DOC_NAME = 'sdk.spdx';
 const SDK_DOC3_NAME = 'sdk.jsonld';
@@ -47,7 +44,6 @@ interface SpdxContext {
 
 interface ClientBundle {
   client: SbomTotalClient;
-  usingBuiltInToken: boolean;
   baseUrl: string;
 }
 
@@ -62,7 +58,10 @@ interface ScanOutcome {
   sdkResult?: ScanResult;
   reportDir: string;
   reportBaseName: string;
+  projectId?: string;
 }
+
+const projectCreationInFlight = new Map<string, Promise<string>>();
 
 /**
  * SPDX version for this run, decided once by the existing file-based check
@@ -87,58 +86,63 @@ function resolveSpdxVersion(ctx: SpdxContext): { version: '2.3' | '3.0'; workspa
   }
 }
 
-let warnedAboutSecretStorage = false;
-
 function getSbomTotalConfig() {
   return vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY);
 }
 
-export async function createClientFromConfig(context: vscode.ExtensionContext): Promise<ClientBundle> {
+export function createClientFromConfig(): ClientBundle {
   const baseUrl = (getSbomTotalConfig().get<string>(BASE_URL_SETTING_KEY) || DEFAULT_BASE_URL).trim();
-
-  let userToken: string | undefined;
-  try {
-    userToken = await context.secrets.get(TOKEN_SECRET_KEY) || undefined;
-  } catch {
-    if (!warnedAboutSecretStorage) {
-      warnedAboutSecretStorage = true;
-      vscode.window.showWarningMessage(
-        'Secret storage is unavailable on this system; SBOM Total scans will use the built-in token.',
-      );
-    }
-  }
-
-  const token = userToken ?? DEFAULT_SBOM_TOTAL_TOKEN;
   return {
-    // The built-in token is revocable server side: let the client drop it and
-    // retry anonymously on 401/403 (all endpoints used are public anyway).
-    client: new SbomTotalClient({ baseUrl, token, anonymousFallback: !userToken }),
-    usingBuiltInToken: !userToken,
+    client: new SbomTotalClient({ baseUrl }),
     baseUrl,
   };
 }
 
-export async function setApiToken(context: vscode.ExtensionContext): Promise<void> {
-  const value = await vscode.window.showInputBox({
-    title: 'Set SBOM Total API Token',
-    prompt: 'Personal API token (sct_...). Leave empty to clear it and use the built-in token.',
-    password: true,
-    ignoreFocusOut: true,
-  });
-  if (value === undefined) {
-    return;
+function projectStorageKey(baseUrl: string, appRootPath: string): string {
+  const identity = `${baseUrl.replace(/\/+$/, '')}\0${path.normalize(path.resolve(appRootPath))}`;
+  const digest = crypto.createHash('sha256').update(identity).digest('hex');
+  return `${PROJECT_STORAGE_KEY_PREFIX}:${digest}`;
+}
+
+function projectScanLabel(ctx: SpdxContext, memberName: string): string {
+  const board = (ctx.config.boardIdentifier ?? '').trim();
+  const config = ctx.config.name.trim();
+  return [memberName, board, config].filter(value => value.length > 0).join(' · ');
+}
+
+async function ensureProjectId(
+  context: vscode.ExtensionContext,
+  bundle: ClientBundle,
+  ctx: SpdxContext,
+  signal?: AbortSignal,
+  progress?: vscode.Progress<{ message?: string }>,
+): Promise<{ projectId: string; storageKey: string }> {
+  const storageKey = projectStorageKey(bundle.baseUrl, ctx.project.appRootPath);
+  const saved = context.workspaceState.get<string>(storageKey);
+  if (saved?.startsWith('proj_')) {
+    return { projectId: saved, storageKey };
   }
-  try {
-    if (value.trim().length === 0) {
-      await context.secrets.delete(TOKEN_SECRET_KEY);
-      vscode.window.showInformationMessage('SBOM Total token cleared. Scans now use the built-in token.');
-    } else {
-      await context.secrets.store(TOKEN_SECRET_KEY, value.trim());
-      vscode.window.showInformationMessage('SBOM Total token saved.');
-    }
-  } catch (error) {
-    vscode.window.showErrorMessage(`Could not update the SBOM Total token: ${error}`);
+
+  let creation = projectCreationInFlight.get(storageKey);
+  if (!creation) {
+    creation = (async () => {
+      progress?.report({ message: `creating the SBOM Total project for ${ctx.appName}...` });
+      const project = await bundle.client.createProject(ctx.appName, signal);
+      await context.workspaceState.update(storageKey, project.projectId);
+      getOutputChannel().appendLine(
+        `[sbom-total] created project ${project.projectId} for ${ctx.appName}: ${bundle.client.projectUrl(project.projectId)}`,
+      );
+      return project.projectId;
+    })();
+    projectCreationInFlight.set(storageKey, creation);
+    void creation.finally(() => {
+      if (projectCreationInFlight.get(storageKey) === creation) {
+        projectCreationInFlight.delete(storageKey);
+      }
+    }).catch(() => {});
   }
+
+  return { projectId: await creation, storageKey };
 }
 
 function resolveSpdxContext(node: SpdxTreeNode): SpdxContext | undefined {
@@ -322,8 +326,8 @@ function sha256(bytes: Buffer): string {
 
 /**
  * Probe the service by content hash first (free, not rate limited), then upload
- * only when the result is not already stored. A revoked built-in token is
- * handled inside the client (anonymous fallback).
+ * only when the result is not already stored. Project scans always use the
+ * upload endpoint because that is where the server records membership.
  */
 async function scanBytes(
   bundle: ClientBundle,
@@ -334,11 +338,16 @@ async function scanBytes(
     signal?: AbortSignal;
     progress?: vscode.Progress<{ message?: string }>;
     label?: string;
+    projectId?: string;
+    projectLabel?: string;
   },
 ): Promise<{ result: ScanResult; hash: string; fromProbe: boolean }> {
   const contentHash = sha256(bytes);
 
-  if (!options.force) {
+  // A project attachment is performed by the upload endpoint, including when
+  // the service already has a cached result. Skip the free GET probe in that
+  // case so the cached scan is still added to the application project.
+  if (!options.force && !options.projectId) {
     const stored = await bundle.client.getScanByContent(contentHash, options.signal);
     if (stored) {
       return { result: stored, hash: stored.hash ?? contentHash, fromProbe: true };
@@ -352,6 +361,8 @@ async function scanBytes(
   let done = 0;
   const result = await bundle.client.scanSbomStream(new Uint8Array(bytes), name, {
     force: options.force,
+    projectId: options.projectId,
+    projectLabel: options.projectLabel,
     signal: options.signal,
     onPending: engines => {
       total = engines.length;
@@ -364,6 +375,91 @@ async function scanBytes(
     },
   });
   return { result, hash: result.hash ?? contentHash, fromProbe: false };
+}
+
+async function scanApplicationBytes(
+  context: vscode.ExtensionContext,
+  ctx: SpdxContext,
+  bundle: ClientBundle,
+  bytes: Buffer,
+  name: string,
+  options: {
+    force?: boolean;
+    signal?: AbortSignal;
+    progress?: vscode.Progress<{ message?: string }>;
+    label?: string;
+    projectLabel?: string;
+  },
+): Promise<{ result: ScanResult; hash: string; fromProbe: boolean; projectId: string }> {
+  let project = await ensureProjectId(context, bundle, ctx, options.signal, options.progress);
+  const scan = () => scanBytes(bundle, bytes, name, {
+    ...options,
+    projectId: project.projectId,
+    projectLabel: options.projectLabel ?? projectScanLabel(ctx, 'Full report - merged'),
+  });
+
+  try {
+    return { ...(await scan()), projectId: project.projectId };
+  } catch (error) {
+    if (!(error instanceof SbomTotalError) || error.status !== 404) {
+      throw error;
+    }
+    // The project can be removed server-side or belong to a different base
+    // URL after a settings change. Recreate it and retry the upload once.
+    await context.workspaceState.update(project.storageKey, undefined);
+    getOutputChannel().appendLine(`[sbom-total] project ${project.projectId} no longer exists; creating a replacement`);
+    project = await ensureProjectId(context, bundle, ctx, options.signal, options.progress);
+    return { ...(await scan()), projectId: project.projectId };
+  }
+}
+
+async function scanIndividualDocuments(
+  ctx: SpdxContext,
+  bundle: ClientBundle,
+  fileNames: string[],
+  projectId: string,
+  fullReportHash: string,
+  options: {
+    force?: boolean;
+    signal?: AbortSignal;
+    progress?: vscode.Progress<{ message?: string }>;
+  },
+): Promise<void> {
+  const sdkNames = new Set([SDK_DOC_NAME, SDK_DOC3_NAME]);
+  const members = fileNames.filter(name => !sdkNames.has(name)).sort((a, b) => a.localeCompare(b));
+
+  for (const fileName of members) {
+    if (options.signal?.aborted) {
+      return;
+    }
+    const bytes = fs.readFileSync(path.join(ctx.spdxDir, fileName));
+    // A one-document set or merge fallback can be byte-identical to the full
+    // report. Do not upload it again because project membership is keyed by
+    // hash and the second label would replace "Full report - merged".
+    if (sha256(bytes) === fullReportHash) {
+      continue;
+    }
+
+    try {
+      options.progress?.report({ message: `scanning project member ${fileName}...` });
+      const scanned = await scanBytes(bundle, bytes, fileName, {
+        ...options,
+        projectId,
+        projectLabel: projectScanLabel(ctx, fileName),
+        label: `scanning ${fileName}`,
+      });
+      getOutputChannel().appendLine(
+        `[sbom-total] project member ${fileName}: verdict ${scanned.result.verdict}, hash ${scanned.hash}`,
+      );
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      getOutputChannel().appendLine(
+        `[sbom-total] project member ${fileName} failed: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
 }
 
 async function scanSdkSeparately(
@@ -425,7 +521,7 @@ async function runScanPipeline(
   );
 
   const includeSdk = getSbomTotalConfig().get<boolean>(INCLUDE_SDK_SETTING_KEY, false);
-  const bundle = await createClientFromConfig(context);
+  const bundle = createClientFromConfig();
   const reportDir = path.join(ctx.spdxDir, OUTPUT_DIR_NAME);
   const reportBaseName = `${sanitizeFileName(ctx.appName)}-${sanitizeFileName(ctx.config.name)}`;
   const sdkDocName = spdxVersion === '3.0' ? SDK_DOC3_NAME : SDK_DOC_NAME;
@@ -454,8 +550,18 @@ async function runScanPipeline(
   }
 
   progress.report({ message: `scanning ${input.name}...` });
-  const scan = await scanBytes(bundle, input.bytes, input.name, {
-    force, signal: abort.signal, progress, label: `scanning ${input.name}`,
+  const scan = await scanApplicationBytes(context, ctx, bundle, input.bytes, input.name, {
+    force,
+    signal: abort.signal,
+    progress,
+    label: `scanning ${input.name}`,
+    projectLabel: projectScanLabel(ctx, 'Full report - merged'),
+  });
+
+  await scanIndividualDocuments(ctx, bundle, files, scan.projectId, scan.hash, {
+    force,
+    signal: abort.signal,
+    progress,
   });
 
   let sdkResult: ScanResult | undefined;
@@ -478,6 +584,7 @@ async function runScanPipeline(
     sdkResult,
     reportDir,
     reportBaseName,
+    projectId: scan.projectId,
   };
 }
 
@@ -561,6 +668,9 @@ function logOutcome(bundle: ClientBundle, outcome: ScanOutcome, gate: { failOn: 
   }
   channel.appendLine(`[sbom-total]   hash: ${outcome.hash}`);
   channel.appendLine(`[sbom-total]   details: ${bundle.client.permalinkUrl(outcome.hash)}`);
+  if (outcome.projectId) {
+    channel.appendLine(`[sbom-total]   project: ${bundle.client.projectUrl(outcome.projectId)}`);
+  }
   channel.appendLine(`[sbom-total]   RESULT: ${gate.failed ? 'FAIL' : 'PASS'} (gate: fail on ${gate.failOn})`);
 }
 
@@ -600,7 +710,11 @@ async function presentOutcome(
         await downloadAndOpenReport(bundle, outcome, 'pdf');
         break;
       case 'Open in Browser':
-        await vscode.env.openExternal(vscode.Uri.parse(bundle.client.permalinkUrl(outcome.hash)));
+        await vscode.env.openExternal(vscode.Uri.parse(
+          outcome.projectId
+            ? bundle.client.projectUrl(outcome.projectId)
+            : bundle.client.permalinkUrl(outcome.hash),
+        ));
         break;
       case 'Details':
         getOutputChannel().show(true);
@@ -649,7 +763,7 @@ async function runVerifyFlow(
     if (!outcome) {
       return;
     }
-    const bundle = await createClientFromConfig(context);
+    const bundle = createClientFromConfig();
     await presentOutcome(bundle, outcome, () => runVerifyFlow(context, ctx, runSpdxBuild, true));
   } catch (error) {
     showScanError(error);
@@ -712,7 +826,7 @@ async function scanSingleFile(
       async (progress, cancel): Promise<ScanOutcome | undefined> => {
         const abort = new AbortController();
         cancel.onCancellationRequested(() => abort.abort());
-        const bundle = await createClientFromConfig(context);
+        const bundle = createClientFromConfig();
         progress.report({ message: `scanning ${name}...` });
         const scan = await scanBytes(bundle, bytes, name, { force, signal: abort.signal, progress, label: `scanning ${name}` });
         return {
@@ -728,7 +842,7 @@ async function scanSingleFile(
     if (!outcome) {
       return;
     }
-    const bundle = await createClientFromConfig(context);
+    const bundle = createClientFromConfig();
     await presentOutcome(bundle, outcome, () => scanSingleFile(context, ctx, fileUri, true));
   } catch (error) {
     showScanError(error);
@@ -764,7 +878,7 @@ export async function createReport(
           return;
         }
         progress.report({ message: 'downloading the report...' });
-        const bundle = await createClientFromConfig(context);
+        const bundle = createClientFromConfig();
         getOutputChannel().appendLine(
           `[sbom-total] ${format.toUpperCase()} report for ${outcome.scannedName} (verdict ${outcome.result.verdict}): ${bundle.client.permalinkUrl(outcome.hash)}`,
         );

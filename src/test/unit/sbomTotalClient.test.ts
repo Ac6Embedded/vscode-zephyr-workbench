@@ -72,24 +72,51 @@ describe('SbomTotalClient.scanSbomStream', () => {
     );
   });
 
-  it('retries anonymously when the built-in token is rejected', async () => {
-    const authHeaders: (string | null)[] = [];
+  it('uploads directly without an authorization header', async () => {
+    let authorization: string | null = 'not-called';
+    let project: FormDataEntryValue | null = null;
+    let label: FormDataEntryValue | null = null;
     globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      const headers = new Headers(init.headers);
-      authHeaders.push(headers.get('authorization'));
-      if (authHeaders.length === 1) {
-        return new Response('forbidden', { status: 403 });
-      }
+      authorization = new Headers(init.headers).get('authorization');
+      const form = init.body as FormData;
+      project = form.get('project');
+      label = form.get('label');
       return streamResponse([`event: result\ndata: ${JSON.stringify(RESULT)}\n\n`]);
     }) as unknown as typeof fetch;
 
-    const client = new SbomTotalClient({ baseUrl: 'https://example.test', token: 'sct_builtin', anonymousFallback: true });
-    const result = await client.scanSbomStream(new Uint8Array([1]), 'x.spdx');
+    const client = new SbomTotalClient({ baseUrl: 'https://example.test' });
+    await client.scanSbomStream(new Uint8Array([1]), 'x.spdx', {
+      projectId: 'proj_abc123',
+      projectLabel: 'Full report - merged · nucleo_h563zi · primary',
+    });
 
-    assert.equal(result.hash, 'abc123');
-    assert.equal(authHeaders.length, 2);
-    assert.equal(authHeaders[0], 'Bearer sct_builtin');
-    assert.equal(authHeaders[1], null); // retried without the token
+    assert.equal(authorization, null);
+    assert.equal(project, 'proj_abc123');
+    assert.equal(label, 'Full report - merged · nucleo_h563zi · primary');
+  });
+
+  it('creates an anonymous project and exposes its project URL', async () => {
+    let requestUrl = '';
+    let requestInit: RequestInit | undefined;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      requestUrl = String(url);
+      requestInit = init;
+      return new Response(JSON.stringify({ projectId: 'proj_created123', name: 'hello_world', owner: null }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const client = new SbomTotalClient({ baseUrl: 'https://example.test/' });
+    const projectResult = await client.createProject('hello_world');
+
+    assert.equal(requestUrl, 'https://example.test/api/v1/projects');
+    assert.equal(requestInit?.method, 'POST');
+    assert.equal(new Headers(requestInit?.headers).get('authorization'), null);
+    assert.equal(new Headers(requestInit?.headers).get('content-type'), 'application/json');
+    assert.deepEqual(JSON.parse(String(requestInit?.body)), { name: 'hello_world' });
+    assert.deepEqual(projectResult, { projectId: 'proj_created123', name: 'hello_world', owner: null });
+    assert.equal(client.projectUrl(projectResult.projectId), 'https://example.test/en/project/proj_created123');
   });
 
   it('errors when the stream ends without a result', async () => {

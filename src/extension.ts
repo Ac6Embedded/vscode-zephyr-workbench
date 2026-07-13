@@ -77,7 +77,7 @@ import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
 import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getAllZephyrSdkInstallations, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, isGlobalSdkSettingValue, isWorkspaceFolder, msleep, pruneMissingToolchains, removeWorkspaceFolder, tryGetZephyrSdkInstallation, checkZinstallerVersion } from './utils/utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './utils/env/zephyrEnvUtils';
 import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
-import { createReport, setApiToken, verifySbomFile, verifySbomSet } from './sbomtotal/sbomVerifyService';
+import { createReport, verifySbomFile, verifySbomSet } from './sbomtotal/sbomVerifyService';
 import { syncAutoDetectEnv } from './utils/debugTools/autoDetectSyncUtils';
 import { initDtsIntegration } from './utils/zephyr/dtsIntegration';
 import { normalizeWestFlagDValue } from './utils/zephyr/westArgUtils';
@@ -1435,10 +1435,17 @@ export function activate(context: vscode.ExtensionContext) {
 			await vscode.commands.executeCommand('zephyr-workbench-app-explorer.debug-app', uri);
 		})
 	);
-
 	context.subscriptions.push(
-		vscode.commands.registerCommand('zephyr-workbench.sbom-total.set-token', async () => {
-			await setApiToken(context);
+		vscode.commands.registerCommand('zephyr-workbench.explorer.sbom-total-analysis', async (uri: vscode.Uri) => {
+			try {
+				const project = await getZephyrApplication(uri.fsPath);
+				const node = new ZephyrApplicationTreeItem(project, vscode.TreeItemCollapsibleState.None);
+				await verifySbomSet(context, node, runSpdxBuild);
+			} catch (error) {
+				vscode.window.showErrorMessage(
+					`Could not start SBOM Total analysis: ${error instanceof Error ? error.message : error}`,
+				);
+			}
 		})
 	);
 

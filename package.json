@@ -703,11 +703,6 @@
         "category": "Zephyr Workbench/Application"
       },
       {
-        "command": "zephyr-workbench.sbom-total.set-token",
-        "title": "Set SBOM Total API Token",
-        "category": "Zephyr Workbench"
-      },
-      {
         "command": "zephyr-workbench-app-explorer.spdx.analyze.dt-doctor",
         "title": "DT Doctor",
         "category": "Zephyr Workbench/Application"
@@ -732,6 +727,10 @@
       {
         "command": "zephyr-workbench.explorer.debug",
         "title": "Zephyr Workbench: Debug"
+      },
+      {
+        "command": "zephyr-workbench.explorer.sbom-total-analysis",
+        "title": "Zephyr Workbench: SBOM Total Analysis"
       },
       {
         "command": "zephyr-workbench.explorer.terminal",
@@ -1252,6 +1251,10 @@
           "group": "zephyr@997"
         },
         {
+          "command": "zephyr-workbench.explorer.sbom-total-analysis",
+          "group": "zephyr@997.1"
+        },
+        {
           "command": "zephyr-workbench.explorer.rebuild",
           "group": "zephyr@998"
         },
@@ -1333,6 +1336,11 @@
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         },
         {
+          "submenu": "zephyr-workbench-app-explorer.spdx",
+          "group": "0@view/item/context@3.1",
+          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
+        },
+        {
           "command": "zephyr-workbench-app-explorer.flash-run-app",
           "group": "0@view/item/context@4",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
@@ -1395,6 +1403,11 @@
         {
           "submenu": "zephyr-workbench-app-explorer.config.analysis",
           "group": "0@view/item/context@3",
+          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
+        },
+        {
+          "submenu": "zephyr-workbench-app-explorer.config.spdx",
+          "group": "0@view/item/context@3.1",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         },
         {
@@ -1901,11 +1914,6 @@
           "submenu": "zephyr-workbench-app-explorer.static-code-analysis",
           "group": "0@view/item/context@3",
           "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
-        },
-        {
-          "submenu": "zephyr-workbench-app-explorer.spdx",
-          "group": "0@view/item/context@4",
-          "when": "view == zephyr-workbench-app-explorer && viewItem == zephyr-application"
         }
       ],
       "zephyr-workbench-app-explorer.config.analysis": [
@@ -1927,11 +1935,6 @@
         {
           "submenu": "zephyr-workbench-app-explorer.config.static-code-analysis",
           "group": "0@view/item/context@3",
-          "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
-        },
-        {
-          "submenu": "zephyr-workbench-app-explorer.config.spdx",
-          "group": "0@view/item/context@4",
           "when": "view == zephyr-workbench-app-explorer && viewItem =~ /^zephyr-build-config/"
         }
       ],
