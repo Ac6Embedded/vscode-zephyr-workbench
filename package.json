@@ -1180,11 +1180,11 @@
       },
       {
         "id": "zephyr-workbench-app-explorer.spdx",
-        "label": "SPDX"
+        "label": "SBOM - SPDX"
       },
       {
         "id": "zephyr-workbench-app-explorer.config.spdx",
-        "label": "SPDX"
+        "label": "SBOM - SPDX"
       },
       {
         "id": "zephyr-workbench-app-explorer.spdx.analyze",
