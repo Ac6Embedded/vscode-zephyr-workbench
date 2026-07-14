@@ -161,7 +161,7 @@ debug_tools:
 - tool: openocd-modustoolbox
   alias: openocd
   name: OpenOCD Infineon
-  version: 0.12.0+dev-5.16.0.4361
+  version: 0.12.0+dev-5.19.0.4782
   website: https://softwaretools.infineon.com/tools/com.ifx.tb.tool.modustoolboxprogtools
   vendor: Infineon
   type: debug_server
@@ -179,14 +179,14 @@ debug_tools:
       - "/Applications/ModusToolboxProgtools-*/openocd/bin"
   os:
     windows:
-      source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.8.0.2015/artifacts/ModusToolboxProgtools_1.8.0.2015.exe/download
-      sha256: ae573caac93bd51a4ef97ae5deb6132d758ee7f609b62722aee454573763fcb3
+      source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.9.0.2261/artifacts/ModusToolboxProgtools_1.9.0.2261.exe/download
+      sha256: b43835827dbd0db5481acce1f2a4ec30586b8d29fcd4a518b12c620b2f449c2d
     linux:
-      source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.8.0.2015/artifacts/ModusToolboxProgtools_1.8.0.2015.deb/download
-      sha256: 74654e76eb63e7a851234e1e5578c62e6ff4d5b56476516fea3daab2e31e564c
+      source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.9.0.2261/artifacts/ModusToolboxProgtools_1.9.0.2261.deb/download
+      sha256: 42f48cec9f7b770dc966949a9274167ef96e9935c969f5b65fc6da2ffb0fa436
     darwin:
-      source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.8.0.2015/artifacts/ModusToolboxProgtools_1.8.0.2015.pkg/download
-      sha256: a91777692d54a3d3da77dff96b70b8d3f02cbf736823328292c5a1004cff49a6
+      source: https://softwaretools-hosting.infineon.com/api/packages/com.ifx.tb.tool.modustoolboxprogtools/versions/1.9.0.2261/artifacts/ModusToolboxProgtools_1.9.0.2261.pkg/download
+      sha256: f0f6d593b0ee1e06502fbafdbbd591e014badb1984ae3fde72e2d1542e76d4df
 - tool: openocd-custom
   alias: openocd
   name: OpenOCD Custom 
