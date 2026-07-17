@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
 import { compareVersions, fileExists, resolveEnvScriptForShell } from './utils';
+import { isPosixShellKind, quoteIfNeeded } from './shellQuoting';
 import {
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
@@ -96,11 +97,14 @@ export function classifyShell(shellPath: string):
   return 'bash';
 }
 
+// Returns an UNQUOTED string: callers interpolating the result into a shell
+// command line must wrap it with quoteIfNeeded() themselves. (The old
+// quote-if-space behavior embedded literal quotes into process-env values and
+// double-quoted call sites that added their own quotes.)
 export function normalizePathForShell(shellType: string, p: string): string {
   let out = p;
 
-  if (shellType === 'bash' || shellType === 'zsh' ||
-    shellType === 'dash' || shellType === 'fish') {
+  if (isPosixShellKind(shellType)) {
 
     out = out.replace(/\.(bat|ps1)$/i, '.sh')
       .replace(/%(\w+)%/g, '${$1}');
@@ -112,10 +116,8 @@ export function normalizePathForShell(shellType: string, p: string): string {
       .replace(/\$\{(\w+)\}/g, '$env:$1');
   }
 
-  if (shellType === 'bash' || shellType === 'zsh' ||
-    shellType === 'dash' || shellType === 'fish') {
+  if (isPosixShellKind(shellType)) {
     out = out.replace(/\\/g, '/');
-    if (/\s/.test(out)) { out = `"${out}"`; }
   }
   return out;
 }
@@ -364,6 +366,19 @@ export function resolveConfiguredPathValue(
   return value;
 }
 
+/**
+ * Bound single-variable resolver for expandAndNormalizeWestArgs (which must
+ * stay vscode-free). Resolves the VS Code-style variable names
+ * resolveConfiguredPath supports (workspaceFolder, userHome, env:X, config:X,
+ * ...) to their raw values — deliberately WITHOUT path.normalize, which would
+ * corrupt non-path values (URLs, flag fragments) when applied to whole
+ * west-arg tokens. Unknown names return undefined so the caller leaves the
+ * ${...} literal for VS Code or the shell to substitute later.
+ */
+export function makeConfiguredVariableResolver(scope?: ConfigurationScope): (name: string) => string | undefined {
+  return name => resolveSupportedVariable(name, scope, { depth: 0, seenConfigKeys: new Set<string>() });
+}
+
 export function getConfiguredPathBySettingName(
   settingName: string,
   scope?: ConfigurationScope,
@@ -442,6 +457,34 @@ export function normalisePathsInString(kind: string, text: string): string {
 
 export type RawEnvVars = { [key: string]: string | string[] };
 
+/**
+ * Normalize ONE env-var VALUE destined for the process environment of a
+ * task/terminal running under `shellKind`. Process env is never re-parsed by
+ * the shell, so this must NEVER quote. POSIX kinds get backslash→'/' only
+ * (C:/ form; the native Windows west/cmake accept it and it survives any
+ * shell round-trip). cmd/powershell kinds are returned unchanged. No
+ * %VAR%→${VAR} or .bat→.sh rewriting either: those make sense for command
+ * text, but in an env value they just produce unexpandable literals.
+ */
+export function normalizeEnvValueForShell(shellKind: string, value: string): string {
+  return isPosixShellKind(shellKind) ? value.replace(/\\/g, '/') : value;
+}
+
+/**
+ * Map a whole env record through normalizeEnvValueForShell. PATH-like keys
+ * are skipped by default: PATH is ';'-joined native entries whose Windows
+ * loader semantics should not be touched.
+ */
+export function normalizeEnvRecordForShell(
+  shellKind: string,
+  env: Record<string, string>,
+  skipKeys: readonly string[] = ['PATH'],
+): Record<string, string> {
+  const skip = new Set(skipKeys.map(k => k.toUpperCase()));
+  return Object.fromEntries(Object.entries(env).map(([k, v]) =>
+    [k, skip.has(k.toUpperCase()) ? v : normalizeEnvValueForShell(shellKind, v)]));
+}
+
 export function normalizeEnvVarsForShell(
   rawEnv: RawEnvVars,
   shellKind: string
@@ -449,13 +492,13 @@ export function normalizeEnvVarsForShell(
   const out: { [key: string]: string } = {};
   for (const [key, val] of Object.entries(rawEnv)) {
     if (typeof val === 'string') {
-      const normalized = normalizePathForShell(shellKind, val);
+      const normalized = normalizeEnvValueForShell(shellKind, val);
       if (normalized) {
         out[key] = normalized;
       }
     } else if (Array.isArray(val)) {
       const normalized = val
-        .map(entry => normalizePathForShell(shellKind, entry))
+        .map(entry => normalizeEnvValueForShell(shellKind, entry))
         .filter(entry => entry); // Remove empty strings
       if (normalized.length > 0) {
         // Zephyr/CMake list variables (EXTRA_CONF_FILE, EXTRA_DTC_OVERLAY_FILE,
@@ -513,14 +556,6 @@ function detectTerminalProfile():
   };
 }
 
-export function winToPosixPath(p: string): string {
-  if (process.platform !== 'win32') {
-    return p;
-  }
-  const withSlashes = p.replace(/\\/g, '/');
-  return withSlashes.replace(/^([A-Za-z]):/, (_m, d) => `/cygdrive/${d.toLowerCase()}`);
-}
-
 export function getShellExe(): string {
   return getResolvedShell().path;
 }
@@ -567,18 +602,21 @@ export function getShellNullRedirect(shell: string): string {
   }
 }
 
+// Quotes the script path itself (idempotently), so callers can pass the
+// unquoted output of normalizePathForShell directly.
 export function getShellSourceCommand(shell: string, script: string): string {
+  const quoted = quoteIfNeeded(script);
   switch (shell) {
     case 'bash':
     case 'zsh':
     case 'dash':
     case 'fish':
-      return `. ${script}`;
+      return `. ${quoted}`;
     case 'cmd.exe':
-      return `call ${script}`;
+      return `call ${quoted}`;
     case 'powershell.exe':
     case 'pwsh.exe':
-      return `. ${script}`;
+      return `. ${quoted}`;
     default:
       return '';
   }
@@ -735,10 +773,15 @@ export function buildStartupSetupShellArgs(
   // with an interactive shell that inherits env, cwd, and any profile args the user
   // had configured.
   const setupChain = setupCommands.join(' && ');
+  // POSIX single-quote: survives spaces and backslashes; '\'' escapes embedded
+  // quotes. The shell exe is also forward-slashed — a Windows path like
+  // `C:\Program Files\Git\bin\bash.exe` would otherwise be word-split and
+  // backslash-stripped inside the -c string, killing the terminal at startup.
+  const posixQuote = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
   const userArgs = (originalShellArgs ?? [])
-    .map(arg => `'${arg.replace(/'/g, "'\\''")}'`)
+    .map(posixQuote)
     .join(' ');
-  const execTail = `exec ${shellExe}${userArgs ? ' ' + userArgs : ''}`;
+  const execTail = `exec ${posixQuote(shellExe.replace(/\\/g, '/'))}${userArgs ? ' ' + userArgs : ''}`;
   // `;` (not `&&`) before exec so the interactive shell still launches even if a
   // setup command returns non-zero — otherwise a fluky echo or source would close
   // the terminal.
@@ -775,9 +818,6 @@ export function buildTerminalEnvCommands(
   groups: TerminalEnvGroup[],
 ): { setCommands: string[]; echoCommands: string[] } {
   const echoCommand = getShellEchoCommand(shellType);
-  const isPosix = shellType === 'bash' || shellType === 'zsh'
-    || shellType === 'dash' || shellType === 'fish';
-  const renderValue = (v: string) => isPosix ? winToPosixPath(v) : v;
 
   const setCommands: string[] = [];
   const echoCommands: string[] = [`${echoCommand} "======= Zephyr Workbench Environment ======="`];
@@ -794,7 +834,9 @@ export function buildTerminalEnvCommands(
 
     echoCommands.push(`${echoCommand} "----- ${group.label} -----"`);
     for (const [key, value] of entries) {
-      echoCommands.push(`${echoCommand} ${key}="${renderValue(String(value))}"`);
+      // Echo the value exactly as injected — a transformed display value
+      // would not match what `echo $KEY` shows in the terminal.
+      echoCommands.push(`${echoCommand} ${key}="${String(value)}"`);
     }
   }
 
@@ -884,8 +926,18 @@ export async function executeTaskCollectExitCode(task: vscode.Task): Promise<num
   });
 }
 
+/**
+ * True for a Cygwin shell (any install dir containing "cygwin", either slash
+ * direction, any case, optional .exe). Cygwin bash needs `--login -i` to load
+ * its profile and CHERE_INVOKING=1 to keep the requested cwd in login mode.
+ * MSYS2 and Git Bash are deliberately NOT matched: our task invocations run
+ * them non-login (plain `-c`), where cwd is honored without CHERE_INVOKING;
+ * VS Code's recommended MSYS2 profile supplies --login + CHERE_INVOKING via
+ * profile args/env itself, which we preserve (getResolvedShell/getProfileEnv).
+ */
 export function isCygwin(shellPath: string): boolean {
-  return /\\cygwin[^\\]*\\bin\\bash.exe$/i.test(shellPath);
+  const p = shellPath.replace(/\\/g, '/').toLowerCase();
+  return /\/cygwin[^/]*\/bin\/(bash|sh|zsh|dash)(\.exe)?$/.test(p);
 }
 
 export interface EnvSourcedShellCommand {
@@ -1075,9 +1127,16 @@ export async function execShellCommandCapturingExit(
 export async function execShellCommandWithEnv(
   cmdName: string,
   cmd: string,
-  options: vscode.ShellExecutionOptions
+  options: vscode.ShellExecutionOptions,
+  // Force this shell instead of the user's default profile (the env script is
+  // auto-swapped to the matching flavor). Used by the win32 .ps1 installer
+  // flows, which would otherwise be routed through e.g. Git Bash and have
+  // their Windows paths mangled. Note: options.executable is deliberately
+  // still ignored — several POSIX call sites set it to 'bash' relying on it
+  // being discarded.
+  executableOverride?: string,
 ) {
-  const prepared = buildEnvSourcedShellCommand(cmd, options.cwd);
+  const prepared = buildEnvSourcedShellCommand(cmd, options.cwd, executableOverride ?? getShellExe());
   options.executable = prepared.executable;
   options.shellArgs = prepared.shellArgs;
 
@@ -1104,9 +1163,12 @@ export async function execShellCommandWithEnv(
 export async function execCommandWithEnv(
   cmd: string,
   cwd?: string,
-  cb?: (e: ExecException | null, so: string, se: string) => void
+  cb?: (e: ExecException | null, so: string, se: string) => void,
+  // See execShellCommandWithEnv: forces a specific shell instead of the
+  // user's default profile.
+  executableOverride?: string,
 ): Promise<ChildProcess> {
-  const prepared = buildEnvSourcedShellCommand(cmd, cwd);
+  const prepared = buildEnvSourcedShellCommand(cmd, cwd, executableOverride ?? getShellExe());
 
   const options: ExecOptions = {
     cwd,

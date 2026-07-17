@@ -1044,7 +1044,9 @@ export async function findConfigTask(taskLabel: string, project: ZephyrApplicati
             if (config.boardIdentifier && config.boardIdentifier.length > 0) {
               args.push(`--board ${config.boardIdentifier}`);
             }
-            args.push(`--build-dir ${buildDirVar}`);
+            // Quoted: the shell-time value may contain spaces and an unquoted
+            // expansion would word-split (bash ${BUILD_DIR}, cmd %BUILD_DIR%).
+            args.push(`--build-dir "${buildDirVar}"`);
 
             // Create temporary task with the args adapted to the config
             const taskDefinition = {

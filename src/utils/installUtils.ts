@@ -977,7 +977,10 @@ export async function verifyHostTools(context: vscode.ExtensionContext) {
     if(process.platform === 'linux' || process.platform === 'darwin') {
       await execShellCommandWithEnv('Installing Host tools', installCmd + " --only-check " + installArgs, shellOpts);
     } else {
-      await execShellCommandWithEnv('Installing Host tools', installCmd + " -OnlyCheck " + installArgs, shellOpts);
+      // Force PowerShell: execShellCommandWithEnv otherwise routes through the
+      // user's default profile shell, and a Git Bash/Cygwin profile would
+      // mangle the backslash .ps1 path (bash eats unquoted backslashes).
+      await execShellCommandWithEnv('Installing Host tools', installCmd + " -OnlyCheck " + installArgs, shellOpts, 'powershell.exe');
     }
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");
@@ -994,29 +997,34 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
     let shell: string = "";
 
     destDir = getInstallDirRealPath();
-    installArgs += ` -D ${destDir}`;
 
     switch(process.platform) {
       case 'linux': {
         installScript = 'install-debug-tools.sh';
         installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
+        installArgs += ` -D ${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       case 'win32': {
         const ok = await ensurePowershellExecutionPolicy();
         if (!ok) { return; }
         installScript = 'install-debug-tools.ps1';
-        installCmd = `powershell -File ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
+        // ShellExecution + `powershell -Command` round trip: escaped quotes
+        // (quotePathForPwshCommand) are what survives — plain quotes are
+        // stripped by the outer -Command parse (same pattern as installHostTools).
+        installCmd = `powershell -File ${quotePathForPwshCommand(vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath)}`;
+        installArgs += ` -D ${quotePathForPwshCommand(destDir)}`;
         shell = 'powershell.exe';
         installArgs += ' -Tools ';
-        break; 
+        break;
       }
       case 'darwin': {
         installScript = 'install-debug-tools-mac.sh';
         installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
+        installArgs += ` -D ${destDir}`;
         shell = 'bash';
-        break; 
+        break;
       }
       default: {
         vscode.window.showErrorMessage("Platform not supported !");
@@ -1054,7 +1062,15 @@ export async function installHostDebugTools(context: vscode.ExtensionContext, li
 
     // Run in a shell session that sources the configured env script
     // so pip-based runners install into the managed venv and PATH is consistent.
-    await execShellCommandWithEnv('Installing Host debug tools', buildInstallCommand(listTools), shellOpts);
+    // win32 forces PowerShell (the command is a .ps1 invocation with backslash
+    // paths that a Git Bash/Cygwin default profile would mangle); the env
+    // script is auto-swapped to env.ps1 by buildEnvSourcedShellCommand.
+    await execShellCommandWithEnv(
+      'Installing Host debug tools',
+      buildInstallCommand(listTools),
+      shellOpts,
+      process.platform === 'win32' ? 'powershell.exe' : undefined,
+    );
 
   } else {
     vscode.window.showErrorMessage("Cannot find installation script");
@@ -1075,25 +1091,30 @@ export async function installHostDebugToolsSilent(context: vscode.ExtensionConte
   let destDir = '';
 
   destDir = getInstallDirRealPath();
-  installArgs += ` -D ${destDir}`;
 
   switch(process.platform) {
     case 'linux': {
       installScript = 'install-debug-tools.sh';
       installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
+      installArgs += ` -D ${destDir}`;
       break;
     }
     case 'win32': {
       const ok = await ensurePowershellExecutionPolicy();
       if (!ok) { return; }
       installScript = 'install-debug-tools.ps1';
-      installCmd = `powershell -File ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
+      // child_process.exec path (unlike installHostDebugTools' ShellExecution):
+      // node escapes plain double quotes correctly here, and the escaped-quote
+      // form (quotePathForPwshCommand) would be double-escaped into garbage.
+      installCmd = `powershell -File "${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}"`;
+      installArgs += ` -D "${destDir}"`;
       installArgs += ' -Tools ';
       break;
     }
     case 'darwin': {
       installScript = 'install-debug-tools-mac.sh';
       installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
+      installArgs += ` -D ${destDir}`;
       break;
     }
     default: {
@@ -1110,12 +1131,14 @@ export async function installHostDebugToolsSilent(context: vscode.ExtensionConte
   const toolsCmdArg = listTools.map(tool => tool.tool).join(toolsSeparator);
   const fullCmd = `${installCmd} ${installArgs} ${toolsCmdArg}`.trim();
 
-  // Run via child_process exec with env sourcing to avoid opening any terminal/log panel
+  // Run via child_process exec with env sourcing to avoid opening any terminal/log panel.
+  // win32 forces PowerShell so a Git Bash/Cygwin default profile cannot mangle
+  // the backslash .ps1/-D paths.
   await new Promise<void>((resolve, reject) => {
     execCommandWithEnv(fullCmd, undefined, (error) => {
       if (error) { reject(error); return; }
       resolve();
-    }).catch(err => reject(err));
+    }, process.platform === 'win32' ? 'powershell.exe' : undefined).catch(err => reject(err));
   });
 }
 

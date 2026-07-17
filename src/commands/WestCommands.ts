@@ -7,16 +7,13 @@ import { prependRustBinPath } from '../models/ToolchainInstallations';
 import { ZephyrApplication } from '../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../constants';
-import { concatCommands, executeTask, executeTaskCollectExitCode, execShellCommandWithEnv, getConfiguredVenvPath, getConfiguredWorkbenchPath, getOutputChannel, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars, spawnCommandWithEnv } from '../utils/execUtils';
+import { concatCommands, executeTask, executeTaskCollectExitCode, execShellCommandWithEnv, getConfiguredVenvPath, getConfiguredWorkbenchPath, getOutputChannel, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, makeConfiguredVariableResolver, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, normalizeEnvVarsForShell, RawEnvVars, spawnCommandWithEnv } from '../utils/execUtils';
 import { fileExists, getWestWorkspace, normalizePath, tryGetZephyrSdkInstallation } from '../utils/utils';
-import { composeWestBuildArgs, hasWestBuildSourceDirArg } from '../utils/zephyr/westArgUtils';
+import { composeWestBuildArgs, expandAndNormalizeWestArgs, hasWestBuildSourceDirArg } from '../utils/zephyr/westArgUtils';
 import { ZEPHYR_LANG_RUST_PROJECT_NAME } from '../utils/zephyr/manifestUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
 import { buildDirectTask, createCppPropertiesCompileCommandsRefresh } from '../providers/ZephyrTaskProvider';
-
-function quote(p: string): string {
-  return /\s/.test(p) ? `"${p}"` : p;
-}
+import { quoteIfNeeded } from '../utils/shellQuoting';
 
 export async function westInitCommand(srcUrl: string, srcRev: string, workspacePath: string, manifestPath: string = ''): Promise<void> {
   let command = '';
@@ -24,11 +21,11 @@ export async function westInitCommand(srcUrl: string, srcRev: string, workspaceP
   if (srcUrl && srcUrl !== '') {
     workspacePath = normalizePath(workspacePath);
     workspacePath = normalizePathForShell(classifyShell(getShellExe()), workspacePath);
-    command = `west init -m ${srcUrl} --mr ${srcRev} ${workspacePath}`;
+    command = `west init -m ${srcUrl} --mr ${srcRev} ${quoteIfNeeded(workspacePath)}`;
     if (manifestPath !== '') {
       manifestPath = normalizePath(manifestPath);
       manifestPath = normalizePathForShell(classifyShell(getShellExe()), manifestPath);
-      command += ` --mf ${manifestPath}`;
+      command += ` --mf ${quoteIfNeeded(manifestPath)}`;
     }
   } else {
     if (manifestPath !== '' && fileExists(manifestPath)) {
@@ -69,7 +66,7 @@ export async function westInitCommand(srcUrl: string, srcRev: string, workspaceP
       manifestFile = normalizePathForShell(classifyShell(getShellExe()), manifestFile);
       manifestDir = normalizePath(manifestDir);
       manifestDir = normalizePathForShell(classifyShell(getShellExe()), manifestDir);
-      command = `west init -l --mf ${manifestFile} ${manifestDir}`;
+      command = `west init -l --mf ${quoteIfNeeded(manifestFile)} ${quoteIfNeeded(manifestDir)}`;
     }
   }
 
@@ -416,7 +413,7 @@ export async function westTmpBuildCmakeOnlyCommand(
   const westArgs = makeWestArgs(zephyrProject, buildConfig.westArgs, buildConfig.westFlagsD);
   const sourceDirArg = hasWestBuildSourceDirArg(westArgs)
     ? ''
-    : `--source-dir ${quote(normalizePathForShell(shellKind, zephyrProject.appRootPath))}`;
+    : `--source-dir ${quoteIfNeeded(normalizePathForShell(shellKind, zephyrProject.appRootPath))}`;
 
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
   const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
@@ -428,7 +425,7 @@ export async function westTmpBuildCmakeOnlyCommand(
     '-t boards',
     '--cmake-only',
     `--board ${buildConfig.boardIdentifier}`,
-    `--build-dir ${quote(tmpPath)}`,
+    `--build-dir ${quoteIfNeeded(tmpPath)}`,
     sourceDirArg,
     westArgs,
     redirect,
@@ -584,9 +581,17 @@ function makeWestArgs(
   raw: string | undefined = undefined,
   westFlagsD: string[] | undefined = [],
 ): string {
+  // Expand ${workspaceFolder}-style variables and normalize Windows paths for
+  // the target shell before composing the command string.
+  const expanded = expandAndNormalizeWestArgs(raw, {
+    shellKind: classifyShell(getShellExe()),
+    resolveVariable: makeConfiguredVariableResolver(project.appWorkspaceFolder),
+  });
   // Inject the computed OPENOCD override at execution time so build settings stay unchanged,
-  // but keep any explicit user-provided OPENOCD value in west args or west flags as higher priority.
-  return composeWestBuildArgs(raw, mergeOpenocdBuildFlag(project, raw, westFlagsD));
+  // but keep any explicit user-provided OPENOCD value in west args or west flags as higher
+  // priority. Detection runs on the raw string; the -D flags it emits are pre-quoted and
+  // must not be re-processed by the expander.
+  return composeWestBuildArgs(expanded, mergeOpenocdBuildFlag(project, raw, westFlagsD));
 }
 
 /**
@@ -710,7 +715,7 @@ function runWestBoardsList(
         if (boardRoot.length > 0) {
           let normalizeBoardRoot = normalizePath(boardRoot);
           normalizeBoardRoot = normalizePathForShell(classifyShell(getShellExe()), normalizeBoardRoot);
-          cmd += ` --board-root ${normalizeBoardRoot}`;
+          cmd += ` --board-root ${quoteIfNeeded(normalizeBoardRoot)}`;
         }
       }
     }

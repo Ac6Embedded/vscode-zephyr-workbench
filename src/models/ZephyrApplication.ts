@@ -37,6 +37,7 @@ import {
   getResolvedShell,
   getShellSourceCommand,
   classifyShell,
+  normalizeEnvRecordForShell,
   normalizePathForShell,
   TerminalEnvGroup,
 } from '../utils/execUtils';
@@ -494,14 +495,22 @@ export class ZephyrApplication {
       },
     ];
 
-    const env = groups.reduce<{ [key: string]: string }>((acc, g) => ({ ...acc, ...g.env }), {});
+    // POSIX shells on Windows get C:/-form env values (native west/cmake accept
+    // them, and they survive any shell round-trip); PATH keeps its native
+    // ';'-joined entries. cmd/PowerShell values pass through unchanged.
+    const normalizedGroups = groups.map(g => ({
+      label: g.label,
+      env: normalizeEnvRecordForShell(shellType, g.env),
+    }));
+
+    const env = normalizedGroups.reduce<{ [key: string]: string }>((acc, g) => ({ ...acc, ...g.env }), {});
 
     return {
       shellPath,
       shellArgs,
       shellType,
       env,
-      groups,
+      groups: normalizedGroups,
       cwd: application.appRootPath,
     };
   }

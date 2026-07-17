@@ -32,7 +32,8 @@ import {
   restartClangdServer,
   updateClangdConfigFile,
 } from '../utils/intellisense/clangdConfig';
-import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, getShellExe, getShellSourceCommand, isCygwin, normalizePathForShell, resolveConfiguredPath, toPortableWorkspaceFolderPath } from '../utils/execUtils';
+import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, getShellExe, getShellSourceCommand, isCygwin, makeConfiguredVariableResolver, normalizePathForShell, resolveConfiguredPath, toPortableWorkspaceFolderPath } from '../utils/execUtils';
+import { expandAndNormalizeWestArgs } from '../utils/zephyr/westArgUtils';
 import { findArmGnuToolchainInstallation, getWestWorkspace, msleep, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
 import { normalizeStoredToolchainVariant } from '../utils/toolchainSelection';
@@ -1141,9 +1142,13 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
     // We look for the input token rather than the task label to support temporary tasks like "West Flash [cfg]".
     if (config && config.defaultRunner && config.defaultRunner.length > 0 && args.includes("${input:west.runner}")) {
       args = args.replace("${input:west.runner}", `--runner ${config.defaultRunner}`);
-      // Append optional runner arguments exactly as provided by the user.
+      // Append optional runner arguments, expanding ${workspaceFolder}-style
+      // variables and normalizing Windows paths for the target shell.
       if (config.customArgs && config.customArgs.length > 0) {
-        args = `${args} ${config.customArgs.trim()}`;
+        args = `${args} ${expandAndNormalizeWestArgs(config.customArgs, {
+          shellKind,
+          resolveVariable: makeConfiguredVariableResolver(folder ?? project.appWorkspaceFolder),
+        })}`;
       }
     }
 
@@ -1445,7 +1450,12 @@ export function buildDirectTask(
   let definition: ZephyrTaskDefinition = { ...taskDef, args: [...taskDef.args] };
 
   if (targetConfig) {
-    const buildDirVar = getEnvVarFormat(getShell(), 'BUILD_DIR');
+    const shellKind = getShell();
+    const buildDirVar = getEnvVarFormat(shellKind, 'BUILD_DIR');
+    const expandOptions = {
+      shellKind,
+      resolveVariable: makeConfiguredVariableResolver(workspaceFolder),
+    };
     const args: string[] = [];
     for (const arg of taskDef.args) {
       if (!arg.startsWith('--build-dir') && !arg.startsWith('--board')) {
@@ -1456,7 +1466,7 @@ export function buildDirectTask(
       args.push(`--runner ${options.flashRunner}`);
     }
     if (options.extraArgs?.length) {
-      args.push(...options.extraArgs);
+      args.push(...options.extraArgs.map(arg => expandAndNormalizeWestArgs(arg, expandOptions)));
     }
     const subcommand = taskDef.command === 'west' ? taskDef.args[0]?.split(' ')[0] : undefined;
     const skipBoard = subcommand !== undefined && WEST_SUBCOMMANDS_WITHOUT_BOARD.has(subcommand);
@@ -1465,9 +1475,13 @@ export function buildDirectTask(
     }
     // Keep the build directory as a shell env var for direct tasks like flash;
     // resolve() injects BUILD_DIR from the selected build configuration.
-    args.push(`--build-dir ${buildDirVar}`);
+    // Quoted: the shell-time value may contain spaces, and an unquoted
+    // expansion would word-split (bash ${BUILD_DIR}, cmd %BUILD_DIR%).
+    args.push(`--build-dir "${buildDirVar}"`);
     if (taskName === 'West Flash' && options.flashRunnerArgs?.trim()) {
-      args.push(options.flashRunnerArgs.trim());
+      // Runner args may carry ${workspaceFolder} or Windows paths; expand and
+      // normalize them for the target shell instead of appending verbatim.
+      args.push(expandAndNormalizeWestArgs(options.flashRunnerArgs, expandOptions));
     }
 
     definition = { ...taskDef, config: targetConfig.name, args };

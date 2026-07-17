@@ -14,6 +14,8 @@ import {
   getResolvedShell,
   getShellSourceCommand,
   classifyShell,
+  makeConfiguredVariableResolver,
+  normalizeEnvRecordForShell,
   normalizePathForShell,
   TerminalEnvGroup,
 } from '../utils/execUtils';
@@ -28,7 +30,7 @@ import {
   ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY,
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
 } from '../constants';
-import { composeWestBuildArgs, normalizeWestFlagDValue } from '../utils/zephyr/westArgUtils';
+import { composeWestBuildArgs, expandAndNormalizeWestArgs, normalizeWestFlagDValue } from '../utils/zephyr/westArgUtils';
 import { getPyOcdTargetFromRunnersYaml, readRunnersYamlForProject } from '../utils/zephyr/runnersYamlUtils';
 
 export class ZephyrBuildConfig {
@@ -239,8 +241,15 @@ export class ZephyrBuildConfig {
     }
     // Show the full west args line the user's build config will produce (e.g.
     // `--cmake-only -- -DCONF_FILE=foo`), composed exactly the way the build flow
-    // composes it. One line is easier to read than two synthetic vars.
-    const composedWestArgs = composeWestBuildArgs(buildConfig.westArgs, buildConfig.westFlagsD);
+    // composes it (variables expanded, paths normalized for the shell). One line
+    // is easier to read than two synthetic vars.
+    const composedWestArgs = composeWestBuildArgs(
+      expandAndNormalizeWestArgs(buildConfig.westArgs, {
+        shellKind: shellType,
+        resolveVariable: makeConfiguredVariableResolver(application.appWorkspaceFolder),
+      }),
+      buildConfig.westFlagsD,
+    );
     if (composedWestArgs) {
       otherEnv.WEST_ARGS = composedWestArgs;
     }
@@ -268,15 +277,23 @@ export class ZephyrBuildConfig {
       },
     ];
 
+    // POSIX shells on Windows get C:/-form env values (native west/cmake accept
+    // them, and they survive any shell round-trip); PATH keeps its native
+    // ';'-joined entries. cmd/PowerShell values pass through unchanged.
+    const normalizedGroups = groups.map(g => ({
+      label: g.label,
+      env: normalizeEnvRecordForShell(shellType, g.env),
+    }));
+
     // Flatten for VS Code's createTerminal({ env }) — that API only accepts a flat record.
-    const env = groups.reduce<{ [key: string]: string }>((acc, g) => ({ ...acc, ...g.env }), {});
+    const env = normalizedGroups.reduce<{ [key: string]: string }>((acc, g) => ({ ...acc, ...g.env }), {});
 
     return {
       shellPath,
       shellArgs,
       shellType,
       env,
-      groups,
+      groups: normalizedGroups,
       cwd: fs.existsSync(buildConfig.getBuildDir(application)) ? buildConfig.getBuildDir(application) : application.appRootPath,
     };
   }

@@ -18,18 +18,23 @@ function getProfileEnv(): Record<string, string> | undefined {
   return profiles[profName].env as Record<string, string> | undefined;
 }
 
-export async function openZephyrTerminal(): Promise<vscode.Terminal> {
-
-  let shellPath  = 'bash'; 
-  let shellArgs: string[] | undefined;    
+/**
+ * Terminal options for the "Zephyr BuildSystem Terminal": the user's resolved
+ * default shell on Windows (profile exe + args, e.g. Git Bash's --login),
+ * plain 'bash' on POSIX platforms. Shared by openZephyrTerminal and the
+ * `zephyr-workbench.terminal` profile provider so the two cannot drift.
+ */
+export function buildZephyrTerminalOptions(): vscode.TerminalOptions {
+  let shellPath = 'bash';
+  let shellArgs: string[] | undefined;
 
   if (process.platform === 'win32') {
     const resolved = getResolvedShell();
-    shellPath  = resolved.path;
-    shellArgs  = resolved.args;
+    shellPath = resolved.path;
+    shellArgs = resolved.args;
   }
 
-  const opts: vscode.TerminalOptions = {
+  return {
     name: 'Zephyr BuildSystem Terminal',
     shellPath,
     shellArgs,
@@ -38,9 +43,10 @@ export async function openZephyrTerminal(): Promise<vscode.Terminal> {
       ...getZephyrEnvironment()
     }
   };
+}
 
-  const terminal = vscode.window.createTerminal(opts);
-  return terminal;
+export async function openZephyrTerminal(): Promise<vscode.Terminal> {
+  return vscode.window.createTerminal(buildZephyrTerminalOptions());
 }
 
 export async function getZephyrTerminal(): Promise<vscode.Terminal> {

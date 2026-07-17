@@ -8,13 +8,14 @@ import {
   classifyShell,
   getConfiguredVenvPath,
   getShellExe,
+  makeConfiguredVariableResolver,
   normalizeEnvVarsForShell,
   normalizePathForShell,
   RawEnvVars,
 } from '../execUtils';
 import { prependRustBinPath } from '../../models/ToolchainInstallations';
 import { tryGetZephyrSdkInstallation } from '../utils';
-import { getWestBuildSourceDirArgValue, hasWestBuildSourceDirArg, splitWestBuildArgs } from './westArgUtils';
+import { expandAndNormalizeWestArgs, getWestBuildSourceDirArgValue, hasWestBuildSourceDirArg, splitWestBuildArgs } from './westArgUtils';
 import { getWestBuildStatePath, WestBuildState } from './westBuildState';
 
 export interface PrepareWestBuildExecutionOptions {
@@ -47,12 +48,31 @@ export function prepareWestBuildExecution(
   const rawWestArgs = runOptions.rawWestArgsOverride && runOptions.rawWestArgsOverride.length > 0
     ? runOptions.rawWestArgsOverride
     : buildConfig.westArgs;
+  // OPENOCD detection runs on the raw string; expansion cannot add or remove
+  // an OPENOCD token, and the formatted -D flags must not be re-processed.
   const effectiveWestFlagsD = mergeOpenocdBuildFlag(zephyrProject, rawWestArgs, buildConfig.westFlagsD);
-  const splitArgs = splitWestBuildArgs(rawWestArgs, effectiveWestFlagsD);
-  const westArgs = [splitArgs.westArgs, runOptions.additionalWestArgs].filter(Boolean).join(' ').trim();
-  const cmakeArgs = [splitArgs.cmakeArgs, runOptions.additionalCmakeArgs].filter(Boolean).join(' ').trim();
-  const sourceDirOverride = getWestBuildSourceDirArgValue(westArgs);
+  // Expand ${workspaceFolder}/... ourselves so the VS Code task system has
+  // nothing left to substitute into unquoted backslash paths inside the
+  // shell command string (bash eats those backslashes as escapes).
+  const expandOptions = {
+    shellKind,
+    resolveVariable: makeConfiguredVariableResolver(zephyrProject.appWorkspaceFolder),
+  };
+  const expandedWestArgs = expandAndNormalizeWestArgs(rawWestArgs, expandOptions);
+  const splitArgs = splitWestBuildArgs(expandedWestArgs, effectiveWestFlagsD);
+  const westArgs = [splitArgs.westArgs, expandAndNormalizeWestArgs(runOptions.additionalWestArgs, expandOptions)].filter(Boolean).join(' ').trim();
+  const cmakeArgs = [splitArgs.cmakeArgs, expandAndNormalizeWestArgs(runOptions.additionalCmakeArgs, expandOptions)].filter(Boolean).join(' ').trim();
   const includeDefaultSourceDir = !hasWestBuildSourceDirArg(westArgs);
+
+  // The persisted build state records the RAW (unexpanded, shell-independent)
+  // args: the expanded form varies with the default terminal profile (C:/ vs
+  // C:\), and storing it would spuriously force a CMake reconfigure on every
+  // profile switch and on upgrade from state written by older versions.
+  const rawSplitArgs = splitWestBuildArgs(rawWestArgs, effectiveWestFlagsD);
+  const stateCmakeArgs = [rawSplitArgs.cmakeArgs, runOptions.additionalCmakeArgs].filter(Boolean).join(' ').trim();
+  const stateSourceDirOverride = getWestBuildSourceDirArgValue(
+    [rawSplitArgs.westArgs, runOptions.additionalWestArgs].filter(Boolean).join(' ').trim(),
+  );
 
   const rawEnvVars = buildConfig.envVars as RawEnvVars;
   const normEnvVars = normalizeEnvVarsForShell(rawEnvVars, shellKind);
@@ -76,12 +96,12 @@ export function prepareWestBuildExecution(
     buildConfig.boardIdentifier,
     sysbuildEnabled,
     snippets,
-    cmakeArgs,
+    stateCmakeArgs,
     rawEnvVars,
     toolchainEnv,
     sdkEnv,
     workspaceEnv,
-    sourceDirOverride,
+    stateSourceDirOverride,
   );
 
   const buildDirConfigured = hasWestBuildConfiguration(buildDirPath);
@@ -124,7 +144,7 @@ export function prepareWestBuildExecution(
     ` --build-dir "${buildDir}"` +
     (needsConfigure && sysbuildEnabled ? ' --sysbuild' : '') +
     (needsConfigure ? snippetsFlag : '') +
-    (needsConfigure && includeDefaultSourceDir ? ` --source-dir "${zephyrProject.appRootPath}"` : '') +
+    (needsConfigure && includeDefaultSourceDir ? ` --source-dir "${normalizePathForShell(shellKind, zephyrProject.appRootPath)}"` : '') +
     (westArgs.length > 0 ? ` ${westArgs}` : '') +
     (needsConfigure && cmakeArgs.length > 0 ? ` -- ${cmakeArgs}` : '');
 

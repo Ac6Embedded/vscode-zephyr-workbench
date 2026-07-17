@@ -4,7 +4,7 @@ import path from 'path';
 import { fileExists, getWorkspaceFolder } from '../utils/utils';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY } from '../constants';
 import { getBuildEnv, loadEnv } from '../utils/env/zephyrEnvUtils';
-import { buildStartupSetupShellArgs, buildTerminalEnvCommands, concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getShellCdCommand, getShellClearCommand, getResolvedShell, getShellSourceCommand, classifyShell, normalizePathForShell, TerminalEnvGroup } from '../utils/execUtils';
+import { buildStartupSetupShellArgs, buildTerminalEnvCommands, concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getShellCdCommand, getShellClearCommand, getResolvedShell, getShellSourceCommand, classifyShell, normalizeEnvRecordForShell, normalizePathForShell, TerminalEnvGroup } from '../utils/execUtils';
 
 export class WestWorkspace {
   versionArray!: { [key: string]: string };
@@ -249,24 +249,37 @@ export class WestWorkspace {
   private static buildTerminalContext(westWorkspace: WestWorkspace) {
     const { path: shellPath, args: shellArgs } = getResolvedShell();
     const shellType = classifyShell(shellPath);
+    const isWinPosix = process.platform === 'win32' &&
+      (shellType === 'bash' || shellType === 'zsh' ||
+        shellType === 'dash' || shellType === 'fish');
     // PYTHON_VENV_PATH is consumed by the sourced env script to activate the
     // workspace venv (falls back to the global venv when unset).
-    const helpersEnv: Record<string, string> = westWorkspace.venvPath
-      ? { PYTHON_VENV_PATH: westWorkspace.venvPath }
-      : {};
-    const env = { ...westWorkspace.buildEnv, ...helpersEnv };
+    // CHERE_INVOKING keeps Cygwin/MSYS2 --login shells in the requested cwd
+    // instead of cd'ing to $HOME (parity with the app/build-config terminals).
+    const helpersEnv: Record<string, string> = {
+      ...(isWinPosix ? { CHERE_INVOKING: '1' } : {}),
+      ...(westWorkspace.venvPath ? { PYTHON_VENV_PATH: westWorkspace.venvPath } : {}),
+    };
     const groups: TerminalEnvGroup[] = [
       { label: 'Zephyr build system', env: westWorkspace.buildEnv },
     ];
-    if (westWorkspace.venvPath) {
+    if (Object.keys(helpersEnv).length > 0) {
       groups.push({ label: 'Helpers', env: helpersEnv });
     }
+    // POSIX shells on Windows get C:/-form env values (native west/cmake accept
+    // them, and they survive any shell round-trip); PATH keeps its native
+    // ';'-joined entries. cmd/PowerShell values pass through unchanged.
+    const normalizedGroups = groups.map(g => ({
+      label: g.label,
+      env: normalizeEnvRecordForShell(shellType, g.env),
+    }));
+    const env = normalizedGroups.reduce<{ [key: string]: string }>((acc, g) => ({ ...acc, ...g.env }), {});
     return {
       shellPath,
       shellArgs,
       shellType,
       env,
-      groups,
+      groups: normalizedGroups,
       cwd: westWorkspace.rootUri.fsPath,
     };
   }

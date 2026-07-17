@@ -203,7 +203,13 @@ export async function fetchHostToolsCheckedVersions(extensionUri: vscode.Uri): P
       envScriptPath = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
     } catch { }
     const useEnv = !!envScriptPath && fileExists(envScriptPath);
-    const proc = useEnv ? await execCommandWithEnv(cmd) : exec(cmd);
+    // win32 forces PowerShell on the env-sourced path: routing this
+    // `powershell -File ...` command through a Git Bash/Cygwin default
+    // profile would depend on `powershell` being on that shell's PATH and on
+    // bash preserving the quoted backslash paths.
+    const proc = useEnv
+      ? await execCommandWithEnv(cmd, undefined, undefined, process.platform === 'win32' ? 'powershell.exe' : undefined)
+      : exec(cmd);
 
     let full = '';
     await new Promise<void>((resolve, reject) => {

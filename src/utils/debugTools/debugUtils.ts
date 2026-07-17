@@ -6,7 +6,7 @@ import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIP
 import { Linkserver } from "../../debug/runners/Linkserver";
 import { Openocd } from "../../debug/runners/Openocd";
 import { WestRunner } from "../../debug/runners/WestRunner";
-import { checkPyOCDTarget, concatCommands, dryRunInstallPyOCDPacks, expandEnvVariables, getConfiguredVenvPath, getConfiguredWorkbenchPath, getPyOCDOutputChannel, getShell, getShellSourceCommand, installPyOCDTarget, updatePyOCDPack } from '../execUtils';
+import { checkPyOCDTarget, classifyShell, concatCommands, dryRunInstallPyOCDPacks, expandEnvVariables, getConfiguredVenvPath, getConfiguredWorkbenchPath, getPyOCDOutputChannel, getShell, getShellExe, getShellSourceCommand, installPyOCDTarget, makeConfiguredVariableResolver, normalizePathForShell, updatePyOCDPack } from '../execUtils';
 import { ZephyrApplication } from "../../models/ZephyrApplication";
 import { prependRustBinPath } from '../../models/ToolchainInstallations';
 import { findBoardByHierarchicalIdentifier, getSupportedBoards } from '../zephyr/boardDiscovery';
@@ -23,7 +23,7 @@ import { ZephyrBoard } from '../../models/ZephyrBoard';
 import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
 import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeOnlyCommand } from '../../commands/WestCommands';
 import { ParsedRunnersYaml, findRunnersYamlForProject, getRunnerPathFromRunnersYaml, readRunnersYamlFile, readRunnersYamlForBuildDir, readRunnersYamlForProject } from '../zephyr/runnersYamlUtils';
-import { composeWestBuildArgs, hasWestBuildSourceDirArg } from '../zephyr/westArgUtils';
+import { composeWestBuildArgs, expandAndNormalizeWestArgs, hasWestBuildSourceDirArg } from '../zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from './debugToolSelectionUtils';
 import { cleanupEmptyWorkspaceSettings } from '../vscodeWorkspaceCleanup';
 import { ZW_DEBUG_TYPE } from '../../debug/backends/types';
@@ -543,11 +543,22 @@ export async function getFlashRunners(
 
     // 1) Ensure runner properties are generated for this build dir
     //    Use dedicated target runners_yaml_props_target then query help
-    const composedWestArgs = composeWestBuildArgs(config.westArgs, mergeOpenocdBuildFlag(project, config.westArgs, config.westFlagsD));
+    // Keep `buildDir` native for the fs.mkdirSync/deleteFolder calls; use
+    // shell-normalized copies only inside the command strings.
+    const shellKind = classifyShell(getShellExe());
+    const composedWestArgs = composeWestBuildArgs(
+      expandAndNormalizeWestArgs(config.westArgs, {
+        shellKind,
+        resolveVariable: makeConfiguredVariableResolver(project.appWorkspaceFolder),
+      }),
+      mergeOpenocdBuildFlag(project, config.westArgs, config.westFlagsD),
+    );
     const westArgs = composedWestArgs.length > 0 ? ` ${composedWestArgs}` : '';
-    const sourceDirArg = hasWestBuildSourceDirArg(composedWestArgs) ? '' : ` --source-dir "${project.appRootPath}"`;
-    const buildCmd = `west build -t runners_yaml_props_target --board ${config.boardIdentifier} --build-dir "${buildDir}"${sourceDirArg}${westArgs}`;
-    const helpCmd  = `west flash -H --board ${config.boardIdentifier} --build-dir "${buildDir}" "${project.appRootPath}"`;
+    const buildDirForShell = normalizePathForShell(shellKind, buildDir);
+    const appRootForShell = normalizePathForShell(shellKind, project.appRootPath);
+    const sourceDirArg = hasWestBuildSourceDirArg(composedWestArgs) ? '' : ` --source-dir "${appRootForShell}"`;
+    const buildCmd = `west build -t runners_yaml_props_target --board ${config.boardIdentifier} --build-dir "${buildDirForShell}"${sourceDirArg}${westArgs}`;
+    const helpCmd  = `west flash -H --board ${config.boardIdentifier} --build-dir "${buildDirForShell}" "${appRootForShell}"`;
 
     execWestCommandWithEnvAsync(buildCmd, project)
       .then(() => {

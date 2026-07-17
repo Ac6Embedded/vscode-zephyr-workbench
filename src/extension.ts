@@ -76,7 +76,7 @@ import { buildLlvmDownloadUrl, buildRustDistUrls, detectRustVersion, getLlvmTopL
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
 import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getAllZephyrSdkInstallations, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, isGlobalSdkSettingValue, isWorkspaceFolder, msleep, pruneMissingToolchains, removeWorkspaceFolder, tryGetZephyrSdkInstallation, checkZinstallerVersion } from './utils/utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './utils/env/zephyrEnvUtils';
-import { getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
+import { buildZephyrTerminalOptions, getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
 import { createReport, verifySbomFile, verifySbomSet } from './sbomtotal/sbomVerifyService';
 import { syncAutoDetectEnv } from './utils/debugTools/autoDetectSyncUtils';
 import { initDtsIntegration } from './utils/zephyr/dtsIntegration';
@@ -4391,12 +4391,10 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.window.registerTerminalProfileProvider('zephyr-workbench.terminal', {
 		provideTerminalProfile(token: vscode.CancellationToken): vscode.ProviderResult<vscode.TerminalProfile> {
-			let opts: vscode.TerminalOptions = {
-				name: "Zephyr BuildSystem Terminal",
-				shellPath: "bash",
-				env: getZephyrEnvironment(),
-			};
-			return new vscode.TerminalProfile(opts);
+			// Same options as openZephyrTerminal: the user's resolved default
+			// shell on Windows instead of a bare `bash` PATH lookup (which is
+			// often missing or resolves to WSL).
+			return new vscode.TerminalProfile(buildZephyrTerminalOptions());
 		}
 	})
 	);
