@@ -59,7 +59,7 @@ export function getShell(): string {
   return classifyShell(getShellExe());
 }
 
-export function getResolvedShell(): { path: string; args?: string[] } {
+function resolveRawShell(): { path: string; args?: string[] } {
 
   const prof = detectTerminalProfile();
   if (prof?.exe) {
@@ -79,6 +79,28 @@ export function getResolvedShell(): { path: string; args?: string[] } {
         ? '/bin/zsh'
         : '/bin/bash'
   };
+}
+
+// The C-shell family (csh/tcsh) is NOT Bourne/POSIX-compatible, so the bash-flavored
+// commands this extension generates (export, `.` sourcing, `2>&1`, `west "$@"`) cannot
+// run under it. When the resolved shell is csh-family we substitute a Bourne shell so
+// builds and terminals still work; warnUnsupportedShellOnce() (extension.ts) tells the
+// user once. isUnsupportedCshShell() exposes the pre-substitution check the UI uses.
+export function getResolvedShell(): { path: string; args?: string[] } {
+  const raw = resolveRawShell();
+  if (isCshFamily(raw.path)) {
+    // Drop the original args: they were meant for csh, not the Bourne fallback.
+    return {
+      path: process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash'
+    };
+  }
+  return raw;
+}
+
+// True when the user's actual (pre-substitution) shell is csh/tcsh — i.e. getResolvedShell()
+// is silently substituting a Bourne shell. The UI layer uses this to warn the user once.
+export function isUnsupportedCshShell(): boolean {
+  return isCshFamily(resolveRawShell().path);
 }
 
 export function classifyShell(shellPath: string):
@@ -938,6 +960,18 @@ export async function executeTaskCollectExitCode(task: vscode.Task): Promise<num
 export function isCygwin(shellPath: string): boolean {
   const p = shellPath.replace(/\\/g, '/').toLowerCase();
   return /\/cygwin[^/]*\/bin\/(bash|sh|zsh|dash)(\.exe)?$/.test(p);
+}
+
+/**
+ * True for a C-shell-family shell (csh or tcsh — note `'tcsh'.includes('csh')`),
+ * any directory, any case, optional .exe. These are NOT Bourne/POSIX-compatible,
+ * so the bash-flavored commands we generate cannot run under them. No supported
+ * shell basename (bash, zsh, dash, fish, sh, pwsh, powershell, cmd) contains "csh".
+ * Consumed by getResolvedShell() (substitution) and isUnsupportedCshShell() (warning).
+ */
+export function isCshFamily(shellPath: string): boolean {
+  const exe = path.basename(shellPath).toLowerCase();
+  return exe.includes('csh');
 }
 
 export interface EnvSourcedShellCommand {

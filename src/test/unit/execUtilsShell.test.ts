@@ -1,12 +1,17 @@
 import { strict as assert } from 'assert';
+import * as vscode from 'vscode';
 
 // The module's vscode import resolves to the stub under src/test/unit/stubs
 // (NODE_PATH), like the other unit tests. Only pure exports are exercised.
 import {
   buildStartupSetupShellArgs,
   buildTerminalEnvCommands,
+  classifyShell,
+  getResolvedShell,
   getShellSourceCommand,
+  isCshFamily,
   isCygwin,
+  isUnsupportedCshShell,
   makeConfiguredVariableResolver,
   normalizeEnvRecordForShell,
   normalizeEnvValueForShell,
@@ -160,6 +165,66 @@ describe('isCygwin', () => {
     ]) {
       assert.equal(isCygwin(p), false, p);
     }
+  });
+});
+
+describe('isCshFamily', () => {
+  it('matches csh and tcsh in any directory, case, with optional .exe', () => {
+    for (const p of [
+      '/bin/tcsh',
+      '/bin/csh',
+      '/usr/bin/csh',
+      '/usr/local/bin/tcsh',
+      'C:\\cygwin64\\bin\\tcsh.exe',
+      '/opt/TCSH',
+    ]) {
+      assert.equal(isCshFamily(p), true, p);
+    }
+  });
+
+  it('does not match Bourne-family or other supported shells', () => {
+    for (const p of [
+      '/bin/bash',
+      '/bin/zsh',
+      '/usr/bin/dash',
+      '/usr/bin/fish',
+      '/bin/sh',
+      'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      'C:\\Windows\\System32\\cmd.exe',
+    ]) {
+      assert.equal(isCshFamily(p), false, p);
+    }
+  });
+});
+
+describe('getResolvedShell csh fallback', () => {
+  const originalShell = vscode.env.shell;
+  afterEach(() => { (vscode.env as any).shell = originalShell; });
+
+  it('substitutes a Bourne shell when the resolved shell is csh/tcsh', () => {
+    (vscode.env as any).shell = '/bin/tcsh';
+    const resolved = getResolvedShell();
+    assert.equal(isCshFamily(resolved.path), false, resolved.path);
+    assert.ok(['/bin/bash', '/bin/zsh'].includes(resolved.path), resolved.path);
+    // csh-meant args must not leak onto the Bourne fallback.
+    assert.equal(resolved.args, undefined);
+  });
+
+  it('leaves a Bourne shell untouched', () => {
+    (vscode.env as any).shell = '/bin/bash';
+    assert.deepEqual(getResolvedShell(), { path: '/bin/bash' });
+  });
+
+  it('isUnsupportedCshShell reflects the pre-substitution shell', () => {
+    (vscode.env as any).shell = '/bin/tcsh';
+    assert.equal(isUnsupportedCshShell(), true);
+    (vscode.env as any).shell = '/bin/zsh';
+    assert.equal(isUnsupportedCshShell(), false);
+  });
+
+  it('classifyShell still maps tcsh to bash (union intentionally unchanged)', () => {
+    assert.equal(classifyShell('/bin/tcsh'), 'bash');
   });
 });
 

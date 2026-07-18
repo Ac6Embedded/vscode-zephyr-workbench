@@ -37,7 +37,7 @@ import {
 	getStaticFlashRunnerNames,
 	removeApplicationLaunchConfigurations,
 } from './utils/debugTools/debugUtils';
-import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
+import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getTerminalDefaultProfile, isSpdxOnlyVenvPath, isUnsupportedCshShell, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
 import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, createWorkspaceVenv, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
 import { probeHomebrew } from './utils/hostToolsStatusUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
@@ -414,6 +414,36 @@ async function showLocalVenvQuickStep(
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
+// Shown at most once per session; permanently dismissable via globalState.
+let cshShellWarningShown = false;
+const CSH_WARNING_DISMISSED_KEY = 'zephyr-workbench.cshWarningDismissed';
+
+// tcsh/csh are not Bourne/POSIX-compatible, so the bash-flavored commands the extension
+// generates cannot run under them. getResolvedShell() (execUtils) already substitutes a
+// Bourne shell so builds/terminals still work; this notification tells the user why and
+// how to get full terminal integration. See isCshFamily()/isUnsupportedCshShell().
+async function warnUnsupportedShellOnce(context: vscode.ExtensionContext): Promise<void> {
+	if (cshShellWarningShown) { return; }
+	if (context.globalState.get<boolean>(CSH_WARNING_DISMISSED_KEY)) { return; }
+	if (!isUnsupportedCshShell()) { return; }
+	cshShellWarningShown = true;
+
+	const openSettings = 'Open Settings';
+	const dontShowAgain = "Don't show again";
+	const choice = await vscode.window.showWarningMessage(
+		'Workbench for Zephyr: your shell is tcsh/csh, which is not supported for building. '
+		+ 'Zephyr commands will run under bash instead. For full terminal integration, set your '
+		+ 'VS Code default terminal profile to bash or zsh.',
+		openSettings,
+		dontShowAgain,
+	);
+	if (choice === openSettings) {
+		await vscode.commands.executeCommand('workbench.action.openSettings', 'terminal.integrated.defaultProfile');
+	} else if (choice === dontShowAgain) {
+		await context.globalState.update(CSH_WARNING_DISMISSED_KEY, true);
+	}
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	// Migrate deprecated venv.activatePath to venv.path if present
 	(async () => {
@@ -455,6 +485,10 @@ export function activate(context: vscode.ExtensionContext) {
 	// explicitly set it) — it overlays the env banner on open and corrupts TUIs
 	// like menuconfig. Fire-and-forget; takes effect once for this workspace.
 	void ensureTerminalStickyScrollDisabled();
+
+	// Warn once if the user's shell is tcsh/csh — it's not Bourne/POSIX-compatible, so
+	// getResolvedShell() falls back to bash and this explains that. Fire-and-forget.
+	void warnUnsupportedShellOnce(context);
 
 	// Sync env.yml auto-detect entries from debug-tools.yml when versions differ
 	syncAutoDetectEnv(context);
