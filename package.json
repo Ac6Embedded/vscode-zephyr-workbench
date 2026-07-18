@@ -915,7 +915,7 @@
       },
       {
         "command": "zephyr-workbench-sdk-explorer.add-sdk-toolchain",
-        "title": "Add Toolchain to SDK...",
+        "title": "Add compiler suite to SDK",
         "icon": "$(add)",
         "category": "Zephyr Workbench/SDK"
       },
@@ -1604,11 +1604,6 @@
           "command": "zephyr-workbench.arg.edit",
           "group": "inline@0",
           "when": "(view == zephyr-workbench-app-explorer && viewItem == zephyr-application-arg)"
-        },
-        {
-          "command": "zephyr-workbench-sdk-explorer.open-wizard",
-          "group": "0@view/item/context@0",
-          "when": "view == zephyr-workbench-sdk-explorer"
         },
         {
           "command": "zephyr-workbench-sdk-explorer.add-sdk-toolchain",
