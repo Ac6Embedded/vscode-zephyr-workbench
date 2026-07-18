@@ -9,7 +9,7 @@ import {
   ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY
 } from '../constants';
 import {
-  ChildProcess, ExecException, ExecOptions, SpawnOptions,
+  ChildProcess, ExecException, ExecOptions, ExecOptionsWithStringEncoding, SpawnOptions,
   exec, spawn
 } from 'child_process';
 import { writeWestBuildState, WestBuildState } from './zephyr/westBuildState';
@@ -1204,7 +1204,8 @@ export async function execCommandWithEnv(
 ): Promise<ChildProcess> {
   const prepared = buildEnvSourcedShellCommand(cmd, cwd, executableOverride ?? getShellExe());
 
-  const options: ExecOptions = {
+  const options: ExecOptionsWithStringEncoding = {
+    encoding: 'utf8',
     cwd,
     env: {
       ...process.env,
@@ -1242,7 +1243,7 @@ export function execCommandWithEnvCB(
   }
   options.shell = prepared.executable;
 
-  return exec(prepared.command, options, cb);
+  return exec(prepared.command, { ...options, encoding: 'utf8' }, cb);
 }
 
 /**
