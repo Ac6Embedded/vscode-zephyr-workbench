@@ -2537,7 +2537,7 @@
     "ovsx": "^1.0.2",
     "prettier": "^3.9.5",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "@microsoft/vscode-file-downloader-api": "^1.0.1",
