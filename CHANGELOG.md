@@ -4,25 +4,26 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
-
-### SPDX
-- Added Full SBOM Total verification (SPDX > Analysis): builds the SBOM when needed, merges the west spdx document set into one packages-only document, checks it against the SBOM Total service and reports the verdict with triage details; PDF, DOCX and Markdown reports via SPDX > Create Report.
-- The SPDX version follows the Zephyr tree capability (`sbomTotal.spdxVersion`: auto | 2.3 | 3.0), with no scan-time fallback between versions.
-- Replaced the local `.venv-spdx` analyzers (ntia-checker, sbom2doc, cve-bin-tool and their Install dependencies command): those engines now run server side.
-- New settings `sbomTotal.baseUrl`, `sbomTotal.failOn`, `sbomTotal.includeSdk`; personal API token via Set SBOM Total API Token (stored in SecretStorage), with a built-in default token and anonymous retry.
-
-### Applications view
-- Add Application no longer requires a registered toolchain to open (detected global SDKs count); its toolchain list now offers an "Add new toolchain..." entry that opens the Add Toolchain wizard, and the list refreshes as toolchains are added or removed.
-
-## [3.9.0]
+## [4.0.0]
 
 ### Kconfig Manager (new)
 - Added a Kconfig Manager to the Applications view: a menuconfig/guiconfig-style GUI for editing an application's Kconfig options.
 
-### Debug Manager
-- Added Cortex-Debug backends as an alternative to the built-in debug setup, with per-backend and per-runner options.
+### Global Zephyr SDK (new)
+- The Zephyr SDK can now be installed and used globally (via `west sdk`): detected automatically, shown with a [global] badge in the Toolchains view, selectable as an application toolchain, and removable from disk.
+
+### Cortex-Debug backends (new)
+- Added Cortex-Debug backends to the Debug Manager as an alternative to the built-in debug setup, with per-backend and per-runner options.
+
+### pyOCD Manager (new)
 - Added a pyOCD Manager and reworked pyOCD target-pack setup.
+
+### SBOM - SPDX
+- Added Build SPDX 3: generates an SPDX 3.0 (JSON-LD) SBOM on supported Zephyr versions (4.5.0+), with an SPDX 2.3 fallback offer on older ones.
+- Added Full SBOM Total verification (SPDX > Analysis): builds the SBOM when needed, merges the west spdx document set into one packages-only document, checks it against the SBOM Total service and reports the verdict with triage details; PDF, DOCX and Markdown reports via SPDX > Create Report.
+- The SPDX version follows the Zephyr tree capability (`sbomTotal.spdxVersion`: auto | 2.3 | 3.0), with no scan-time fallback between versions.
+- Replaced the local `.venv-spdx` analyzers (ntia-checker, sbom2doc, cve-bin-tool and their Install dependencies command): those engines now run server side.
+- New settings `sbomTotal.baseUrl`, `sbomTotal.failOn`, `sbomTotal.includeSdk`; personal API token via Set SBOM Total API Token (stored in SecretStorage), with a built-in default token and anonymous retry.
 
 ### Host Tools
 - Added an Advanced (selective) installation mode: choose individual tools, Python source, and requirements, with per-OS panels for Windows, Linux, and macOS.
@@ -33,21 +34,26 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - Manifest editing in place, full/minimal module modes, data-driven version-aware templates, and workspace creation in a named subfolder.
 - Added an optional dedicated Python venv per west workspace (and per application).
 
-### SPDX
-- Added Build SPDX 3: generates an SPDX 3.0 (JSON-LD) SBOM on supported Zephyr versions (4.5.0+), with an SPDX 2.3 fallback offer on older ones.
-
-### Global Zephyr SDK (new)
-- The Zephyr SDK can now be installed and used globally (via `west sdk`): detected automatically, shown with a [global] badge in the Toolchains view, selectable as an application toolchain, and removable from disk.
-
 ### Toolchains and IntelliSense
 - Show installed toolchains under each Zephyr SDK and prune entries whose folder no longer exists.
 - Warn on Zephyr SDK / Zephyr version incompatibility.
 - Added a clangd IntelliSense option; cpptools/cortex-debug extension installs no longer block.
+- Simplified the SDK toolchain menu: dropped the redundant Add Toolchain entry, renamed to Add compiler suite to SDK.
 
 ### Applications view
 - Added a per-application Code Explorer (reveals files in the Explorer view, opens the app's Zephyr terminal).
 - Added build-insight tabs to the Workbench Dashboard.
-- Grouped build-configuration options under "Arguments & Environment".
+- Grouped build-configuration options under "Arguments & Environment", and grouped app and build-config context menus under a Build Configuration submenu (Set Default Runner is now Set Default Flash Runner).
+- Add Application no longer requires a registered toolchain to open (detected global SDKs count); its toolchain list now offers an "Add new toolchain..." entry that opens the Add Toolchain wizard, and the list refreshes as toolchains are added or removed.
+
+### Install Runners
+- Added TI OpenOCD (CCSTUDIO-OPENOCD) as an installable OpenOCD variant.
+- Updated OpenOCD ESP32 to v0.12.0-esp32-20251215 and ModusToolbox Programming Tools to 1.9.0.2261.
+- Aligned the Install-column icons into fixed slots.
+
+### Terminal
+- Improved POSIX shell support on Windows (Git Bash, MSYS2, Cygwin).
+- Added fail-safe handling for tcsh/csh shells.
 
 ### Other
 - Added GitHub Actions CI with tag-driven release automation.

@@ -1,204 +1,123 @@
 # Workbench for Zephyr (VS Code)
 
-Workbench for Zephyr is a VS Code extension that adds support of Zephyr development to Visual Studio Code, including SDK management, Project wizard, build and debugging features. 
+[![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/Ac6.zephyr-workbench?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=Ac6.zephyr-workbench)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/Ac6.zephyr-workbench)](https://marketplace.visualstudio.com/items?itemName=Ac6.zephyr-workbench)
+[![Rating](https://img.shields.io/visual-studio-marketplace/r/Ac6.zephyr-workbench)](https://marketplace.visualstudio.com/items?itemName=Ac6.zephyr-workbench&ssr=false#review-details)
+[![Open VSX](https://img.shields.io/open-vsx/v/Ac6/zephyr-workbench?label=Open%20VSX)](https://open-vsx.org/extension/Ac6/zephyr-workbench)
+[![License](https://img.shields.io/github/license/Ac6Embedded/vscode-zephyr-workbench)](LICENSE)
 
-## Features
-* Install native Host Tools (python, cmake, ...)
-* Install and auto-detect default Zephyr SDK
-* Import West workspaces from remote repository using west or from local folder 
-* Parse west workspace data from config file
-* Create application projects for specific board from sample
-* Build/Flash application
-* Debug application (using OpenOCD, LinkServer, J-Link or pyOCD)
-* Memory analysis
-* Supported on every platforms
+Ac6 Workbench for Zephyr is a VS Code extension that adds support of Zephyr development to Visual Studio Code, including host tools installation, SDK and toolchain management, west workspace management, project creation, build, flash and debug, Kconfig and devicetree editing, memory analysis, static code analysis and SBOM generation.
+
+The extension is available on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=Ac6.zephyr-workbench) and on [Open VSX](https://open-vsx.org/extension/Ac6/zephyr-workbench).
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=1RB0GI6rJk0">
-    <img alt="Getting started Workbench for Zephyr" src="res/getting-started.png">
+    <img alt="Getting started with Workbench for Zephyr" src="res/getting-started.png" width="80%">
   </a>
 </p>
 
+## Features
+
+* [Install native host tools](https://z-workbench.com/docs/documentation/host-tools-manager) (Python, CMake, Ninja, ...) in a sandboxed location, with an advanced mode to select individual tools
+* [Install and manage toolchains](https://z-workbench.com/docs/documentation/sdk): Zephyr SDK (full or minimal, with optional LLVM/Clang), ARM GNU, IAR ARM and Rust
+* Detect and use Zephyr SDKs installed globally or locally
+* [Import west workspaces](https://z-workbench.com/docs/documentation/west-workspace) from a template, a repository, a local folder or a manifest file
+* Manage west manifests, west blobs and per-workspace Python environments with the West Manager
+* [Create application projects](https://z-workbench.com/docs/documentation/application) for a specific board from a sample, or import existing applications
+* [Define multiple build configurations](https://z-workbench.com/docs/documentation/multibuild) per application, with [sysbuild](https://z-workbench.com/docs/documentation/configuration/sysbuild), shields and snippets support
+* Build and flash applications from the status bar, the command palette or the Applications view
+* Open a Zephyr terminal with the build environment sourced (PowerShell, bash, zsh, Git Bash, MSYS2 or Cygwin)
+* [Debug](https://z-workbench.com/docs/documentation/debug-session) with OpenOCD, J-Link, pyOCD, LinkServer, ST-LINK GDB Server, STM32CubeProgrammer, nRF tools or Simplicity Commander, using the built-in backend or Cortex-Debug
+* Generate launch configurations with the Debug Manager, manage pyOCD target packs, [install runners](https://z-workbench.com/docs/documentation/install-runners) from the extension
+* Configure applications with the Kconfig Manager GUI, [menuconfig](https://z-workbench.com/docs/documentation/configuration/menuconfig), [guiconfig](https://z-workbench.com/docs/documentation/configuration/guiconfig) or [hardenconfig](https://z-workbench.com/docs/documentation/configuration/hardenconfig)
+* Edit devicetree and pin muxing with the [Devicetree Manager](https://z-workbench.com/docs/documentation/devicetree-manager), with [DTS language server](https://z-workbench.com/docs/documentation/dts-lsp) support out of the box
+* [Analyze memory usage](https://z-workbench.com/docs/category/memory-analysis) with RAM/ROM reports, plots and puncover
+* Inspect builds in the Zephyr Dashboard: application summary, sys-init data and RAM/ROM usage with ELF size breakdown
+* [Run static code analysis](https://z-workbench.com/docs/category/static-code-analysis) with ECLAIR (MISRA, BARR-C, AUTOSAR) and diagnose devicetree errors with DT Doctor
+* [Generate SPDX 2.3 and SPDX 3.0 SBOM documents](https://z-workbench.com/docs/tutorials/spdx), verify them with SBOM Total and export PDF, DOCX or Markdown reports
+* IntelliSense with the C/C++ extension or clangd
+* Supported on Windows, Linux and macOS, including [VS Code Portable mode](https://z-workbench.com/docs/documentation/vscode-zephyr-workbench-portable)
+
+![Workbench for Zephyr Overview](https://z-workbench.com/img/update/wfz_overview.png)
+
+## Quick Start
+
+1. Click on the Workbench for Zephyr icon in the activity bar
+2. [Install Host Tools](https://z-workbench.com/docs/documentation/installation): the native tools are downloaded into `${USERDIR}/.zinstaller` (takes ~5 minutes)
+3. [Add a toolchain](https://z-workbench.com/docs/documentation/sdk): import an official Zephyr SDK or register an already installed one
+4. [Add a west workspace](https://z-workbench.com/docs/documentation/west-workspace): from a template, a repository, a local folder or a manifest file (takes ~10 minutes)
+5. [Create a new application](https://z-workbench.com/docs/documentation/application): select the west workspace, the toolchain, the board and a sample project
+6. Build from the status bar, then configure your debug session with the [Debug Manager](https://z-workbench.com/docs/documentation/debug-session)
+
+Step-by-step guides are available for [Windows](https://z-workbench.com/docs/documentation/getting-started/getting-started-win), [Linux](https://z-workbench.com/docs/documentation/getting-started/getting-started-linux) and [macOS](https://z-workbench.com/docs/documentation/getting-started/getting-started-macosx).
+
+## Supported toolchains
+
+| Toolchain | Notes |
+|-----------|-------|
+| Zephyr SDK | Official SDK, full or minimal install, all Zephyr target architectures |
+| LLVM/Clang | Optional download together with a Zephyr SDK |
+| ARM GNU Toolchain | arm-none-eabi and aarch64-none-elf |
+| IAR ARM Toolchain | Registered with an IAR license token, a Zephyr SDK is still required for the host utilities |
+| Rust | `zephyr-lang-rust` module, standalone toolchain or rustup |
+
+Zephyr SDKs installed globally with `west sdk` are detected automatically, shown with a `[global]` badge in the Toolchains view and selectable as an application toolchain.
+
+## Supported debug runners
+
+| Runner | Notes |
+|--------|-------|
+| OpenOCD | Zephyr, ESP32, xPack, Infineon, TI or custom variants |
+| J-Link | SEGGER |
+| pyOCD | Target packs managed with the pyOCD Manager |
+| LinkServer | NXP |
+| ST-LINK GDB Server | STMicroelectronics |
+| STM32CubeProgrammer | STMicroelectronics |
+| nrfjprog, nRF Util | Nordic Semiconductor |
+| Simplicity Commander | Silicon Labs |
+
+Debug sessions run on the built-in west debugserver backend or on Cortex-Debug. Runners and programming tools (including ModusToolbox Programming Tools) can be installed directly from the Install Runners view.
+
+## Devicetree Manager
+
+The Devicetree Manager is a visual editor for the devicetree and the pin muxing of an application. It reads the resolved devicetree of the selected build configuration and generates the corresponding `boards/<board>.overlay` file. It ships as a separate companion extension, [Devicetree Manager for Zephyr](https://marketplace.visualstudio.com/items?itemName=Ac6.devicetree-manager-for-zephyr) (also on [Open VSX](https://open-vsx.org/extension/Ac6/devicetree-manager-for-zephyr)).
+
+<p align="center">
+  <img alt="Devicetree Manager for Zephyr" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-devicetree-manager-for-zephyr/main/images/screenshot.png" width="80%">
+</p>
+
+## CI and Docker
+
+A Docker image with VS Code and the Workbench for Zephyr extension pre-installed is available in the [vscode-zephyr-workbench-docker](https://github.com/Ac6Embedded/vscode-zephyr-workbench-docker) repository. The image is based on Ubuntu 24.04 and already contains the Zephyr host tools. It can be used as a Dev Container from your local VS Code, as a standalone VS Code with GUI, or in terminal-only mode to run west builds in CI pipelines.
+
 ## Documentation
 
-Find the complete documentation on: [https://z-workbench.com/](https://z-workbench.com/)
+The complete documentation is available on [https://z-workbench.com/](https://z-workbench.com/), in particular:
 
-## Requirements
-To build your project on Workbench for Zephyr, No external tools is required. Host tools are installed by the extension itself.
-To flash and to debug the application on your target, external tools are required. Depending on needs, your might have to install some of the following software tools on your workstation:
-* LinkServer Debug Host Tools
-* J-Link Debug Host Tools
+- [Installation](https://z-workbench.com/docs/documentation/installation) and the [Host Tools Manager](https://z-workbench.com/docs/documentation/host-tools-manager)
+- [Toolchains](https://z-workbench.com/docs/documentation/sdk)
+- [West Workspaces](https://z-workbench.com/docs/documentation/west-workspace)
+- [Applications](https://z-workbench.com/docs/documentation/application) and [Multibuild](https://z-workbench.com/docs/documentation/multibuild)
+- [Install Runners](https://z-workbench.com/docs/documentation/install-runners) and [Debug Session](https://z-workbench.com/docs/documentation/debug-session)
+- [Memory Analysis](https://z-workbench.com/docs/category/memory-analysis) and [Static Code Analysis](https://z-workbench.com/docs/category/static-code-analysis)
+- [Devicetree Manager](https://z-workbench.com/docs/documentation/devicetree-manager), [DTS LSP Integration](https://z-workbench.com/docs/documentation/dts-lsp) and [Custom Boards](https://z-workbench.com/docs/documentation/custom)
+- [VS Code Portable Mode](https://z-workbench.com/docs/documentation/vscode-zephyr-workbench-portable)
+- [Board tutorials](https://z-workbench.com/docs/tutorials/intro) and the [SBOM tutorial](https://z-workbench.com/docs/tutorials/spdx)
 
-Additionally a driver software might be required to connect to your JTAG probe. 
+The latest features are listed in the [CHANGELOG](CHANGELOG.md).
 
-On MacOSX, due to many dependencies, Homebrew is required to install external tools and python.
-  
-## Usage
-Workbench for Zephyr provides a dedicated panel, to access it, click on the "Workbench for Zephyr" logo on the left 
+## Open Source
 
-### Install Host tools
-1. Click on "Install Host Tools" to download and to install the native tools in ${USERDIR}/.zinstaller (takes ~5mins)
+The Workbench for Zephyr extension is a fully open-source project, built to provide an IDE for the Zephyr community and to introduce Zephyr to newcomers. The source code is available on [GitHub](https://github.com/Ac6Embedded/vscode-zephyr-workbench), and we actively encourage developers to contribute, review and improve the project. The extension is licensed under the [Apache-2.0](LICENSE) license.
 
-<p align="center">
-  <img alt="Host tools" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_1_host_tools.png" width="80%">
-</p>
+## Contribute
 
-Note: Some tools needs administration right to be installed on your system.
+We welcome contributions from developers of all skill levels. Whether you are fixing bugs, adding new features, or improving documentation, your efforts help make this extension better for everyone.
 
+- Reporting issues: found a bug or have a feature request? Please check the [existing issues](https://github.com/Ac6Embedded/vscode-zephyr-workbench/issues) and, if needed, open a new one to let us know
+- Improving documentation: clear documentation is crucial for the user experience, if you spot something unclear or missing, feel free to suggest improvements
 
-### Initialize West Workspace
-1. Click on "Initialize workspace" button
-2. Open the newly opened page, enter information about your west workspace instance.
-   1. For example:
-        Source location: Minimal from template
-        Path: https://github.com/zephyrproject-rtos/zephyr
-        Template: STM32
-        Branch: v3.7.0
-        Location: enter the directory where the west workspace will be imported (the directory name will serve as workspace name)
-      (takes ~10mins to init then update the workspace)
-3. Click on "Import"
-   
-<p align="center">
-  <img alt="West Workspace" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_3_west_workspace_new.png" width="80%">
-  <img alt="West Workspace" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_3_west_workspace_import.png" width="80%">
-</p>
+## Useful links
 
-This process creates then parse the west manifest file to set up your west workspace and the subset of projects. More information about [West Workspaces](https://docs.zephyrproject.org/latest/develop/west/workspaces.html).
-
-### Import Zephyr SDK
-1. Click on "Import SDK" button
-2. Open the newly opened page, enter information about your Zephyr SDK.
-   1. For example:
-        Source location: Official SDK
-        Destination: Custom location (or Global, see below)
-        SDK Type: Minimal
-        Version: v0.16.8
-        Toolchains: aarch64 arm
-        Location: enter the parent location where to import the Zephyr SDK
-3. Click on "Import"
-
-With **Destination: Global**, the SDK is installed once in a standard location (your home folder by default) and every Zephyr project finds it automatically: no per-project SDK path to configure. Global SDKs already present on the machine, including ones installed outside the extension, appear in the Toolchains view with a **[global]** badge, and applications can simply select **Global Zephyr SDK** as their toolchain.
-
-<p align="center">
-  <img alt="Zephyr SDK" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_2_sdk_new.png" width="80%">
-  <img alt="Zephyr SDK" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_2_sdk_import.png" width="80%">
-</p>
-
-This process imports to toolchains to build and to debug your Zephyr applications. More information about [Zephyr SDK](https://docs.zephyrproject.org/latest/develop/toolchains/zephyr_sdk.html).
-
-### Create a new Application project
-The previous steps ("Import West Workspace" and "Import Zephyr SDK") are mandatory before creating an application.
-
-1. Click on "Create New Application"
-2. Select the **West Workspace** to attach to
-3. Select the **Zephyr SDK** to use
-4. Select the target **Board** (eg. ST STM32F4 Discovery)
-5. Select the **Sample** project as based (eg. blinky)
-6. Enter the project name
-7. Enter the project location
-8. Select the Pristine Build option (More information on [Pristine Builds](https://docs.zephyrproject.org/latest/develop/west/build-flash-debug.html#pristine-builds))
-
-<p align="center">
-  <img alt="New Application" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_4_app_new.png" width="80%">
-  <img alt="New Application" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_4_app_create.png" width="80%">
-</p>
-
-### Build your project
-1. Click on the "Build" button in the status bar below.
-   Alternatively, Use command key Ctrl+B then select the folder to build.
-2. The build output is display in the Terminal
-
-<p align="center">
-  <img alt="Configure Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_6_build.png" width="80%">
-  <img alt="Configure Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_6_app_build_done.png" width="80%">
-</p>
-
-### Configure your debug session
-(Warning) The debug server tool for your board must be installed on your system.
-1. Click on "Debug Manager" to open a debug configuration form
-2. Select the application to debug. Some settings are automatically filled.
-3. If needed, enter another Program Path (the generated ELF image)
-4. If needed, enter the SVD file for your target
-5. If needed, enter another GDB debugger
-6. If needed, enter the address of your target
-7. If needed, enter the GDB port (useful when running multiple debug session on the same machine)
-8. Select the debug server (also called runner)
-9. Enter the path to the debug server binary if not auto-detected
-10. Additional argument only for advanced user (values can be found in the help of west for each runner)
-11. Press "Apply" to save the configuration into the .vscode/launch.json or "Debug" to apply then run the debug session
-
-<p align="center">
-  <img alt="Configure Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_manager.png" width="80%">
-</p>
-
-<p align="center">
-  <img alt="Configure Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/gifs/zw_debug_config.gif">
-</p>
-
-The newly debug configuration is named "Workbench for Zephyr Debug"
-
-If the launch configuration was already created, you don't need to open the **Debug Manager** again. Run your debug session as usually with VSC.
-1. Go to the "Run and Debug" (Ctrl+Shift+D) activity panel
-2. Select the launch configuration for your project
-3. Click on the Run button
-
-<p align="center">
-  <img alt="Launch Debug Session" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_start_debug_session.png" width="80%">
-</p>
-
-### Debug your application
-After starting the debug session, the code should breaks on main or early (depends on optimization on your project). 
-<p align="center">
-  <img alt="Debug: Overview" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_overview.png" width="80%">
-</p>
-
-The "Debug Toolbar" allows you to **Continue/Pause**, **Step Over**, **Step Into**, **Step Out**, **Restart** or , **Stop**
-<p align="center">
-  <img alt="Debug: Toolbar" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_toolbar.png" width="20%">
-</p>
-
-Inspect variables and CPU registers on the left panel
-<p align="center">
-  <img alt="Debug: Variables and Registers" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_variables.png" width="20%">
-</p>
-
-If the SVD file was set in the debug configuration, the peripherals are displayed in the "xperipherals" view.
-<p align="center">
-  <img alt="Debug: XPeripherals" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_xperipherals.png" width="20%">
-</p>
-
-To debug in disassembly, right-click on the code then select "Open Disassembly View"
-<p align="center">
-  <img alt="Debug: Disassembly" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_open_disasm.png" width="80%">
-  <img alt="Debug: Disassembly" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_7_debug_disasm.png" width="80%">
-</p>
-
-More information about [Debugging on VSCODE](https://code.visualstudio.com/docs/editor/debugging)
-
-### Install Runners
-OpenOCD and STM32CubeProgrammer installers are provided.
-1. Click on the "Install Runners" menu
-2. The list of supported is displayed here
-3. Click on the "Install" icon to install the tools 
-   <or>
-   Click on the "Website" icon to be redirected to the official website of the tool and manually install it
-Note: As third-party installer cannot be fully controlled, you might need to manually set up your PATH environment variable to use the tool in Workbench for Zephyr
-
-<p align="center">
-  <img alt="Debug tools" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-zephyr-workbench/main/images/zw_8_install_debug_tools.png" width="80%">
-</p>
-
-## Known Issues
-Error message in "Output" tab with new application project is created.
-Uninstall tools not supported yet, please manually delete the ${USERDIR}/.zinstaller directory.
-
-For some JTAG probes, you might need to install its driver in order to run the debug session.  
-
-## How to rebuild the extension
-```
-git clone https://github.com/Ac6Embedded/vscode-zephyr-workbench
-code vscode-zephyr-workbench
-npm install
-npm run compile
-```
-Then `F5` to run the extension.
+- [Zephyr Documentation](https://docs.zephyrproject.org/latest/index.html)
+- [Zephyr Training Program](https://zephyrproject.org/training-partner-program)
