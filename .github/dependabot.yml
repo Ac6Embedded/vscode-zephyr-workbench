@@ -16,6 +16,17 @@ updates:
         update-types:
           - "version-update:semver-major"
           - "version-update:semver-minor"
+      # Must match the Node version embedded in the minimum supported
+      # VS Code (engines.vscode 1.88 ships Node 18); bump only when the
+      # VS Code baseline is raised.
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
+      # TypeScript 7 (native compiler) is a deliberate migration:
+      # ts-node and typescript-eslint do not support it yet.
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
     groups:
       npm-minor-patch:
         applies-to: version-updates
