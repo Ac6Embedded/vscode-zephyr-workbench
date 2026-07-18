@@ -2528,7 +2528,7 @@
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
     "@vscode/vsce": "^3.9.2",
-    "cross-env": "^7.0.3",
+    "cross-env": "^10.1.0",
     "esbuild": "^0.28.1",
     "esbuild-plugin-copy": "^2.1.1",
     "eslint": "^10.7.0",
