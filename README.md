@@ -37,8 +37,6 @@ The extension is available on the [VS Code Marketplace](https://marketplace.visu
 * IntelliSense with the C/C++ extension or clangd
 * Supported on Windows, Linux and macOS, including [VS Code Portable mode](https://z-workbench.com/docs/documentation/vscode-zephyr-workbench-portable)
 
-![Workbench for Zephyr Overview](https://z-workbench.com/img/update/wfz_overview.png)
-
 ## Quick Start
 
 1. Click on the Workbench for Zephyr icon in the activity bar
