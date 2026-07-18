@@ -1,8 +1,7 @@
 # Workbench for Zephyr (VS Code)
 
-[![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/Ac6.zephyr-workbench?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=Ac6.zephyr-workbench)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/Ac6.zephyr-workbench)](https://marketplace.visualstudio.com/items?itemName=Ac6.zephyr-workbench)
-[![Rating](https://img.shields.io/visual-studio-marketplace/r/Ac6.zephyr-workbench)](https://marketplace.visualstudio.com/items?itemName=Ac6.zephyr-workbench&ssr=false#review-details)
+[![VS Marketplace](https://badgen.net/vs-marketplace/v/Ac6.zephyr-workbench)](https://marketplace.visualstudio.com/items?itemName=Ac6.zephyr-workbench)
+[![Installs](https://badgen.net/vs-marketplace/i/Ac6.zephyr-workbench)](https://marketplace.visualstudio.com/items?itemName=Ac6.zephyr-workbench)
 [![Open VSX](https://img.shields.io/open-vsx/v/Ac6/zephyr-workbench?label=Open%20VSX)](https://open-vsx.org/extension/Ac6/zephyr-workbench)
 [![License](https://img.shields.io/github/license/Ac6Embedded/vscode-zephyr-workbench)](LICENSE)
 
