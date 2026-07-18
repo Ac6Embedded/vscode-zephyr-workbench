@@ -9,6 +9,13 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # Must not exceed engines.vscode (vsce refuses to package otherwise);
+      # its minor version tracks the VS Code API, so only allow patches.
+      - dependency-name: "@types/vscode"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
     groups:
       npm-minor-patch:
         applies-to: version-updates
