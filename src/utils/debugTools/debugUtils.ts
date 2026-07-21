@@ -19,6 +19,7 @@ import { Nrfjprog } from '../../debug/runners/Nrfjprog';
 import { SimplicityCommander } from '../../debug/runners/SimplicityCommander';
 import { JLink } from '../../debug/runners/JLink';
 import { PyOCD } from '../../debug/runners/PyOCD';
+import { Qemu } from '../../debug/runners/Qemu';
 import { ZephyrBoard } from '../../models/ZephyrBoard';
 import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
 import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeOnlyCommand } from '../../commands/WestCommands';
@@ -26,7 +27,7 @@ import { ParsedRunnersYaml, findRunnersYamlForProject, getRunnerPathFromRunnersY
 import { composeWestBuildArgs, expandAndNormalizeWestArgs, hasWestBuildSourceDirArg } from '../zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from './debugToolSelectionUtils';
 import { cleanupEmptyWorkspaceSettings } from '../vscodeWorkspaceCleanup';
-import { ZW_DEBUG_TYPE } from '../../debug/backends/types';
+import { ZW_DEBUG_TYPE, getDefaultGdbPort } from '../../debug/backends/types';
 
 export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 const LEGACY_ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY = 'zephyrWorkbenchAppRoot';
@@ -134,12 +135,13 @@ export function autoDetectSvdPath(board: ZephyrBoard): string {
 }
 
 export function getDebugRunners(): WestRunner[] {
-  return [ 
-    new Openocd(), 
+  return [
+    new Openocd(),
     new Linkserver(),
     new JLink(),
     new PyOCD(),
-    new StlinkGdbserver()
+    new StlinkGdbserver(),
+    new Qemu()
   ];
 }
 
@@ -462,6 +464,21 @@ export function getDefaultDebugRunner(
   return readRunnersYamlForProject(project, buildConfig)?.defaultDebugRunner;
 }
 
+/**
+ * Resolve the GDB port QEMU listens on for this build. QEMU's gdbstub port is
+ * set by the Kconfig option CONFIG_QEMU_GDBSERVER_LISTEN_DEV (e.g. "tcp::1234");
+ * fall back to the runner default (1234) when the build has no readable
+ * configuration yet.
+ */
+export function getQemuGdbPort(
+  project: ZephyrApplication,
+  buildConfig: ZephyrBuildConfig
+): string {
+  const listenDev = buildConfig.getKConfigValue(project, 'QEMU_GDBSERVER_LISTEN_DEV');
+  const match = listenDev?.match(/tcp:[^:]*:(\d+)/i);
+  return match?.[1] ?? getDefaultGdbPort('qemu');
+}
+
 async function collectLaunchConfigurationArtifacts(
   project: ZephyrApplication,
   buildConfig: ZephyrBuildConfig,
@@ -503,6 +520,17 @@ async function collectLaunchConfigurationArtifacts(
 
     if (compatibleRunners.length === 0 && targetBoard) {
       compatibleRunners = targetBoard.getCompatibleRunners();
+    }
+
+    // Emulator boards do not always advertise the QEMU runner in runners.yaml
+    // (pure-emulator boards generate no runners.yaml at all), so add it from the
+    // board's emulator signal when the board can run under QEMU.
+    const qemuCapable = targetBoard?.supportsQemu() ?? (boardIdentifier?.startsWith('qemu_') ?? false);
+    if (qemuCapable && !compatibleRunners.includes('qemu')) {
+      compatibleRunners = [...compatibleRunners, 'qemu'];
+    }
+    if (!defaultDebugRunner && qemuCapable && compatibleRunners.length === 1) {
+      defaultDebugRunner = 'qemu';
     }
 
     return {
@@ -635,6 +663,8 @@ export function getRunner(runnerName: string): WestRunner | undefined {
       return new Nrfjprog();
     case 'simplicity_commander':
       return new SimplicityCommander();
+    case 'qemu':
+      return new Qemu();
     default:
       return undefined;
   }

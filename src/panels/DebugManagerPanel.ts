@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { ZEPHYR_DOCS_BASE_URL } from '../constants';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugLaunchConfigurationName, getDebugManagerLaunchConfiguration, getDebugRunners, getDebugSessionVenvPath, getDefaultDebugRunner, getLaunchConfiguration, getRunner, getWestDebugArgsForProject, setupPyOCDTarget, writeLaunchJson, LaunchConfigurationArtifacts } from "../utils/debugTools/debugUtils";
+import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugLaunchConfigurationName, getDebugManagerLaunchConfiguration, getDebugRunners, getDebugSessionVenvPath, getDefaultDebugRunner, getLaunchConfiguration, getQemuGdbPort, getRunner, getWestDebugArgsForProject, setupPyOCDTarget, writeLaunchJson, LaunchConfigurationArtifacts } from "../utils/debugTools/debugUtils";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { getZephyrApplication } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
@@ -16,6 +16,7 @@ import { ensureCortexDebugAvailable, installCortexDebug, isCortexDebugInstalled 
 import { buildCortexWestLaunchConfig } from '../debug/backends/cortexWest';
 import { buildCortexNativeLaunchConfig, detectJlinkDevice } from '../debug/backends/cortexNative';
 import { readPanelStateFromConfig } from '../debug/backends/backendState';
+import { KconfigManagerPanel } from './KconfigManagerPanel';
 
 export class DebugManagerPanel {
   public static currentPanel: DebugManagerPanel | undefined;
@@ -381,7 +382,16 @@ export class DebugManagerPanel {
     };
 
     const getRunnerInfo = (runnerName: string | undefined): { defaultInfo: string; pathInfo: string } => {
-      return runnerName === 'openocd' ? currentOpenocdInfoText : { defaultInfo: '', pathInfo: '' };
+      if (runnerName === 'openocd') {
+        return currentOpenocdInfoText;
+      }
+      if (runnerName === 'qemu') {
+        return {
+          defaultInfo: 'QEMU listens on TCP port 1234 by default (Kconfig option CONFIG_QEMU_GDBSERVER_LISTEN_DEV). Change this port only if your project overrides that option.',
+          pathInfo: '',
+        };
+      }
+      return { defaultInfo: '', pathInfo: '' };
     };
 
     const getRunnerDetectionName = (runnerName: string | undefined, runnerLabel?: string): string => {
@@ -391,15 +401,59 @@ export class DebugManagerPanel {
       return runnerLabel ?? runnerName ?? '';
     };
 
-    function getRunnersHtml(compatibleRunners: string[]): string {
-      let runnersHtml = '';
-      for (const runner of getDebugRunners()) {
-        const runnerLabel = compatibleRunners.includes(runner.name)
-          ? `${runner.label} (compatible)`
-          : runner.label;
-        runnersHtml = runnersHtml.concat(`<div class="dropdown-item" data-value="${runner.name}" data-label="${runner.label}">${runnerLabel}</div>`);
+    // Default GDB port for a runner. QEMU reads its listen port from the build's
+    // Kconfig (CONFIG_QEMU_GDBSERVER_LISTEN_DEV); every other runner uses the
+    // static per-runner default.
+    const defaultPortForRunner = (
+      runnerName: string | undefined,
+      project?: ZephyrApplication,
+      buildConfig?: ZephyrBuildConfig,
+    ): string => {
+      if (runnerName === 'qemu' && project && buildConfig) {
+        return getQemuGdbPort(project, buildConfig);
       }
-      return runnersHtml;
+      return getDefaultGdbPort(runnerName);
+    };
+
+    // Runner dropdown markup. When compatibility information is available the
+    // compatible runners are listed first (kept flagged with the "(compatible)"
+    // suffix and a data-compatible attribute the webview reads for auto-select),
+    // followed by a "Show all runners" action row and the remaining runners
+    // hidden by default. A selected runner that is not compatible is promoted
+    // into the visible section so it never disappears. With no compatibility
+    // info (empty list) every runner is shown flat, as before.
+    function getRunnersHtml(compatibleRunners: string[], selectedRunner?: string): string {
+      const runnerItem = (runner: WestRunner, opts: { compatible?: boolean; hidden?: boolean } = {}): string => {
+        const label = opts.compatible ? `${runner.label} (compatible)` : runner.label;
+        const classAttr = opts.hidden ? 'dropdown-item runner-more' : 'dropdown-item';
+        const compatAttr = opts.compatible ? ' data-compatible="true"' : '';
+        return `<div class="${classAttr}" data-value="${runner.name}" data-label="${runner.label}"${compatAttr}>${label}</div>`;
+      };
+
+      if (compatibleRunners.length === 0) {
+        return getDebugRunners().map(runner => runnerItem(runner)).join('');
+      }
+
+      const runners = getDebugRunners();
+      const visible: string[] = [];
+      const hidden: string[] = [];
+      for (const runner of runners) {
+        if (compatibleRunners.includes(runner.name)) {
+          visible.push(runnerItem(runner, { compatible: true }));
+        } else if (runner.name === selectedRunner) {
+          // Keep the user's current selection visible even when it is not
+          // compatible; no data-compatible flag so auto-select ignores it.
+          visible.push(runnerItem(runner));
+        } else {
+          hidden.push(runnerItem(runner, { hidden: true }));
+        }
+      }
+
+      if (hidden.length === 0) {
+        return visible.join('');
+      }
+      const toggleRow = '<div class="dropdown-action" id="runnersToggleAll">Show all runners</div>';
+      return `${visible.join('')}${toggleRow}${hidden.join('')}`;
     }
 
     // Restricted runner list for the native Cortex-Debug backend. Labels come
@@ -707,6 +761,26 @@ export class DebugManagerPanel {
               vscode.commands.executeCommand('zephyr-workbench.install-runners');
               break;
             }
+            case 'openKconfig': {
+              // QEMU's GDB port is the Kconfig option
+              // CONFIG_QEMU_GDBSERVER_LISTEN_DEV; open the Kconfig Manager on
+              // this build so the user can change it.
+              let project: ZephyrApplication | undefined;
+              let buildConfig: ZephyrBuildConfig | undefined;
+              try {
+                if (message.project) {
+                  project = await getZephyrApplication(message.project);
+                  if (project && message.buildConfig) {
+                    buildConfig = project.getBuildConfiguration(message.buildConfig);
+                  }
+                }
+              } catch {
+                // No valid selection — the Kconfig Manager reports the missing
+                // application itself.
+              }
+              await KconfigManagerPanel.render(this._extensionUri, project, buildConfig);
+              break;
+            }
             case 'pyocdManage': {
               // Resolve the form's project/config selection into model objects
               // so the manager can show the target this build requires.
@@ -853,7 +927,7 @@ export class DebugManagerPanel {
           gdbAddress: `${state.gdbAddress}`,
           gdbPort: `${state.gdbPort}`,
           gdbMode: `${state.gdbMode}`,
-          runnersHTML: `${getRunnersHtml(compatibleRunners)}`,
+          runnersHTML: `${getRunnersHtml(compatibleRunners, runnerValue || runnerName)}`,
           nativeRunnersHTML: `${getNativeRunnersHtml()}`,
           runnerName: `${runnerLabel}`,
           runnerValue: `${runnerValue}`,
@@ -863,7 +937,7 @@ export class DebugManagerPanel {
           runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
           device: `${state.device ?? ''}`,
           deviceInterface: `${state.deviceInterface ?? 'swd'}`,
-          defaultGdbPort: getDefaultGdbPort(runnerName),
+          defaultGdbPort: defaultPortForRunner(runnerName, project, buildConfig),
         });
         postCortexDetect(state.backend);
         if (state.backend === 'cortex-native' && runnerName === 'jlink' && !(state.device ?? '').trim()) {
@@ -958,7 +1032,11 @@ export class DebugManagerPanel {
           ? 'stlink_gdbserver'
           : 'jlink';
       }
-      const gdbPort = backend === 'cppdbg' ? state.gdbPort : getDefaultGdbPort(runnerName);
+      // QEMU's port comes from the build's Kconfig for every backend; the
+      // cppdbg template's generic default does not apply to it.
+      const gdbPort = runnerName === 'qemu'
+        ? defaultPortForRunner(runnerName, project, buildConfig)
+        : (backend === 'cppdbg' ? state.gdbPort : getDefaultGdbPort(runnerName));
       const { runnerLabel, runnerValue, runnerPath, runnerDefaultInfo, runnerDefaultPathInfo } = await getRunnerWebviewState(project, runnerName);
 
       let device = '';
@@ -981,7 +1059,7 @@ export class DebugManagerPanel {
         gdbAddress: `${state.gdbAddress}`,
         gdbPort: `${gdbPort}`,
         gdbMode: 'program',
-        runnersHTML: `${getRunnersHtml(compatibleRunners)}`,
+        runnersHTML: `${getRunnersHtml(compatibleRunners, runnerValue || runnerName)}`,
         nativeRunnersHTML: `${getNativeRunnersHtml()}`,
         runnerName: `${runnerLabel}`,
         runnerValue: `${runnerValue}`,
@@ -991,7 +1069,7 @@ export class DebugManagerPanel {
         runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
         device: `${device}`,
         deviceInterface: 'swd',
-        defaultGdbPort: getDefaultGdbPort(runnerName),
+        defaultGdbPort: defaultPortForRunner(runnerName, project, buildConfig),
       });
       postCortexDetect(backend);
       if (backend === 'cortex-native' && runnerName === 'jlink') {
@@ -1013,10 +1091,12 @@ export class DebugManagerPanel {
       }
 
       // ST-LINK GDB Server is launched indirectly (via west / the CubeCLT bundle)
-      // and does not accept an executable-path flag on the command line. The path
-      // is only used internally for detection, so we must not inject it into
-      // `debugServerArgs` — doing so would put an invalid flag in launch.json.
-      if (runner === 'stlink_gdbserver') {
+      // and does not accept an executable-path flag on the command line. QEMU is
+      // resolved by the Zephyr build and started through the debugserver_qemu
+      // CMake target, which likewise takes no executable-path flag. The path is
+      // only used internally for detection, so we must not inject it into
+      // `debugServerArgs`, which would put an invalid flag in launch.json.
+      if (runner === 'stlink_gdbserver' || runner === 'qemu') {
         return args;
       }
 
@@ -1115,6 +1195,17 @@ export class DebugManagerPanel {
         // place so no keys of the previous backend survive the switch.
         let freshConfig: any;
         if (backend === 'cortex-west') {
+          // The Cortex-Debug client is ARM oriented. QEMU boards for other
+          // architectures (x86, RISC-V, ...) must use the C/C++ (cppdbg)
+          // backend, which is architecture agnostic. Allow it when the arch is
+          // unknown so we never block a valid ARM board on missing metadata.
+          if (runner.name === 'qemu') {
+            const arch = currentArtifacts?.targetBoard?.arch?.toLowerCase();
+            if (arch && arch !== 'arm' && arch !== 'arm64') {
+              vscode.window.showErrorMessage('Debug manager: QEMU debugging with the Cortex-Debug backend is only supported for ARM boards. Use the C/C++ Debug (cppdbg) backend for this board.');
+              return false;
+            }
+          }
           runner.loadArgs(runnerArgs);
           runner.serverPath = runnerPath;
           runner.serverAddress = gdbAddress;
@@ -1131,6 +1222,11 @@ export class DebugManagerPanel {
             gdbAddress,
             gdbPort,
           }, debugServerArgs);
+          if (runner.name === 'qemu') {
+            // `west build -t debugserver_qemu` may recompile before QEMU starts,
+            // so give the server-ready wait extra headroom over the default.
+            freshConfig.serverReadyTimeout = 60000;
+          }
         } else {
           const nativeServer = runnerNameToNativeServer(runnerName);
           if (!nativeServer) {
@@ -1221,7 +1317,7 @@ export class DebugManagerPanel {
           config.debugServerArgs = getWestDebugArgsForProject(runner, appProject, buildConfig);
           config.debugServerArgs = runnerPathArg(config.debugServerArgs, runner.name, runnerPath);
           config.setupCommands = [];
-          for(const arg of getSetupCommands(programPath, runner.serverAddress, runner.serverPort, gdbMode)) {
+          for(const arg of getSetupCommands(programPath, runner.serverAddress, runner.serverPort, gdbMode, runner.name)) {
             config.setupCommands.push(arg);
           }
           // pyOCD requires specialized GDB configuration with specific setup commands

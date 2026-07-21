@@ -71,9 +71,10 @@ export class WestRunner {
 
     let i = 0;
     // Skip the leading west subcommand when present (`debugserver` for debug,
-    // `flash` for flash). Anything else means the args were stored without the
-    // command prefix — start parsing from the first token.
-    if (tokens[0] === 'debugserver' || tokens[0] === 'flash') {
+    // `flash` for flash, `build` for the QEMU emulator target). Anything else
+    // means the args were stored without the command prefix, so start parsing
+    // from the first token.
+    if (tokens[0] === 'debugserver' || tokens[0] === 'flash' || tokens[0] === 'build') {
       i = 1;
     }
 
@@ -94,7 +95,7 @@ export class WestRunner {
         continue;
       }
 
-      if (hasNext && tok === gdbPortFlag) {
+      if (hasNext && gdbPortFlag && tok === gdbPortFlag) {
         this.serverPort = WestRunner.unquote(next);
         i += 2;
         continue;
@@ -244,6 +245,12 @@ export class WestRunner {
 
     if(runnerMatch) {
       return runnerMatch[1];
+    }
+
+    // The QEMU runner carries no `--runner` flag; it is identified by the
+    // CMake target it drives (`build -t debugserver_qemu`).
+    if (/(?:^|\s)(?:-t|--target)\s+debugserver_qemu\b/.test(args)) {
+      return 'qemu';
     }
 
     return undefined;

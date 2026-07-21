@@ -29,7 +29,8 @@ export const DEFAULT_SERVER_READY_TIMEOUT_MS = 15000;
 /**
  * Default GDB server ports per west runner, from the Zephyr runner sources
  * (jlink.py DEFAULT_JLINK_GDB_PORT, openocd.py/pyocd.py GDB defaults,
- * ST-LINK_gdbserver's factory default).
+ * ST-LINK_gdbserver's factory default, QEMU's gdbstub default 1234 from
+ * CONFIG_QEMU_GDBSERVER_LISTEN_DEV).
  */
 export const RUNNER_DEFAULT_GDB_PORT: Record<string, string> = {
   jlink: '2331',
@@ -37,6 +38,7 @@ export const RUNNER_DEFAULT_GDB_PORT: Record<string, string> = {
   pyocd: '3333',
   linkserver: '3333',
   stlink_gdbserver: '61234',
+  qemu: '1234',
 };
 
 export function getDefaultGdbPort(runnerName: string | undefined): string {

@@ -142,6 +142,7 @@ export function readPanelStateFromConfig(config: any): NormalizedPanelState {
     }
   }
   const debugServerArgs = asString(config?.debugServerArgs);
+  const runnerName = debugServerArgs ? WestRunner.extractRunner(debugServerArgs) : undefined;
   return {
     ...selection,
     programPath: asString(config?.program),
@@ -149,8 +150,8 @@ export function readPanelStateFromConfig(config: any): NormalizedPanelState {
     gdbPath: asString(config?.miDebuggerPath),
     gdbAddress,
     gdbPort,
-    gdbMode: getGdbMode(setupCommands) === 'attach' ? 'attach' : 'program',
-    runnerName: debugServerArgs ? WestRunner.extractRunner(debugServerArgs) : undefined,
+    gdbMode: getGdbMode(setupCommands, runnerName) === 'attach' ? 'attach' : 'program',
+    runnerName,
     debugServerArgs,
   };
 }
