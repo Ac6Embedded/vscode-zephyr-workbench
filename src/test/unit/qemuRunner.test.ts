@@ -4,7 +4,7 @@ import path from 'path';
 // vscode imports in these modules resolve to the stub under
 // src/test/unit/stubs (NODE_PATH), like the other unit tests.
 import { Qemu } from '../../debug/runners/Qemu';
-import { WestRunner } from '../../debug/runners/WestRunner';
+import { RunnerType, WestRunner } from '../../debug/runners/WestRunner';
 import { getSetupCommands, getGdbMode } from '../../debug/gdbUtils';
 import { getExternalLaunchOverrides } from '../../debug/backends/cortexWest';
 import { ZephyrBoard } from '../../models/ZephyrBoard';
@@ -149,6 +149,68 @@ describe('QEMU debug runner', () => {
       const runners = board.getCompatibleRunners();
       assert.ok(runners.includes('openocd'));
       assert.ok(!runners.includes('qemu'));
+    });
+  });
+});
+
+// A minimal hardware-style runner exercising the base-class --domain logic
+// (getWestDebugArgs / loadArgs) without importing a concrete runner whose
+// transitive imports would pull vscode-heavy modules into the unit test.
+class DomainTestRunner extends WestRunner {
+  name = 'openocd';
+  label = 'OpenOCD';
+  types = [RunnerType.FLASH, RunnerType.DEBUG];
+}
+
+describe('west debug args with sysbuild domain', () => {
+  describe('hardware runner (base WestRunner)', () => {
+    it('inserts --domain after --build-dir', () => {
+      const args = new DomainTestRunner().getWestDebugArgs('build/primary', 'mcuboot');
+      assert.ok(args.startsWith('debugserver --build-dir "${workspaceFolder}/build/primary" --domain mcuboot'), args);
+      assert.ok(args.includes('--runner openocd'));
+    });
+
+    it('omits --domain for non-sysbuild builds', () => {
+      assert.ok(!new DomainTestRunner().getWestDebugArgs('build/debug').includes('--domain'));
+    });
+
+    it('round-trips: --domain is stripped, never leaking into userArgs', () => {
+      const runner = new DomainTestRunner();
+      const fresh = new DomainTestRunner();
+      fresh.loadArgs(runner.getWestDebugArgs('build/primary', 'mcuboot'));
+      assert.equal(fresh.userArgs, '');
+    });
+
+    it('preserves genuine user flags while stripping --domain', () => {
+      const runner = new DomainTestRunner();
+      runner.loadArgs('debugserver --build-dir "x" --domain mcuboot --runner openocd --extra flag');
+      assert.equal(runner.userArgs, '--extra flag');
+    });
+  });
+
+  describe('qemu runner', () => {
+    it('appends --domain to the debugserver_qemu target', () => {
+      assert.equal(
+        new Qemu().getWestDebugArgs('build/primary', 'hello_world_sysbuild'),
+        'build -t debugserver_qemu --build-dir "${workspaceFolder}/build/primary" --domain hello_world_sysbuild',
+      );
+    });
+
+    it('round-trips: qemu args with --domain strip to empty userArgs', () => {
+      const runner = new Qemu();
+      const fresh = new Qemu();
+      fresh.loadArgs(runner.getWestDebugArgs('build/primary', 'mcuboot'));
+      assert.equal(fresh.userArgs, '');
+    });
+  });
+
+  describe('extractRunner is unaffected by --domain', () => {
+    it('still finds openocd', () => {
+      assert.equal(WestRunner.extractRunner('debugserver --build-dir "x" --domain mcuboot --runner openocd'), 'openocd');
+    });
+
+    it('still finds qemu from the target with --domain present', () => {
+      assert.equal(WestRunner.extractRunner('build -t debugserver_qemu --build-dir "x" --domain mcuboot'), 'qemu');
     });
   });
 });

@@ -30,6 +30,7 @@ import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQu
 import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_APPLICATIONS_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_SELECTED_APPLICATION_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_INTELLISENSE_PROVIDER_SETTING_KEY, ZEPHYR_PROJECT_RUST_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
 import {
 	extractDebugBuildConfigName,
+	extractDebugDomainName,
 	getLaunchConfiguration,
 	getDebugLaunchConfigurationName,
 	getRunner,
@@ -37,6 +38,7 @@ import {
 	getStaticFlashRunnerNames,
 	removeApplicationLaunchConfigurations,
 } from './utils/debugTools/debugUtils';
+import { readDomainsForBuildDir } from './utils/zephyr/domainsYamlUtils';
 import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getTerminalDefaultProfile, isSpdxOnlyVenvPath, isUnsupportedCshShell, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
 import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, createWorkspaceVenv, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
 import { probeHomebrew } from './utils/hostToolsStatusUtils';
@@ -1442,16 +1444,26 @@ export function activate(context: vscode.ExtensionContext) {
 				const launchConfig = vscode.workspace.getConfiguration('launch', workspaceFolder.uri);
 				const configurations: vscode.DebugConfiguration[] = launchConfig.get('configurations', []);
 
-				const configName = getDebugLaunchConfigurationName(project, buildConfigName);
+				// For sysbuild builds the launch entry name carries the default domain.
+					// Prefer that name, but fall back to a pre-domain (unsuffixed) entry
+					// so existing launch.json files still launch.
+					const preResolvedBuildConfig = buildConfigName ? project.getBuildConfiguration(buildConfigName) : undefined;
+					const defaultDomain = preResolvedBuildConfig && isSysbuildEnabled(preResolvedBuildConfig)
+						? readDomainsForBuildDir(preResolvedBuildConfig.getBuildDir(project))?.defaultDomain
+						: undefined;
+					const configName = getDebugLaunchConfigurationName(project, buildConfigName, defaultDomain);
 
-				const launchConfiguration = findLaunchConfigurationForProject(configurations, configName);
+				let launchConfiguration = findLaunchConfigurationForProject(configurations, configName);
+					if (!launchConfiguration && defaultDomain) {
+						launchConfiguration = findLaunchConfigurationForProject(configurations, getDebugLaunchConfigurationName(project, buildConfigName));
+					}
 
 				if (launchConfiguration) {
 					if (project.isWestWorkspaceApplication) {
 						await setSelectedWorkspaceApplicationPath(project.appWorkspaceFolder, project.appRootPath);
 						await vscode.debug.startDebugging(workspaceFolder, launchConfiguration);
 					} else {
-						await vscode.debug.startDebugging(workspaceFolder, configName);
+						await vscode.debug.startDebugging(workspaceFolder, launchConfiguration.name);
 					}
 				} else {
 					// Fallback: open Debug Manager with the resolved project/config selection
@@ -2868,7 +2880,8 @@ export function activate(context: vscode.ExtensionContext) {
 			DebugManagerPanel.currentPanel?.dispose();
 			if (project?.isWestWorkspaceApplication) {
 				const buildConfigName = extractDebugBuildConfigName(configName);
-				const [, launchConfiguration] = await getLaunchConfiguration(project, buildConfigName);
+					const domainName = extractDebugDomainName(configName);
+				const [, launchConfiguration] = await getLaunchConfiguration(project, buildConfigName, false, undefined, domainName);
 				if (launchConfiguration) {
 					await setSelectedWorkspaceApplicationPath(project.appWorkspaceFolder, project.appRootPath);
 					await vscode.debug.startDebugging(project.appWorkspaceFolder, launchConfiguration);

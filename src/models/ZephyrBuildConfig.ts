@@ -31,7 +31,7 @@ import {
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
 } from '../constants';
 import { composeWestBuildArgs, expandAndNormalizeWestArgs, normalizeWestFlagDValue } from '../utils/zephyr/westArgUtils';
-import { getPyOcdTargetFromRunnersYaml, readRunnersYamlForProject } from '../utils/zephyr/runnersYamlUtils';
+import { getPyOcdTargetFromRunnersYaml, readRunnersYamlFile, readRunnersYamlForProject } from '../utils/zephyr/runnersYamlUtils';
 
 export class ZephyrBuildConfig {
   name: string;
@@ -126,23 +126,35 @@ export class ZephyrBuildConfig {
     return path.join(application.appRootPath, this.relativeBuildDir);
   }
 
-  // Some generated layouts place artifacts under an extra application-name
-  // directory, so probe both shapes before concluding that an artifact is missing.
-  private getBuildArtifactCandidates(application: ZephyrApplication, ...segments: string[]): string[] {
+  // Some generated layouts place artifacts under an extra directory: the app
+  // folder for a single-image build, or a domain name for a sysbuild build. Probe
+  // the nested shape (nested dir name = domain when given, else the app folder)
+  // before the flat shape, so an artifact is only reported missing when neither exists.
+  private getBuildArtifactCandidatesFor(application: ZephyrApplication, nestedDirName: string | undefined, ...segments: string[]): string[] {
     const buildDir = this.getBuildDir(application);
-    const appFolderName = path.basename(application.appRootPath);
     const candidates: string[] = [];
 
-    if (appFolderName && appFolderName.length > 0) {
-      candidates.push(path.join(buildDir, appFolderName, ...segments));
+    if (nestedDirName && nestedDirName.length > 0) {
+      candidates.push(path.join(buildDir, nestedDirName, ...segments));
     }
     candidates.push(path.join(buildDir, ...segments));
 
     return candidates;
   }
 
+  private getBuildArtifactCandidates(application: ZephyrApplication, ...segments: string[]): string[] {
+    return this.getBuildArtifactCandidatesFor(application, path.basename(application.appRootPath), ...segments);
+  }
+
   getBuildArtifactPath(application: ZephyrApplication, ...segments: string[]): string | undefined {
     return this.getBuildArtifactCandidates(application, ...segments).find(candidate => fileExists(candidate));
+  }
+
+  // Resolve an artifact for a specific sysbuild domain (falls back to the app
+  // folder / flat shapes when `domain` is undefined, i.e. non-sysbuild builds).
+  getDomainBuildArtifactPath(application: ZephyrApplication, domain: string | undefined, ...segments: string[]): string | undefined {
+    const nestedDirName = domain ?? path.basename(application.appRootPath);
+    return this.getBuildArtifactCandidatesFor(application, nestedDirName, ...segments).find(candidate => fileExists(candidate));
   }
 
   getInternalDebugDir(application: ZephyrApplication): string {
@@ -166,6 +178,11 @@ export class ZephyrBuildConfig {
     const additionalEnv = getBuildEnv(envVars);
     baseEnv = { ...baseEnv, ...additionalEnv };
     return baseEnv;
+  }
+
+  /** Whether this build configuration uses sysbuild (multi-domain builds). */
+  isSysbuild(): boolean {
+    return String(this.sysbuild).toLowerCase() === "true";
   }
 
   getBuildEnv(application: ZephyrApplication): { [key: string]: string; } {
@@ -194,12 +211,16 @@ export class ZephyrBuildConfig {
     return runners;
   }
 
-  getPyOCDTarget(application: ZephyrApplication): string | undefined {
+  getPyOCDTarget(application: ZephyrApplication, domain?: string): string | undefined {
+    if (domain) {
+      const runnersYamlPath = this.getDomainBuildArtifactPath(application, domain, 'zephyr', 'runners.yaml');
+      return getPyOcdTargetFromRunnersYaml(runnersYamlPath ? readRunnersYamlFile(runnersYamlPath) : undefined);
+    }
     return getPyOcdTargetFromRunnersYaml(readRunnersYamlForProject(application, this));
   }
 
-  getKConfigValue(application: ZephyrApplication, configKey: string): string | undefined {
-    const dotConfig = this.getBuildArtifactPath(application, 'zephyr', '.config');
+  getKConfigValue(application: ZephyrApplication, configKey: string, domain?: string): string | undefined {
+    const dotConfig = this.getDomainBuildArtifactPath(application, domain, 'zephyr', '.config');
     if (dotConfig && fileExists(dotConfig)) {
       return getConfigValue(dotConfig, configKey);
     }

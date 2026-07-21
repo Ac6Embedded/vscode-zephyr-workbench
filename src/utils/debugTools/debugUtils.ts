@@ -24,15 +24,34 @@ import { ZephyrBoard } from '../../models/ZephyrBoard';
 import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
 import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeOnlyCommand } from '../../commands/WestCommands';
 import { ParsedRunnersYaml, findRunnersYamlForProject, getRunnerPathFromRunnersYaml, readRunnersYamlFile, readRunnersYamlForBuildDir, readRunnersYamlForProject } from '../zephyr/runnersYamlUtils';
+import { readDomainsForBuildDir } from '../zephyr/domainsYamlUtils';
 import { composeWestBuildArgs, expandAndNormalizeWestArgs, hasWestBuildSourceDirArg } from '../zephyr/westArgUtils';
 import { mergeOpenocdBuildFlag } from './debugToolSelectionUtils';
 import { cleanupEmptyWorkspaceSettings } from '../vscodeWorkspaceCleanup';
 import { ZW_DEBUG_TYPE, getDefaultGdbPort } from '../../debug/backends/types';
 
-export const ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME = 'Zephyr Workbench Debug';
 const LEGACY_ZEPHYR_WORKBENCH_DEBUG_APP_ROOT_KEY = 'zephyrWorkbenchAppRoot';
 const ZEPHYR_SDK_CONFIG_VARIABLE = '${config:zephyr-workbench.sdk}';
-const WORKSPACE_APPLICATION_DEBUG_CONFIG_SEPARATOR = ': ';
+
+// Debug launch configuration name grammar lives in a dependency-light module so
+// it can be unit-tested in isolation. Re-exported here so existing importers of
+// these symbols from debugUtils keep working unchanged.
+export {
+  ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME,
+  WORKSPACE_APPLICATION_DEBUG_CONFIG_SEPARATOR,
+  getDebugLaunchConfigurationName,
+  extractDebugBuildConfigName,
+  extractDebugDomainName,
+  extractWorkspaceApplicationPathFromDebugConfigName,
+} from './debugConfigNames';
+import {
+  ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME,
+  WORKSPACE_APPLICATION_DEBUG_CONFIG_SEPARATOR,
+  getDebugLaunchConfigurationName,
+  getFreestandingDebugLaunchConfigurationName,
+  getWorkspaceApplicationDebugName,
+  extractDebugDomainName,
+} from './debugConfigNames';
 
 export interface LaunchConfigurationArtifacts {
   compatibleRunners: string[];
@@ -47,54 +66,6 @@ interface LaunchConfigurationPaths {
   program: string;
   debugServerPath: string;
   workspaceRelativeBuildDir: string;
-}
-
-function getWorkspaceApplicationDebugName(project: ZephyrApplication): string {
-  const relativePath = path
-    .relative(project.appWorkspaceFolder.uri.fsPath, project.appRootPath)
-    .replace(/\\/g, '/');
-
-  return relativePath && relativePath !== '.' && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
-    ? relativePath
-    : project.appName;
-}
-
-export function getDebugLaunchConfigurationName(
-  project: ZephyrApplication,
-  buildConfigName?: string,
-): string {
-  if (!project.isWestWorkspaceApplication) {
-    return getFreestandingDebugLaunchConfigurationName(buildConfigName);
-  }
-
-  // West workspace apps share one launch.json. Include the app path relative to
-  // the west workspace so same-named multibuild configs from different apps
-  // remain distinct and can be resolved from VS Code's Run dropdown.
-  const buildConfigSuffix = buildConfigName ? ` [${buildConfigName}]` : '';
-  return `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME}${WORKSPACE_APPLICATION_DEBUG_CONFIG_SEPARATOR}${getWorkspaceApplicationDebugName(project)}${buildConfigSuffix}`;
-}
-
-function getFreestandingDebugLaunchConfigurationName(buildConfigName?: string): string {
-  return `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME}${buildConfigName ? ` [${buildConfigName}]` : ''}`;
-}
-
-function stripTrailingBuildConfigSuffix(configName: string): string {
-  return configName.replace(/\s+\[[^\]]+\]\s*$/, '').trim();
-}
-
-export function extractDebugBuildConfigName(configName: string): string | undefined {
-  const match = configName.match(/\[([^\]]+)\]\s*$/);
-  return match ? match[1] : undefined;
-}
-
-export function extractWorkspaceApplicationPathFromDebugConfigName(configName: string): string | undefined {
-  const prefix = `${ZEPHYR_WORKBENCH_DEBUG_CONFIG_NAME}${WORKSPACE_APPLICATION_DEBUG_CONFIG_SEPARATOR}`;
-  if (!configName.startsWith(prefix)) {
-    return undefined;
-  }
-
-  const appPath = stripTrailingBuildConfigSuffix(configName.slice(prefix.length));
-  return appPath.length > 0 ? appPath : undefined;
 }
 
 /**
@@ -472,9 +443,10 @@ export function getDefaultDebugRunner(
  */
 export function getQemuGdbPort(
   project: ZephyrApplication,
-  buildConfig: ZephyrBuildConfig
+  buildConfig: ZephyrBuildConfig,
+  domain?: string,
 ): string {
-  const listenDev = buildConfig.getKConfigValue(project, 'QEMU_GDBSERVER_LISTEN_DEV');
+  const listenDev = buildConfig.getKConfigValue(project, 'QEMU_GDBSERVER_LISTEN_DEV', domain);
   const match = listenDev?.match(/tcp:[^:]*:(\d+)/i);
   return match?.[1] ?? getDefaultGdbPort('qemu');
 }
@@ -483,8 +455,11 @@ async function collectLaunchConfigurationArtifacts(
   project: ZephyrApplication,
   buildConfig: ZephyrBuildConfig,
   westWorkspace: ReturnType<typeof getWestWorkspace>,
+  domain?: string,
 ): Promise<LaunchConfigurationArtifacts> {
-  const appFolderName = path.basename(project.appRootPath);
+  // For sysbuild builds the artifacts live in the selected domain's build dir;
+  // otherwise the folder that nests them is the app folder (today's behavior).
+  const nestedDirName = domain ?? path.basename(project.appRootPath);
   const buildDir = buildConfig.getBuildDir(project);
   const boardIdentifier = buildConfig.boardIdentifier;
   let {
@@ -493,14 +468,14 @@ async function collectLaunchConfigurationArtifacts(
     compatibleRunners,
     defaultDebugRunner,
     generatedOpenocdPath,
-  } = resolveGeneratedArtifactsFromBuildDir(buildDir, appFolderName, boardIdentifier);
+  } = resolveGeneratedArtifactsFromBuildDir(buildDir, nestedDirName, boardIdentifier);
   let tmpBuildDir: string | undefined;
 
   try {
     if ((!targetBoard || !generatedGdbPath || compatibleRunners.length === 0 || !defaultDebugRunner || !generatedOpenocdPath) && !fileExists(buildDir)) {
       tmpBuildDir = await westTmpBuildCmakeOnlyCommand(project, westWorkspace, buildConfig);
       if (tmpBuildDir) {
-        const generatedArtifacts = resolveGeneratedArtifactsFromBuildDir(tmpBuildDir, appFolderName, boardIdentifier);
+        const generatedArtifacts = resolveGeneratedArtifactsFromBuildDir(tmpBuildDir, nestedDirName, boardIdentifier);
         targetBoard = targetBoard ?? generatedArtifacts.targetBoard;
         generatedGdbPath = generatedGdbPath ?? generatedArtifacts.generatedGdbPath;
         if (compatibleRunners.length === 0) {
@@ -858,8 +833,9 @@ export function getWestDebugArgsForProject(
   runner: WestRunner,
   project: ZephyrApplication,
   buildConfig: ZephyrBuildConfig,
+  domain?: string,
 ): string {
-  return runner.getWestDebugArgs(getLaunchConfigurationPaths(project, buildConfig).workspaceRelativeBuildDir);
+  return runner.getWestDebugArgs(getLaunchConfigurationPaths(project, buildConfig, domain).workspaceRelativeBuildDir, domain);
 }
 
 function withDebugServerBuildDir(debugServerArgs: string | undefined, buildDirExpression: string): string | undefined {
@@ -921,15 +897,16 @@ function getGeneratedGdbPath(
   project: ZephyrApplication,
   buildConfig: ZephyrBuildConfig,
   artifacts?: LaunchConfigurationArtifacts,
+  domain?: string,
 ): string | undefined {
   if (artifacts?.generatedGdbPath) {
     return normalizeDetectedGdbPath(artifacts.generatedGdbPath);
   }
 
-  const appFolderName = path.basename(project.appRootPath);
+  const nestedDirName = domain ?? path.basename(project.appRootPath);
   return resolveGeneratedArtifactsFromBuildDir(
     buildConfig.getBuildDir(project),
-    appFolderName,
+    nestedDirName,
     buildConfig.boardIdentifier,
   ).generatedGdbPath;
 }
@@ -939,8 +916,9 @@ function getWorkspaceApplicationMiDebuggerPath(
   project: ZephyrApplication,
   buildConfig: ZephyrBuildConfig,
   artifacts?: LaunchConfigurationArtifacts,
+  domain?: string,
 ): string | undefined {
-  const generatedGdbPath = getGeneratedGdbPath(project, buildConfig, artifacts);
+  const generatedGdbPath = getGeneratedGdbPath(project, buildConfig, artifacts, domain);
   if (generatedGdbPath) {
     return getMiDebuggerPath(project, generatedGdbPath, '');
   }
@@ -959,13 +937,14 @@ function getWorkspaceApplicationMiDebuggerPath(
   return fileExists(resolvedPath) ? resolvedPath : '';
 }
 
-function getDebugProgramPath(project: ZephyrApplication, buildConfig: ZephyrBuildConfig): string {
+function getDebugProgramPath(project: ZephyrApplication, buildConfig: ZephyrBuildConfig, domain?: string): string {
   const buildFolderPath = buildConfig.getBuildDir(project);
-  const appFolderName = path.basename(project.appRootPath);
-  const appNameDir = path.join(buildFolderPath, appFolderName);
+  // For sysbuild builds the elf sits in the selected domain's subdirectory;
+  // otherwise it is the app folder (today's behavior) or flat at the build root.
+  const nestedDir = path.join(buildFolderPath, domain ?? path.basename(project.appRootPath));
 
-  if (fs.existsSync(appNameDir)) {
-    return getLaunchWorkspaceRelativePath(project, path.join(appNameDir, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME));
+  if (fs.existsSync(nestedDir)) {
+    return getLaunchWorkspaceRelativePath(project, path.join(nestedDir, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME));
   }
 
   return getLaunchWorkspaceRelativePath(project, path.join(buildFolderPath, ZEPHYR_DIRNAME, ZEPHYR_APP_FILENAME));
@@ -988,16 +967,19 @@ function getLaunchWorkspaceRelativePath(project: ZephyrApplication, targetPath: 
 function getLaunchConfigurationPaths(
   project: ZephyrApplication,
   buildConfig: ZephyrBuildConfig,
+  domain?: string,
 ): LaunchConfigurationPaths {
   // Keep the original launch.json contract intact:
   // debugger-facing file paths and the west build-dir argument are expressed
   // from the VS Code workspace folder. For freestanding apps `${workspaceFolder}`
   // is the app; for workspace apps it is the west workspace, so the relative
-  // segment includes the application directory.
+  // segment includes the application directory. Only the program path is
+  // domain-specific; cwd, the west wrapper, and the top-level --build-dir stay
+  // per-config (west builds and serves all domains from that one build tree).
   const workspaceRelativeBuildDir = getWorkspaceRelativeBuildDir(project, buildConfig);
   return {
     cwd: getLaunchWorkspaceRelativePath(project, project.appRootPath),
-    program: getDebugProgramPath(project, buildConfig),
+    program: getDebugProgramPath(project, buildConfig, domain),
     debugServerPath: getLaunchWorkspaceRelativePath(
       project,
       path.join(buildConfig.getInternalDebugDir(project), getWestWrapperFile()),
@@ -1027,7 +1009,8 @@ function repairGlobalSdkMiDebuggerPath(
   if (!buildConfig) {
     return;
   }
-  const miDebuggerPath = getWorkspaceApplicationMiDebuggerPath(config, project, buildConfig, artifacts);
+  const domain = typeof config.name === 'string' ? extractDebugDomainName(config.name) : undefined;
+  const miDebuggerPath = getWorkspaceApplicationMiDebuggerPath(config, project, buildConfig, artifacts, domain);
   if (typeof miDebuggerPath === 'string') {
     config.miDebuggerPath = miDebuggerPath;
   }
@@ -1048,7 +1031,11 @@ export function syncLaunchConfigurationProjectPaths(
     return;
   }
 
-  const paths = getLaunchConfigurationPaths(project, buildConfig);
+  // The domain is encoded in the entry name; the --build-dir stays the top-level
+  // config dir (withDebugServerBuildDir only rewrites --build-dir, leaving any
+  // --domain flag untouched), while the program path follows the domain.
+  const domain = typeof config.name === 'string' ? extractDebugDomainName(config.name) : undefined;
+  const paths = getLaunchConfigurationPaths(project, buildConfig, domain);
 
   if (config.type && config.type !== 'cppdbg') {
     // Non-cppdbg entries (zephyr-workbench / native cortex-debug) own a
@@ -1088,7 +1075,7 @@ export function syncLaunchConfigurationProjectPaths(
       ? config.miDebuggerPath
       : '';
     if (!currentMiDebuggerPath || currentMiDebuggerPath.includes(ZEPHYR_SDK_CONFIG_VARIABLE)) {
-      const miDebuggerPath = getWorkspaceApplicationMiDebuggerPath(config, project, buildConfig, artifacts);
+      const miDebuggerPath = getWorkspaceApplicationMiDebuggerPath(config, project, buildConfig, artifacts, domain);
       if (typeof miDebuggerPath === 'string') {
         config.miDebuggerPath = miDebuggerPath;
       }
@@ -1137,12 +1124,12 @@ export function getDebugSessionVenvPath(project: ZephyrApplication): string | un
  * the target actually appeared afterwards. Runs pyocd inside the venv the
  * debug session will use.
  */
-export async function setupPyOCDTarget(project: ZephyrApplication, buildConfigName?: string): Promise<boolean> {
+export async function setupPyOCDTarget(project: ZephyrApplication, buildConfigName?: string, domain?: string): Promise<boolean> {
   let target: string | undefined;
   if(buildConfigName) {
     let buildConfig = project.getBuildConfiguration(buildConfigName);
     if(buildConfig) {
-      target = buildConfig.getPyOCDTarget(project);
+      target = buildConfig.getPyOCDTarget(project, domain);
     }
   }
 
@@ -1213,6 +1200,7 @@ export async function createLaunchConfiguration(
   project: ZephyrApplication,
   buildConfigName?: string,
   artifacts?: LaunchConfigurationArtifacts,
+  domain?: string,
 ): Promise<any> {
   const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
   const toolchainVariant = project.toolchainVariant;
@@ -1232,7 +1220,7 @@ export async function createLaunchConfiguration(
   }
 
   if (buildConfig) {
-    const resolvedArtifacts = artifacts ?? await collectLaunchConfigurationArtifacts(project, buildConfig, westWorkspace);
+    const resolvedArtifacts = artifacts ?? await collectLaunchConfigurationArtifacts(project, buildConfig, westWorkspace, domain);
     targetBoard = resolvedArtifacts.targetBoard;
     generatedGdbPath = resolvedArtifacts.generatedGdbPath;
   }
@@ -1250,9 +1238,9 @@ export async function createLaunchConfiguration(
   let paths: LaunchConfigurationPaths | undefined;
 
   if (buildConfig) {
-    configName = getDebugLaunchConfigurationName(project, buildConfig.name);
-    socToolchainName = buildConfig.getKConfigValue(project, 'SOC_TOOLCHAIN_NAME');
-    paths = getLaunchConfigurationPaths(project, buildConfig);
+    configName = getDebugLaunchConfigurationName(project, buildConfig.name, domain);
+    socToolchainName = buildConfig.getKConfigValue(project, 'SOC_TOOLCHAIN_NAME', domain);
+    paths = getLaunchConfigurationPaths(project, buildConfig, domain);
   }
   const fallbackMiDebuggerPath = targetBoard
     ? getFallbackMiDebuggerPath(
@@ -1332,14 +1320,15 @@ export async function createLaunchJson(
   project: ZephyrApplication,
   buildConfigName?: string,
   artifacts?: LaunchConfigurationArtifacts,
+  domain?: string,
 ): Promise<any> {
-  
+
   const launchJson : any = {
     version: "0.2.0",
     configurations: []
   };
 
-  let config = await createLaunchConfiguration(project, buildConfigName, artifacts);
+  let config = await createLaunchConfiguration(project, buildConfigName, artifacts, domain);
   launchJson.configurations.push(config);
 
   return launchJson;
@@ -1495,20 +1484,44 @@ export async function findLaunchConfiguration(
   project: ZephyrApplication,
   buildConfigName?: string,
   artifacts?: LaunchConfigurationArtifacts,
+  domain?: string,
 ): Promise<any> {
-  const debugConfigName = getDebugLaunchConfigurationName(project, buildConfigName);
+  const debugConfigName = getDebugLaunchConfigurationName(project, buildConfigName, domain);
+
+  const adopt = (configuration: any): any => {
+    if (project.isWestWorkspaceApplication) {
+      syncLaunchConfigurationProjectPaths(configuration, project, buildConfigName, artifacts);
+    } else if (project.isGlobalSdk) {
+      repairGlobalSdkMiDebuggerPath(configuration, project, buildConfigName, artifacts);
+    }
+    return configuration;
+  };
 
   const matchingConfigurations = launchJson.configurations.filter((configuration: any) =>
     configuration && typeof configuration === 'object' && configuration.name === debugConfigName
   );
 
   if (matchingConfigurations.length > 0) {
-    if (project.isWestWorkspaceApplication) {
-      syncLaunchConfigurationProjectPaths(matchingConfigurations[0], project, buildConfigName, artifacts);
-    } else if (project.isGlobalSdk) {
-      repairGlobalSdkMiDebuggerPath(matchingConfigurations[0], project, buildConfigName, artifacts);
+    return adopt(matchingConfigurations[0]);
+  }
+
+  // Default-domain adoption: a sysbuild entry saved before domain suffixes
+  // existed carries the unsuffixed name. When the requested domain is the
+  // sysbuild default, rename that entry in place instead of leaving a stale
+  // near-duplicate beside the new per-domain entry.
+  if (domain && buildConfigName) {
+    const buildConfig = project.getBuildConfiguration(buildConfigName);
+    const parsedDomains = buildConfig ? readDomainsForBuildDir(buildConfig.getBuildDir(project)) : undefined;
+    if (parsedDomains?.defaultDomain === domain) {
+      const unsuffixedName = getDebugLaunchConfigurationName(project, buildConfigName);
+      const existing = launchJson.configurations.find((configuration: any) =>
+        configuration && typeof configuration === 'object' && configuration.name === unsuffixedName
+      );
+      if (existing) {
+        existing.name = debugConfigName;
+        return adopt(existing);
+      }
     }
-    return matchingConfigurations[0];
   }
 
   if (project.isWestWorkspaceApplication) {
@@ -1530,7 +1543,7 @@ export async function findLaunchConfiguration(
   // Create and push a new configuration only if valid
   let newCfg: any;
   try {
-    newCfg = await createLaunchConfiguration(project, buildConfigName, artifacts);
+    newCfg = await createLaunchConfiguration(project, buildConfigName, artifacts, domain);
   } catch (err) {
     console.error('[DebugManager] findLaunchConfiguration: failed to create configuration', err);
     // Propagate error; do not push invalid entry
@@ -1549,6 +1562,7 @@ export async function getLaunchConfiguration(
   buildConfigName?: string,
   createIfMissing: boolean = false,
   artifacts?: LaunchConfigurationArtifacts,
+  domain?: string,
 ): Promise<[any, any]> {
   let launchJson: any;
   const launchPath = path.join(project.appWorkspaceFolder.uri.fsPath, '.vscode', 'launch.json');
@@ -1559,16 +1573,16 @@ export async function getLaunchConfiguration(
   // Fall back to a fresh in-memory launch.json when the file is missing,
   // empty, or unparseable — `readLaunchJson` returns undefined in those cases.
   if (!launchJson) {
-    launchJson = await createLaunchJson(project, buildConfigName, artifacts);
+    launchJson = await createLaunchJson(project, buildConfigName, artifacts, domain);
     // skip writing to avoid creating launch.json on selection too debug
   }
 
   if (launchJson) {
     let configurationJson;
     if (buildConfigName) {
-      configurationJson = await findLaunchConfiguration(launchJson, project, buildConfigName, artifacts);
+      configurationJson = await findLaunchConfiguration(launchJson, project, buildConfigName, artifacts, domain);
     } else {
-      configurationJson = await findLaunchConfiguration(launchJson, project, undefined, artifacts);
+      configurationJson = await findLaunchConfiguration(launchJson, project, undefined, artifacts, domain);
     }
     return [launchJson, configurationJson];
   }
@@ -1578,10 +1592,11 @@ export async function getLaunchConfiguration(
 export async function getDebugManagerLaunchConfiguration(
   project: ZephyrApplication,
   buildConfig: ZephyrBuildConfig,
+  domain?: string,
 ): Promise<[any, any, string[], string | undefined, string | undefined, LaunchConfigurationArtifacts]> {
   const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
-  const artifacts = await collectLaunchConfigurationArtifacts(project, buildConfig, westWorkspace);
-  const [launchJson, config] = await getLaunchConfiguration(project, buildConfig.name, false, artifacts);
+  const artifacts = await collectLaunchConfigurationArtifacts(project, buildConfig, westWorkspace, domain);
+  const [launchJson, config] = await getLaunchConfiguration(project, buildConfig.name, false, artifacts, domain);
   return [launchJson, config, artifacts.compatibleRunners, artifacts.defaultDebugRunner, artifacts.generatedOpenocdPath, artifacts];
 }
 

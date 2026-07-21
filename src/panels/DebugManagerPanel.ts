@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { ZEPHYR_DOCS_BASE_URL } from '../constants';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugLaunchConfigurationName, getDebugManagerLaunchConfiguration, getDebugRunners, getDebugSessionVenvPath, getDefaultDebugRunner, getLaunchConfiguration, getQemuGdbPort, getRunner, getWestDebugArgsForProject, setupPyOCDTarget, writeLaunchJson, LaunchConfigurationArtifacts } from "../utils/debugTools/debugUtils";
+import { autoDetectSvdPath, pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugLaunchConfigurationName, getDebugManagerLaunchConfiguration, getDebugRunners, getDebugSessionVenvPath, getDefaultDebugRunner, getLaunchConfiguration, getQemuGdbPort, getRunner, getWestDebugArgsForProject, setupPyOCDTarget, writeLaunchJson, LaunchConfigurationArtifacts } from "../utils/debugTools/debugUtils";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { getZephyrApplication } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
@@ -17,6 +17,7 @@ import { buildCortexWestLaunchConfig } from '../debug/backends/cortexWest';
 import { buildCortexNativeLaunchConfig, detectJlinkDevice } from '../debug/backends/cortexNative';
 import { readPanelStateFromConfig } from '../debug/backends/backendState';
 import { KconfigManagerPanel } from './KconfigManagerPanel';
+import { ParsedDomainsYaml, readDomainsForBuildDir } from '../utils/zephyr/domainsYamlUtils';
 
 export class DebugManagerPanel {
   public static currentPanel: DebugManagerPanel | undefined;
@@ -25,6 +26,7 @@ export class DebugManagerPanel {
   private _disposables: vscode.Disposable[] = [];
   public project: ZephyrApplication | undefined;
   public buildConfig: ZephyrBuildConfig | undefined;
+  public domain: string | undefined;
   private _loadApplicationsAsync: (wv: vscode.Webview) => void = () => {};
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
@@ -52,6 +54,12 @@ export class DebugManagerPanel {
       DebugManagerPanel.currentPanel.project = project;
       // Update build config
       DebugManagerPanel.currentPanel.buildConfig = buildConfig;
+      // The webview DOM is retained across reopens (retainContextWhenHidden), so
+      // clear any domain row left visible from a previous sysbuild selection.
+      // The buildConfigChanged below re-shows it only when the new build config
+      // is sysbuild.
+      DebugManagerPanel.currentPanel.domain = undefined;
+      DebugManagerPanel.currentPanel._panel.webview.postMessage({ command: 'updateDomains', visible: 'false', domainsHTML: '', selectedDomain: '' });
       // Update selection field
       DebugManagerPanel.currentPanel._setDefaultSelection(DebugManagerPanel.currentPanel._panel.webview);
       const projectPath = project ? project.appRootPath : '';
@@ -191,6 +199,26 @@ export class DebugManagerPanel {
                   </slot>
                 </div>
                 <div id="buildConfigDropdown" class="dropdown-content" style="display: none;">
+                </div>
+              </div>
+            </div>
+
+            <!-- Select Domain (sysbuild builds only) -->
+            <div id="domainRow" class="grid-group-div" style="display: none;">
+              <div class="grid-header-div">
+                <label for="listDomains">Select the domain:</label>
+              </div>
+              <div id="listDomains" class="combo-dropdown grid-value-div">
+                <input type="text" id="domainInput" class="combo-dropdown-control" placeholder="Choose domain..." data-value="" readonly>
+                <div aria-hidden="true" class="indicator" part="indicator">
+                  <slot name="indicator">
+                    <svg class="select-indicator" part="select-indicator" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                      <path fill-rule="evenodd" clip-rule="evenodd" d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"></path>
+                    </svg>
+                    <div class="spinner" id="domainDropdownSpinner" style="display:none;"></div>
+                  </slot>
+                </div>
+                <div id="domainDropdown" class="dropdown-content" style="display: none;">
                 </div>
               </div>
             </div>
@@ -362,10 +390,71 @@ export class DebugManagerPanel {
   }
 
   private _setWebviewMessageListener(webview: vscode.Webview) {
+    // The nested helper functions below are plain functions (not arrows), so
+    // they cannot see the class `this`; alias it for reading/writing panel state.
+    const panel = this;
     let currentOpenocdInfoText: { defaultInfo: string; pathInfo: string } = { defaultInfo: '', pathInfo: '' };
     // Board/runner artifacts from the last configuration load, reused by the
     // J-Link device auto-detection so it never re-triggers a CMake probe.
     let currentArtifacts: LaunchConfigurationArtifacts | undefined;
+
+    // Domain dropdown markup for a sysbuild build; empty string when the build
+    // is not sysbuild (row hidden).
+    const buildDomainsHtml = (parsed: ParsedDomainsYaml | undefined): string => {
+      if (!parsed || parsed.domains.length === 0) {
+        return '';
+      }
+      return parsed.domains.map(entry => {
+        const isDefault = entry.name === parsed.defaultDomain;
+        const suffix = isDefault ? '<span class="description">(default)</span>' : '';
+        return `<div class="dropdown-item" data-value="${entry.name}" data-label="${entry.name}">${entry.name}${suffix}</div>`;
+      }).join('');
+    };
+
+    // Read the domains of a sysbuild-enabled build config; undefined for
+    // non-sysbuild configs (the Domain row stays hidden for them).
+    const readSysbuildDomains = (project: ZephyrApplication, buildConfig: ZephyrBuildConfig | undefined): ParsedDomainsYaml | undefined => {
+      if (!buildConfig || !buildConfig.isSysbuild()) {
+        return undefined;
+      }
+      return readDomainsForBuildDir(buildConfig.getBuildDir(project));
+    };
+
+    // The stored SVD may be empty for an adopted/reused launch entry (only the
+    // create path auto-detects it). SVD is purely board-derived, so re-detect it
+    // from the resolved board when missing so it is consistent across domains.
+    const resolveDisplaySvd = (svd: string | undefined, artifacts: LaunchConfigurationArtifacts | undefined): string => {
+      if (svd && svd.trim().length > 0) {
+        return svd;
+      }
+      return artifacts?.targetBoard ? autoDetectSvdPath(artifacts.targetBoard) : '';
+    };
+
+    // Hide the Domain row immediately (project cleared, panel reopened). The
+    // show path is NOT here: domain state rides inside updateConfig so the row
+    // can only ever appear together with the configuration it belongs to.
+    const postDomainsHidden = () => {
+      webview.postMessage({
+        command: 'updateDomains',
+        visible: 'false',
+        domainsHTML: '',
+        selectedDomain: '',
+      });
+    };
+
+    // Resolve which domain to select for a build config: keep the current one if
+    // still valid, else the sysbuild default, else the first. Returns undefined
+    // for non-sysbuild builds.
+    const resolveDomainSelection = (parsed: ParsedDomainsYaml | undefined, current: string | undefined): string | undefined => {
+      if (!parsed || parsed.domains.length === 0) {
+        return undefined;
+      }
+      const names = parsed.domains.map(entry => entry.name);
+      if (current && names.includes(current)) {
+        return current;
+      }
+      return names.includes(parsed.defaultDomain) ? parsed.defaultDomain : names[0];
+    };
 
     const buildOpenocdInfoText = (project: ZephyrApplication | undefined, openocdPath?: string): { defaultInfo: string; pathInfo: string } => {
       if (!project) {
@@ -408,9 +497,10 @@ export class DebugManagerPanel {
       runnerName: string | undefined,
       project?: ZephyrApplication,
       buildConfig?: ZephyrBuildConfig,
+      domain?: string,
     ): string => {
       if (runnerName === 'qemu' && project && buildConfig) {
-        return getQemuGdbPort(project, buildConfig);
+        return getQemuGdbPort(project, buildConfig, domain);
       }
       return getDefaultGdbPort(runnerName);
     };
@@ -617,6 +707,8 @@ export class DebugManagerPanel {
               if(appProject) {
                 this.project = appProject;
                 this.buildConfig = undefined;
+                this.domain = undefined;
+                postDomainsHidden();
                 currentOpenocdInfoText = { defaultInfo: '', pathInfo: '' };
                 // Do NOT post a "clear" updateConfig here. On panel open,
                 // `_setDefaultSelection` fires both `projectChanged` and
@@ -640,13 +732,42 @@ export class DebugManagerPanel {
               if(appProject && buildConfig) {
                 this.project = appProject;
                 this.buildConfig = buildConfig;
+                // Resolve the domain selection for sysbuild-enabled configs; the
+                // dropdown itself is delivered with the updateConfig payload so
+                // it always appears together with the loaded configuration.
+                const parsedDomains = readSysbuildDomains(appProject, buildConfig);
+                this.domain = resolveDomainSelection(parsedDomains, this.domain);
+                const selectedDomain = this.domain;
                 await vscode.window.withProgress({
                   location: vscode.ProgressLocation.Notification,
                   title: 'Debug Manager',
                   cancellable: false,
                 }, async (progress) => {
                   progress.report({ message: 'Preparing build configuration' });
-                  await updateConfiguration(appProject, buildConfig);
+                  await updateConfiguration(appProject, buildConfig, selectedDomain);
+                });
+              } else {
+                webview.postMessage({ command: 'updateConfigError' });
+              }
+              break;
+            }
+            case 'domainChanged': {
+              const projectPath = message.project;
+              const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
+              const appProject = await getZephyrApplication(projectPath);
+              const buildConfig = appProject.getBuildConfiguration(buildConfigName);
+              if (appProject && buildConfig) {
+                this.project = appProject;
+                this.buildConfig = buildConfig;
+                this.domain = typeof message.domain === 'string' && message.domain.length > 0 ? message.domain : undefined;
+                const selectedDomain = this.domain;
+                await vscode.window.withProgress({
+                  location: vscode.ProgressLocation.Notification,
+                  title: 'Debug Manager',
+                  cancellable: false,
+                }, async (progress) => {
+                  progress.report({ message: 'Loading domain configuration' });
+                  await updateConfiguration(appProject, buildConfig, selectedDomain);
                 });
               } else {
                 webview.postMessage({ command: 'updateConfigError' });
@@ -672,7 +793,7 @@ export class DebugManagerPanel {
                   cancellable: false,
                 }, async (progress) => {
                   progress.report({ message: 'Loading runner defaults' });
-                  await resetConfiguration(project, buildConfig, backend, runnerName);
+                  await resetConfiguration(project, buildConfig, backend, runnerName, this.domain);
                 });
               } else if (backend === 'cortex-west' || backend === 'cortex-native') {
                 // No build configuration yet: only refresh the lightweight
@@ -711,7 +832,7 @@ export class DebugManagerPanel {
                   cancellable: false,
                 }, async (progress) => {
                   progress.report({ message: 'Loading backend defaults' });
-                  await resetConfiguration(project, buildConfig, backend);
+                  await resetConfiguration(project, buildConfig, backend, undefined, this.domain);
                 });
               } else {
                 postCortexDetect(backend);
@@ -874,7 +995,7 @@ export class DebugManagerPanel {
       });
     }
 
-    async function updateConfiguration(project: ZephyrApplication, buildConfig?: ZephyrBuildConfig) {
+    async function updateConfiguration(project: ZephyrApplication, buildConfig?: ZephyrBuildConfig, domain?: string) {
       try {
         // Extract information from configuration
         let config;
@@ -882,7 +1003,7 @@ export class DebugManagerPanel {
         let defaultDebugRunner: string | undefined;
         let generatedOpenocdPath: string | undefined;
         if(buildConfig) {
-          [/* launchJson */, config, compatibleRunners, defaultDebugRunner, generatedOpenocdPath, currentArtifacts] = await getDebugManagerLaunchConfiguration(project, buildConfig);
+          [/* launchJson */, config, compatibleRunners, defaultDebugRunner, generatedOpenocdPath, currentArtifacts] = await getDebugManagerLaunchConfiguration(project, buildConfig, domain);
         }
         currentOpenocdInfoText = buildOpenocdInfoText(project, generatedOpenocdPath);
 
@@ -918,11 +1039,16 @@ export class DebugManagerPanel {
           ));
         }
 
+        // Domain row state travels with the configuration it belongs to, so the
+        // row can never be left visible for a stale or missing selection.
+        const parsedDomains = buildConfig ? readSysbuildDomains(project, buildConfig) : undefined;
+        const domainsHTML = buildDomainsHtml(parsedDomains);
+
         webview.postMessage({
           command: 'updateConfig',
           backend: state.backend,
           programPath: `${state.programPath}`,
-          svdPath: `${state.svdPath}`,
+          svdPath: `${resolveDisplaySvd(state.svdPath, currentArtifacts)}`,
           gdbPath: state.gdbPath,
           gdbAddress: `${state.gdbAddress}`,
           gdbPort: `${state.gdbPort}`,
@@ -937,7 +1063,10 @@ export class DebugManagerPanel {
           runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
           device: `${state.device ?? ''}`,
           deviceInterface: `${state.deviceInterface ?? 'swd'}`,
-          defaultGdbPort: defaultPortForRunner(runnerName, project, buildConfig),
+          defaultGdbPort: defaultPortForRunner(runnerName, project, buildConfig, domain),
+          domainsVisible: domainsHTML.length > 0 ? 'true' : 'false',
+          domainsHTML,
+          selectedDomain: domain ?? '',
         });
         postCortexDetect(state.backend);
         if (state.backend === 'cortex-native' && runnerName === 'jlink' && !(state.device ?? '').trim()) {
@@ -993,7 +1122,11 @@ export class DebugManagerPanel {
           const backend: DebugBackendId = message.backend === 'cortex-west' || message.backend === 'cortex-native'
             ? message.backend
             : 'cppdbg';
-          await resetConfiguration(appProject, buildConfig, backend);
+          // Reset snaps the domain back to the sysbuild default (only for
+          // sysbuild-enabled configs); the dropdown state rides with the
+          // updateConfig payload posted by resetConfiguration.
+          panel.domain = readSysbuildDomains(appProject, buildConfig)?.defaultDomain;
+          await resetConfiguration(appProject, buildConfig, backend, undefined, panel.domain);
         }
       }
       finally{
@@ -1004,7 +1137,7 @@ export class DebugManagerPanel {
 
     // Reset keeps the selected backend and restores backend-appropriate
     // defaults (form-only — nothing is written until Apply).
-    async function resetConfiguration(project: ZephyrApplication, buildConfig?: ZephyrBuildConfig, backend: DebugBackendId = 'cppdbg', runnerOverride?: string) {
+    async function resetConfiguration(project: ZephyrApplication, buildConfig?: ZephyrBuildConfig, backend: DebugBackendId = 'cppdbg', runnerOverride?: string, domain?: string) {
       // Without a build configuration there are no defaults to restore —
       // leave the form untouched instead of blanking user-entered values.
       if (!buildConfig) {
@@ -1014,8 +1147,8 @@ export class DebugManagerPanel {
       let compatibleRunners: string[] = [];
       let defaultDebugRunner: string | undefined;
       let generatedOpenocdPath: string | undefined;
-      config = await createDefaultConfiguration(project, buildConfig.name);
-      [, , compatibleRunners, defaultDebugRunner, generatedOpenocdPath, currentArtifacts] = await getDebugManagerLaunchConfiguration(project, buildConfig);
+      config = await createDefaultConfiguration(project, buildConfig.name, undefined, domain);
+      [, , compatibleRunners, defaultDebugRunner, generatedOpenocdPath, currentArtifacts] = await getDebugManagerLaunchConfiguration(project, buildConfig, domain);
       currentOpenocdInfoText = buildOpenocdInfoText(project, generatedOpenocdPath);
 
       // Program/GDB defaults come from the cppdbg template for every backend —
@@ -1035,7 +1168,7 @@ export class DebugManagerPanel {
       // QEMU's port comes from the build's Kconfig for every backend; the
       // cppdbg template's generic default does not apply to it.
       const gdbPort = runnerName === 'qemu'
-        ? defaultPortForRunner(runnerName, project, buildConfig)
+        ? defaultPortForRunner(runnerName, project, buildConfig, domain)
         : (backend === 'cppdbg' ? state.gdbPort : getDefaultGdbPort(runnerName));
       const { runnerLabel, runnerValue, runnerPath, runnerDefaultInfo, runnerDefaultPathInfo } = await getRunnerWebviewState(project, runnerName);
 
@@ -1051,10 +1184,14 @@ export class DebugManagerPanel {
         }
       }
 
+      const parsedDomains = readSysbuildDomains(project, buildConfig);
+      const domainsHTML = buildDomainsHtml(parsedDomains);
+
       webview.postMessage({
         command: 'updateConfig',
         backend,
         programPath: `${state.programPath}`,
+        svdPath: `${resolveDisplaySvd(state.svdPath, currentArtifacts)}`,
         gdbPath: state.gdbPath,
         gdbAddress: `${state.gdbAddress}`,
         gdbPort: `${gdbPort}`,
@@ -1069,7 +1206,10 @@ export class DebugManagerPanel {
         runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
         device: `${device}`,
         deviceInterface: 'swd',
-        defaultGdbPort: defaultPortForRunner(runnerName, project, buildConfig),
+        defaultGdbPort: defaultPortForRunner(runnerName, project, buildConfig, domain),
+        domainsVisible: domainsHTML.length > 0 ? 'true' : 'false',
+        domainsHTML,
+        selectedDomain: domain ?? '',
       });
       postCortexDetect(backend);
       if (backend === 'cortex-native' && runnerName === 'jlink') {
@@ -1139,6 +1279,7 @@ export class DebugManagerPanel {
         : 'cppdbg';
       const device = typeof message.device === 'string' ? message.device.trim() : '';
       const deviceInterface: 'swd' | 'jtag' = message.deviceInterface === 'jtag' ? 'jtag' : 'swd';
+      const domainName = typeof message.domain === 'string' && message.domain.length > 0 ? message.domain : undefined;
 
       if (!runner) {
         vscode.window.showErrorMessage('Debug manager: No debug runner selected!');
@@ -1182,11 +1323,11 @@ export class DebugManagerPanel {
           return false;
         }
 
-        const [launchJson, existing] = await getLaunchConfiguration(appProject, buildConfigName);
+        const [launchJson, existing] = await getLaunchConfiguration(appProject, buildConfigName, false, undefined, domainName);
         const existingIndex = launchJson.configurations.indexOf(existing);
         const configName = typeof existing?.name === 'string' && existing.name.length > 0
           ? existing.name
-          : getDebugLaunchConfigurationName(appProject, buildConfigName);
+          : getDebugLaunchConfigurationName(appProject, buildConfigName, domainName);
         const cwd = typeof existing?.cwd === 'string' && existing.cwd.length > 0
           ? existing.cwd
           : '${workspaceFolder}';
@@ -1210,7 +1351,7 @@ export class DebugManagerPanel {
           runner.serverPath = runnerPath;
           runner.serverAddress = gdbAddress;
           runner.serverPort = gdbPort;
-          let debugServerArgs = getWestDebugArgsForProject(runner, appProject, buildConfig);
+          let debugServerArgs = getWestDebugArgsForProject(runner, appProject, buildConfig, domainName);
           debugServerArgs = runnerPathArg(debugServerArgs, runner.name, runnerPath);
           freshConfig = buildCortexWestLaunchConfig({
             name: configName,
@@ -1280,7 +1421,7 @@ export class DebugManagerPanel {
             case 'pyocd':
               // Failed or cancelled target-pack setup: don't write launch.json
               // or let the caller start a session that cannot connect.
-              if (!(await setupPyOCDTarget(appProject, buildConfigName))) {
+              if (!(await setupPyOCDTarget(appProject, buildConfigName, domainName))) {
                 return false;
               }
               break;
@@ -1292,12 +1433,12 @@ export class DebugManagerPanel {
       }
 
       if(appProject && buildConfig) {
-        let [launchJson, config] = await getLaunchConfiguration(appProject, buildConfigName);
+        let [launchJson, config] = await getLaunchConfiguration(appProject, buildConfigName, false, undefined, domainName);
         if (config?.type && config.type !== 'cppdbg') {
           // Switching back to the cppdbg backend: rebuild the template entry,
           // then let the historical mutation block below fill the panel fields.
           const configIndex = launchJson.configurations.indexOf(config);
-          config = await createDefaultConfiguration(appProject, buildConfigName);
+          config = await createDefaultConfiguration(appProject, buildConfigName, undefined, domainName);
           if (configIndex >= 0) {
             launchJson.configurations[configIndex] = config;
           } else {
@@ -1314,7 +1455,7 @@ export class DebugManagerPanel {
           runner.serverAddress = gdbAddress;
           runner.serverPort = gdbPort;
           config.serverStarted = runner.serverStartedPattern;
-          config.debugServerArgs = getWestDebugArgsForProject(runner, appProject, buildConfig);
+          config.debugServerArgs = getWestDebugArgsForProject(runner, appProject, buildConfig, domainName);
           config.debugServerArgs = runnerPathArg(config.debugServerArgs, runner.name, runnerPath);
           config.setupCommands = [];
           for(const arg of getSetupCommands(programPath, runner.serverAddress, runner.serverPort, gdbMode, runner.name)) {
@@ -1338,7 +1479,7 @@ export class DebugManagerPanel {
           case 'pyocd':
             // Failed or cancelled target-pack setup: don't write launch.json
             // or let the caller start a session that cannot connect.
-            if (!(await setupPyOCDTarget(appProject, buildConfigName))) {
+            if (!(await setupPyOCDTarget(appProject, buildConfigName, domainName))) {
               return false;
             }
             break;
@@ -1355,13 +1496,14 @@ export class DebugManagerPanel {
       const projectPath = message.project;
       const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
       const runnerName = message.runner;
+      const domainName = typeof message.domain === 'string' && message.domain.length > 0 ? message.domain : undefined;
       const runner = getRunner(runnerName);
       if(runner) {
         const appProject = await getZephyrApplication(projectPath);
         if(buildConfigName) {
-          vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug', 
+          vscode.commands.executeCommand('zephyr-workbench.debug-manager.debug',
             appProject,
-            getDebugLaunchConfigurationName(appProject, buildConfigName));
+            getDebugLaunchConfigurationName(appProject, buildConfigName, domainName));
         }
       } else {
         vscode.window.showErrorMessage('Debug manager: No debug runner selected!');

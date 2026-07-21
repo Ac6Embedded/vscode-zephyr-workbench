@@ -15,6 +15,10 @@ function main() {
   updateRunnerDefaultInfo('', '');
   initApplicationsDropdown();
   initBuildConfigsDropdown();
+  initDomainsDropdown();
+  // Hard reset: the Domain row must never survive a retained/restored DOM from
+  // a previous session; it only reappears with an updateConfig that carries it.
+  updateDomains(false, '', '');
   initRunnersDropdown();
   initBackendRadioGroup();
   hideSpinner('resetSpinner');
@@ -243,9 +247,9 @@ function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputEl
       input.dispatchEvent(new Event('input'));
       dropdown.style.display = 'none';
 
-      // Start spinners only when a build configuration is chosen,
+      // Start spinners only when a build configuration or domain is chosen,
       // since that triggers the heavy work (parse + populate fields).
-      if (input.id === 'buildConfigInput') {
+      if (input.id === 'buildConfigInput' || input.id === 'domainInput') {
         showBrowseSpinnersWhileLoading();
         updateRunnerDefaultInfo('', '');
       }
@@ -423,12 +427,17 @@ function setVSCodeMessageListener() {
         updateBuildConfigs(buildConfigsHTML, event.data.selectFirst === 'true' ? true : false);
         break;
       }
+      case 'updateDomains': {
+        updateDomains(event.data.visible === 'true', event.data.domainsHTML ?? '', event.data.selectedDomain ?? '');
+        break;
+      }
       case 'updateConfig': {
         updateConfig(event.data);
         break;
       }
       case 'updateConfigError': {
         updateRunnerDefaultInfo('', '');
+        updateDomains(false, '', '');
         hideBrowseSpinners();
         break;
       }
@@ -605,7 +614,8 @@ function resetHandler(this: HTMLElement, ev: MouseEvent) {
     command: 'reset',
     project: applicationInput.getAttribute('data-value'),
     buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
-    backend: getSelectedBackend()
+    backend: getSelectedBackend(),
+    domain: getSelectedDomain(),
   });
 }
 
@@ -637,8 +647,14 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
     runnerPath: runnerPath.value,
     runnerArgs: runnerArgs.value,
     device: (document.getElementById('deviceName') as TextField | null)?.value ?? '',
-    deviceInterface: (document.getElementById('deviceInterface') as RadioGroup | null)?.value ?? 'swd'
+    deviceInterface: (document.getElementById('deviceInterface') as RadioGroup | null)?.value ?? 'swd',
+    domain: getSelectedDomain(),
   });
+}
+
+// Currently selected sysbuild domain, or '' when the row is hidden (non-sysbuild).
+function getSelectedDomain(): string {
+  return (document.getElementById('domainInput') as HTMLInputElement | null)?.getAttribute('data-value') ?? '';
 }
 
 function debugHandler(this: HTMLElement, ev: MouseEvent) {
@@ -670,7 +686,8 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
     runnerPath: runnerPath.value,
     runnerArgs: runnerArgs.value,
     device: (document.getElementById('deviceName') as TextField | null)?.value ?? '',
-    deviceInterface: (document.getElementById('deviceInterface') as RadioGroup | null)?.value ?? 'swd'
+    deviceInterface: (document.getElementById('deviceInterface') as RadioGroup | null)?.value ?? 'swd',
+    domain: getSelectedDomain(),
   });
 }
 
@@ -761,6 +778,47 @@ function initBuildConfigsDropdown() {
 
   // Ensure spinner is hidden on initial load
   if (buildConfigDropdownSpinner) {buildConfigDropdownSpinner.style.display = 'none';}
+}
+
+// Domain dropdown for sysbuild builds. Mirrors the build-config dropdown but the
+// input is readonly (fixed list), so there is no keyup filter. Selecting a domain
+// posts domainChanged, which re-derives every domain-specific value.
+function initDomainsDropdown() {
+  const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
+  const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
+  const domainInput = document.getElementById('domainInput') as HTMLInputElement;
+  const domainDropdown = document.getElementById('domainDropdown') as HTMLElement;
+  const domainDropdownSpinner = document.getElementById('domainDropdownSpinner') as HTMLElement;
+
+  domainInput.addEventListener('focusin', () => {
+    if (domainDropdown) {domainDropdown.style.display = 'block';}
+  });
+
+  domainInput.addEventListener('focusout', () => {
+    if (domainDropdown) {domainDropdown.style.display = 'none';}
+  });
+
+  domainInput.addEventListener('click', () => {
+    if (domainDropdown) {domainDropdown.style.display = 'block';}
+  });
+
+  domainInput.addEventListener('input', () => {
+    showBrowseSpinnersWhileLoading();
+    updateRunnerDefaultInfo('', '');
+    webviewApi.postMessage({
+      command: 'domainChanged',
+      project: applicationInput.getAttribute('data-value'),
+      buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
+      domain: domainInput.getAttribute('data-value') ?? '',
+    });
+  });
+
+  domainDropdown.addEventListener('mousedown', e => e.preventDefault());
+  domainDropdown.addEventListener('mouseup', e => e.preventDefault());
+
+  addDropdownItemEventListeners(domainDropdown, domainInput);
+
+  if (domainDropdownSpinner) {domainDropdownSpinner.style.display = 'none';}
 }
 
 function initRunnersDropdown() {
@@ -872,6 +930,38 @@ function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = fal
   if (buildConfigDropdownSpinner) {buildConfigDropdownSpinner.style.display = 'none';}
 }
 
+// Show/hide the Domain row (sysbuild builds only) and preselect the given domain.
+// The selection is SILENT (no 'input' event): the extension already ran
+// updateConfiguration for this domain, so dispatching would trigger a redundant
+// domainChanged round-trip. Only a user click on an item posts domainChanged.
+function updateDomains(visible: boolean, domainsHTML: string, selectedDomain: string) {
+  const domainRow = document.getElementById('domainRow') as HTMLElement | null;
+  const domainInput = document.getElementById('domainInput') as HTMLInputElement | null;
+  const domainDropdown = document.getElementById('domainDropdown') as HTMLElement | null;
+  const domainDropdownSpinner = document.getElementById('domainDropdownSpinner') as HTMLElement | null;
+  const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement | null;
+  if (!domainRow || !domainInput || !domainDropdown) {
+    return;
+  }
+
+  // Never show the domain row unless a build configuration is actually selected
+  // in the UI. On reopen the extension can post the sysbuild domains before the
+  // application/config dropdowns finish loading and get visually selected; this
+  // guard keeps the row hidden until the selection is really in place (a later
+  // buildConfigChanged re-posts the domains once it is).
+  const hasBuildConfig = !!(buildConfigInput && buildConfigInput.getAttribute('data-value'));
+  const show = visible && hasBuildConfig;
+
+  domainRow.style.display = show ? '' : 'none';
+  domainDropdown.innerHTML = show ? domainsHTML : '';
+  if (show && domainsHTML.length > 0) {
+    addDropdownItemEventListeners(domainDropdown, domainInput);
+  }
+  domainInput.value = show ? selectedDomain : '';
+  domainInput.setAttribute('data-value', show ? selectedDomain : '');
+  if (domainDropdownSpinner) {domainDropdownSpinner.style.display = 'none';}
+}
+
 function updateConfig(data: any) {
   const backend = data.backend === 'cortex-west' || data.backend === 'cortex-native' ? data.backend : 'cppdbg';
   const programPath = data.programPath;
@@ -908,6 +998,9 @@ function updateConfig(data: any) {
   gdbAddressText.value = gdbAddress ?? '';
   gdbPortText.value = gdbPort ?? '';
   gdbModeRadioGroup.value = gdbMode ?? 'program';
+  // Domain row state always rides with the configuration payload: shown only
+  // when this config is sysbuild (missing fields mean hide, e.g. older senders).
+  updateDomains(data.domainsVisible === 'true', data.domainsHTML ?? '', data.selectedDomain ?? '');
   if (deviceNameText) {
     deviceNameText.value = data.device ?? '';
   }

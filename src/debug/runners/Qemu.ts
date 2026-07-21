@@ -19,8 +19,11 @@ export class Qemu extends WestRunner {
   // stub halted (-S). Used as the server-ready banner for the west backend.
   serverStartedPattern = 'To exit from QEMU enter';
 
-  override getWestDebugArgs(relativeBuildDir: string): string {
-    const base = `build -t debugserver_qemu --build-dir "\${workspaceFolder}/${relativeBuildDir}"`;
+  override getWestDebugArgs(relativeBuildDir: string, domain?: string): string {
+    // `west build` accepts --domain for sysbuild trees, so the emulator target
+    // selects the right image the same way the hardware runners do.
+    const domainArg = domain ? ` --domain ${domain}` : '';
+    const base = `build -t debugserver_qemu --build-dir "\${workspaceFolder}/${relativeBuildDir}"${domainArg}`;
     return this.userArgs ? `${base} ${this.userArgs}` : base;
   }
 

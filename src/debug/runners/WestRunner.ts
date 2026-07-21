@@ -84,7 +84,7 @@ export class WestRunner {
       const hasNext = next !== undefined;
 
       // Always-known runner-emitted pairs.
-      if (hasNext && (tok === '--build-dir' || tok === '--runner')) {
+      if (hasNext && (tok === '--build-dir' || tok === '--runner' || tok === '--domain')) {
         i += 2;
         continue;
       }
@@ -166,8 +166,12 @@ export class WestRunner {
     // intentionally empty
   }
 
-  getWestDebugArgs(relativeBuildDir: string): string {
-    return `debugserver --build-dir "\${workspaceFolder}/${relativeBuildDir}" ${this.autoArgs} ${this.userArgs}`;
+  getWestDebugArgs(relativeBuildDir: string, domain?: string): string {
+    // For sysbuild builds the build dir stays the top-level dir and the image is
+    // selected with --domain. Not put in autoArgs: autoArgs also feeds
+    // getWestFlashArgs, and `west flash --domain` would stop flashing all domains.
+    const domainArg = domain ? ` --domain ${domain}` : '';
+    return `debugserver --build-dir "\${workspaceFolder}/${relativeBuildDir}"${domainArg} ${this.autoArgs} ${this.userArgs}`;
   }
 
   getWestFlashArgs(relativeBuildDir: string): string {
