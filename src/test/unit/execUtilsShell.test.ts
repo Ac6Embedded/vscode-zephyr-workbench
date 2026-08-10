@@ -9,9 +9,11 @@ import {
   classifyShell,
   getResolvedShell,
   getShellSourceCommand,
+  getSubstitutedShellName,
   isCshFamily,
   isCygwin,
   isUnsupportedCshShell,
+  isUnsupportedPosixShell,
   makeConfiguredVariableResolver,
   normalizeEnvRecordForShell,
   normalizeEnvValueForShell,
@@ -225,6 +227,82 @@ describe('getResolvedShell csh fallback', () => {
 
   it('classifyShell still maps tcsh to bash (union intentionally unchanged)', () => {
     assert.equal(classifyShell('/bin/tcsh'), 'bash');
+  });
+});
+
+describe('isUnsupportedPosixShell', () => {
+  it('flags every non-bash/zsh shell on POSIX platforms', () => {
+    for (const platform of ['linux', 'darwin'] as NodeJS.Platform[]) {
+      for (const p of [
+        '/usr/bin/fish',
+        '/bin/dash',
+        '/bin/sh',
+        '/bin/csh',
+        '/bin/tcsh',
+        '/usr/bin/ksh',
+        '/usr/bin/nu',
+      ]) {
+        assert.equal(isUnsupportedPosixShell(p, platform), true, `${platform} ${p}`);
+      }
+    }
+  });
+
+  it('allows bash and zsh, including versioned names', () => {
+    for (const p of ['/bin/bash', '/usr/bin/zsh', '/usr/local/bin/bash-5.2']) {
+      assert.equal(isUnsupportedPosixShell(p, 'linux'), false, p);
+      assert.equal(isUnsupportedPosixShell(p, 'darwin'), false, p);
+    }
+  });
+
+  it('is never true on win32 (shells resolve via terminal profiles there)', () => {
+    for (const p of [
+      'C:\\msys64\\usr\\bin\\fish.exe',
+      'C:\\Windows\\System32\\cmd.exe',
+      'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+      '/usr/bin/fish',
+    ]) {
+      assert.equal(isUnsupportedPosixShell(p, 'win32'), false, p);
+    }
+  });
+});
+
+// getResolvedShell/getSubstitutedShellName consult the real process.platform
+// for the non-csh substitution, so assert per platform: substitution on POSIX
+// (CI runs Linux), pass-through on win32 by design.
+describe('getResolvedShell unsupported POSIX shell fallback', () => {
+  const itPosix = process.platform === 'win32' ? it.skip : it;
+  const itWin = process.platform === 'win32' ? it : it.skip;
+  const originalShell = vscode.env.shell;
+  afterEach(() => { (vscode.env as any).shell = originalShell; });
+
+  itPosix('substitutes a Bourne shell for fish and dash', () => {
+    for (const shell of ['/usr/bin/fish', '/bin/dash']) {
+      (vscode.env as any).shell = shell;
+      const resolved = getResolvedShell();
+      assert.ok(['/bin/bash', '/bin/zsh'].includes(resolved.path), `${shell} -> ${resolved.path}`);
+      assert.equal(resolved.args, undefined);
+    }
+  });
+
+  itPosix('getSubstitutedShellName names the replaced shell, undefined for bash/zsh', () => {
+    (vscode.env as any).shell = '/usr/bin/fish';
+    assert.equal(getSubstitutedShellName(), 'fish');
+    (vscode.env as any).shell = '/bin/bash';
+    assert.equal(getSubstitutedShellName(), undefined);
+    (vscode.env as any).shell = '/usr/bin/zsh';
+    assert.equal(getSubstitutedShellName(), undefined);
+  });
+
+  itWin('leaves non-csh shells untouched on win32', () => {
+    (vscode.env as any).shell = '/usr/bin/fish';
+    assert.deepEqual(getResolvedShell(), { path: '/usr/bin/fish' });
+    assert.equal(getSubstitutedShellName(), undefined);
+  });
+
+  it('still substitutes and reports csh on every platform', () => {
+    (vscode.env as any).shell = '/bin/tcsh';
+    assert.ok(['/bin/bash', '/bin/zsh'].includes(getResolvedShell().path));
+    assert.equal(getSubstitutedShellName(), 'tcsh');
   });
 });
 

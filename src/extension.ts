@@ -37,7 +37,7 @@ import {
 	getStaticFlashRunnerNames,
 	removeApplicationLaunchConfigurations,
 } from './utils/debugTools/debugUtils';
-import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getTerminalDefaultProfile, isSpdxOnlyVenvPath, isUnsupportedCshShell, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
+import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getSubstitutedShellName, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
 import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, createWorkspaceVenv, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
 import { probeHomebrew } from './utils/hostToolsStatusUtils';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
@@ -415,32 +415,37 @@ async function showLocalVenvQuickStep(
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 // Shown at most once per session; permanently dismissable via globalState.
-let cshShellWarningShown = false;
-const CSH_WARNING_DISMISSED_KEY = 'zephyr-workbench.cshWarningDismissed';
+let unsupportedShellWarningShown = false;
+// Historical key name (the warning used to cover csh/tcsh only); kept to honor
+// earlier "Don't show again" choices without a migration.
+const SHELL_WARNING_DISMISSED_KEY = 'zephyr-workbench.cshWarningDismissed';
 
-// tcsh/csh are not Bourne/POSIX-compatible, so the bash-flavored commands the extension
-// generates cannot run under them. getResolvedShell() (execUtils) already substitutes a
-// Bourne shell so builds/terminals still work; this notification tells the user why and
-// how to get full terminal integration. See isCshFamily()/isUnsupportedCshShell().
+// The bash-flavored commands the extension generates and the generated env script only
+// run under bash/zsh; other login shells (csh/tcsh, fish, dash, ...) cannot run them.
+// getResolvedShell() (execUtils) already substitutes a Bourne shell so builds/terminals
+// still work; this notification tells the user why and how to get full terminal
+// integration. See isUnsupportedPosixShell()/getSubstitutedShellName().
 async function warnUnsupportedShellOnce(context: vscode.ExtensionContext): Promise<void> {
-	if (cshShellWarningShown) { return; }
-	if (context.globalState.get<boolean>(CSH_WARNING_DISMISSED_KEY)) { return; }
-	if (!isUnsupportedCshShell()) { return; }
-	cshShellWarningShown = true;
+	if (unsupportedShellWarningShown) { return; }
+	if (context.globalState.get<boolean>(SHELL_WARNING_DISMISSED_KEY)) { return; }
+	const shellName = getSubstitutedShellName();
+	if (!shellName) { return; }
+	unsupportedShellWarningShown = true;
 
+	const fallbackShell = process.platform === 'darwin' ? 'zsh' : 'bash';
 	const openSettings = 'Open Settings';
 	const dontShowAgain = "Don't show again";
 	const choice = await vscode.window.showWarningMessage(
-		'Workbench for Zephyr: your shell is tcsh/csh, which is not supported for building. '
-		+ 'Zephyr commands will run under bash instead. For full terminal integration, set your '
-		+ 'VS Code default terminal profile to bash or zsh.',
+		`Workbench for Zephyr: your default shell (${shellName}) is not supported for running `
+		+ `Zephyr commands. Commands and Zephyr terminals will use ${fallbackShell} instead. For full `
+		+ 'terminal integration, set your VS Code default terminal profile to bash or zsh.',
 		openSettings,
 		dontShowAgain,
 	);
 	if (choice === openSettings) {
 		await vscode.commands.executeCommand('workbench.action.openSettings', 'terminal.integrated.defaultProfile');
 	} else if (choice === dontShowAgain) {
-		await context.globalState.update(CSH_WARNING_DISMISSED_KEY, true);
+		await context.globalState.update(SHELL_WARNING_DISMISSED_KEY, true);
 	}
 }
 

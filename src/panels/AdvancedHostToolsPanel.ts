@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import { ZEPHYR_DOCS_BASE_URL } from "../constants";
-import { execFile } from "child_process";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import {
@@ -13,7 +12,7 @@ import {
 } from "../utils/hostToolsStatusUtils";
 import { getAdvancedRowParts, hasProviderColumn, HostToolsPartDef } from "../utils/hostToolsPartsRegistry";
 import { getZinstallerVersionStampPath, HostToolsPythonOptions, sanitizeRequirementsRef } from "../utils/installUtils";
-import { getGitBranches, getGitTags, parseGitBranchesOutput, parseGitTagsOutput } from "../utils/execUtils";
+import { getGitBranches, getGitTags } from "../utils/execUtils";
 import { fileExists } from "../utils/utils";
 import { getZephyrTerminal } from "../utils/zephyr/zephyrTerminalUtils";
 
@@ -336,40 +335,16 @@ export class AdvancedHostToolsPanel {
     );
   }
 
-  /** One plain `git ls-remote` run WITHOUT sourcing the Zephyr env script. */
-  private execGitLsRemote(kind: '--tags' | '--heads'): Promise<string> {
-    return new Promise((resolve, reject) => {
-      execFile(
-        'git',
-        ['ls-remote', kind, ZEPHYR_REPO_URL],
-        { timeout: 30000, maxBuffer: 16 * 1024 * 1024 },
-        (error, stdout) => {
-          if (error) { reject(error); return; }
-          resolve(String(stdout));
-        }
-      );
-    });
-  }
-
   /**
-   * List the zephyr repo refs. Plain PATH git first: listing a public repo
-   * needs no Zephyr environment, and this panel typically runs BEFORE the
-   * host tools (and their env script) exist. The env-sourced helpers remain
-   * as fallback for machines whose only git is the zinstaller-provided one.
+   * List the zephyr repo refs. getGitTags/getGitBranches already try plain
+   * PATH git first and only fall back to the env-sourced shell, so this works
+   * BEFORE the host tools (and their env script) exist.
    */
   private async fetchZephyrRefs(): Promise<[string[], string[]]> {
-    try {
-      const [tagsOut, headsOut] = await Promise.all([
-        this.execGitLsRemote('--tags'),
-        this.execGitLsRemote('--heads'),
-      ]);
-      return [parseGitTagsOutput(tagsOut), parseGitBranchesOutput(headsOut)];
-    } catch {
-      return await Promise.all([
-        getGitTags(ZEPHYR_REPO_URL),
-        getGitBranches(ZEPHYR_REPO_URL),
-      ]);
-    }
+    return await Promise.all([
+      getGitTags(ZEPHYR_REPO_URL),
+      getGitBranches(ZEPHYR_REPO_URL),
+    ]);
   }
 
   /**

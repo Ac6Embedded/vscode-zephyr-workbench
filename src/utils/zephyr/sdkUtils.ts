@@ -72,22 +72,20 @@ export function isSdkV1OrLater(version: string): boolean {
 	return Number.isFinite(major) && major >= 1;
 }
 
-export async function getSdkVersion(): Promise<any[]> {
-	try {
-		const tags = await getGitTags(sdkRepoURL);
-		let versions = [];
-		if(tags && tags.length > 0) {
-			for(let tag of tags) {
-				// do not keep -alpha, -beta, -rc versions
-				if(!tag.includes('-')) {
-					versions.push(tag);
-				}
+// Rejections propagate on purpose: ImportZephyrSDKPanel maps them to a
+// "versionError" message in the dialog instead of a silent empty dropdown.
+export async function getSdkVersion(): Promise<string[]> {
+	const tags = await getGitTags(sdkRepoURL);
+	let versions: string[] = [];
+	if(tags && tags.length > 0) {
+		for(let tag of tags) {
+			// do not keep -alpha, -beta, -rc versions
+			if(!tag.includes('-')) {
+				versions.push(tag);
 			}
 		}
-		return versions;
-	} catch (error) {
-		return [];
 	}
+	return versions;
 }
 
 export function generateSdkUrls(type: string, version: string, toolchains: string[], includeLlvm: boolean = false): string[] {
