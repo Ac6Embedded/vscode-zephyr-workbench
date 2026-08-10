@@ -10,7 +10,7 @@ import {
 } from '../constants';
 import {
   ChildProcess, ExecException, ExecOptions, ExecOptionsWithStringEncoding, SpawnOptions,
-  exec, spawn
+  exec, execFile, spawn
 } from 'child_process';
 import { writeWestBuildState, WestBuildState } from './zephyr/westBuildState';
 
@@ -81,26 +81,42 @@ function resolveRawShell(): { path: string; args?: string[] } {
   };
 }
 
-// The C-shell family (csh/tcsh) is NOT Bourne/POSIX-compatible, so the bash-flavored
-// commands this extension generates (export, `.` sourcing, `2>&1`, `west "$@"`) cannot
-// run under it. When the resolved shell is csh-family we substitute a Bourne shell so
-// builds and terminals still work; warnUnsupportedShellOnce() (extension.ts) tells the
-// user once. isUnsupportedCshShell() exposes the pre-substitution check the UI uses.
+// The bash-flavored commands this extension generates (export, `.` sourcing, `2>&1`,
+// `west "$@"`) and the generated env script (bash/zsh-only: BASH_SOURCE, [[ ]], venv
+// activate) only run under bash or zsh. When the resolved POSIX shell is anything else
+// (csh/tcsh, fish, dash, plain sh, ksh, ...) we substitute a Bourne shell so builds and
+// terminals still work; warnUnsupportedShellOnce() (extension.ts) tells the user once.
+// getSubstitutedShellName() exposes the pre-substitution check the UI uses.
 export function getResolvedShell(): { path: string; args?: string[] } {
   const raw = resolveRawShell();
-  if (isCshFamily(raw.path)) {
-    // Drop the original args: they were meant for csh, not the Bourne fallback.
-    return {
-      path: process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash'
-    };
+  if (isCshFamily(raw.path) || isUnsupportedPosixShell(raw.path)) {
+    // Drop the original args: they were meant for the user's shell, not the fallback.
+    return { path: getBourneFallbackShellPath() };
   }
   return raw;
+}
+
+// Substitution target: /bin/zsh on macOS (always present), /bin/bash elsewhere.
+// Non-FHS Linux (NixOS, Guix, musl containers) has no /bin/bash — fall back to a
+// PATH lookup there (spawn/exec/terminals all resolve bare names via PATH). win32
+// keeps the historical literal so the csh-profile case stays byte-identical.
+function getBourneFallbackShellPath(): string {
+  if (process.platform === 'darwin') { return '/bin/zsh'; }
+  if (process.platform === 'win32' || fileExists('/bin/bash')) { return '/bin/bash'; }
+  return 'bash';
 }
 
 // True when the user's actual (pre-substitution) shell is csh/tcsh — i.e. getResolvedShell()
 // is silently substituting a Bourne shell. The UI layer uses this to warn the user once.
 export function isUnsupportedCshShell(): boolean {
   return isCshFamily(resolveRawShell().path);
+}
+
+// Basename of the user's actual shell when getResolvedShell() is silently substituting
+// a Bourne shell for it, undefined otherwise. The UI layer uses this to warn once.
+export function getSubstitutedShellName(): string | undefined {
+  const raw = resolveRawShell().path;
+  return (isCshFamily(raw) || isUnsupportedPosixShell(raw)) ? path.basename(raw) : undefined;
 }
 
 export function classifyShell(shellPath: string):
@@ -974,6 +990,24 @@ export function isCshFamily(shellPath: string): boolean {
   return exe.includes('csh');
 }
 
+/**
+ * True for any POSIX login shell our generated command lines cannot run under:
+ * everything except bash and zsh. The generated env script (~/.zinstaller/env.sh)
+ * is bash/zsh-only (BASH_SOURCE, [[ ]], venv activate), fish cannot even parse
+ * `. file` sourcing, and dash (Debian's /bin/sh) chokes on [[ ]]. The `includes`
+ * heuristic keeps names like `bash-5.2` allowed, matching classifyShell(). Never
+ * true on win32, where shells resolve through the terminal profile instead.
+ * Consumed by getResolvedShell() (substitution) and getSubstitutedShellName() (warning).
+ */
+export function isUnsupportedPosixShell(
+  shellPath: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (platform === 'win32') { return false; }
+  const exe = path.basename(shellPath).toLowerCase();
+  return !exe.includes('bash') && !exe.includes('zsh');
+}
+
 export interface EnvSourcedShellCommand {
   command: string;
   shellKind: ReturnType<typeof classifyShell>;
@@ -1385,30 +1419,42 @@ export function parseGitBranchesOutput(out: string): string[] {
     .sort();
 }
 
-export async function getGitTags(gitUrl: string): Promise<string[]> {
-  const gitCmd = `git ls-remote --tags ${gitUrl}`;
-  return new Promise((resolve, reject) => {
-    execCommandWithEnv(gitCmd, undefined, (err, out, errStr) => {
+/**
+ * One `git ls-remote` run against a repo URL. Plain PATH git first: listing a
+ * public repo needs no Zephyr environment, and several callers run BEFORE the
+ * host tools (and their env script) exist. The env-sourced path remains as
+ * fallback for machines whose only git is the zinstaller-provided one.
+ */
+function gitLsRemoteOutput(kind: '--tags' | '--heads', gitUrl: string): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    execFile(
+      'git',
+      ['ls-remote', kind, gitUrl],
+      { timeout: 30000, maxBuffer: 16 * 1024 * 1024 },
+      (error, stdout) => {
+        if (error) { reject(error); return; }
+        resolve(String(stdout));
+      }
+    );
+  }).catch(() => new Promise<string>((resolve, reject) => {
+    execCommandWithEnv(`git ls-remote ${kind} ${gitUrl}`, undefined, (err, out, errStr) => {
       if (err) {
-        reject(`Error: ${errStr}`);
+        reject(new Error(`git ls-remote failed: ${errStr || err.message}`));
         return;
       }
-      resolve(parseGitTagsOutput(out));
-    });
-  });
+      resolve(out);
+    // Also settle when execCommandWithEnv itself rejects (e.g. the env-script
+    // setting is missing) — the exec callback never fires in that case.
+    }).catch(reject);
+  }));
+}
+
+export async function getGitTags(gitUrl: string): Promise<string[]> {
+  return parseGitTagsOutput(await gitLsRemoteOutput('--tags', gitUrl));
 }
 
 export async function getGitBranches(gitUrl: string): Promise<string[]> {
-  const gitCmd = `git ls-remote --heads ${gitUrl}`;
-  return new Promise((resolve, reject) => {
-    execCommandWithEnv(gitCmd, undefined, (err, out, errStr) => {
-      if (err) {
-        reject(`Error: ${errStr}`);
-        return;
-      }
-      resolve(parseGitBranchesOutput(out));
-    });
-  });
+  return parseGitBranchesOutput(await gitLsRemoteOutput('--heads', gitUrl));
 }
 
 /* pyOCD helpers */
