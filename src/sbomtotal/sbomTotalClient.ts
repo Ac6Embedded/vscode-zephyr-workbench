@@ -397,7 +397,7 @@ export class SbomTotalClient {
     switch (status) {
       case 413:
         return new SbomTotalError(
-          'The SBOM file is larger than 50 MB, which SBOM Total does not accept.',
+          'The SBOM file is larger than 80 MB, which SBOM Total does not accept.',
           'too-large', status, detail,
         );
       case 415:
