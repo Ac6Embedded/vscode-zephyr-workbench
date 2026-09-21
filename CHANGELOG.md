@@ -4,6 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [4.2.1]
+
+### Other
+- Updated npm dependencies (zod, eslint, prettier).
+
 ## [4.2.0]
 
 ### Kconfig Manager

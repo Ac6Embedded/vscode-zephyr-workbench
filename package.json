@@ -10,7 +10,7 @@
   },
   "homepage": "https://z-workbench.com",
   "license": "Apache-2.0",
-  "version": "4.2.0",
+  "version": "4.2.1",
   "author": {
     "name": "Ac6",
     "email": "tools@ac6.fr",
@@ -2531,11 +2531,11 @@
     "cross-env": "^10.1.0",
     "esbuild": "^0.28.2",
     "esbuild-plugin-copy": "^2.1.1",
-    "eslint": "^10.10.0",
+    "eslint": "^10.11.0",
     "mocha": "^11.7.6",
     "nyc": "^18.0.0",
     "ovsx": "^1.2.0",
-    "prettier": "^3.9.6",
+    "prettier": "^3.9.8",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
@@ -2553,7 +2553,7 @@
     "sudo-prompt": "^9.2.1",
     "ts-pattern": "^5.9.0",
     "yaml": "^2.9.1",
-    "zod": "^4.6.4"
+    "zod": "^4.6.5"
   },
   "extensionDependencies": [
     "mindaro-dev.file-downloader",
