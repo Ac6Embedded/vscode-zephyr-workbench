@@ -467,11 +467,20 @@ async function scanSdkSeparately(
   bundle: ClientBundle,
   sdkFileName: string,
   uploadName: string,
-  options: { force?: boolean; signal?: AbortSignal; progress?: vscode.Progress<{ message?: string }> },
+  options: {
+    force?: boolean;
+    signal?: AbortSignal;
+    progress?: vscode.Progress<{ message?: string }>;
+    projectId?: string;
+  },
 ): Promise<ScanResult | undefined> {
   try {
     const sdkBytes = fs.readFileSync(path.join(ctx.spdxDir, sdkFileName));
-    return (await scanBytes(bundle, sdkBytes, uploadName, { ...options, label: 'scanning the SDK document' })).result;
+    return (await scanBytes(bundle, sdkBytes, uploadName, {
+      ...options,
+      projectLabel: projectScanLabel(ctx, 'SDK'),
+      label: 'scanning the SDK document',
+    })).result;
   } catch (error) {
     if (!isAbortError(error)) {
       getOutputChannel().appendLine(`[sbom-total] SDK scan failed: ${error instanceof Error ? error.message : error}`);
@@ -567,7 +576,12 @@ async function runScanPipeline(
   let sdkResult: ScanResult | undefined;
   if (includeSdk && files.includes(sdkDocName) && !cancel.isCancellationRequested) {
     const sdkUploadName = spdxVersion === '3.0' ? 'sdk.spdx3.json' : SDK_DOC_NAME;
-    sdkResult = await scanSdkSeparately(ctx, bundle, sdkDocName, sdkUploadName, { force, signal: abort.signal, progress });
+    sdkResult = await scanSdkSeparately(ctx, bundle, sdkDocName, sdkUploadName, {
+      force,
+      signal: abort.signal,
+      progress,
+      projectId: scan.projectId,
+    });
   }
   if (cancel.isCancellationRequested) {
     return undefined;
@@ -828,7 +842,13 @@ async function scanSingleFile(
         cancel.onCancellationRequested(() => abort.abort());
         const bundle = createClientFromConfig();
         progress.report({ message: `scanning ${name}...` });
-        const scan = await scanBytes(bundle, bytes, name, { force, signal: abort.signal, progress, label: `scanning ${name}` });
+        const scan = await scanApplicationBytes(context, ctx, bundle, bytes, name, {
+          force,
+          signal: abort.signal,
+          progress,
+          label: `scanning ${name}`,
+          projectLabel: projectScanLabel(ctx, name),
+        });
         return {
           result: scan.result,
           hash: scan.hash,

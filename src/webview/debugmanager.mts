@@ -15,6 +15,10 @@ function main() {
   updateRunnerDefaultInfo('', '');
   initApplicationsDropdown();
   initBuildConfigsDropdown();
+  initDomainsDropdown();
+  // Hard reset: the Domain row must never survive a retained/restored DOM from
+  // a previous session; it only reappears with an updateConfig that carries it.
+  updateDomains(false, '', '');
   initRunnersDropdown();
   initBackendRadioGroup();
   hideSpinner('resetSpinner');
@@ -59,7 +63,7 @@ function main() {
   installButton.addEventListener("click", installHandler);
   document.getElementById('pyocdManageButton')?.addEventListener("click", pyocdManageHandler);
   runnerDetectInstallButton?.addEventListener("click", installHandler);
-  changeRunnerDefaultButton?.addEventListener("click", installHandler);
+  changeRunnerDefaultButton?.addEventListener("click", changeRunnerDefaultHandler);
   resetButton.addEventListener("click", resetHandler);
   applyButton.addEventListener("click", applyHandler);
   debugButton.addEventListener("click", debugHandler);
@@ -70,6 +74,9 @@ function main() {
 // HTML lists for the runner dropdown per backend, refreshed by updateConfig.
 let cachedWestRunnersHTML = '';
 let cachedNativeRunnersHTML = '';
+// Whether the runner dropdown currently reveals the non-compatible runners.
+// Reset every time the dropdown is repopulated.
+let runnersShowAll = false;
 // Pristine tracking: auto-delivered values only overwrite fields the user
 // never customized (empty, or still equal to the last auto value).
 let lastDefaultGdbPort = '';
@@ -110,7 +117,9 @@ function applyBackendVisibility() {
   setRowVisible('gdbPortRow', !native);
   setRowVisible('deviceRow', native);
   setRowVisible('interfaceRow', native);
-  setRowVisible('runnerPathRow', native || !(runnerName === 'stlink_gdbserver' || runnerName === 'pyocd'));
+  // QEMU takes no runner executable path (it is started through the
+  // debugserver_qemu CMake target), so its Runner Path row stays hidden too.
+  setRowVisible('runnerPathRow', native || !(runnerName === 'stlink_gdbserver' || runnerName === 'pyocd' || runnerName === 'qemu'));
   // pyOCD's target support (CMSIS-Packs) has its own manager panel.
   document.getElementById('pyocdManageButton')?.classList.toggle('hidden', runnerName !== 'pyocd');
   if (runnerName !== 'pyocd') {
@@ -144,32 +153,45 @@ function repopulateRunnersDropdown(silentSelection = false) {
   if (getSelectedBackend() === 'cortex-native' && !html && cachedWestRunnersHTML) {
     // No native list received yet — derive it by filtering the west list to
     // the servers cortex-debug can spawn natively. Drop the "(compatible)"
-    // annotation: it describes west runners, not natively launched servers.
+    // annotation and the compatible-first affordances (they describe west
+    // runners, not natively launched servers).
     const container = document.createElement('div');
     container.innerHTML = cachedWestRunnersHTML;
     for (const item of Array.from(container.children)) {
       const element = item as HTMLElement;
       const value = element.getAttribute('data-value');
-      if (value !== 'jlink' && value !== 'stlink_gdbserver') {
+      if (!element.classList.contains('dropdown-item') || (value !== 'jlink' && value !== 'stlink_gdbserver')) {
         element.remove();
       } else {
         element.textContent = element.getAttribute('data-label') || element.textContent;
+        element.classList.remove('runner-more');
+        element.removeAttribute('data-compatible');
+        element.style.removeProperty('display');
       }
     }
     html = container.innerHTML;
   }
+  runnersShowAll = false;
   runnersDropdown.innerHTML = html ?? '';
   if ((html ?? '').length > 0) {
-    addDropdownItemEventListeners(runnersDropdown, runnerInput);
+    bindRunnersDropdown(runnersDropdown, runnerInput);
   }
 
   const currentValue = runnerInput.getAttribute('data-value') ?? '';
-  if (currentValue && runnersDropdown.querySelector(`.dropdown-item[data-value="${currentValue}"]`)) {
+  const currentItem = currentValue
+    ? runnersDropdown.querySelector(`.dropdown-item[data-value="${currentValue}"]`) as HTMLElement | null
+    : null;
+  if (currentItem) {
+    // The kept selection may live in the collapsed section (possible when a
+    // cached list is reused across a backend round-trip); expand so it shows.
+    if (currentItem.classList.contains('runner-more')) {
+      runnersShowAll = true;
+      applyRunnersShowAll(runnersDropdown);
+    }
     return;
   }
 
-  const items = Array.from(runnersDropdown.getElementsByClassName('dropdown-item')) as HTMLElement[];
-  const preferred = items.find(item => (item.textContent ?? '').includes('(compatible)'));
+  const preferred = runnersDropdown.querySelector('.dropdown-item[data-compatible="true"]') as HTMLElement | null;
   if (preferred) {
     runnerInput.value = preferred.getAttribute('data-label') || '';
     runnerInput.setAttribute('data-value', preferred.getAttribute('data-value') || '');
@@ -225,9 +247,9 @@ function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputEl
       input.dispatchEvent(new Event('input'));
       dropdown.style.display = 'none';
 
-      // Start spinners only when a build configuration is chosen,
+      // Start spinners only when a build configuration or domain is chosen,
       // since that triggers the heavy work (parse + populate fields).
-      if (input.id === 'buildConfigInput') {
+      if (input.id === 'buildConfigInput' || input.id === 'domainInput') {
         showBrowseSpinnersWhileLoading();
         updateRunnerDefaultInfo('', '');
       }
@@ -240,6 +262,34 @@ function addDropdownItemEventListeners(dropdown: HTMLElement, input: HTMLInputEl
       }
     });
   }
+}
+
+// Show or hide the non-compatible ("runner-more") items in the runner dropdown
+// according to runnersShowAll, and keep the action row label in sync.
+function applyRunnersShowAll(dropdown: HTMLElement) {
+  const moreItems = dropdown.getElementsByClassName('runner-more');
+  for (let i = 0; i < moreItems.length; i++) {
+    (moreItems[i] as HTMLElement).style.display = runnersShowAll ? '' : 'none';
+  }
+  const toggle = dropdown.querySelector('#runnersToggleAll') as HTMLElement | null;
+  if (toggle) {
+    toggle.textContent = runnersShowAll ? 'Show fewer runners' : 'Show all runners';
+  }
+}
+
+// Wire the runner dropdown: item selection plus the "Show all runners" toggle.
+// The toggle row is not a .dropdown-item, so it never selects a runner; it only
+// reveals or hides the non-compatible section.
+function bindRunnersDropdown(dropdown: HTMLElement, input: HTMLInputElement) {
+  addDropdownItemEventListeners(dropdown, input);
+  const toggle = dropdown.querySelector('#runnersToggleAll') as HTMLElement | null;
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      runnersShowAll = !runnersShowAll;
+      applyRunnersShowAll(dropdown);
+    });
+  }
+  applyRunnersShowAll(dropdown);
 }
 
 function filterFunction(input: HTMLInputElement, dropdown: HTMLElement) {
@@ -377,12 +427,17 @@ function setVSCodeMessageListener() {
         updateBuildConfigs(buildConfigsHTML, event.data.selectFirst === 'true' ? true : false);
         break;
       }
+      case 'updateDomains': {
+        updateDomains(event.data.visible === 'true', event.data.domainsHTML ?? '', event.data.selectedDomain ?? '');
+        break;
+      }
       case 'updateConfig': {
         updateConfig(event.data);
         break;
       }
       case 'updateConfigError': {
         updateRunnerDefaultInfo('', '');
+        updateDomains(false, '', '');
         hideBrowseSpinners();
         break;
       }
@@ -520,6 +575,23 @@ function installHandler(this: HTMLElement, ev: MouseEvent) {
   webviewApi.postMessage({ command: 'install' });
 }
 
+// Click handler for the runner default-info action button. QEMU routes to the
+// Kconfig Manager (to edit the GDB port option); all other runners keep the
+// install/change-runners behavior.
+function changeRunnerDefaultHandler(this: HTMLElement) {
+  if (this.getAttribute('data-action') === 'openKconfig') {
+    const applicationInput = document.getElementById('applicationInput') as HTMLInputElement | null;
+    const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement | null;
+    webviewApi.postMessage({
+      command: 'openKconfig',
+      project: applicationInput?.getAttribute('data-value') ?? '',
+      buildConfig: buildConfigInput?.getAttribute('data-value') ?? '',
+    });
+    return;
+  }
+  webviewApi.postMessage({ command: 'install' });
+}
+
 function postPyocdManage() {
   const applicationInput = document.getElementById('applicationInput') as HTMLInputElement | null;
   const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement | null;
@@ -542,7 +614,8 @@ function resetHandler(this: HTMLElement, ev: MouseEvent) {
     command: 'reset',
     project: applicationInput.getAttribute('data-value'),
     buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
-    backend: getSelectedBackend()
+    backend: getSelectedBackend(),
+    domain: getSelectedDomain(),
   });
 }
 
@@ -574,8 +647,14 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
     runnerPath: runnerPath.value,
     runnerArgs: runnerArgs.value,
     device: (document.getElementById('deviceName') as TextField | null)?.value ?? '',
-    deviceInterface: (document.getElementById('deviceInterface') as RadioGroup | null)?.value ?? 'swd'
+    deviceInterface: (document.getElementById('deviceInterface') as RadioGroup | null)?.value ?? 'swd',
+    domain: getSelectedDomain(),
   });
+}
+
+// Currently selected sysbuild domain, or '' when the row is hidden (non-sysbuild).
+function getSelectedDomain(): string {
+  return (document.getElementById('domainInput') as HTMLInputElement | null)?.getAttribute('data-value') ?? '';
 }
 
 function debugHandler(this: HTMLElement, ev: MouseEvent) {
@@ -607,7 +686,8 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
     runnerPath: runnerPath.value,
     runnerArgs: runnerArgs.value,
     device: (document.getElementById('deviceName') as TextField | null)?.value ?? '',
-    deviceInterface: (document.getElementById('deviceInterface') as RadioGroup | null)?.value ?? 'swd'
+    deviceInterface: (document.getElementById('deviceInterface') as RadioGroup | null)?.value ?? 'swd',
+    domain: getSelectedDomain(),
   });
 }
 
@@ -700,6 +780,47 @@ function initBuildConfigsDropdown() {
   if (buildConfigDropdownSpinner) {buildConfigDropdownSpinner.style.display = 'none';}
 }
 
+// Domain dropdown for sysbuild builds. Mirrors the build-config dropdown but the
+// input is readonly (fixed list), so there is no keyup filter. Selecting a domain
+// posts domainChanged, which re-derives every domain-specific value.
+function initDomainsDropdown() {
+  const applicationInput = document.getElementById('applicationInput') as HTMLInputElement;
+  const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement;
+  const domainInput = document.getElementById('domainInput') as HTMLInputElement;
+  const domainDropdown = document.getElementById('domainDropdown') as HTMLElement;
+  const domainDropdownSpinner = document.getElementById('domainDropdownSpinner') as HTMLElement;
+
+  domainInput.addEventListener('focusin', () => {
+    if (domainDropdown) {domainDropdown.style.display = 'block';}
+  });
+
+  domainInput.addEventListener('focusout', () => {
+    if (domainDropdown) {domainDropdown.style.display = 'none';}
+  });
+
+  domainInput.addEventListener('click', () => {
+    if (domainDropdown) {domainDropdown.style.display = 'block';}
+  });
+
+  domainInput.addEventListener('input', () => {
+    showBrowseSpinnersWhileLoading();
+    updateRunnerDefaultInfo('', '');
+    webviewApi.postMessage({
+      command: 'domainChanged',
+      project: applicationInput.getAttribute('data-value'),
+      buildConfig: buildConfigInput.getAttribute('data-value') ? buildConfigInput.getAttribute('data-value') : '',
+      domain: domainInput.getAttribute('data-value') ?? '',
+    });
+  });
+
+  domainDropdown.addEventListener('mousedown', e => e.preventDefault());
+  domainDropdown.addEventListener('mouseup', e => e.preventDefault());
+
+  addDropdownItemEventListeners(domainDropdown, domainInput);
+
+  if (domainDropdownSpinner) {domainDropdownSpinner.style.display = 'none';}
+}
+
 function initRunnersDropdown() {
   const runnerInput = document.getElementById('runnerInput') as HTMLInputElement;
   const runnersDropdown = document.getElementById('runnersDropdown') as HTMLElement;
@@ -751,7 +872,7 @@ function initRunnersDropdown() {
   runnersDropdown.addEventListener('mousedown', e => e.preventDefault());
   runnersDropdown.addEventListener('mouseup', e => e.preventDefault());
 
-  addDropdownItemEventListeners(runnersDropdown, runnerInput);
+  bindRunnersDropdown(runnersDropdown, runnerInput);
 }
 
 async function updateSelectedApplication(projectPath: string, configName: string) {
@@ -809,6 +930,38 @@ function updateBuildConfigs(buildConfigsHTML: string, selectFirst: boolean = fal
   if (buildConfigDropdownSpinner) {buildConfigDropdownSpinner.style.display = 'none';}
 }
 
+// Show/hide the Domain row (sysbuild builds only) and preselect the given domain.
+// The selection is SILENT (no 'input' event): the extension already ran
+// updateConfiguration for this domain, so dispatching would trigger a redundant
+// domainChanged round-trip. Only a user click on an item posts domainChanged.
+function updateDomains(visible: boolean, domainsHTML: string, selectedDomain: string) {
+  const domainRow = document.getElementById('domainRow') as HTMLElement | null;
+  const domainInput = document.getElementById('domainInput') as HTMLInputElement | null;
+  const domainDropdown = document.getElementById('domainDropdown') as HTMLElement | null;
+  const domainDropdownSpinner = document.getElementById('domainDropdownSpinner') as HTMLElement | null;
+  const buildConfigInput = document.getElementById('buildConfigInput') as HTMLInputElement | null;
+  if (!domainRow || !domainInput || !domainDropdown) {
+    return;
+  }
+
+  // Never show the domain row unless a build configuration is actually selected
+  // in the UI. On reopen the extension can post the sysbuild domains before the
+  // application/config dropdowns finish loading and get visually selected; this
+  // guard keeps the row hidden until the selection is really in place (a later
+  // buildConfigChanged re-posts the domains once it is).
+  const hasBuildConfig = !!(buildConfigInput && buildConfigInput.getAttribute('data-value'));
+  const show = visible && hasBuildConfig;
+
+  domainRow.style.display = show ? '' : 'none';
+  domainDropdown.innerHTML = show ? domainsHTML : '';
+  if (show && domainsHTML.length > 0) {
+    addDropdownItemEventListeners(domainDropdown, domainInput);
+  }
+  domainInput.value = show ? selectedDomain : '';
+  domainInput.setAttribute('data-value', show ? selectedDomain : '');
+  if (domainDropdownSpinner) {domainDropdownSpinner.style.display = 'none';}
+}
+
 function updateConfig(data: any) {
   const backend = data.backend === 'cortex-west' || data.backend === 'cortex-native' ? data.backend : 'cppdbg';
   const programPath = data.programPath;
@@ -845,6 +998,9 @@ function updateConfig(data: any) {
   gdbAddressText.value = gdbAddress ?? '';
   gdbPortText.value = gdbPort ?? '';
   gdbModeRadioGroup.value = gdbMode ?? 'program';
+  // Domain row state always rides with the configuration payload: shown only
+  // when this config is sysbuild (missing fields mean hide, e.g. older senders).
+  updateDomains(data.domainsVisible === 'true', data.domainsHTML ?? '', data.selectedDomain ?? '');
   if (deviceNameText) {
     deviceNameText.value = data.device ?? '';
   }
@@ -866,9 +1022,10 @@ function updateConfig(data: any) {
   cachedWestRunnersHTML = runnersHTML ?? '';
   cachedNativeRunnersHTML = data.nativeRunnersHTML ?? '';
   const activeRunnersHTML = backend === 'cortex-native' ? cachedNativeRunnersHTML : cachedWestRunnersHTML;
+  runnersShowAll = false;
   runnersDropdown.innerHTML = activeRunnersHTML;
   if (activeRunnersHTML.length > 0) {
-    addDropdownItemEventListeners(runnersDropdown, runnerInput);
+    bindRunnersDropdown(runnersDropdown, runnerInput);
   }
 
   // Set the backend radio AFTER the caches/fields above are consistent: the
@@ -943,6 +1100,27 @@ function updateRunnerDefaultInfo(runnerDefaultInfo: string, runnerDefaultPathInf
   runnerDefaultInfoSpan.textContent = resolvedDefaultInfo;
   runnerDefaultPathInfoSpan.textContent = resolvedPathInfo;
   runnerDefaultInfoRow.style.display = resolvedDefaultInfo.length > 0 ? '' : 'none';
+  updateRunnerDefaultAction();
+}
+
+// The info row's action button is runner-specific. For QEMU the GDB port is a
+// Kconfig option (CONFIG_QEMU_GDBSERVER_LISTEN_DEV), so the button opens the
+// Kconfig Manager where it can be changed; for every other runner it keeps the
+// historical "Change" behavior (install or change the debug runners).
+function updateRunnerDefaultAction() {
+  const button = document.getElementById('changeRunnerDefaultButton') as Button | null;
+  const runnerInput = document.getElementById('runnerInput') as HTMLInputElement | null;
+  if (!button) {
+    return;
+  }
+  const runnerName = (runnerInput?.getAttribute('data-value') ?? '').toLowerCase();
+  if (runnerName === 'qemu') {
+    button.textContent = 'Open Kconfig';
+    button.setAttribute('data-action', 'openKconfig');
+  } else {
+    button.textContent = 'Change';
+    button.setAttribute('data-action', 'install');
+  }
 }
 
 function updateRunnerDetect(

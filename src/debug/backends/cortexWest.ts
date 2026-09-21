@@ -62,6 +62,15 @@ export function getExternalLaunchOverrides(
         overrideLaunchCommands: ['monitor reset halt', 'load'],
         overrideRestartCommands: ['monitor reset halt'],
       };
+    case 'qemu':
+      // QEMU starts halted (-S) with the ELF already loaded, so there is no
+      // flash and no probe reset: skip cortex-debug's OpenOCD-shaped
+      // `monitor reset halt` + `load`. Restart maps to QEMU's system reset
+      // through the gdbstub monitor.
+      return {
+        overrideLaunchCommands: [],
+        overrideRestartCommands: ['monitor system_reset'],
+      };
     default:
       // openocd / pyocd: cortex-debug's defaults are correct.
       return {};

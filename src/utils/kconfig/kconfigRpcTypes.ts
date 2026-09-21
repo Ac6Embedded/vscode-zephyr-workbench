@@ -165,6 +165,8 @@ export interface KcTarget {
   appRootPath: string;
   configPath: string;
   envSource: 'ninja' | 'fallback';
+  /** Why build.ninja was not usable. Only set when `envSource` is 'fallback'. */
+  envSourceDetail?: string;
 }
 
 /** Methods the webview calls on the extension host (see KconfigManagerPanel). */

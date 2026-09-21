@@ -1,0 +1,1 @@
+set(SUPPORTED_EMU_PLATFORMS renode qemu)

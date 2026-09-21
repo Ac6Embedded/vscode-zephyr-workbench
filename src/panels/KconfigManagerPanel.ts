@@ -238,6 +238,9 @@ export class KconfigManagerPanel {
     kconfigOutput().appendLine(
       `[server] python: ${spec.python} (env source: ${spec.source}, config: ${spec.configPath})`,
     );
+    if (spec.fallbackReason) {
+      kconfigOutput().appendLine(`[server] build.ninja not used: ${spec.fallbackReason}`);
+    }
 
     const client = new KconfigServerClient({
       spec,
@@ -248,8 +251,25 @@ export class KconfigManagerPanel {
       onExit: (code, expected) => { if (!expected) { this._onCrash(code); } },
     });
     this._client = client;
-    await client.start();
-    await client.call('init', {}, 120000);
+    try {
+      await client.start();
+      await client.call('init', {}, 120000);
+    } catch (e) {
+      // The CMakeCache fallback cannot reproduce the per-module ZEPHYR_<NAME>_KCONFIG
+      // variables, so kconfiglib fails on `osource "$(ZEPHYR_<NAME>_KCONFIG)"` with an
+      // error that says nothing about the real cause. Name it.
+      if (spec.source === 'fallback') {
+        const why = spec.fallbackReason ? ` (${spec.fallbackReason})` : '';
+        throw new Error(
+          `${e instanceof Error ? e.message : String(e)}\n\n` +
+          `The Kconfig environment had to be reconstructed from the CMake cache because ` +
+          `build.ninja could not be used${why}. That reconstruction cannot supply the ` +
+          `per-module Kconfig paths, which is the likely cause of the error above. ` +
+          `Re-run the CMake configure stage, then Retry.`,
+        );
+      }
+      throw e;
+    }
   }
 
   private _venvPython(): string | undefined {
@@ -341,6 +361,7 @@ export class KconfigManagerPanel {
       appRootPath: this._app.appRootPath,
       configPath: this._spec?.configPath ?? '',
       envSource: this._spec?.source ?? 'ninja',
+      envSourceDetail: this._spec?.fallbackReason,
     };
   }
 

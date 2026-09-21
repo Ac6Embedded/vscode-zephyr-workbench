@@ -170,22 +170,56 @@ export class ZephyrBoard {
     try {
       let runners: string[] = [];
       const boardCMakePath = path.join(this.rootPath, 'board.cmake');
-      if (!fs.existsSync(boardCMakePath)) {
-        return runners;
+      if (fs.existsSync(boardCMakePath)) {
+        const data = fs.readFileSync(boardCMakePath, 'utf-8');
+
+        const regex = /include\(\$\{ZEPHYR_BASE\}\/boards\/common\/(.*)\.board\.cmake\)/g;
+        let match: RegExpExecArray | null;
+
+        while ((match = regex.exec(data)) !== null) {
+          runners.push(match[1]);
+        }
       }
 
-      const data = fs.readFileSync(boardCMakePath, 'utf-8');
-
-      const regex = /include\(\$\{ZEPHYR_BASE\}\/boards\/common\/(.*)\.board\.cmake\)/g;
-      let match: RegExpExecArray | null;
-
-      while ((match = regex.exec(data)) !== null) {
-        runners.push(match[1]);
+      // Emulator boards register no common .board.cmake include, so the regex
+      // above never surfaces the QEMU runner. Add it from the emulator signal.
+      if (this.supportsQemu() && !runners.includes('qemu')) {
+        runners.push('qemu');
       }
 
       return runners;
     } catch {
       return [];
+    }
+  }
+
+  /**
+   * Whether this board can be run and debugged under the QEMU emulator. True
+   * when the board identifier follows the `qemu_` naming convention, or when its
+   * board.cmake lists `qemu` among SUPPORTED_EMU_PLATFORMS (the signal Zephyr
+   * uses to enable the `run` / `debugserver_qemu` CMake targets).
+   */
+  public supportsQemu(): boolean {
+    const boardName = this.boardName || this.identifier || '';
+    if (boardName.startsWith('qemu_')) {
+      return true;
+    }
+
+    try {
+      const boardCMakePath = path.join(this.rootPath, 'board.cmake');
+      if (!fs.existsSync(boardCMakePath)) {
+        return false;
+      }
+
+      const data = fs.readFileSync(boardCMakePath, 'utf-8');
+      const match = data.match(/(?:set|list)\s*\(\s*(?:APPEND\s+)?SUPPORTED_EMU_PLATFORMS\b([^)]*)\)/i);
+      if (!match) {
+        return false;
+      }
+
+      return /\bqemu\b/.test(match[1]);
+    } catch {
+      return false;
     }
   }
 

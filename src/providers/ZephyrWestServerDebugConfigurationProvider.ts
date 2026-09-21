@@ -150,6 +150,13 @@ export class ZephyrWestServerDebugConfigurationProvider implements vscode.DebugC
       // by returning undefined.
       getDebugServerOutputChannel().appendLine(`[session] starting cortex-debug (servertype external) against ${gdbTarget}`);
       const started = await vscode.debug.startDebugging(folder, transformed);
+      if (started && runnerName === 'qemu') {
+        // QEMU writes its serial console (printk / printf) to the
+        // debugserver_qemu process stdout, which we stream into this channel.
+        // Reveal it (without stealing focus) so the console output is visible
+        // for the emulated target, which has no physical UART to watch.
+        getDebugServerOutputChannel().show(true);
+      }
       if (!started) {
         void vscode.window.showErrorMessage(
           'Zephyr Workbench Debug: VS Code could not start the Cortex-Debug session. Check the "Zephyr Workbench: Debug Server" output for details.',

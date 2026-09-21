@@ -810,6 +810,23 @@ vscode-button {
   background-color: var(--vscode-inputOption-hoverBackground);
 }
 
+/* "Show all runners" / "Show fewer runners" toggle inside the runner dropdown.
+   Not a .dropdown-item, so it never selects a runner. */
+.dropdown-action {
+  color: var(--vscode-textLink-foreground);
+  font-family: inherit;
+  font-size: calc(var(--type-ramp-base-font-size) - 1px);
+  padding: 5px 4px;
+  cursor: pointer;
+  border-top: 1px solid var(--vscode-tab-border);
+  user-select: none;
+}
+
+.dropdown-action:hover {
+  background-color: var(--vscode-inputOption-hoverBackground);
+  text-decoration: underline;
+}
+
 .dropdown-placeholder {
   color: var(--vscode-descriptionForeground);
   font-family: inherit;
