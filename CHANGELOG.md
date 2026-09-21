@@ -4,6 +4,40 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [4.2.0]
+
+### Kconfig Manager
+- Fixed the Kconfig Manager failing to open on Windows with a `_KconfigIOError` on `osource "$(ZEPHYR_<MODULE>_KCONFIG)"`. The build environment is now read correctly from `build.ninja` on Windows, instead of silently falling back to a partial reconstruction that was missing the per-module Kconfig paths.
+- When that fallback is used, the reason is now shown in the panel and in the Kconfig output channel, and a failure to load explains what is missing rather than surfacing the raw parser error.
+
+### SBOM - SPDX
+- Raised the upload size limit to 80 MB.
+- SDK and application documents are now scanned under their own labelled project, so results are grouped per scanned document.
+
+### Other
+- Updated npm dependencies.
+
+## [4.1.1]
+
+### Terminal
+- Fixed builds and host-tool commands failing when the default terminal profile is a shell other than bash or zsh (fish, dash, ksh, plain sh): those shells now fall back to a supported one instead of breaking the environment setup. Previously only tcsh/csh were handled.
+- Listing remote git tags and branches (west workspace and SDK wizards) no longer depends on the Zephyr environment being set up first, and reports an error instead of hanging when it fails.
+
+## [4.1.0]
+
+### Debug Manager
+- Added QEMU debugging: Zephyr QEMU emulator boards can now be debugged from the Debug Manager through the `debugserver_qemu` target, on both the C/C++ and west debugserver backends. The GDB port is read from Kconfig (with an Open Kconfig shortcut) and the emulator's serial console is surfaced in the Debug Server output channel.
+- The runner dropdown now lists compatible runners first, with a **Show all runners** toggle for the rest.
+- Added sysbuild domain selection: when the selected build configuration uses sysbuild, a Domain dropdown appears and every deduced value (program path, runners.yaml artifacts, gdb path, SVD, session name) follows the chosen domain. Session names carry the domain, so one entry per domain can coexist for the same application and build configuration.
+- The auto-detected SVD is now back-filled for reused launch entries and is no longer cleared when the runner or backend changes.
+
+## [4.0.1]
+
+### Other
+- Migrated to the eslint 10 flat config and raised the TypeScript floor to 5.9.3.
+- Replaced the retired shields.io Marketplace badges with badgen.
+- Dependency and GitHub Actions updates.
+
 ## [4.0.0]
 
 ### Kconfig Manager (new)
