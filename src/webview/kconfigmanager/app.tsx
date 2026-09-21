@@ -423,7 +423,11 @@ export function App() {
       />
       {target?.envSource === 'fallback' && (
         <div className="kc-banner-warn">
-          Kconfig environment reconstructed from the CMake cache (build.ninja was not usable): values may differ slightly from a real build. Build the project once for exact fidelity.
+          Kconfig environment reconstructed from the CMake cache
+          {target.envSourceDetail ? ` (${target.envSourceDetail})` : ' (build.ninja was not usable)'}.
+          Per-module Kconfig files are missing from this reconstruction, so parts of the tree
+          may be absent and saving could drop their symbols. Re-run the CMake configure stage
+          for exact fidelity.
         </div>
       )}
       {changesOpen && (

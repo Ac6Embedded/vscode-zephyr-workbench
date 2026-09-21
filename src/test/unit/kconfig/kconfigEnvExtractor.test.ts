@@ -7,8 +7,10 @@ import {
   parseNinjaMenuconfigCommand,
   readMenuconfigCommandFromNinja,
   tokenizeCommand,
+  unwrapCmdExeWrapper,
   extractFromNinja,
   extractFromFallback,
+  extractKconfigLaunchSpec,
   resolveInnerBuildDir,
   preflight,
   isExtractError,
@@ -29,6 +31,24 @@ describe('kconfigEnvExtractor', () => {
     });
     it('treats && as its own token', () => {
       assert.deepEqual(tokenizeCommand('cd /a/b && cmake'), ['cd', '/a/b', '&&', 'cmake']);
+    });
+  });
+
+  describe('unwrapCmdExeWrapper', () => {
+    it('strips the Windows cmd.exe /C wrapper', () => {
+      const inner = 'cd /D C:\\b && C:\\cmake.exe -E env A=1 C:\\py.exe s.py C:\\Kconfig';
+      assert.equal(unwrapCmdExeWrapper(`C:\\WINDOWS\\system32\\cmd.exe /C "${inner}"`), inner);
+    });
+    it('accepts a bare cmd.exe and a lowercase /c', () => {
+      assert.equal(unwrapCmdExeWrapper('cmd.exe /c "echo hi"'), 'echo hi');
+    });
+    it('keeps the last quote as the closing one (nested quotes survive)', () => {
+      const inner = 'cd /D C:\\b && "C:/Program Files/Git/usr/bin/winpty.exe" C:\\py.exe s.py C:\\Kconfig';
+      assert.equal(unwrapCmdExeWrapper(`C:\\WINDOWS\\system32\\cmd.exe /C "${inner}"`), inner);
+    });
+    it('leaves a POSIX command untouched', () => {
+      const cmd = 'cd /w && /usr/bin/cmake -E env A=1 /py /s.py /Kconfig';
+      assert.equal(unwrapCmdExeWrapper(cmd), cmd);
     });
   });
 
@@ -100,9 +120,21 @@ describe('kconfigEnvExtractor', () => {
       const cmd = base.replace('/venv/bin/python', '/z/scripts/pty_wrapper.sh /venv/bin/python');
       const p = parseNinjaMenuconfigCommand(cmd);
       assert.ok(p);
-      // python is anchored as the token right before the .py script.
+      // No PYTHON_EXECUTABLE in this command: python falls back to the token before the
+      // .py script.
       assert.equal(p!.python, '/venv/bin/python');
       assert.equal(p!.kconfigRoot, '/z/Kconfig');
+    });
+
+    it('prefers PYTHON_EXECUTABLE over the token preceding the script', () => {
+      // Zephyr inserts ${PTY_INTERFACE} (winpty) right before the interpreter on Windows,
+      // so the positional guess picks the wrapper. PYTHON_EXECUTABLE is authoritative.
+      const cmd = base
+        .replace('ZEPHYR_BASE=/z', 'ZEPHYR_BASE=/z PYTHON_EXECUTABLE=/venv/bin/python')
+        .replace('/venv/bin/python /z/scripts/kconfig/menuconfig.py', '/usr/bin/winpty /z/scripts/kconfig/menuconfig.py');
+      const p = parseNinjaMenuconfigCommand(cmd);
+      assert.ok(p);
+      assert.equal(p!.python, '/venv/bin/python');
     });
 
     it('returns undefined for a non-menuconfig-shaped command', () => {
@@ -129,6 +161,29 @@ describe('kconfigEnvExtractor', () => {
       assert.ok(p!.cwd.endsWith('/zephyr/kconfig'));
     });
 
+    it('finds the COMMAND line in CRLF text', () => {
+      const ninja = [
+        'build CMakeFiles/menuconfig | x: CUSTOM_COMMAND',
+        '  COMMAND = cd /w && /cmake -E env srctree=/z CONFIG_=CONFIG_ KCONFIG_CONFIG=/w/.config /py /z/scripts/kconfig/menuconfig.py /z/Kconfig',
+        '  pool = console',
+      ].join('\r\n');
+      const cmd = readMenuconfigCommandFromNinja(ninja);
+      assert.ok(cmd, 'CRLF must not hide the COMMAND binding');
+      assert.ok(!cmd!.includes('\r'), 'the returned command must not keep a trailing CR');
+      assert.equal(parseNinjaMenuconfigCommand(cmd!)!.env.srctree, '/z');
+    });
+
+    it('joins ninja line-continuations across CRLF', () => {
+      const ninja = [
+        'build CMakeFiles/menuconfig | x: CUSTOM_COMMAND',
+        '  COMMAND = cd /w && /cmake -E env srctree=/z $',
+        '    CONFIG_=CONFIG_ KCONFIG_CONFIG=/w/.config /py /z/scripts/kconfig/menuconfig.py /z/Kconfig',
+      ].join('\r\n');
+      const p = parseNinjaMenuconfigCommand(readMenuconfigCommandFromNinja(ninja)!);
+      assert.ok(p);
+      assert.equal(p!.env.CONFIG_, 'CONFIG_');
+    });
+
     it('falls back to the guiconfig rule when menuconfig is absent', () => {
       const ninja = [
         'build guiconfig: phony CMakeFiles/guiconfig',
@@ -139,6 +194,29 @@ describe('kconfigEnvExtractor', () => {
       const cmd = readMenuconfigCommandFromNinja(ninja);
       assert.ok(cmd);
       assert.ok(cmd!.includes('guiconfig.py'));
+    });
+
+    it('extracts and parses the real Windows fixture (CRLF + cmd.exe /C wrapper)', () => {
+      const ninja = fs.readFileSync(path.join(FIXTURE_DIR, 'menuconfig-command-windows.ninja.txt'), 'utf8');
+      assert.ok(ninja.includes('\r\n'), 'fixture must keep its CRLF line endings');
+      const cmd = readMenuconfigCommandFromNinja(ninja);
+      assert.ok(cmd, 'should find a command');
+      const p = parseNinjaMenuconfigCommand(cmd!);
+      assert.ok(p, 'should parse');
+      assert.equal(p!.env.BOARD, 'nucleo_h563zi');
+      assert.equal(p!.env.CONFIG_, 'CONFIG_');
+      assert.equal(p!.env.SHIELD_AS_LIST, '');
+      // The variables the CMakeCache fallback cannot reconstruct; their absence is what
+      // made kconfiglib fail on `osource "$(ZEPHYR_<MODULE>_KCONFIG)"`.
+      assert.ok(p!.env.ZEPHYR_CMSIS_6_KCONFIG?.endsWith('/Kconfig'));
+      assert.ok(p!.env.TOOLCHAIN_KCONFIG_DIR?.length > 0);
+      assert.equal(p!.env.KERNELVERSION, '0x4040200');
+      // winpty sits between the env block and the interpreter: python must come from
+      // PYTHON_EXECUTABLE, not from the token before menuconfig.py.
+      assert.ok(p!.python.endsWith('/Scripts/python.exe'), `unexpected python: ${p!.python}`);
+      assert.ok(!p!.python.includes('winpty'));
+      assert.ok(p!.kconfigRoot.endsWith('/Kconfig'));
+      assert.equal(p!.cwd, 'C:\\w\\build\\primary\\zephyr\\kconfig');
     });
 
     it('joins ninja line-continuations', () => {
@@ -258,6 +336,40 @@ describe('kconfigEnvExtractor', () => {
       assert.equal(spec.env.BOARD, 'lp_mspm0l2228');
       assert.ok(spec.python.length > 0);
       assert.ok(spec.kconfigRoot.endsWith('Kconfig'));
+    });
+
+    it('uses build.ninja (not the CMakeCache fallback) for a Windows build', () => {
+      // Regression: the CRLF line endings and the `cmd.exe /C "..."` wrapper both made
+      // this parse fail, silently dropping every ZEPHYR_<MODULE>_KCONFIG variable.
+      const build = path.join(tmp, 'build', 'primary');
+      fs.mkdirSync(build, { recursive: true });
+      fs.writeFileSync(
+        path.join(build, 'build.ninja'),
+        fs.readFileSync(path.join(FIXTURE_DIR, 'menuconfig-command-windows.ninja.txt')),
+      );
+      // A CMakeCache is present too: without the fix, extraction would silently prefer it.
+      fs.writeFileSync(path.join(build, 'CMakeCache.txt'), 'ZEPHYR_BASE:PATH=/z\n');
+
+      const spec = extractKconfigLaunchSpec(build, 'hello_world');
+      assert.ok(!isExtractError(spec));
+      if (isExtractError(spec)) { return; }
+      assert.equal(spec.source, 'ninja');
+      assert.equal(spec.fallbackReason, undefined);
+      assert.ok(spec.env.ZEPHYR_CMSIS_6_KCONFIG?.endsWith('/Kconfig'));
+      assert.ok(spec.edtPickle.endsWith('/zephyr/edt.pickle'));
+      assert.ok(spec.configPath.endsWith('/zephyr/.config'));
+    });
+
+    it('records why it fell back when build.ninja is unparseable', () => {
+      const build = path.join(tmp, 'build', 'primary');
+      fs.mkdirSync(build, { recursive: true });
+      fs.writeFileSync(path.join(build, 'build.ninja'), 'nothing useful here\n');
+      fs.writeFileSync(path.join(build, 'CMakeCache.txt'), 'ZEPHYR_BASE:PATH=/z\n');
+      const spec = extractKconfigLaunchSpec(build, 'hello_world');
+      assert.ok(!isExtractError(spec));
+      if (isExtractError(spec)) { return; }
+      assert.equal(spec.source, 'fallback');
+      assert.ok(spec.fallbackReason && spec.fallbackReason.length > 0);
     });
   });
 });

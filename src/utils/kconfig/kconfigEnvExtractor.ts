@@ -33,6 +33,14 @@ export interface KconfigLaunchSpec {
   edtPickle: string;
   /** Where the launch spec came from — surfaced in the UI when it is a fallback. */
   source: 'ninja' | 'fallback';
+  /**
+   * Why the build.ninja path was not used. Only set when `source` is 'fallback'. The
+   * fallback cannot reproduce the per-module `ZEPHYR_<NAME>_KCONFIG` variables (they
+   * exist nowhere on disk but in build.ninja), so a load from it either fails outright
+   * or silently drops the module and toolchain symbol trees — the reason has to reach
+   * the user.
+   */
+  fallbackReason?: string;
   /** The build directory actually used (handles the sysbuild app-name nesting). */
   buildDir: string;
 }
@@ -149,7 +157,10 @@ function ninjaUnescape(raw: string): string {
  * build.ninja text, joining ninja line-continuations. Returns the ninja-unescaped command.
  */
 export function readMenuconfigCommandFromNinja(ninjaText: string): string | undefined {
-  const lines = ninjaText.split('\n');
+  // Split on either line ending: CMake writes build.ninja with CRLF on Windows, and a
+  // trailing \r defeats both `/^\s*COMMAND\s*=\s*(.*)$/` (`.` never matches \r, and `$`
+  // without /m is end-of-string) and the `$`-continuation test below.
+  const lines = ninjaText.split(/\r?\n/);
   const isTargetHeader = (l: string, tool: string) =>
     /^build\b/.test(l) && l.includes(`CMakeFiles/${tool}`) && /:\s*CUSTOM_COMMAND\b/.test(l);
 
@@ -178,6 +189,23 @@ export function readMenuconfigCommandFromNinja(ninjaText: string): string | unde
   };
 
   return findFor('menuconfig') ?? findFor('guiconfig');
+}
+
+// CMake's Ninja generator wraps every custom command in `cmd.exe /C "..."` on Windows:
+//
+//   COMMAND = C:\WINDOWS\system32\cmd.exe /C "cd /D <dir> && <cmake> -E env KEY=VAL ..."
+//
+// Those outer quotes belong to cmd, not to the command. Left in place, the tokenizer
+// below reads the whole inner command as one quoted token, so `cd`/`env` are never seen
+// and the parse fails — which is what sent every Windows user down the fallback path.
+// Strip the wrapper (and only the wrapper) first; what remains is an ordinary argv line
+// in which the nested quotes (e.g. "C:/Program Files/Git/usr/bin/winpty.exe") tokenize
+// correctly.
+const CMD_WRAPPER_RE = /^\s*(?:"[^"]*\bcmd(?:\.exe)?"|\S*\bcmd(?:\.exe)?)\s+\/[cC]\s+"([\s\S]*)"\s*$/;
+
+export function unwrapCmdExeWrapper(command: string): string {
+  const m = CMD_WRAPPER_RE.exec(command);
+  return m ? m[1] : command;
 }
 
 // Shell-like tokenizer: splits on unquoted whitespace, honors '...' and "..." spans,
@@ -214,7 +242,7 @@ const ENV_ASSIGN_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
  * command into its parts. Returns undefined when it does not have the expected shape.
  */
 export function parseNinjaMenuconfigCommand(command: string): ParsedNinjaCommand | undefined {
-  const tokens = tokenizeCommand(command);
+  const tokens = tokenizeCommand(unwrapCmdExeWrapper(command));
   if (tokens.length === 0) { return undefined; }
 
   let idx = 0;
@@ -247,21 +275,24 @@ export function parseNinjaMenuconfigCommand(command: string): ParsedNinjaCommand
     p++;
   }
 
-  // The command tail is `[ptyWrapper] python <script>.py <Kconfig>`. Anchor on the
-  // `.py` script; the interpreter is the token immediately before it, and the Kconfig
-  // root is the final token. Anything between the env block and python (a PTY wrapper)
-  // is irrelevant to us — we drive our own server with our own stdio.
+  // The command tail is `[ptyWrapper] python <script>.py <Kconfig>`. The `.py` script
+  // confirms this really is a Kconfig frontend command; the Kconfig root is the final
+  // token (it is not derivable — Zephyr's KCONFIG_ROOT may point at an app-local file).
   let scriptIdx = -1;
   for (let q = tokens.length - 1; q >= p; q--) {
-    if (/\.py$/.test(tokens[q])) { scriptIdx = q; break; }
+    if (/\.py$/i.test(tokens[q])) { scriptIdx = q; break; }
   }
-  if (scriptIdx < 0 || scriptIdx - 1 < p || scriptIdx + 1 > tokens.length - 1) {
-    return undefined;
-  }
-  const python = tokens[scriptIdx - 1];
+  if (scriptIdx < 0 || scriptIdx === tokens.length - 1) { return undefined; }
+
   const script = tokens[scriptIdx];
   const kconfigRoot = tokens[tokens.length - 1];
-  if (kconfigRoot === script) { return undefined; }
+
+  // PYTHON_EXECUTABLE is the first entry of Zephyr's COMMON_KCONFIG_ENV_SETTINGS, so it
+  // is always present in the env block. Prefer it over the positional guess: on Windows
+  // the token before the script is Zephyr's optional PTY wrapper (winpty), not the
+  // interpreter. The positional form stays as a fallback for older Zephyr layouts.
+  const python = env['PYTHON_EXECUTABLE'] || (scriptIdx - 1 >= p ? tokens[scriptIdx - 1] : '');
+  if (!python) { return undefined; }
 
   return { env, python, script, kconfigRoot, cwd };
 }
@@ -403,7 +434,7 @@ export function extractKconfigLaunchSpec(buildDir: string, appName?: string): Kc
   const primary = extractFromNinja(buildDir, appName);
   if (!isExtractError(primary)) { return primary; }
   const fallback = extractFromFallback(buildDir, appName);
-  if (!isExtractError(fallback)) { return fallback; }
+  if (!isExtractError(fallback)) { return { ...fallback, fallbackReason: primary.error }; }
   // Prefer the primary error message (more actionable) unless it was just "no ninja".
   return primary.code === 'no-build-ninja' ? fallback : primary;
 }

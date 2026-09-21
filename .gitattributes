@@ -1,0 +1,4 @@
+# The Windows Kconfig fixture is a verbatim excerpt of a real build.ninja, CRLF line
+# endings included. Those line endings are exactly what the regression test checks, so
+# keep git from normalizing them on checkout or commit.
+src/test/unit/fixtures/kconfig/menuconfig-command-windows.ninja.txt -text
