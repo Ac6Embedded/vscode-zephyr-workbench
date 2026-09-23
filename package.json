@@ -2540,7 +2540,6 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@microsoft/vscode-file-downloader-api": "^1.0.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vscode/webview-ui-toolkit": "^1.4.0",
@@ -2556,7 +2555,6 @@
     "zod": "^4.6.5"
   },
   "extensionDependencies": [
-    "mindaro-dev.file-downloader",
     "KyleMicallefBonnici.dts-lsp"
   ]
 }

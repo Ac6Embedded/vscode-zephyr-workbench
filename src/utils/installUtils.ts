@@ -1,5 +1,4 @@
 import * as sevenBin from '7zip-bin';
-import { FileDownloader, getApi } from "@microsoft/vscode-file-downloader-api";
 import * as fs from 'fs';
 import { ExecException, exec, spawn } from "child_process";
 import * as node7zip from "node-7z";
@@ -19,6 +18,7 @@ import { ensurePowershellExecutionPolicy, quotePathForPwshCommand } from "./powe
 import { setDebugToolAliasDefault } from './debugTools/debugToolEnvUtils';
 import { getSelectablePartIds } from './hostToolsPartsRegistry';
 import { probeHomebrew } from './hostToolsStatusUtils';
+import { downloadFile } from './downloadUtils';
 
 export let output = vscode.window.createOutputChannel("Installing Host Tools");
 
@@ -1526,48 +1526,39 @@ export function findManagedVenvExecutablePath(
   return fileExists(executablePath) ? executablePath : undefined;
 }
 
+// Downloaded archives live under the extension's global storage until the caller
+// has extracted them. The second folder is where the File Downloader extension,
+// used before, kept them.
+const DOWNLOAD_DIR_NAMES = ['downloads', 'file-downloader-downloads'];
+
 export async function cleanupDownloadDir(context: vscode.ExtensionContext) {
-  const fileDownloader: FileDownloader = await getApi();
-  await fileDownloader.deleteAllItems(context);
+  for (const dirName of DOWNLOAD_DIR_NAMES) {
+    await fs.promises.rm(path.join(context.globalStorageUri.fsPath, dirName), { recursive: true, force: true, maxRetries: 3 });
+  }
 }
 
 export async function download(url: string, destDir: string, context: vscode.ExtensionContext, progress: vscode.Progress<{
 	message?: string | undefined;
 	increment?: number | undefined;
 }>, token: vscode.CancellationToken): Promise<vscode.Uri> {
-  const fileDownloader: FileDownloader = await getApi();
-  const parsedUrl = new URL(url);
-  const fileName = path.basename(parsedUrl.pathname);
+  const fileName = path.basename(new URL(url).pathname);
+  const filePath = path.join(context.globalStorageUri.fsPath, DOWNLOAD_DIR_NAMES[0], fileName);
 
-  const progressCallback = (downloadedBytes: number, totalBytes: number | undefined) => {
-    if(totalBytes) {
-      const increment = (downloadedBytes / totalBytes) * 100;
-      progress.report({
-        message: `Downloading... ${Math.round(increment)}%`,
-      });
+  let lastMessage = '';
+  const onProgress = (receivedBytes: number, totalBytes: number | undefined) => {
+    const message = totalBytes
+      ? `Downloading... ${Math.round((receivedBytes / totalBytes) * 100)}%`
+      : `Downloading... ${Math.round(receivedBytes / (1024 * 1024))} MB`;
+    // Report changes only, not every received chunk.
+    if (message !== lastMessage) {
+      lastMessage = message;
+      progress.report({ message });
     }
   };
 
-  // A previously downloaded copy may be stale or truncated: always re-download
-  // and overwrite it, without prompting.
-  const destFileUri: vscode.Uri | undefined = await fileDownloader.tryGetItem(fileName, context);
-  if(destFileUri) {
-    try {
-      await fileDownloader.deleteItem(fileName, context);
-    } catch {
-      // downloadFile overwrites in place; a failed pre-delete is not fatal.
-    }
-  }
-
-  const file: vscode.Uri = await fileDownloader.downloadFile(
-    vscode.Uri.parse(url),
-    fileName,
-    context,
-    token,
-    progressCallback
-  );
-
-  return file;
+  // Always downloads a fresh copy: a previous one may be stale.
+  await downloadFile(url, filePath, { token, onProgress });
+  return vscode.Uri.file(filePath);
 }
 
 export async function extractTar(filePath: string, destPath: string, progress: vscode.Progress<{

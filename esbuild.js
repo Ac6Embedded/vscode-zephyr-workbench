@@ -14,7 +14,8 @@ const extensionConfig = {
   format: "cjs",
   entryPoints: ["./src/extension.ts"],
   outfile: "./out/extension.js",
-  external: ["vscode", "7zip-bin"],
+  // electron: loaded at runtime by the downloader (src/utils/downloadUtils.ts).
+  external: ["vscode", "7zip-bin", "electron"],
   plugins: [
     copy({
       resolveFrom: "cwd",
