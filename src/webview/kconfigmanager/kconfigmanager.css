@@ -217,6 +217,7 @@ body {
 .kc-drift-empty { padding: 16px 12px; color: var(--kc-muted); }
 .kc-drift-list { overflow: auto; padding: 6px 12px; flex: 1; }
 .kc-drift-override { color: var(--kc-warn); }
+.kc-drift-managed { color: var(--kc-muted); }
 .kc-drift-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--kc-border); }
 .kc-drift-summary { font-size: 12px; color: var(--kc-muted); }
 .kc-drift-actions { display: inline-flex; gap: 8px; }

@@ -152,4 +152,33 @@ describe('dtsReportParser', () => {
 		assert.equal(report.nodes[1].path, '/child');
 		assert.equal(report.nodes[1].depth, 1);
 	});
+
+	it('keeps every compatible string, including ones continued on later lines', () => {
+		const dts = [
+			'/ {',
+			'\tuart1: serial@40011000 {',
+			'\t\tcompatible = "st,stm32-usart",',
+			'\t\t\t"st,stm32-uart";',
+			'\t\tstatus = "okay";',
+			'\t};',
+			'\ti2c@1 {',
+			'\t\tcompatible = "a,one", "b,two";',
+			'\t};',
+			'};',
+		].join('\n');
+		const report = readZephyrDeviceTreeReport({ dtsPath: writeDts(dts) });
+		const uart = report.nodes.find(node => node.labels.includes('uart1'));
+		assert.equal(uart?.compatible, 'st,stm32-usart', 'the first entry stays where the dashboard reads it');
+		assert.deepEqual(uart?.compatibles, ['st,stm32-usart', 'st,stm32-uart']);
+		assert.equal(uart?.status, 'okay', 'the continuation must not swallow the next property');
+		assert.deepEqual(report.nodes.find(node => node.name === 'i2c@1')?.compatibles, ['a,one', 'b,two']);
+	});
+
+	it('records where each node starts and ends in zephyr.dts', () => {
+		const dts = ['/ {', '\tuart1: serial@1 {', '\t\tcurrent-speed = <115200>;', '\t};', '};'].join('\n');
+		const report = readZephyrDeviceTreeReport({ dtsPath: writeDts(dts) });
+		const uart = report.nodes.find(node => node.labels.includes('uart1'));
+		assert.equal(uart?.bodyStart, 1);
+		assert.equal(uart?.bodyEnd, 3);
+	});
 });

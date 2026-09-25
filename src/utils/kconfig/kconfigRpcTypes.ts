@@ -130,6 +130,13 @@ export interface KcDriftEntry {
   targetId?: NodeId;
   /** Path of a later-merging fragment that would override the exported value. */
   overriddenBy?: string;
+  /**
+   * Set on a symbol the export target's managed region already assigns, whose line no
+   * longer gives the current value: 'update' replaces the line with configString,
+   * 'remove' drops it, because a configuration file can no longer assign the symbol.
+   * `baseline` is then the value the line assigns.
+   */
+  managedLine?: 'update' | 'remove';
 }
 
 // -- Server method payloads (raw JSON-RPC over stdio) -----------------------
@@ -146,6 +153,161 @@ export interface KcInitResult {
 
 export type KcSetValueResult =
   | ({ ok: true } & Omit<KcDeltaSet, never>)
+  | { ok: false; error: string };
+
+// -- Agent methods (find / explain / check_merge) ------------------------------
+// Used by the MCP server's own sessions; they never change the loaded state.
+
+export type KcTriStr = 'n' | 'm' | 'y';
+
+export interface KcFindEntry {
+  kind: 'symbol' | 'choice';
+  id?: NodeId;
+  type: KcType;
+  hasPrompt: boolean;
+  /** Name of the choice a symbol belongs to (`<choice>` when it is unnamed). */
+  choice: string | null;
+  value: string;
+  nodeIds: NodeId[];
+}
+
+export interface KcFindResult {
+  found: Record<string, KcFindEntry>;
+  /** Unknown name -> close or containing names. */
+  unknown: Record<string, string[]>;
+  matches?: string[];
+  totalMatches?: number;
+}
+
+/** One term of an expression, rendered with the current value of each symbol in it. */
+export interface KcTerm {
+  expr: string;
+  value: KcTriStr;
+}
+
+export interface KcReverseDep {
+  /** The whole `SEL && condition` term. */
+  expr: string;
+  active: boolean;
+  name?: string;
+  value?: string;
+}
+
+export interface KcChoiceSummary {
+  name: string;
+  prompt: string | null;
+  mode: KcTriStr;
+  selected: string | null;
+  members: { name: string; value: string }[];
+  optional: boolean;
+}
+
+export interface KcExplainSymbol {
+  kind: 'symbol';
+  name: string;
+  type: KcType;
+  value: string;
+  userValue: string | null;
+  assignable: KcTriStr[];
+  visibility: KcTriStr;
+  promptless: boolean;
+  prompts: string[];
+  helps: string[];
+  dependsOn: { value: KcTriStr; terms: KcTerm[] };
+  promptConditions: { prompt: string; value: KcTriStr; terms: KcTerm[] }[];
+  blockedBy: (KcTerm & { kind: 'depends_on' | 'visibility' })[];
+  /** Every active selector, then inactive ones up to a limit; the total counts all of them. */
+  selectedBy: KcReverseDep[];
+  selectedByTotal: number;
+  impliedBy: KcReverseDep[];
+  impliedByTotal: number;
+  selects: { name: string; condition?: string; active: boolean }[];
+  implies: { name: string; condition?: string; active: boolean }[];
+  /**
+   * The defaults whose condition holds, in evaluation order; `used` marks the first,
+   * the value taken when nothing assigns the symbol. The total counts every default.
+   */
+  defaults: KcExplainDefault[];
+  defaultsTotal: number;
+  ranges: { low: string; high: string; condition: string | null; active: boolean }[];
+  activeRange: { low: string; high: string } | null;
+  choice: KcChoiceSummary | null;
+  definitions: KcExplainDefinition[];
+  configString: string;
+}
+
+export interface KcExplainDefault {
+  value: string;
+  used: boolean;
+  condition?: string;
+  conditionValue?: KcTriStr;
+  /** Relative to ZEPHYR_BASE for in-tree Kconfig files. */
+  file?: string;
+  line?: number;
+}
+
+export interface KcExplainDefinition {
+  /** Relative to ZEPHYR_BASE for in-tree Kconfig files. */
+  file: string;
+  line: number;
+  menuPath: string;
+  /** Whether the enclosing `if` and `depends on` of this definition hold. */
+  active: boolean;
+}
+
+export interface KcExplainChoice extends KcChoiceSummary {
+  kind: 'choice';
+  type: KcType;
+  value: string;
+  visibility: KcTriStr;
+  prompts: string[];
+  helps: string[];
+  dependsOn: { value: KcTriStr; terms: KcTerm[] };
+  blockedBy: (KcTerm & { kind: 'depends_on' })[];
+  definitions: KcExplainDefinition[];
+}
+
+export interface KcExplainResult {
+  symbols: (KcExplainSymbol | KcExplainChoice)[];
+  unknown: Record<string, string[]>;
+}
+
+/** What a requested symbol looks like after the simulated merge. */
+export interface KcMergeSymbol {
+  /** The winning assignment in the merge, unescaped; null when nothing assigns it. */
+  userValue: string | null;
+  value: string;
+  /** Whether Zephyr's kconfig.py would accept the assignment (the value took). */
+  took: boolean;
+  failure: string | null;
+  promptless: boolean;
+  /** Where the winning assignment is, when kconfiglib records it. */
+  assignedAt: { file: string; line: number } | null;
+  missingDeps: KcTerm[];
+  activeSelectors: string[];
+  activeRange: { low: string; high: string } | null;
+  choice: KcChoiceSummary | null;
+}
+
+export type KcCheckMergeResult =
+  | {
+      ok: true;
+      symbols: Record<string, KcMergeSymbol>;
+      /** Values in the loaded .config. */
+      current: Record<string, string | null>;
+      /** Values after merging the fragments the build uses today. */
+      before: Record<string, string | null>;
+      /** Symbols whose assignment only fails with the proposed fragments. */
+      newFailures: Record<string, string>;
+      existingFailures: Record<string, string>;
+      existingFailuresTotal: number;
+      newWarnings: string[];
+      sideEffects: { name: string; from: string | null; to: string }[];
+      sideEffectsTotal: number;
+      discarded: { name: string; current: string; afterMerge: string | null }[];
+      discardedTotal: number;
+      missingFragments: string[];
+    }
   | { ok: false; error: string };
 
 /** Envelope every server response carries alongside its result/error. */
@@ -192,9 +354,12 @@ export type KconfigRpcMethods = {
   'kconfig/getDriftCount': { params: undefined; result: { count: number; stale: boolean } };
   /** Kicks the drift-export flow; the panel replies with a driftReady/driftError event. */
   'kconfig/persistPrjConf': { params: { target: 'prj' | 'fragment' }; result: { started: boolean } };
-  /** Writes the user-confirmed lines to the target chosen when the flow started. */
+  /**
+   * Writes the user-confirmed lines to the target chosen when the flow started, and drops
+   * the managed lines of `remove` (symbol names without CONFIG_), among those it offered.
+   */
   'kconfig/persistPrjConfWrite': {
-    params: { lines: string[] };
+    params: { lines: string[]; remove?: string[] };
     result: { ok: boolean; written: number; path: string; outsideConflicts: string[] };
   };
   'kconfig/openLocation': { params: { file: string; line: number }; result: void };

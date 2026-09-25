@@ -6,6 +6,7 @@ import * as os from 'os';
 import {
   buildWestSdkInstallArgs,
   classifyWestSdkFailure,
+  runSdkSetup,
   WestSdkInstallError,
 } from '../../utils/zephyr/westSdkRunner';
 
@@ -156,5 +157,83 @@ describe('WestSdkInstallError', () => {
     assert.equal(error.outputTail, 'sha256 mismatched: a:b');
     assert.equal(error.name, 'WestSdkInstallError');
     assert.ok(error instanceof Error);
+  });
+});
+
+describe('runSdkSetup', () => {
+  const fs = require('fs') as typeof import('fs');
+  const path = require('path') as typeof import('path');
+  const vscodeStub = require('vscode') as Record<string, unknown>;
+
+  // Reading the env script setting checks `scope instanceof vscode.Uri`, which needs a class.
+  let savedUri: unknown;
+  before(() => {
+    savedUri = vscodeStub.Uri;
+    vscodeStub.Uri = class FakeUri {
+      constructor(readonly fsPath: string) {}
+      static file(fsPath: string) { return new FakeUri(fsPath); }
+    };
+  });
+  after(() => {
+    vscodeStub.Uri = savedUri;
+  });
+
+  /** A stand-in setup script that prints its flags, as the SDK's own prints its steps. */
+  function fakeSdk(script: string): string {
+    const sdk = fs.mkdtempSync(path.join(os.tmpdir(), 'zw-setup-'));
+    fs.writeFileSync(path.join(sdk, 'setup.sh'), script, { mode: 0o755 });
+    return sdk;
+  }
+
+  it('streams the setup script output to onOutput, one invocation per flag set', async function () {
+    if (process.platform === 'win32') {
+      this.skip();
+    }
+    const sdk = fakeSdk('#!/bin/sh\necho "Installing $*"\n');
+    const chunks: string[] = [];
+    await runSdkSetup(sdk, { gnuToolchains: ['arm-zephyr-eabi'], hostTools: false }, chunk => chunks.push(chunk));
+    assert.deepEqual(chunks.join('').trim().split('\n'), ['Installing -c', 'Installing -t arm-zephyr-eabi']);
+  });
+
+  it('fails with setup-failed when the script does, after streaming its output', async function () {
+    if (process.platform === 'win32') {
+      this.skip();
+    }
+    const sdk = fakeSdk('#!/bin/sh\necho broken\nexit 3\n');
+    const chunks: string[] = [];
+    await assert.rejects(runSdkSetup(sdk, {}, chunk => chunks.push(chunk)), (error: WestSdkInstallError) => error.kind === 'setup-failed');
+    assert.match(chunks.join(''), /broken/);
+  });
+
+  it('stops the setup script and what it started when the token is cancelled, and runs nothing more', async function () {
+    if (process.platform === 'win32') {
+      this.skip();
+    }
+    this.timeout(25000);
+    // The sleep stands in for a download: it holds the output open, so the run
+    // ends long before the sleep would only when the whole tree was stopped. A
+    // SIGTERM that lands while the shell starts the sleep can reach it with the
+    // signal still blocked; the SIGKILL escalation 5 s later then stops it.
+    const sdk = fakeSdk('#!/bin/sh\necho "started $*"\nsleep 30\necho finished\n');
+    let cancelled = false;
+    const listeners: Array<() => void> = [];
+    const token = {
+      get isCancellationRequested() { return cancelled; },
+      onCancellationRequested: (listener: () => void) => {
+        listeners.push(listener);
+        return { dispose: () => undefined };
+      },
+    } as never;
+    const chunks: string[] = [];
+    const startedAt = Date.now();
+    await assert.rejects(runSdkSetup(sdk, { gnuToolchains: ['arm-zephyr-eabi'], hostTools: false }, chunk => {
+      chunks.push(chunk);
+      if (chunk.includes('started') && !cancelled) {
+        cancelled = true;
+        listeners.forEach(listener => listener());
+      }
+    }, token), (error: WestSdkInstallError) => error.kind === 'cancelled');
+    assert.ok(Date.now() - startedAt < 15000, `the script and its sleep were stopped (${Date.now() - startedAt} ms)`);
+    assert.deepEqual(chunks.join('').trim().split('\n'), ['started -c']);
   });
 });

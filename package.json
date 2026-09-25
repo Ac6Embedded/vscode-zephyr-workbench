@@ -39,7 +39,10 @@
     "sysbuild",
     "jlink",
     "stm32",
-    "nxp"
+    "nxp",
+    "mcp",
+    "ai",
+    "agent"
   ],
   "engines": {
     "vscode": "^1.88.0"
@@ -61,13 +64,99 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "zephyr-workbench.mcp",
+        "label": "Zephyr Workbench"
+      }
+    ],
     "configuration": [
       {
         "id": "zephyr-workbench",
         "title": "Zephyr Workbench",
         "order": 1,
         "properties": {
-          "zephyr-workbench.pathToEnvScript": {
+          "zephyr-workbench.mcp.enabled": {
+          "type": "string",
+          "enum": ["auto", "on", "off"],
+          "enumDescriptions": [
+            "Publish this window to AI agents, and start the local server only once an agent asks for it.",
+            "Always run the local MCP server while this window is open.",
+            "Never run the local MCP server."
+          ],
+          "default": "auto",
+          "scope": "machine",
+          "markdownDescription": "Whether AI coding agents can drive Zephyr Workbench through a local MCP server. With `auto` no socket is opened until an agent is connected."
+        },
+        "zephyr-workbench.mcp.port": {
+          "type": "number",
+          "default": 0,
+          "scope": "machine",
+          "markdownDescription": "Port for the local MCP server. Leave 0 to let the system choose, which is what lets several VS Code windows run at once. A fixed port is only useful for an agent that connects over HTTP directly."
+        },
+        "zephyr-workbench.mcp.toolset": {
+          "type": "string",
+          "enum": ["read-only", "core", "full"],
+          "enumDescriptions": [
+            "Only tools that cannot change anything.",
+            "The tools needed for the everyday build and inspect loop.",
+            "Every tool the server provides."
+          ],
+          "default": "core",
+          "scope": "machine",
+          "markdownDescription": "Which tools AI agents may see. Keeping this small matters: a VS Code chat request allows 128 tools across every installed extension, and some other clients stop near 40."
+        },
+        "zephyr-workbench.mcp.disabledTools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "scope": "machine",
+          "markdownDescription": "Names of individual MCP tools to hide from AI agents."
+        },
+        "zephyr-workbench.mcp.confirmActions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["hardware", "delete", "workspace", "install", "settings"],
+            "enumDescriptions": [
+              "Flash or debug a connected board.",
+              "Remove or delete build folders, build configurations, applications, west workspaces, venvs, blobs or toolchains.",
+              "Create, import or update applications and west workspaces, including west update and manifest edits.",
+              "Install SDKs, toolchains, Python environments, Python packages or binary blobs.",
+              "Change build configurations, Kconfig options, application, west workspace or toolchain settings."
+            ]
+          },
+          "uniqueItems": true,
+          "default": ["hardware", "delete", "workspace", "install"],
+          "scope": "machine",
+          "markdownDescription": "Actions an AI agent may only take after you allow them in a VS Code dialog. The dialog names the agent, the tool, the application and the configuration, and offers **Allow** and **Allow for This Session**. Remove a category to let agents do it without asking."
+        },
+        "zephyr-workbench.mcp.revealTerminal": {
+          "type": "string",
+          "enum": ["always", "silent", "never"],
+          "default": "silent",
+          "scope": "window",
+          "markdownDescription": "Whether a task an AI agent starts reveals its terminal. The task always runs in a terminal you can read and stop."
+        },
+        "zephyr-workbench.mcp.defaultWaitSeconds": {
+          "type": "number",
+          "default": 45,
+          "scope": "window",
+          "markdownDescription": "How long a build or other long action waits before it returns a job handle instead. The default stays under the 60 second limit most agents apply to a single tool call."
+        },
+        "zephyr-workbench.mcp.homeDir": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Override the directory that holds the MCP bridge, its launcher and the per-window records. Leave empty for `~/.zephyr-workbench/mcp`."
+        },
+        "zephyr-workbench.mcp.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "Show the MCP status bar item."
+        },
+        "zephyr-workbench.pathToEnvScript": {
             "type": "string",
             "examples": [
               "${userHome}/.zinstaller/env.sh"
@@ -360,6 +449,62 @@
       }
     ],
     "commands": [
+      {
+        "command": "zephyr-workbench.ai-manager",
+        "title": "AI Manager",
+        "icon": "$(plug)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.connect",
+        "title": "Connect AI Agent (MCP)",
+        "icon": "$(plug)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.showStatus",
+        "title": "Show MCP Server Status",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.tools",
+        "title": "Configure MCP Tools",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.start",
+        "title": "Start MCP Server",
+        "icon": "$(debug-start)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.stop",
+        "title": "Stop MCP Server",
+        "icon": "$(debug-stop)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.restart",
+        "title": "Restart MCP Server",
+        "icon": "$(debug-restart)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.showLog",
+        "title": "Show MCP Activity Log",
+        "icon": "$(output)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.doctor",
+        "title": "Check AI Agent Connection (MCP)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.copyConfig",
+        "title": "Copy MCP Configuration for an Agent",
+        "category": "Zephyr Workbench"
+      },
       {
         "command": "zephyr-workbench.install-host-tools",
         "title": "Install Host Tools",
@@ -2427,6 +2572,10 @@
             "type": "string",
             "description": "The name of the build configuration"
           },
+          "appRoot": {
+            "type": "string",
+            "description": "Root folder of the application the task runs for. Set by Zephyr Workbench so the tasks of two applications in one west workspace are told apart."
+          },
           "options": {
             "type": "object",
             "description": "Additional options",
@@ -2540,15 +2689,20 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "7zip-bin": "^5.2.0",
     "immer": "^11.1.18",
     "JSON": "^1.0.0",
+    "jsonc-parser": "^3.3.1",
     "node-7z": "^3.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "smol-toml": "^1.9.0",
     "sudo-prompt": "^9.2.1",
     "ts-pattern": "^5.9.0",
     "yaml": "^2.9.1",

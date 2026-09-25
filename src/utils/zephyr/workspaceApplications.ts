@@ -11,6 +11,9 @@ import {
   resolveConfiguredPathValue,
 } from '../execUtils';
 import { cleanupEmptyWorkspaceSettings } from '../vscodeWorkspaceCleanup';
+import { clearManagedClangdArtifacts } from '../intellisense/clangdConfig';
+import { removeCppToolsConfiguration } from '../../providers/ZephyrTaskProvider';
+import type { ZephyrApplication } from '../../models/ZephyrApplication';
 
 export type WorkspaceApplicationSettings = Record<string, any> & {
   path: string;
@@ -291,4 +294,46 @@ export async function removeWorkspaceApplicationEntry(
   await cleanupEmptyWorkspaceSettings(workspaceFolder);
 
   return true;
+}
+
+/**
+ * Remove a west workspace application from its workspace settings. When it
+ * was the last one, the IntelliSense configuration generated for the
+ * workspace applications goes too. False when it was not declared.
+ */
+export async function removeWorkspaceApplicationAndGeneratedConfig(project: ZephyrApplication): Promise<boolean> {
+  const removed = await removeWorkspaceApplicationEntry(project.appWorkspaceFolder, project.appRootPath);
+  if (!removed) {
+    return false;
+  }
+
+  if (readWorkspaceApplicationEntries(project.appWorkspaceFolder).length === 0) {
+    await removeCppToolsConfiguration(project.appWorkspaceFolder);
+    await clearManagedClangdArtifacts(project.appWorkspaceFolder);
+  }
+  return true;
+}
+
+export interface RemoveApplicationOptions {
+  /** Take a freestanding application's folder out of the window. Its settings stay in the folder. */
+  removeFolder(folder: vscode.WorkspaceFolder): unknown;
+  /** Delete the application folder from disk too, with this remover. */
+  deleteFiles?: (appRootPath: string) => unknown;
+}
+
+/**
+ * Unregister an application, as the Remove and Delete from disk actions of
+ * the Applications view do: a west workspace application leaves its workspace
+ * settings, a freestanding one leaves the window. With deleteFiles its folder
+ * is then deleted.
+ */
+export async function removeApplication(project: ZephyrApplication, options: RemoveApplicationOptions): Promise<void> {
+  if (project.isWestWorkspaceApplication) {
+    await removeWorkspaceApplicationAndGeneratedConfig(project);
+  } else {
+    await options.removeFolder(project.appWorkspaceFolder);
+  }
+  if (options.deleteFiles) {
+    await options.deleteFiles(project.appRootPath);
+  }
 }

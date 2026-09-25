@@ -1,5 +1,6 @@
 // Zephyr Workbench task provider and helpers.
 // Centralizes task definitions plus tasks.json load/merge/save logic to avoid overwriting user content.
+import { AsyncLocalStorage } from 'async_hooks';
 import * as fs from 'fs';
 import * as fsPromise from 'fs/promises';
 import * as path from 'path';
@@ -64,6 +65,22 @@ export interface ZephyrTaskDefinition extends vscode.TaskDefinition {
 }
 
 const ZEPHYR_TASK_TYPE = 'zephyr-workbench';
+
+/**
+ * The application a task runs for: the internal `__appRootPath` of a task the
+ * workbench built, else the declared `appRoot` that VS Code keeps when a task
+ * is saved to tasks.json. A relative `appRoot` is relative to the folder.
+ */
+export function taskAppRootPath(definition: vscode.TaskDefinition, folder?: vscode.WorkspaceFolder): string | undefined {
+  if (typeof definition.__appRootPath === 'string') {
+    return definition.__appRootPath;
+  }
+  const declared = typeof definition.appRoot === 'string' ? definition.appRoot.trim() : '';
+  if (!declared) {
+    return undefined;
+  }
+  return path.isAbsolute(declared) || !folder ? declared : path.join(folder.uri.fsPath, declared);
+}
 
 const westBuildTask: ZephyrTaskDefinition = {
   label: "West Build",
@@ -412,10 +429,33 @@ type CCppConfigurationUpdate = {
 type CCppPropertiesUpdateOptions = CCppConfigurationUpdate & {
   createConfiguration?: boolean;
 };
-type DefaultApplicationSettingsState = {
+export type DefaultApplicationSettingsState = {
   values: SettingsJsonConfig;
   deleteKeys: string[];
 };
+
+// Quiet mode for the settings writers below. A caller with no one to read a
+// notification, such as an AI agent tool, runs them inside
+// collectSettingsWarnings and gets the warnings back instead; everyone else
+// keeps the notifications.
+const settingsWarningSink = new AsyncLocalStorage<string[]>();
+
+/**
+ * Run `work` with the warnings of the application settings writers collected
+ * into `warnings` rather than shown, for everything `work` awaits.
+ */
+export function collectSettingsWarnings<T>(warnings: string[], work: () => Promise<T>): Promise<T> {
+  return settingsWarningSink.run(warnings, work);
+}
+
+function warnAboutSettings(message: string): void {
+  const sink = settingsWarningSink.getStore();
+  if (sink) {
+    sink.push(message);
+    return;
+  }
+  vscode.window.showWarningMessage(message);
+}
 
 const CPP_CONFIGURATION_NAME = 'Zephyr Workbench';
 const LEGACY_CPP_COMPILER_PATH_KEY = 'C_Cpp.default.compilerPath';
@@ -670,7 +710,8 @@ function getToolchainSdkRootPath(
   return '';
 }
 
-function buildDefaultApplicationSettings(
+/** The settings a created or imported application gets, as setDefault*Settings write them. */
+export function buildDefaultApplicationSettings(
   workspaceFolder: vscode.WorkspaceFolder,
   westWorkspace: WestWorkspace,
   zephyrBoard: ZephyrBoard,
@@ -752,14 +793,14 @@ async function readCppPropertiesFile(
     const parsed = ts.parseConfigFileTextToJson(cppPropertiesPath, serialized);
     if (parsed.error || !parsed.config || typeof parsed.config !== 'object' || Array.isArray(parsed.config)) {
       if (showWarning) {
-        vscode.window.showWarningMessage('Cannot setup C/C++ properties: c_cpp_properties.json format is invalid.');
+        warnAboutSettings('Cannot setup C/C++ properties: c_cpp_properties.json format is invalid.');
       }
       return undefined;
     }
     return { config: parsed.config, cppPropertiesPath, serialized };
   } catch {
     if (showWarning) {
-      vscode.window.showWarningMessage('Cannot setup C/C++ properties: c_cpp_properties.json could not be parsed.');
+      warnAboutSettings('Cannot setup C/C++ properties: c_cpp_properties.json could not be parsed.');
     }
     return undefined;
   }
@@ -885,7 +926,7 @@ export async function createCppPropertiesCompileCommandsRefresh(workspaceFolder:
       latestZephyrConfiguration.compileCommands = originalCompileCommands;
       await fsPromise.writeFile(latestFile.cppPropertiesPath, JSON.stringify(latestFile.config, null, 2), 'utf8');
     } catch {
-      vscode.window.showWarningMessage('Cannot refresh C/C++ properties for IntelliSense.');
+      warnAboutSettings('Cannot refresh C/C++ properties for IntelliSense.');
     }
   };
 }
@@ -1052,7 +1093,7 @@ async function applyDefaultProjectSettingsViaConfigurationApi(
     await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('configureOnOpen', false, vscode.ConfigurationTarget.WorkspaceFolder);
     await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('enableAutomaticKitScan', false, vscode.ConfigurationTarget.WorkspaceFolder);
   } catch (e) {
-    vscode.window.showWarningMessage('Cannot setup cmake setting on project');
+    warnAboutSettings('Cannot setup cmake setting on project');
   }
 
 }
@@ -1080,9 +1121,7 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
 
   static resolve(_task: vscode.Task): vscode.Task {
     const folder = _task.scope as vscode.WorkspaceFolder;
-    const appRootPath = typeof _task.definition.__appRootPath === 'string'
-      ? _task.definition.__appRootPath
-      : undefined;
+    const appRootPath = taskAppRootPath(_task.definition, folder);
     let project: ZephyrApplication;
     if (appRootPath) {
       const entry = findContainingWorkspaceApplicationEntry(folder, appRootPath);
@@ -1489,6 +1528,11 @@ export function buildDirectTask(
       (definition as Record<string, unknown>).__rawWestArgs = options.rawWestArgsOverride;
     }
     (definition as Record<string, unknown>).__appRootPath = project.appRootPath;
+    // Declared in the task schema, so VS Code includes it in the task's
+    // identity: without it, two applications of one west workspace built with
+    // the same board and configuration name look like the same task, and the
+    // second never starts.
+    (definition as Record<string, unknown>).appRoot = project.appRootPath;
     taskLabel = `${taskName} [${targetConfig.name}]`;
   }
 
@@ -1595,15 +1639,22 @@ export async function saveCustomTaskDefinition(
  * @param workspaceFolder 
  * @param activeConfigName 
  * @param activeIndex 
+ * @param appliesTo Limits the change to the workbench tasks it accepts; every
+ *   workbench task of the folder changes without it.
  * @returns 
  */
-export async function updateTasks(workspaceFolder: vscode.WorkspaceFolder, activeConfigName: string, activeIndex: number) {
+export async function updateTasks(
+  workspaceFolder: vscode.WorkspaceFolder,
+  activeConfigName: string,
+  activeIndex: number,
+  appliesTo?: (task: ZephyrTaskDefinition) => boolean,
+) {
   const { config, tasksJsonPath, serialized } = await ensureTasksFile(workspaceFolder);
   const regex = /\${config:zephyr-workbench\.build\.configurations\.(\d+)\./;
 
   let changed = false;
   const updatedTasks = config.tasks.map(task => {
-    if (!isWorkbenchTask(task)) {
+    if (!isWorkbenchTask(task) || (appliesTo && !appliesTo(task))) {
       return task;
     }
 

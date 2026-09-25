@@ -6,8 +6,8 @@ import {
   ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
 } from '../../constants';
-import { getGitTags } from '../execUtils';
-import { download, execCommand, extract } from '../installUtils';
+import { getGitTags, GitRemoteQueryOptions } from '../execUtils';
+import { download, DownloadHooks, execCommand, extract } from '../installUtils';
 import { compareVersions } from '../utils';
 import { findLibclangDir, RustLinkedCToolchainType } from '../../models/ToolchainInstallations';
 
@@ -43,6 +43,16 @@ const RUST_MAX_VERSION_COUNT = 30;
 
 // rustup channel offered on top of the numbered releases.
 export const RUST_STABLE_CHANNEL = 'stable';
+
+// The targets the Add Toolchain wizard pre-checks in its Minimal mode
+// (importsdk.mts): the Cortex-M4 (thumbv7em) and Cortex-M33 (thumbv8m.main)
+// compilers, soft and hard float ABIs.
+export const RUST_MINIMAL_PRESET_TARGETS: readonly string[] = [
+  'thumbv7em-none-eabi',
+  'thumbv7em-none-eabihf',
+  'thumbv8m.main-none-eabi',
+  'thumbv8m.main-none-eabihf',
+];
 
 // Snapshot of _rust_map_target() in zephyr-lang-rust, used when the online
 // fetch fails.
@@ -197,8 +207,8 @@ export interface LlvmVersionOptions {
   all: string[];
 }
 
-export async function fetchLlvmVersions(): Promise<LlvmVersionOptions> {
-  const tags = await getGitTags(LLVM_REPO_URL);
+export async function fetchLlvmVersions(opts?: GitRemoteQueryOptions): Promise<LlvmVersionOptions> {
+  const tags = await getGitTags(LLVM_REPO_URL, opts);
 
   const all = tags
     .map(tag => /^llvmorg-(\d+\.\d+\.\d+)$/.exec(tag)?.[1])
@@ -263,6 +273,12 @@ export function getLlvmTopLevelDirName(version: string): string | undefined {
 
 export function isLlvmPath(llvmRoot: string): boolean {
   return !!findLibclangDir(llvmRoot);
+}
+
+/** The LLVM root a picked folder stands for: its bin/ or lib/ folder means the folder above it. */
+export function llvmRootFromSelection(selectedPath: string): string {
+  const base = path.basename(selectedPath).toLowerCase();
+  return base === 'bin' || base === 'lib' ? path.dirname(selectedPath) : selectedPath;
 }
 
 const WINLIBS_LATEST_RELEASE_API_URL = 'https://api.github.com/repos/brechtsanders/winlibs_mingw/releases/latest';
@@ -338,12 +354,13 @@ export async function installMingwToolchain(
   rustToolchainPath: string,
   progress: vscode.Progress<{ message?: string; increment?: number }>,
   token: vscode.CancellationToken,
+  hooks?: DownloadHooks,
 ): Promise<string> {
   progress.report({ message: 'Querying the latest WinLibs MinGW-w64 release...' });
   const asset = await fetchLatestWinLibsAsset();
 
   progress.report({ message: `Download ${asset.name}` });
-  const downloadedFileUri = await download(asset.url, rustToolchainPath, context, progress, token);
+  const downloadedFileUri = await download(asset.url, rustToolchainPath, context, progress, token, hooks);
 
   // Best-effort checksum: skip silently when the hash cannot be obtained,
   // but fail hard on a real mismatch.
@@ -423,8 +440,8 @@ export async function updateRustToolchainLlvm(toolchainPath: string, llvmPath: s
   );
 }
 
-export async function fetchRustVersions(): Promise<string[]> {
-  const tags = await getGitTags(RUST_REPO_URL);
+export async function fetchRustVersions(opts?: GitRemoteQueryOptions): Promise<string[]> {
+  const tags = await getGitTags(RUST_REPO_URL, opts);
 
   return tags
     .filter(tag => /^\d+\.\d+\.\d+$/.test(tag))
@@ -435,10 +452,11 @@ export async function fetchRustVersions(): Promise<string[]> {
     .slice(0, RUST_MAX_VERSION_COUNT);
 }
 
-export async function fetchZephyrRustTargets(): Promise<string[]> {
+export async function fetchZephyrRustTargets(signal?: AbortSignal): Promise<string[]> {
   try {
     const response = await fetch(ZEPHYR_RUST_CMAKE_URL, {
       headers: { 'User-Agent': 'zephyr-workbench' },
+      signal,
     });
     if (!response.ok) {
       return ZEPHYR_RUST_FALLBACK_TARGETS;
@@ -463,10 +481,11 @@ export async function fetchZephyrRustTargets(): Promise<string[]> {
  * tables (rows look like "[`thumbv7em-none-eabi`](...) | * | Bare Armv7E-M").
  * Never throws; returns an empty map on failure.
  */
-export async function fetchRustTargetDescriptions(): Promise<Record<string, string>> {
+export async function fetchRustTargetDescriptions(signal?: AbortSignal): Promise<Record<string, string>> {
   try {
     const response = await fetch(RUST_PLATFORM_SUPPORT_MD_URL, {
       headers: { 'User-Agent': 'zephyr-workbench' },
+      signal,
     });
     if (!response.ok) {
       return {};
@@ -493,10 +512,10 @@ export async function fetchRustTargetDescriptions(): Promise<Record<string, stri
   }
 }
 
-export async function fetchZephyrRustTargetDetails(): Promise<Array<{ target: string; description: string }>> {
+export async function fetchZephyrRustTargetDetails(signal?: AbortSignal): Promise<Array<{ target: string; description: string }>> {
   const [targets, rustcNotes] = await Promise.all([
-    fetchZephyrRustTargets(),
-    fetchRustTargetDescriptions(),
+    fetchZephyrRustTargets(signal),
+    fetchRustTargetDescriptions(signal),
   ]);
 
   return targets.map(target => ({
@@ -505,6 +524,27 @@ export async function fetchZephyrRustTargetDetails(): Promise<Array<{ target: st
       .filter(Boolean)
       .join(' - '),
   }));
+}
+
+/**
+ * The Rust versions and Zephyr targets the Add Toolchain wizard offers. Only a
+ * version lookup failure rejects: the targets fall back to a built-in list.
+ */
+export async function getRustImportData(opts: { versions?: GitRemoteQueryOptions; signal?: AbortSignal } = {}) {
+  // fetchZephyrRustTargetDetails never throws (falls back to a static list);
+  // only a version fetch failure rejects.
+  const [versions, targetDetails] = await Promise.all([
+    fetchRustVersions(opts.versions),
+    fetchZephyrRustTargetDetails(opts.signal),
+  ]);
+
+  return {
+    versions: [RUST_STABLE_CHANNEL, ...versions],
+    targets: targetDetails.map(detail => detail.target),
+    targetDescriptions: Object.fromEntries(
+      targetDetails.map(detail => [detail.target, detail.description]),
+    ),
+  };
 }
 
 export async function detectRustVersion(toolchainPath: string): Promise<string> {
@@ -530,6 +570,30 @@ export async function registerRustToolchain(toolchain: RegisteredRustToolchain) 
   }
 
   list.push(toolchain);
+
+  await cfg.update(
+    ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY,
+    list,
+    vscode.ConfigurationTarget.Global,
+  );
+}
+
+/**
+ * Register a Rust toolchain, or replace the registration of one already
+ * registered in place: reinstalling a rustup toolchain updates its targets
+ * and links rather than failing as a duplicate.
+ */
+export async function registerOrUpdateRustToolchain(toolchain: RegisteredRustToolchain) {
+  const cfg = vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY);
+  const list: RegisteredRustToolchain[] =
+    cfg.get<RegisteredRustToolchain[]>(ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY) ?? [];
+
+  const index = list.findIndex(entry => entry.toolchainPath === toolchain.toolchainPath);
+  if (index === -1) {
+    list.push(toolchain);
+  } else {
+    list[index] = toolchain;
+  }
 
   await cfg.update(
     ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY,

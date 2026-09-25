@@ -4,8 +4,7 @@ import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getGitTags, getGitBranches } from "../utils/execUtils";
 import { getUpstreamProjectNames, loadTemplateConfig } from "../utils/zephyr/manifestUtils";
-import * as path from "path";
-import * as fs from "fs";
+import { resolveWorkspaceDestination } from "../utils/zephyr/westWorkspaceSetup";
 
 export class CreateWestWorkspacePanel {
   public static currentPanel: CreateWestWorkspacePanel | undefined;
@@ -486,33 +485,12 @@ export class CreateWestWorkspacePanel {
 
             // Create the workspace in a named subfolder of the selected location
             // (default "zephyrproject"). Empty falls back to the location itself.
-            // Not applicable to local import, which points at an existing workspace.
-            const subfolder = srcType !== 'local' ? String(message.subfolder ?? '').trim() : '';
-            if (subfolder.length > 0) {
-              workspacePath = path.join(workspacePath, subfolder);
-              if (fs.existsSync(workspacePath) && fs.readdirSync(workspacePath).length > 0) {
-                vscode.window.showWarningMessage(`The subfolder "${subfolder}" already exists and is not empty. Please choose a different name.`);
-                return;
-              }
-            }
-
-            const hasDeps = fs.existsSync(path.join(workspacePath, 'deps'));
-            const hasManifestDir = fs.existsSync(path.join(workspacePath, 'manifest'));
-            const hasWestDir = fs.existsSync(path.join(workspacePath, '.west'));
-            const looksLikeWestWorkspace = hasDeps || hasManifestDir || hasWestDir;
-
-            // For remote/template/manifest init: require an empty folder (not an existing west workspace)
-            if (srcType !== 'local') {
-              if (looksLikeWestWorkspace) {
-                vscode.window.showWarningMessage('The selected folder already contains a west workspace. Please select an empty folder.');
-                return;
-              }
-            } else {
-              // For local import: expect an existing west workspace folder
-              if (!hasWestDir) {
-                vscode.window.showWarningMessage("Local import expects an existing west workspace folder (missing '.west'). Please select the workspace root.");
-                return;
-              }
+            // A new workspace needs an empty folder; a local import needs '.west'.
+            const destination = resolveWorkspaceDestination(workspacePath, srcType, String(message.subfolder ?? ''));
+            workspacePath = destination.workspacePath;
+            if (destination.problem) {
+              vscode.window.showWarningMessage(destination.problem);
+              return;
             }
             
             templateMode = message.templateMode;

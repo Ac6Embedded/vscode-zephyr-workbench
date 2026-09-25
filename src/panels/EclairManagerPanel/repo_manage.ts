@@ -212,6 +212,131 @@ function get_checkout_dir(origin: string, ref: string, rev: string): string {
   return path.join(get_repo_checkouts_root(), hash, safe_ref);
 }
 
+/** The refs the ECLAIR Manager resolved for `origin`, recorded next to its checkouts. */
+function resolved_refs_file(origin: string): string {
+  return path.join(get_repo_checkouts_root(), origin_hash(origin), "resolved-refs.json");
+}
+
+type ResolvedRefs = Record<string, { rev?: unknown; at?: unknown }>;
+
+function read_resolved_refs(origin: string): ResolvedRefs {
+  try {
+    const data = JSON.parse(fs.readFileSync(resolved_refs_file(origin), "utf8"));
+    return data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Records the revision `ref` of `origin` resolved to, and when, so a run that
+ * must not reach git servers finds the checkout of any ref: HEAD, a pull
+ * request ref, or a ref whose revision is the checkout of another ref, which
+ * git's own files name only for the first ref it was fetched for. A failure
+ * only loses the record.
+ */
+function record_resolved_ref(origin: string, ref: string, rev: string): void {
+  try {
+    const refs = read_resolved_refs(origin);
+    refs[ref] = { rev, at: Date.now() };
+    const file = resolved_refs_file(origin);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(refs, null, 2));
+  } catch {
+    // A run offline then goes by what git recorded.
+  }
+}
+
+/**
+ * The refs a checkout is known to have been made for, read from its git files
+ * without running git: the ref FETCH_HEAD records it was fetched for, and,
+ * for a checkout cloned in full, the branches and tags of its packed-refs that
+ * name its revision `rev`.
+ */
+function checkout_ref_names(dir: string, rev: string): Set<string> {
+  const read = (file: string) => {
+    try {
+      return fs.readFileSync(path.join(dir, ".git", file), "utf8");
+    } catch {
+      return "";
+    }
+  };
+  const names = new Set<string>();
+  // "<sha>\t[not-for-merge]\tbranch 'main' of <origin>", "tag 'v1.0' of", or
+  // "'refs/pull/1/head' of" for any other ref. A fetch of HEAD leaves out the
+  // "<ref> of" and records the origin alone.
+  for (const line of read("FETCH_HEAD").split(/\r?\n/)) {
+    const fetched = /^[0-9a-f]+\t[^\t]*\t(.+)$/.exec(line);
+    if (!fetched) {
+      continue;
+    }
+    const named = /^(?:(?:branch|tag) )?'(.+)' of /.exec(fetched[1]);
+    if (named) {
+      names.add(named[1]);
+    } else if (!fetched[1].startsWith("remote-tracking branch ")) {
+      names.add("HEAD");
+    }
+  }
+  // "<sha> refs/tags/v1.0", followed by "^<sha>" when the tag is annotated.
+  const wanted = rev.toLowerCase();
+  let previous: string | undefined;
+  for (const line of read("packed-refs").split(/\r?\n/)) {
+    const peeled = /^\^([0-9a-f]+)$/.exec(line);
+    const entry = /^([0-9a-f]+) refs\/(?:remotes\/origin|heads|tags)\/(.+)$/.exec(line);
+    if (peeled && previous && peeled[1].startsWith(wanted)) {
+      names.add(previous);
+    } else if (entry && entry[1].startsWith(wanted)) {
+      names.add(entry[2]);
+    }
+    previous = entry ? entry[2] : undefined;
+  }
+  return names;
+}
+
+/**
+ * The revisions of `origin` checked out on this machine for `ref`, the one
+ * most recently known to be what `ref` names first: by the ECLAIR Manager
+ * resolving it, or by git fetching it. Found without any network access, for
+ * a run that must not reach git servers. A checkout made for another ref of
+ * the same origin is left out, even when it is newer.
+ */
+export function local_checkout_revs(origin: string, ref: string): string[] {
+  const dir = path.join(get_repo_checkouts_root(), origin_hash(origin));
+  const trimmed = ref.trim();
+  const name = trimmed.replace(/^refs\/(?:heads|tags)\//, "");
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const fetched_at = (checkout: string) => {
+    try {
+      return fs.statSync(path.join(checkout, ".git", "FETCH_HEAD")).mtimeMs;
+    } catch {
+      return fs.statSync(checkout).mtimeMs;
+    }
+  };
+  /** Per checkout folder, when it was last known to be what `ref` names. */
+  const known = new Map<string, number>();
+  const checkouts = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+  for (const checkout of checkouts) {
+    if (checkout_ref_names(path.join(dir, checkout), checkout).has(name)) {
+      known.set(checkout, fetched_at(path.join(dir, checkout)));
+    }
+  }
+  const resolved = read_resolved_refs(origin)[trimmed];
+  if (resolved && typeof resolved.rev === "string" && typeof resolved.at === "number") {
+    const checkout = sanitize_path_component(resolved.rev);
+    if (checkouts.includes(checkout)) {
+      known.set(checkout, Math.max(known.get(checkout) ?? 0, resolved.at));
+    }
+  }
+  return [...known]
+    .sort((a, b) => b[1] - a[1])
+    .map(([checkout]) => checkout);
+}
+
 /**
  * Reads the `remote.origin.url` of an existing checkout using `git remote
  * get-url origin`.  Returns `undefined` if the command fails (e.g. the
@@ -226,7 +351,7 @@ async function read_remote_origin(dir: string): Promise<string | undefined> {
   });
 }
 
-function looks_like_sha(value: string): boolean {
+export function looks_like_sha(value: string): boolean {
   return /^[0-9a-f]{7,40}$/i.test(value.trim());
 }
 
@@ -243,12 +368,15 @@ export async function resolve_ref_to_rev(origin: string, ref: string): Promise<s
     return undefined;
   }
   const refs = refsResult.ok;
-  return (
+  const rev =
     refs[`refs/tags/${trimmed}^{}`] ||
     refs[`refs/heads/${trimmed}`] ||
     refs[`refs/tags/${trimmed}`] ||
-    refs[trimmed]
-  );
+    refs[trimmed];
+  if (rev) {
+    record_resolved_ref(origin, trimmed, rev);
+  }
+  return rev;
 }
 
 async function read_head_rev(dir: string): Promise<string | undefined> {

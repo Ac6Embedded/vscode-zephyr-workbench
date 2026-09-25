@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'yaml';
 
-import { classifyShell, execCommandWithEnv, getShellExe } from '../execUtils';
+import { captureCommand, classifyShell, getShellExe } from '../execUtils';
 import {
   DetectPlatform,
   DetectableToolLike,
@@ -53,15 +53,35 @@ export interface DebugToolAliasEntry {
   ['version-regex']?: VersionProbeSetting;
 }
 
-interface DebugToolsManifest {
+export interface DebugToolsManifest {
   debug_tools?: DebugToolEntry[];
   aliases?: DebugToolAliasEntry[];
 }
 
-interface ToolVersionProbeResult {
+export interface ToolVersionProbeResult {
   installed: boolean;
   version?: string;
   updateAvailable: boolean;
+  /**
+   * The version command did not finish in time. For a PATH-only tool
+   * `installed` is then false without proof, so a caller reporting presence
+   * must not read it as absent.
+   */
+  timedOut?: boolean;
+  /** The version command was stopped by the caller's signal: like timedOut, no answer. */
+  aborted?: boolean;
+}
+
+/**
+ * How long one version command may run. Generous for the panels, where every
+ * tool is probed at once through a PowerShell spawn on Windows; a caller with a
+ * tighter budget passes its own.
+ */
+export const DEFAULT_VERSION_PROBE_TIMEOUT_MS = 30000;
+
+export interface VersionProbeRunOptions {
+  timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 interface ProbeConfig {
@@ -481,58 +501,62 @@ function resolveToolExecutablePath(
   return resolveExecutablePathFromBase(detectedRoot, executableName);
 }
 
-async function executeVersionProbe(probe: ProbeConfig): Promise<{ installed: boolean; version?: string }> {
-  return new Promise(resolve => {
-    if (probe.pathValue) {
-      const version = extractVersionFromProbeText(probe.pathValue, probe.regex);
-      resolve({
+type VersionProbeRun = { installed: boolean; version?: string; timedOut?: boolean; aborted?: boolean };
+
+async function executeVersionProbe(
+  probe: ProbeConfig,
+  options: VersionProbeRunOptions = {},
+): Promise<VersionProbeRun> {
+  if (probe.pathValue) {
+    const version = extractVersionFromProbeText(probe.pathValue, probe.regex);
+    return {
+      installed: true,
+      version: version && version.length > 0 ? version : undefined,
+    };
+  }
+
+  if (probe.filePath) {
+    try {
+      const contents = fs.readFileSync(probe.filePath, 'utf8');
+      const version = extractVersionFromProbeText(contents, probe.regex);
+      return {
         installed: true,
         version: version && version.length > 0 ? version : undefined,
-      });
-      return;
+      };
+    } catch {
+      return { installed: false };
     }
+  }
 
-    if (probe.filePath) {
-      try {
-        const contents = fs.readFileSync(probe.filePath, 'utf8');
-        const version = extractVersionFromProbeText(contents, probe.regex);
-        resolve({
-          installed: true,
-          version: version && version.length > 0 ? version : undefined,
-        });
-      } catch {
-        resolve({ installed: false });
-      }
-      return;
-    }
+  if (!probe.command?.trim()) {
+    return { installed: false };
+  }
 
-    if (!probe.command?.trim()) {
-      resolve({ installed: false });
-      return;
-    }
-
-    execCommandWithEnv(adaptProbeCommandForShell(probe.command), undefined, (error, stdout, stderr) => {
-      const output = `${stdout ?? ''}\n${stderr ?? ''}`;
-      const version = extractVersionFromProbeText(output, probe.regex);
-      if (version && version.length > 0) {
-        // Some tools print a valid version to stderr or still return a non-zero
-        // exit code for `--version`. A regex match is enough to treat the probe
-        // as successful.
-        resolve({ installed: true, version });
-        return;
-      }
-
-      if (error) {
-        resolve({ installed: false });
-        return;
-      }
-
-      resolve({
-        installed: true,
-        version: version && version.length > 0 ? version : undefined,
-      });
-    });
+  // captureCommand always settles: a bare execCommandWithEnv callback never
+  // fired when the env script setting was empty or venv.path was missing, and a
+  // version command that fell back to an interactive CLI waited forever.
+  const result = await captureCommand(adaptProbeCommandForShell(probe.command), {
+    timeoutMs: options.timeoutMs ?? DEFAULT_VERSION_PROBE_TIMEOUT_MS,
+    signal: options.signal,
   });
+  const output = `${result.stdout}\n${result.stderr}`;
+  const version = extractVersionFromProbeText(output, probe.regex);
+  if (version && version.length > 0) {
+    // Some tools print a valid version to stderr or still return a non-zero
+    // exit code for `--version`. A regex match is enough to treat the probe
+    // as successful.
+    return { installed: true, version };
+  }
+
+  if (!result.ran || result.timedOut || result.aborted || result.exitCode !== 0) {
+    return {
+      installed: false,
+      ...(result.timedOut ? { timedOut: true } : {}),
+      ...(result.aborted ? { aborted: true } : {}),
+    };
+  }
+
+  return { installed: true };
 }
 
 /**
@@ -550,12 +574,13 @@ async function runVersionProbe(
   envData: any,
   ziBaseDir: string,
   platform: DetectPlatform,
-): Promise<{ installed: boolean; version?: string }> {
+  runOptions: VersionProbeRunOptions = {},
+): Promise<VersionProbeRun> {
   const probe = buildProbeConfig(probeOwner, tool, executablePath, executableName, envData, ziBaseDir, platform);
   if (!probe || (!probe.pathValue && !probe.filePath && !probe.command?.trim())) {
     return { installed: false };
   }
-  return executeVersionProbe(probe);
+  return executeVersionProbe(probe, runOptions);
 }
 
 export async function probeDebugToolVersion(options: {
@@ -565,6 +590,8 @@ export async function probeDebugToolVersion(options: {
   envData?: any;
   ziBaseDir?: string;
   platform?: DetectPlatform;
+  timeoutMs?: number;
+  signal?: AbortSignal;
 }): Promise<ToolVersionProbeResult> {
   const {
     manifest,
@@ -573,6 +600,8 @@ export async function probeDebugToolVersion(options: {
     envData,
     ziBaseDir = getInternalDirRealPath(),
     platform = getDetectPlatform(),
+    timeoutMs,
+    signal,
   } = options;
 
   // Install detection and version probing are kept separate:
@@ -593,7 +622,8 @@ export async function probeDebugToolVersion(options: {
     return { installed: false, updateAvailable: false };
   }
 
-  const result = await runVersionProbe(probeOwner, tool, executablePath, executableName, envData, ziBaseDir, platform);
+  const result = await runVersionProbe(
+    probeOwner, tool, executablePath, executableName, envData, ziBaseDir, platform, { timeoutMs, signal });
   const installed = installedFromDetect ?? result.installed;
 
   return {
@@ -603,6 +633,8 @@ export async function probeDebugToolVersion(options: {
       installed &&
       !isIgnoredReferenceVersion(tool.version) &&
       isReferenceVersionNewer(result.version, tool.version),
+    ...(result.timedOut ? { timedOut: true } : {}),
+    ...(result.aborted ? { aborted: true } : {}),
   };
 }
 

@@ -4,6 +4,62 @@ export function normalizeWestFlagDValue(value: string): string {
   return value.trim().replace(/^(--\s*)?-D/, '').trim();
 }
 
+/** The variable name of a normalized `NAME` or `NAME=VALUE` -D flag. */
+export function westFlagDName(value: string): string {
+  const separatorIndex = value.indexOf('=');
+  return (separatorIndex === -1 ? value : value.slice(0, separatorIndex)).trim();
+}
+
+// The list edits below are shared by the Applications view and the agent
+// tools, so a flag stored from either one has the same normalized shape.
+
+/** Append a -D flag unless it is already there. Returns whether the list changed. */
+export function addWestFlagDValue(flags: string[], value: string): boolean {
+  const normalized = normalizeWestFlagDValue(value);
+  if (!normalized || flags.includes(normalized)) {
+    return false;
+  }
+  flags.push(normalized);
+  return true;
+}
+
+/**
+ * Replace one -D flag in place. When the new value already exists elsewhere,
+ * the old entry is dropped instead, so the list never holds a duplicate.
+ */
+export function replaceWestFlagDValue(flags: string[], oldValue: string, value: string): boolean {
+  const normalized = normalizeWestFlagDValue(value);
+  if (!normalized) {
+    return false;
+  }
+
+  const index = flags.indexOf(oldValue);
+  if (index === -1) {
+    return false;
+  }
+
+  if (normalized !== oldValue) {
+    const duplicateIndex = flags.indexOf(normalized);
+    if (duplicateIndex !== -1) {
+      flags.splice(index, 1);
+      return true;
+    }
+  }
+
+  flags[index] = normalized;
+  return true;
+}
+
+/** Remove one -D flag, matched exactly. Returns whether the list changed. */
+export function removeWestFlagDValue(flags: string[], value: string): boolean {
+  const index = flags.indexOf(value);
+  if (index === -1) {
+    return false;
+  }
+  flags.splice(index, 1);
+  return true;
+}
+
 function isWrappedInQuotes(value: string): boolean {
   return /^".*"$/.test(value) || /^'.*'$/.test(value);
 }
@@ -41,7 +97,8 @@ export interface SplitWestBuildArgs {
   cmakeArgs: string;
 }
 
-function tokenizeWestArgs(raw: string | undefined): string[] {
+/** Split a west arguments string into words, honouring single and double quotes. */
+export function tokenizeWestArgs(raw: string | undefined): string[] {
   const input = raw?.trim() ?? '';
   const tokens: string[] = [];
   let current = '';

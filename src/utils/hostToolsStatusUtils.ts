@@ -1,12 +1,13 @@
-import { exec, execFile } from "child_process";
+import { execFile } from "child_process";
 import * as fs from 'fs';
 import path from "path";
 import * as vscode from "vscode";
 import yaml from 'yaml';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY } from "../constants";
-import { execCommandWithEnv, getConfiguredWorkbenchPath } from "./execUtils";
-import { fileExists, getInternalDirRealPath } from "./utils";
-import { getHostToolsParts, HostToolsPartDef } from "./hostToolsPartsRegistry";
+import { buildEnvSourcedShellCommand, captureCommand, getConfiguredWorkbenchPath, getShellExe } from "./execUtils";
+import { fileExists, getInstallDirRealPath, getInternalDirRealPath } from "./utils";
+import { getAdvancedRowParts, getHostToolsParts, HostToolsPartDef } from "./hostToolsPartsRegistry";
+import { DEVELOPER_TOOLS_MISSING_ENV, pythonCandidatesWithoutStubs } from "./macDeveloperTools";
 
 /**
  * Read-only status helpers for the host tools install: version lookup via the
@@ -169,75 +170,224 @@ export async function probeHostToolsPresence(
   return presence;
 }
 
-/**
- * Run the installer in -OnlyCheck mode and parse its `name [version]` lines
- * into a lowercased name -> version map (`.exe` suffixes stripped). Returns
- * an empty map on any failure; callers decide whether to keep previous data.
- * Extracted from HostToolsPanel so both panels share the single parser of the
- * byte-stable -OnlyCheck output contract.
- */
-export async function fetchHostToolsCheckedVersions(extensionUri: vscode.Uri): Promise<Record<string, string>> {
-  try {
-    const scriptsDir = vscode.Uri.joinPath(extensionUri, 'scripts', 'hosttools');
-    const destDir = getInternalDirRealPath();
+/** A -OnlyCheck version for display: empty when absent or reported missing. */
+export function displayHostToolVersion(raw: string | undefined): string {
+  if (!raw) { return ''; }
+  if (raw.toUpperCase() === 'NOT INSTALLED') { return ''; }
+  return raw;
+}
 
-    let cmd = '';
-    if (process.platform === 'win32') {
-      const ps = vscode.Uri.joinPath(scriptsDir, 'install.ps1').fsPath;
-      cmd = `powershell -File "${ps}" -OnlyCheck -InstallDir "${destDir}"`;
-    } else if (process.platform === 'darwin') {
-      const sh = vscode.Uri.joinPath(scriptsDir, 'install-mac.sh').fsPath;
-      cmd = `bash "${sh}" --only-check "${destDir}"`;
-    } else {
-      const sh = vscode.Uri.joinPath(scriptsDir, 'install.sh').fsPath;
-      cmd = `bash "${sh}" --only-check "${destDir}"`;
+export interface HostToolsPartStatus {
+  part: string;
+  label: string;
+  /** The zinstaller copy (or, on provider rows, the provider's copy) is present. */
+  present: boolean;
+  detectedVersion: string;
+  /** Only a system-wide tool answered the check: the zinstaller copy is absent. */
+  systemDetected: boolean;
+  provider?: string;
+  sudo?: boolean;
+  /** What the installer would install: the tools.yml version, or the provider text. */
+  targetVersion?: string;
+}
+
+/**
+ * Combine presence probes and -OnlyCheck versions into one status per part.
+ * The Advanced Host Tools panel renders these rows, and the environment check
+ * reports them.
+ */
+export function buildHostToolsPartsStatus(
+  presence: Record<string, boolean>,
+  versions: Record<string, string>,
+  parts: HostToolsPartDef[] = getAdvancedRowParts(),
+  targets?: Record<string, string>,
+): HostToolsPartStatus[] {
+  return parts.map(p => {
+    const present = presence[p.id] === true;
+    // The -OnlyCheck run resolves the zinstaller copy first (env sourced);
+    // when the artifact is absent it falls back to a system-wide tool, so
+    // the detected version then describes what the SYSTEM provides.
+    let detectedVersion = '';
+    if (p.probe.versionKeysAllOf) {
+      // Batch row (linux system packages): list the detected constituents.
+      detectedVersion = p.probe.versionKeysAllOf
+        .map(k => ({ k, v: displayHostToolVersion(versions[k]) }))
+        .filter(e => e.v.length > 0)
+        .map(e => `${e.k} ${e.v}`)
+        .join(', ');
+    } else if (p.versionKey) {
+      detectedVersion = displayHostToolVersion(versions[p.versionKey]);
     }
+    // "System only" contrasts the zinstaller artifact with a PATH-wide
+    // tool; on provider rows (brew/distro) the provider IS the system, so
+    // the distinction carries no meaning there.
+    const systemDetected = !p.provider && !present && detectedVersion.length > 0;
+    if (p.provider && detectedVersion.length === 0) {
+      detectedVersion = '-';
+    }
+    const status: HostToolsPartStatus = { part: p.id, label: p.label, present, detectedVersion, systemDetected };
+    if (p.provider) { status.provider = p.provider; }
+    if (p.sudo) { status.sudo = true; }
+    if (targets) {
+      const target = p.targetKey ? (targets[p.targetKey] ?? '') : (p.availableText ?? '');
+      if (target) { status.targetVersion = target; }
+    }
+    return status;
+  });
+}
+
+/**
+ * Parse the installer's -OnlyCheck/--only-check output: `name [version]` lines
+ * into a lowercased name -> version map (`.exe` suffixes stripped). A value
+ * may be 'NOT INSTALLED'. The single parser of that byte-stable contract.
+ */
+export function parseHostToolsCheckOutput(text: string): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('---')) { continue; }
+    // Expect lines like: python [3.13.5] or 7z [24.08 (x64)]
+    const m = line.match(/^(\S+)\s*\[(.+?)\]\s*$/);
+    if (!m) { continue; }
+    const name = m[1].toLowerCase().replace(/\.exe$/, '');
+    const ver = m[2].trim();
+    if (name && ver) {
+      map[name] = ver;
+    }
+  }
+  return map;
+}
+
+export interface HostToolsOnlyCheckInvocation {
+  platform: 'win32' | 'darwin' | 'linux';
+  /** The per-OS installer script shipped with the extension. */
+  scriptPath: string;
+  /**
+   * The folder the installer is given. The script appends `.zinstaller`
+   * itself, so this is the parent of the internal dir, as Verify Host Tools
+   * has always passed.
+   */
+  installDir: string;
+}
+
+/**
+ * What the installer's check mode is run with. Shared by the visible Verify
+ * Host Tools task and the captured check, so both inspect the same install.
+ */
+export function getHostToolsOnlyCheckInvocation(
+  extensionUri: vscode.Uri,
+  platform: NodeJS.Platform = process.platform,
+): HostToolsOnlyCheckInvocation {
+  const scriptsDir = vscode.Uri.joinPath(extensionUri, 'scripts', 'hosttools');
+  const installDir = getInstallDirRealPath();
+  if (platform === 'win32') {
+    return { platform, scriptPath: vscode.Uri.joinPath(scriptsDir, 'install.ps1').fsPath, installDir };
+  }
+  if (platform === 'darwin') {
+    return { platform, scriptPath: vscode.Uri.joinPath(scriptsDir, 'install-mac.sh').fsPath, installDir };
+  }
+  return { platform: 'linux', scriptPath: vscode.Uri.joinPath(scriptsDir, 'install.sh').fsPath, installDir };
+}
+
+/** The check-mode command line, before any env sourcing. */
+export function buildHostToolsOnlyCheckCommand(invocation: HostToolsOnlyCheckInvocation): string {
+  return invocation.platform === 'win32'
+    ? `powershell -File "${invocation.scriptPath}" -OnlyCheck -InstallDir "${invocation.installDir}"`
+    : `bash "${invocation.scriptPath}" --only-check "${invocation.installDir}"`;
+}
+
+/** Generous by default: on Windows the check is PowerShell running a probe per tool. */
+export const HOST_TOOLS_CHECK_TIMEOUT_MS = 120000;
+
+export interface HostToolsOnlyCheckResult {
+  /** False when the check could not start at all. */
+  ran: boolean;
+  /** The installer exits with minus the number of missing packages, so non-zero is not a failure. */
+  exitCode?: number;
+  timedOut?: boolean;
+  versions: Record<string, string>;
+  output: string;
+  error?: string;
+}
+
+/**
+ * Run the installer in check mode and parse its output. Distinguishes "the
+ * check could not run" (ran false, or timed out) from "it ran and found
+ * nothing", which an empty map alone cannot. Bounded by a timeout that kills
+ * the check, and never throws.
+ */
+export async function runHostToolsOnlyCheck(
+  extensionUri: vscode.Uri,
+  opts: {
+    timeoutMs?: number;
+    signal?: AbortSignal;
+    onOutput?: (text: string) => void;
+    /**
+     * The macOS developer tools are missing: the check reports their
+     * /usr/bin stubs as not installed instead of running them, since each
+     * would open the system install dialog.
+     */
+    developerToolsMissing?: boolean;
+  } = {},
+): Promise<HostToolsOnlyCheckResult> {
+  try {
+    const invocation = getHostToolsOnlyCheckInvocation(extensionUri);
+    const cmd = buildHostToolsOnlyCheckCommand(invocation);
+    // win32 forces PowerShell on the env-sourced path: routing this
+    // `powershell -File ...` command through a Git Bash/Cygwin default
+    // profile would depend on `powershell` being on that shell's PATH and on
+    // bash preserving the quoted backslash paths.
+    const executableOverride = invocation.platform === 'win32' ? 'powershell.exe' : undefined;
 
     // The env-sourced wrapper chains '. env.sh && <cmd>': before the host
     // tools exist (or when env.sh was deleted) the sourcing fails and the
     // check never runs, leaving the Detected column empty for tools that ARE
     // installed. The check scripts are self-sufficient, so run them plain
-    // whenever the configured env script is not an existing file.
+    // whenever the configured env script is not an existing file, or when the
+    // env-sourced run would be refused anyway (venv.path set to a missing folder).
     let envScriptPath: string | undefined;
     try {
       envScriptPath = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY);
     } catch { }
-    const useEnv = !!envScriptPath && fileExists(envScriptPath);
-    // win32 forces PowerShell on the env-sourced path: routing this
-    // `powershell -File ...` command through a Git Bash/Cygwin default
-    // profile would depend on `powershell` being on that shell's PATH and on
-    // bash preserving the quoted backslash paths.
-    const proc = useEnv
-      ? await execCommandWithEnv(cmd, undefined, undefined, process.platform === 'win32' ? 'powershell.exe' : undefined)
-      : exec(cmd);
-
-    let full = '';
-    await new Promise<void>((resolve, reject) => {
-      proc.stdout?.on('data', c => { full += c.toString(); });
-      proc.stderr?.on('data', c => { full += c.toString(); });
-      proc.on('error', e => reject(e));
-      proc.on('close', _code => resolve());
-    });
-
-    const map: Record<string, string> = {};
-    const lines = full.split(/\r?\n/);
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line || line.startsWith('---')) { continue; }
-      // Expect lines like: python [3.13.5] or 7z [24.08 (x64)]
-      const m = line.match(/^(\S+)\s*\[(.+?)\]\s*$/);
-      if (!m) { continue; }
-      let name = m[1].toLowerCase();
-      name = name.replace(/\.exe$/, '');
-      const ver = m[2].trim();
-      if (name && ver) {
-        map[name] = ver;
+    let useEnv = !!envScriptPath && fileExists(envScriptPath);
+    if (useEnv) {
+      try {
+        buildEnvSourcedShellCommand(cmd, undefined, executableOverride ?? getShellExe());
+      } catch {
+        useEnv = false;
       }
     }
-    return map;
-  } catch {
-    return {};
+
+    const result = await captureCommand(cmd, {
+      timeoutMs: opts.timeoutMs ?? HOST_TOOLS_CHECK_TIMEOUT_MS,
+      sourceEnv: useEnv,
+      executableOverride,
+      signal: opts.signal,
+      onOutput: opts.onOutput,
+      ...(opts.developerToolsMissing && invocation.platform === 'darwin' ? { env: { [DEVELOPER_TOOLS_MISSING_ENV]: '1' } } : {}),
+    });
+    const output = `${result.stdout}\n${result.stderr}`;
+    return {
+      ran: result.ran,
+      ...(result.exitCode !== undefined ? { exitCode: result.exitCode } : {}),
+      ...(result.timedOut ? { timedOut: true } : {}),
+      versions: parseHostToolsCheckOutput(output),
+      output,
+      ...(result.error && !result.ran ? { error: result.error } : {}),
+    };
+  } catch (error) {
+    return { ran: false, versions: {}, output: '', error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/**
+ * Run the installer in -OnlyCheck mode and return the parsed version map.
+ * Returns an empty map on any failure; callers decide whether to keep
+ * previous data. Extracted from HostToolsPanel so both panels share the
+ * single parser of the byte-stable -OnlyCheck output contract.
+ */
+export async function fetchHostToolsCheckedVersions(extensionUri: vscode.Uri): Promise<Record<string, string>> {
+  return (await runHostToolsOnlyCheck(extensionUri)).versions;
 }
 
 /**
@@ -331,8 +481,16 @@ function runPythonProbe(exe: string): Promise<PythonProbeResult | undefined> {
  * The Microsoft Store app-execution alias resolves as `python` but exits
  * non-zero, so it correctly lands in the "not detected" branch. On posix
  * `python3` is probed first: distros usually ship no bare `python`.
+ *
+ * `developerToolsMissing` is for a caller that must not show a dialog: with
+ * the macOS developer tools missing, /usr/bin/python3 is a stub that opens
+ * the install dialog, so it is skipped instead of run.
  */
-export async function probePythonInterpreter(mode: 'system' | 'custom', customPath?: string): Promise<PythonProbeResult> {
+export async function probePythonInterpreter(
+  mode: 'system' | 'custom',
+  customPath?: string,
+  opts: { developerToolsMissing?: boolean } = {},
+): Promise<PythonProbeResult> {
   const candidates: string[] = [];
   if (mode === 'custom') {
     const provided = (customPath ?? '').trim();
@@ -363,6 +521,14 @@ export async function probePythonInterpreter(mode: 'system' | 'custom', customPa
   } else {
     if (process.platform === 'win32') {
       candidates.push('python');
+    } else if (process.platform === 'darwin' && opts.developerToolsMissing) {
+      candidates.push(...pythonCandidatesWithoutStubs(['python3', 'python']));
+      if (candidates.length === 0) {
+        return {
+          ok: false,
+          error: 'No Python on PATH other than the /usr/bin/python3 stub, which was not run because the macOS Command Line Tools are not installed',
+        };
+      }
     } else {
       candidates.push('python3', 'python');
     }
@@ -380,4 +546,43 @@ export async function probePythonInterpreter(mode: 'system' | 'custom', customPa
       ? 'No working Python detected on PATH'
       : 'The selected Python does not run',
   };
+}
+
+/** The version number in `west --version` output, such as "West version: v1.2.0". */
+export function parseWestVersionOutput(text: string): string | undefined {
+  return /v?(\d+(?:\.\d+)+)/.exec(text)?.[1];
+}
+
+export interface WestVersionProbeResult {
+  ok: boolean;
+  version?: string;
+  timedOut?: boolean;
+  error?: string;
+}
+
+/**
+ * Read the version of a venv's west without a shell or the env script: west
+ * is a console script whose launcher already points at the venv's Python.
+ * Only ever pass a path the workbench resolved itself, because this runs it.
+ */
+export function probeWestVersion(westPath: string, timeoutMs = 10000): Promise<WestVersionProbeResult> {
+  return new Promise((resolve) => {
+    try {
+      const child = execFile(westPath, ['--version'], { timeout: timeoutMs }, (error, stdout, stderr) => {
+        const version = parseWestVersionOutput(`${stdout}\n${stderr}`);
+        if (version) {
+          resolve({ ok: true, version });
+          return;
+        }
+        resolve({
+          ok: false,
+          ...(error?.killed ? { timedOut: true } : {}),
+          error: error ? error.message : 'west printed no version',
+        });
+      });
+      child.stdin?.end();
+    } catch (error) {
+      resolve({ ok: false, error: error instanceof Error ? error.message : String(error) });
+    }
+  });
 }

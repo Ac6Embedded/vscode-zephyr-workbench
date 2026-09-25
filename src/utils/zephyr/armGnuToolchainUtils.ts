@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import path from 'path';
 import {
   ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
@@ -128,15 +129,17 @@ export function buildArmGnuDownloadUrl(
   return getArmGnuPackageFileUrl(cleanVersion, `arm-gnu-toolchain-${cleanVersion}-${host.id}-${targetTriple}.${host.archiveExt}`);
 }
 
-export async function fetchArmGnuDownloadCatalog(): Promise<ArmGnuDownloadCatalog> {
+export async function fetchArmGnuDownloadCatalog(signal?: AbortSignal): Promise<ArmGnuDownloadCatalog> {
   const packages = (await fetchGitLabList<{ id: number; name: string; version: string }>(
     `${ARM_GNU_GITLAB_PROJECT_API_URL}/packages?package_type=generic&package_name=${ARM_GNU_PACKAGE_NAME}`,
+    signal,
   )).filter(pkg => pkg.name === ARM_GNU_PACKAGE_NAME);
 
   const catalog = buildArmGnuDownloadCatalog(await Promise.all(packages.map(async pkg => ({
     version: pkg.version,
     fileNames: (await fetchGitLabList<{ file_name: string }>(
       `${ARM_GNU_GITLAB_PROJECT_API_URL}/packages/${pkg.id}/package_files`,
+      signal,
     )).map(file => file.file_name),
   }))));
 
@@ -145,6 +148,38 @@ export async function fetchArmGnuDownloadCatalog(): Promise<ArmGnuDownloadCatalo
   }
 
   return catalog;
+}
+
+/**
+ * The releases and assets offered for this host, as the Add Toolchain wizard
+ * lists them. Throws on a host Arm publishes no toolchain for.
+ */
+export async function getArmGnuImportData(signal?: AbortSignal): Promise<ArmGnuDownloadCatalog> {
+  const host = getArmGnuHostTarget();
+  if (!host) {
+    throw new Error("Arm GNU Toolchain import is not supported on this platform.");
+  }
+
+  const catalog = filterArmGnuCatalogForHost(
+    await fetchArmGnuDownloadCatalog(signal),
+    host.id,
+  );
+
+  return {
+    releases: catalog.releases,
+    assets: catalog.assets,
+  };
+}
+
+/** The release of an Arm GNU Toolchain folder named as Arm ships it, or '' when the name does not say. */
+export function inferArmGnuToolchainVersion(toolchainPath: string): string {
+  const match = /^arm-gnu-toolchain-([^-]+)-/i.exec(path.basename(toolchainPath));
+  return match?.[1] ?? '';
+}
+
+/** The toolchain root a picked folder stands for: its bin/ folder means the folder above it. */
+export function normalizeArmGnuToolchainRoot(selectedPath: string): string {
+  return path.basename(selectedPath).toLowerCase() === 'bin' ? path.dirname(selectedPath) : selectedPath;
 }
 
 export function filterArmGnuCatalogForHost(
@@ -246,10 +281,10 @@ function normalizeArmGnuVersion(version: string): string {
 }
 
 /** Every item of a paginated GitLab API list. */
-async function fetchGitLabList<T>(url: string): Promise<T[]> {
+async function fetchGitLabList<T>(url: string, signal?: AbortSignal): Promise<T[]> {
   const items: T[] = [];
   for (let page = 1; page > 0;) {
-    const response = await fetch(`${url}${url.includes('?') ? '&' : '?'}per_page=${GITLAB_MAX_PER_PAGE}&page=${page}`);
+    const response = await fetch(`${url}${url.includes('?') ? '&' : '?'}per_page=${GITLAB_MAX_PER_PAGE}&page=${page}`, { signal });
     if (!response.ok) {
       throw new Error(`Failed to fetch the Arm GNU Toolchain releases (${response.status})`);
     }

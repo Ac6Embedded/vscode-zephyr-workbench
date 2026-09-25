@@ -123,6 +123,16 @@ const westManagerMenuItem = new MenuItem(
   }
 );
 
+const aiManagerMenuItem = new MenuItem(
+  'AI Manager',
+  vscode.TreeItemCollapsibleState.None,
+  'sparkle',
+  {
+    command: 'zephyr-workbench.ai-manager',
+    title: 'AI Manager',
+  }
+);
+aiManagerMenuItem.tooltip = 'Connect AI coding agents (Claude Code, Codex, Copilot, Cursor and others) to Zephyr Workbench.';
 
 export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<MenuItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<MenuItem | undefined> = new vscode.EventEmitter<MenuItem | undefined>();
@@ -147,6 +157,7 @@ export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<Me
       items.push(devicetreeManagerMenuItem);
       items.push(debugManagerMenuItem);
       items.push(westManagerMenuItem);
+      items.push(aiManagerMenuItem);
     }
     return items;
   }

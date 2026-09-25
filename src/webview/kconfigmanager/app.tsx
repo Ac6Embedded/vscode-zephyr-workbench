@@ -5,6 +5,7 @@ import { KcStore, compileQuery, type FlatRow, type CompiledQuery } from './store
 import type {
   KcNode, KcNodeInfo, KcTarget, KcExprLine, KcChange, KcDriftEntry, NodeId, Tri, KcDeltaSet,
 } from '../../utils/kconfig/kconfigRpcTypes';
+import { driftExportEdits, type DriftExportEdits } from '../../utils/kconfig/driftExport';
 
 interface DriftOverlayState {
   target: 'prj' | 'fragment';
@@ -316,10 +317,10 @@ export function App() {
     }
   }, []);
 
-  const writeExport = useCallback(async (lines: string[]) => {
+  const writeExport = useCallback(async ({ lines, remove }: DriftExportEdits) => {
     setDrift(undefined);
     try {
-      await rpc.call('kconfig/persistPrjConfWrite', { lines });
+      await rpc.call('kconfig/persistPrjConfWrite', { lines, remove });
       // Confirmation is shown as a VS Code notification by the panel.
     } catch (e) {
       setExportError(String(e));
@@ -583,7 +584,7 @@ function DriftOverlay({ state, dirty, onCancel, onJump, onWrite }: {
   dirty: boolean;
   onCancel: () => void;
   onJump: (id: NodeId) => void;
-  onWrite: (lines: string[]) => void;
+  onWrite: (edits: DriftExportEdits) => void;
 }) {
   const [unchecked, setUnchecked] = useState<Set<string>>(new Set());
   const toggle = (name: string) => {
@@ -627,8 +628,14 @@ function DriftOverlay({ state, dirty, onCancel, onJump, onWrite }: {
               <span className="kc-change-vals">
                 <span className="kc-change-old">{e.baseline ?? '(unset)'}</span>
                 <span className="codicon codicon-arrow-right" />
-                <span className="kc-change-new">{e.current}</span>
+                <span className="kc-change-new">{e.managedLine === 'remove' ? '(line removed)' : e.current}</span>
               </span>
+              {e.managedLine && (
+                <span className={`kc-drift-managed codicon codicon-${e.managedLine === 'remove' ? 'trash' : 'edit'}`}
+                  data-tip={e.managedLine === 'remove'
+                    ? `${fileLabel} pins the old value in its managed region, and this option can no longer be set from a configuration file: its managed line is removed`
+                    : `${fileLabel} pins the old value in its managed region: its managed line is updated`} />
+              )}
               {e.overriddenBy && (
                 <span className="kc-drift-override codicon codicon-warning"
                   data-tip={`Also set in ${e.overriddenBy}, which merges after ${fileLabel} and overrides this value`} />
@@ -652,7 +659,7 @@ function DriftOverlay({ state, dirty, onCancel, onJump, onWrite }: {
           <span className="kc-drift-actions">
             <button className="kc-btn" onClick={onCancel}>Cancel</button>
             <button className="kc-btn kc-drift-write" disabled={selected.length === 0}
-              onClick={() => onWrite(selected.map((e) => e.configString))}>
+              onClick={() => onWrite(driftExportEdits(selected))}>
               Write to {fileLabel}
             </button>
           </span>

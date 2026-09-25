@@ -1,35 +1,26 @@
 import * as vscode from "vscode";
-import fs, { accessSync, existsSync } from "fs";
+import fs from "fs";
 import path from "path";
-import os from "os";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
-import { execCommandWithEnv, execShellCommandWithEnv, getConfiguredWorkbenchPath, getOutputChannel, resolveConfiguredPath } from "../utils/execUtils";
-import { isGlobalSdkSettingValue } from "../utils/utils";
-import { resolveDefaultGlobalSdk } from "../utils/zephyr/globalSdkService";
+import { execCommandWithEnv, execShellCommandWithEnv, getOutputChannel } from "../utils/execUtils";
 import { getExtraPaths, normalizePath } from "../utils/env/envYamlUtils";
 import { readEnvYamlObject, writeEnvYamlObject } from "../utils/env/envYamlFileUtils";
 import type { BuildConfigInfo, ExtensionMessage, RpcRequestMessage, WebviewMessage } from "../utils/eclair/eclairEvent";
 import type { EclairRpcMethods, OpenDialog, RpcHandlerMap } from "../utils/eclair/eclairRpcTypes";
-import { format_option_settings } from "../utils/eclair/template_utils";
-import { ALL_ECLAIR_REPORTS, EclairPresetTemplateSource, EclairRepos, EclairScaConfig, FullEclairScaConfig, FullEclairScaConfigSchema, PresetSelectionState, default_eclair_repos } from "../utils/eclair/config";
+import { EclairRepos, EclairScaConfig, FullEclairScaConfig } from "../utils/eclair/config";
+import {
+  buildEclairAnalysisEnv, detectEclairDir as detectEclairInstallDir, detectZephyrSdkDir, eclairAnalysisCommand,
+  eclairManagerSettingsUri, eclairReportServerCommand, enableEclairExtension, find_build_config_index, findEclairDatabaseIn,
+  get_build_config_index, get_build_dir, isEclairPath, loadAppEclairScaConfig, openEclairReportServerTerminal,
+  prepareAnalysisFromSettings,
+} from "../utils/eclair/analysis";
 import { PresetRepositories, resolve_ref_to_rev } from "./EclairManagerPanel/repo_manage";
-import { Result, unwrap_or_throw } from "../utils/typing_utils";
+import { Result } from "../utils/typing_utils";
 import { match } from "ts-pattern";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { z } from "zod";
-import { EclairTemplate } from "../utils/eclair/template";
 import { EclairManagerEnv } from "./EclairManagerPanel/env";
-
-const ECLAIR_MANAGER_SETTINGS_FILENAME = "zephyr-workbench.eclair.json";
-
-// Minimal copy of the external ECLAIR extension API we use.
-// Keep this local to the ECLAIR integration instead of creating a repo-wide
-// declaration file for a single consumer.
-interface IEclairExtension {
-  enable(): void;
-  disable(): void;
-}
 
 const BuildConfigurationSchema = z.object({
   name: z.string(),
@@ -85,25 +76,8 @@ export class EclairManagerPanel {
    * Never uses installPath from the UI for execution.
    */
   private async detectEclairDir(): Promise<string | undefined> {
-    // Try env.yml (EXTRA_TOOLS)
-    const eclairInfo = this.getEclairPathFromEnv();
-    if (eclairInfo && eclairInfo.path && fs.existsSync(eclairInfo.path)) {
-      return eclairInfo.path;
-    }
-    // Try system PATH
-    try {
-      const whichCmd = process.platform === "win32"
-        ? 'powershell -NoProfile -Command "$c=Get-Command eclair -ErrorAction SilentlyContinue; if ($c) { $c.Source }"'
-        : 'which eclair';
-      const execSync = require("child_process").execSync;
-      const out = execSync(whichCmd, { encoding: "utf8" });
-      const lines = out.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
-      if (lines[0] && fs.existsSync(lines[0])) {
-        return path.dirname(lines[0]);
-      }
-    } catch { /* ignore */ }
-
-    return undefined;
+    // env.yml (EXTRA_TOOLS) first, then the system PATH.
+    return detectEclairInstallDir(this.getEclairPathFromEnv().path);
   }
 
 
@@ -238,11 +212,7 @@ export class EclairManagerPanel {
     }
 
     const eclairDir = await this.detectEclairDir();
-    const eclairReportCmd = eclairDir 
-      ? path.join(eclairDir, process.platform === "win32" ? "eclair_report.exe" : "eclair_report")
-      : "eclair_report";
-
-    const cmd = `"${eclairReportCmd}" -db="${dbPath}" -browser -server=restart`;
+    const cmd = eclairReportServerCommand(eclairDir, dbPath);
 
     try {
       const out = getOutputChannel();
@@ -251,12 +221,7 @@ export class EclairManagerPanel {
       out.appendLine(`[ECLAIR Report] Command: ${cmd}`);
 
       // Start background processes
-      const terminal = vscode.window.createTerminal({
-        name: "ECLAIR Report Server",
-        hideFromUser: false
-      });
-      terminal.sendText(cmd);
-      terminal.show();
+      const terminal = openEclairReportServerTerminal(cmd);
 
       await this.tryActivateEclairExtension("ECLAIR Report");
 
@@ -275,28 +240,12 @@ export class EclairManagerPanel {
     const out = getOutputChannel();
 
     try {
-      const eclairExt = vscode.extensions.getExtension<IEclairExtension>('bugseng.eclair');
-      if (!eclairExt) {
-        out.appendLine(`[${ctx}] ECLAIR extension not found.`);
+      const state = await enableEclairExtension((line) => out.appendLine(`[${ctx}] ${line}`));
+      if (state === "missing") {
         vscode.window.showInformationMessage("ECLAIR VS Code extension not found. To install it, use the VSIX file provided with ECLAIR (see manual for details).");
-        return;
-      }
-
-      if (!eclairExt.isActive) {
-        out.appendLine(`[${ctx}] Activating ECLAIR extension...`);
-        await eclairExt.activate();
-        out.appendLine(`[${ctx}] ECLAIR extension activated.`);
-      }
-
-      if (!eclairExt.exports || typeof eclairExt.exports.enable !== 'function') {
-        out.appendLine(`[${ctx}] ECLAIR extension enable function not found.`);
+      } else if (state === "outdated") {
         vscode.window.showWarningMessage("ECLAIR VS Code extension may be outdated. The enable function is not available. Please make sure the extension is up to date.");
-        return;
       }
-
-      out.appendLine(`[${ctx}] Enabling ECLAIR extension...`);
-      eclairExt.exports.enable();
-      out.appendLine(`[${ctx}] ECLAIR extension enabled.`);
     } catch (err: any) {
       let e = `Could not activate ECLAIR extension: ${err.message || err}`;
       out.appendLine(`[${ctx}] ${e}`);
@@ -495,69 +444,11 @@ export class EclairManagerPanel {
 
           const merged_env = await this._get_analysis_env(folderUri, build_dir, config);
 
-          const common_ecl_options = [
-            `-project_name=getenv("ZEPHYR_WORKBENCH_ECLAIR_PROJECT_NAME")`,
-            `-project_root=getenv("ZEPHYR_WORKBENCH_PROJECT_ROOT_DIR")`,
-          ];
-
-          let cmd = await match(config.main_config)
-            .with({ type: "preset" }, async (c) => {
-              const repo_revs = await resolve_repo_revs(cfg.repos ?? {});
-
-              let presets_eclair_options = unwrap_or_throw(await handle_sources(
-                [...c.rulesets, ...c.variants, ...c.tailorings],
-                (source) => this._presetRepos.load_preset_no_checkout(workspace, source, cfg.repos ?? {}, repo_revs)
-              ));
-
-              const eclair_options = [
-                ...common_ecl_options,
-                ...presets_eclair_options,
-              ];
-
-              const { user_ruleset_name, user_ruleset_path } = create_user_ruleset(eclair_options);
-
-              return build_analysis_command(
-                "USER",
-                user_ruleset_name,
-                user_ruleset_path,
-                [],
-                config.extra_config,
-                config.reports,
-                app_dir,
-                build_dir,
-                board,
-              );
-            })
-            .with({ type: "custom-ecl" }, (c) => {
-              const eclair_options = common_ecl_options;
-              const { user_ruleset_name, user_ruleset_path } = create_user_ruleset(eclair_options);
-
-              return build_analysis_command(
-                c.ecl_path,
-                user_ruleset_name,
-                user_ruleset_path,
-                [`-eval_file=${c.ecl_path.replace(/\\/g, "/")}`],
-                config.extra_config,
-                config.reports,
-                app_dir,
-                build_dir,
-                board,
-              );
-            })
-            .with({ type: "zephyr-ruleset" }, (c) => {
-              return build_analysis_command(
-                c.ruleset,
-                c.userRulesetName,
-                c.userRulesetPath,
-                [],
-                config.extra_config,
-                config.reports,
-                app_dir,
-                build_dir,
-                board,
-              );
-            })
-            .exhaustive();
+          let cmd = await eclairAnalysisCommand(config, { appDir: app_dir, buildDir: build_dir, board }, {
+            repos: cfg.repos ?? {},
+            resolveRepoRevs: resolve_repo_revs,
+            loadPreset: (source, repo_revs) => this._presetRepos.load_preset_no_checkout(workspace, source, cfg.repos ?? {}, repo_revs),
+          });
 
             const out = getOutputChannel();
             out.appendLine(`[ECLAIR cwd: ${west_top_dir}`);
@@ -655,7 +546,7 @@ export class EclairManagerPanel {
       return;
     }
 
-    const settingsUri = getEclairManagerSettingsUri(folderUri);
+    const settingsUri = eclairManagerSettingsUri(folderUri);
     const settingsDirUri = vscode.Uri.joinPath(folderUri, ".vscode");
     const payload = deep_tokenize_paths(cfg, folderUri);
     await vscode.workspace.fs.createDirectory(settingsDirUri);
@@ -868,41 +759,7 @@ export class EclairManagerPanel {
   }
 
   _prepare_for_analysis(folderUri: vscode.Uri, build_config: string) {
-    // Determine application directory
-    const app_dir = folderUri?.fsPath;
-
-    if (!app_dir) {
-      throw new Error("Unable to determine application directory for west build.");
-    }
-
-    // Determine folder URI for configuration
-    const config = vscode.workspace.getConfiguration(undefined, folderUri);
-    const configs = config.get<any[]>("zephyr-workbench.build.configurations") ?? [];
-    const idx = find_build_config_index(configs, build_config);
-    if (idx === undefined) {
-      throw new Error(`Build configuration '${build_config}' not found.`);
-    }
-
-    // Resolve BOARD from the selected build configuration.
-    const board = configs?.[idx]?.board?.toString()?.trim() || "";
-
-    if (!board) {
-      throw new Error("BOARD not set. Please set it before running ECLAIR analysis.");
-    }
-
-    const build_dir = get_build_dir(configs, idx, app_dir);
-
-    const west_top_dir = getWestWorkspacePath(folderUri);
-    if (!west_top_dir) {
-      throw new Error("West workspace not found.");
-    }
-
-    return {
-      app_dir,
-      board,
-      build_dir,
-      west_top_dir
-    };
+    return prepareAnalysisFromSettings(folderUri, build_config);
   }
 
   async _get_analysis_env(
@@ -910,277 +767,15 @@ export class EclairManagerPanel {
     build_dir: string,
     config: EclairScaConfig,
   ): Promise<Record<string, string>> {
-    // Determine extra paths for environment
-    const extra_paths: string[] = [];
-    const sdk = process.env.ZEPHYR_SDK_INSTALL_DIR;
-    if (sdk) {
-      extra_paths.push(path.join(sdk, "arm-zephyr-eabi", "bin"));
-      extra_paths.push(path.join(sdk, "cmake", "bin"));
-      extra_paths.push(path.join(sdk, "ninja"));
-    }
-    const westFromInstaller = path.join(
-      process.env.USERPROFILE ?? "",
-      ".zinstaller",
-      ".venv",
-      "Scripts"
-    );
-    if (existsSync(westFromInstaller)) {
-      extra_paths.push(westFromInstaller);
-    }
-    // Add ECLAIR dir
     const eclairDir = await this.detectEclairDir();
-    if (eclairDir && existsSync(eclairDir)) {
-      extra_paths.push(eclairDir);
-    }
-
-    // Ensure all env values are strings (not undefined)
-    const merged_env: { [key: string]: string } = {};
-    for (const [k, v] of Object.entries(process.env)) {
-      if (typeof v === "string") {
-        merged_env[k] = v;
-      } else {
-        merged_env[k] = "";
-      }
-    }
-
-    // Disable ccache for SCA/ECLAIR (breaks wrapper script)
-    merged_env.CCACHE_DISABLE = "1";
-    merged_env.PATH =
-      (extra_paths.length ? extra_paths.join(path.delimiter) + path.delimiter : "") +
-      (process.env.PATH || "");
-
-    // Inject Zephyr SDK and essential variables into the environment
-    // Detect SDK (can be hardcoded for your test case)
-    let zephyr_sdk_dir = detectZephyrSdkDir(folderUri);
-    // If not found, try buildDir (in case SDK is in the project)
-    if (!zephyr_sdk_dir && build_dir) {
-      const guess = path.join(path.dirname(build_dir), "zephyr-sdk-0.17.4");
-      if (fs.existsSync(guess)) {
-        zephyr_sdk_dir = guess;
-      }
-    }
-    if (zephyr_sdk_dir) {
-      merged_env.ZEPHYR_SDK_INSTALL_DIR = zephyr_sdk_dir;
-      merged_env.ZEPHYR_TOOLCHAIN_VARIANT = "zephyr";
-      merged_env.CMAKE_PREFIX_PATH = [
-        zephyr_sdk_dir,
-        path.join(zephyr_sdk_dir, "cmake"),
-        process.env.CMAKE_PREFIX_PATH
-      ].filter(Boolean).join(path.delimiter);
-      merged_env.PATH = [
-        path.join(zephyr_sdk_dir, "arm-zephyr-eabi", "bin"),
-        path.join(zephyr_sdk_dir, "cmake", "bin"),
-        merged_env.PATH
-      ].join(path.delimiter);
-    }
-
-    merged_env.ZEPHYR_WORKBENCH_ECLAIR_PROJECT_NAME = `${path.basename(folderUri.fsPath)} (${config.name})`;
-    merged_env.ZEPHYR_WORKBENCH_PROJECT_ROOT_DIR = folderUri.fsPath;
-
-    return merged_env;
+    return buildEclairAnalysisEnv({
+      projectRootDir: folderUri.fsPath,
+      scaConfigName: config.name,
+      buildDir: build_dir,
+      eclairDir,
+      sdkDir: detectZephyrSdkDir(folderUri),
+    });
   }
-}
-
-function build_analysis_command(
-    ruleset: string,
-    user_ruleset_name: string | undefined,
-    user_ruleset_path: string | undefined,
-    eclair_env_additional_options: string[],
-    extra_config: string | undefined,
-    reports: string[] | undefined,
-    app_dir: string,
-    build_dir: string,
-    board: string,
-  ): string {
-
-    const cmake_args: string[] = [
-      "-DZEPHYR_SCA_VARIANT=eclair",
-      ...cmake_compiler_launcher_options(),
-      ...cmake_ruleset_selection_options(ruleset, user_ruleset_name, user_ruleset_path),
-      ...cmake_extra_config_options(eclair_env_additional_options, extra_config?.trim()),
-      ...cmake_reports_options(reports),
-    ];
-
-    const west = get_west_cmd();
-
-    return [
-      west,
-      "build",
-      "--pristine",
-      `-s "${app_dir}"`,
-      `-d "${build_dir}"`,
-      `--board=${board}`,
-      "--",
-      ...cmake_args
-    ].filter(Boolean).join(" ");
-  }
-
-function cmake_compiler_launcher_options() {
-  if (process.platform === "win32") {
-    // Windows needs empty values to unset the launchers
-    return [
-      "-DCMAKE_C_COMPILER_LAUNCHER=",
-      "-DCMAKE_CXX_COMPILER_LAUNCHER="
-    ];
-  } else {
-    // Linux and macOS can use -U to unset the launchers
-    return [
-      "-UCMAKE_C_COMPILER_LAUNCHER",
-      "-UCMAKE_CXX_COMPILER_LAUNCHER"
-    ];
-  }
-}
-
-function cmake_ruleset_selection_options(
-  ruleset: string,
-  user_ruleset_name: string | undefined,
-  user_ruleset_path: string | undefined,
-) {
-  let cmake_args: string[] = [];
-
-  if (ruleset === "USER") {
-    cmake_args.push("-DECLAIR_RULESET_USER=ON");
-    const name = (user_ruleset_name || "").trim();
-    const p = (user_ruleset_path || "").trim();
-    if (name) {
-      cmake_args.push(`-DECLAIR_USER_RULESET_NAME=\"${name}\"`);
-    }
-    if (p) {
-      cmake_args.push(`-DECLAIR_USER_RULESET_PATH=\"${p}\"`);
-    }
-    cmake_args.push("-DECLAIR_RULESET_FIRST_ANALYSIS=OFF");
-  } else if (ruleset) {
-    cmake_args.push(`-D${ruleset}=ON`);
-    if (ruleset !== "ECLAIR_RULESET_FIRST_ANALYSIS") {
-      cmake_args.push("-DECLAIR_RULESET_FIRST_ANALYSIS=OFF");
-    }
-  } else {
-    cmake_args.push("-DECLAIR_RULESET_FIRST_ANALYSIS=ON");
-  }
-
-  return cmake_args;
-}
-
-function cmake_extra_config_options(
-  eclair_env_additional_options: string[],
-  extra_config: string | undefined,
-) {
-  // .ecl file needs a wrapper that uses -eval_file
-  const wrapperPath = path.join(os.tmpdir(), "eclair_wrapper.cmake");
-
-  let content = "";
-
-  for (const opt of eclair_env_additional_options) {
-    const escaped_opt = opt.replace(/"/g, '\\"');
-    content += `list(APPEND ECLAIR_ENV_ADDITIONAL_OPTIONS "${escaped_opt}")\n`;
-  }
-
-  // TODO this is a bit hacky and may be outdated logic
-  if (
-    extra_config &&
-    extra_config !== "Checking" &&
-    extra_config !== "Not Found" &&
-    fs.existsSync(extra_config) &&
-    !fs.statSync(extra_config).isDirectory()
-  ) {
-    const ext = path.extname(extra_config).toLowerCase();
-    const file_path = extra_config.replace(/\\/g, "/");
-
-    if (ext !== ".ecl" && ext !== ".eclair") {
-      throw new Error(`Unsupported file extension: ${ext}`);
-    }
-
-    content += `list(APPEND ECLAIR_ENV_ADDITIONAL_OPTIONS "-eval_file=${file_path}")\n`;
-  }
-
-  fs.writeFileSync(wrapperPath, content, { encoding: "utf8" });
-  const final_path = wrapperPath.replace(/\\/g, "/");
-
-  return [`-DECLAIR_OPTIONS_FILE=${final_path}`];
-}
-
-function cmake_reports_options(reports: string[] | undefined) {
-  const selected = (reports || []).includes("ALL")
-      ? ALL_ECLAIR_REPORTS
-      : (reports || []).filter(r => r !== "ALL");
-
-  return selected.map(r => `-D${r}=ON`);
-}
-
-function get_west_cmd() {
-  if (process.platform === "win32") {
-    const westFromInstaller = path.join(
-      process.env.USERPROFILE ?? "",
-      ".zinstaller",
-      ".venv",
-      "Scripts",
-      "west.exe"
-    );
-    try {
-      accessSync(westFromInstaller);
-      return `& "${westFromInstaller}"`;
-    } catch {
-      return "west";
-    }
-  }
-
-  return "west";
-}
-
-function create_user_ruleset(
-  eclair_options: string[],
-  dir?: string,
-  name?: string,
-): { user_ruleset_name: string; user_ruleset_path: string } {
-  const ruleset_path = dir || path.join(os.tmpdir(), "dummy_user_ruleset");
-  const ruleset_name = name || "dummy";
-  const ecl = path.join(ruleset_path, `analysis_${ruleset_name}.ecl`);
-
-  if (fs.existsSync(ruleset_path)) {
-    if (!fs.statSync(ruleset_path).isDirectory()) {
-      fs.rmSync(ruleset_path);
-      fs.mkdirSync(ruleset_path, { recursive: true });
-    }
-  } else {
-    fs.mkdirSync(ruleset_path, { recursive: true });
-  }
-
-  fs.rmSync(ecl, { force: true, recursive: true });
-  fs.writeFileSync(ecl, eclair_options.map(opt => `${opt}`).join("\n"), { encoding: "utf8" });
-
-  return {
-    user_ruleset_name: ruleset_name,
-    user_ruleset_path: ruleset_path,
-  };
-}
-
-async function handle_sources(
-  sel: PresetSelectionState[],
-  load_template: (s: EclairPresetTemplateSource) => Promise<Result<[EclairTemplate, string], string>>,
-): Promise<Result<string[], string>> {
-  let all_commands: string[] = [];
-  for (const s of sel) {
-    let r = await handle_source(s, load_template);
-    if ("err" in r) {
-      return { err: `Failed to load preset: ${r.err}` };
-    }
-    all_commands = all_commands.concat(r.ok);
-  }
-  return { ok: all_commands };
-}
-
-async function handle_source(
-  sel: PresetSelectionState,
-  load_template: (s: EclairPresetTemplateSource) => Promise<Result<[EclairTemplate, string], string>>,
-): Promise<Result<string[], string>> {
-  let r = await load_template(sel.source);
-  if ("err" in r) {
-    return { err: `Failed to load preset: ${r.err}` };
-  }
-  const [preset, path] = r.ok;
-  let eclair_commands = format_option_settings(preset, sel.edited_flags || {}).map(s => s.statement);
-  eclair_commands.push("-eval_file=\"" + path.replace(/\\/g, "/") + "\"");
-  return { ok: eclair_commands };
 }
 
 async function load_applications(): Promise<ZephyrApplication[]> {
@@ -1229,75 +824,6 @@ function deep_tokenize_paths(obj: any, folderUri: vscode.Uri): any {
   return walk(obj);
 }
 
-// TODO: deepResolvePaths is a blunt recursive replacement, replace with targeted field handling.
-/**
- * Recursively walks `obj` and expands `${workspaceFolder}` in every string
- * to the actual workspace folder path.
- */
-function deep_resolve_paths(obj: any, folderUri: vscode.Uri): any {
-  const fsPath = folderUri.fsPath;
-  const walk = (val: any): any => {
-    if (typeof val === "string") {
-      return resolveConfiguredPath(val, folderUri) ?? val.replace(/\$\{workspaceFolder\}/g, fsPath);
-    }
-    if (Array.isArray(val)) {
-      return val.map(walk);
-    }
-    if (val && typeof val === "object") {
-      const out: any = {};
-      for (const k of Object.keys(val)) {
-        out[k] = walk(val[k]);
-      }
-      return out;
-    }
-    return val;
-  };
-  return walk(obj);
-}
-
-// Gets the west workspace path from settings.json configuration.
-function getWestWorkspacePath(folderUri: vscode.Uri): string | undefined {
-  const westWorkspace = getConfiguredWorkbenchPath('westWorkspace', folderUri);
-  
-  if (westWorkspace && fs.existsSync(westWorkspace)) {
-    // Verify it has .west folder
-    if (fs.existsSync(path.join(westWorkspace, ".west"))) {
-      return westWorkspace;
-    }
-  }
-  
-  return undefined;
-}
-
-/**
- * Detects the Zephyr SDK installation directory from common environment variables and paths.
- */
-function detectZephyrSdkDir(folderUri: vscode.Uri): string | undefined {
-  // Try reading settings.json (user/project configuration)
-  const sdkFromSettings = getConfiguredWorkbenchPath('sdk', folderUri);
-  // The 'global' sentinel is not a path: resolve it to the detected global SDK
-  // (ECLAIR needs a concrete directory for its analysis environment).
-  if (isGlobalSdkSettingValue(sdkFromSettings)) {
-    return resolveDefaultGlobalSdk()?.rootUri.fsPath;
-  }
-  if (sdkFromSettings && fs.existsSync(sdkFromSettings)) {
-    return sdkFromSettings;
-  }
-
-  // TODO: Improve the Fallback  
-  const candidates = [
-    process.env.ZEPHYR_SDK_INSTALL_DIR,
-    path.join(process.env.USERPROFILE ?? "", ".zinstaller", "tools", "zephyr-sdk"),
-  ];
-
-  for (const c of candidates) {
-    if (c && fs.existsSync(c)) {
-      return c;
-    }
-  }
-  return undefined;
-}
-
 /**
  * Finds the ECLAIR PROJECT.ecd database file in the build directory.
  * Searches in build/sca/eclair/PROJECT.ecd path.
@@ -1312,37 +838,7 @@ function findEclairDatabase(folderUri: vscode.Uri, build_config_name?: string): 
   }
 
   const buildDir = get_build_dir(configs, idx, appDir);
-  const ecdPath = path.join(buildDir, "sca", "eclair", "PROJECT.ecd");
-
-  if (fs.existsSync(ecdPath)) {
-    return ecdPath;
-  }
-
-  return undefined;
-}
-
-function get_build_dir(configs: any, idx: number, appDir: string): string {
-  return (
-    configs[idx]?.build?.dir ||
-      configs[idx]?.buildDir ||
-      path.join(appDir, "build", configs[idx]?.name || "primary")
-  );
-}
-
-function get_build_config_index(configs: any[], build_config_name?: string): number {
-  if (build_config_name) {
-    const idx = configs.findIndex(c => c?.name === build_config_name);
-    if (idx >= 0) {
-      return idx;
-    }
-  }
-  const activeIdx = configs.findIndex(c => c?.active === true || c?.active === "true");
-  return activeIdx >= 0 ? activeIdx : 0;
-}
-
-function find_build_config_index(configs: any[], build_config_name: string): number | undefined {
-  const idx = configs.findIndex(c => c?.name === build_config_name);
-  return idx >= 0 ? idx : undefined;
+  return findEclairDatabaseIn(buildDir);
 }
 
 async function load_all_sca_configs(): Promise<Result<Record<string, [FullEclairScaConfig, BuildConfigInfo[]]>, string>> {
@@ -1351,7 +847,7 @@ async function load_all_sca_configs(): Promise<Result<Record<string, [FullEclair
 
     const by_workspace: Record<string, [FullEclairScaConfig, BuildConfigInfo[]]> = {};
     for (const app of apps) {
-      const sca_configs_r = await load_app_eclair_sca_config(app);
+      const sca_configs_r = await loadAppEclairScaConfig(app, (line) => getOutputChannel().appendLine(line));
       if ("err" in sca_configs_r) {
         // TODO consider aggregating errors
         continue;
@@ -1368,27 +864,6 @@ async function load_all_sca_configs(): Promise<Result<Record<string, [FullEclair
   } catch (err: any) {
     const msg = err?.message || String(err);
     return { err: `Failed to load SCA configs for all apps: ${msg}` };
-  }
-}
-
-function getEclairManagerSettingsUri(folderUri: vscode.Uri): vscode.Uri {
-  return vscode.Uri.joinPath(folderUri, ".vscode", ECLAIR_MANAGER_SETTINGS_FILENAME);
-}
-
-async function readEclairManagerSettings(folderUri: vscode.Uri): Promise<any | undefined> {
-  const settingsUri = getEclairManagerSettingsUri(folderUri);
-  try {
-    const raw = await vscode.workspace.fs.readFile(settingsUri);
-    const text = Buffer.from(raw).toString("utf8");
-    if (!text.trim()) {
-      return {};
-    }
-    return JSON.parse(text);
-  } catch (err: any) {
-    if (err instanceof vscode.FileSystemError && err.code === "FileNotFound") {
-      return undefined;
-    }
-    throw err;
   }
 }
 
@@ -1448,36 +923,8 @@ function load_project_build_configs(app: ZephyrApplication): Result<BuildConfigu
   }
 }
 
-async function load_app_eclair_sca_config(app: ZephyrApplication): Promise<Result<FullEclairScaConfig, string>> {
-  try {
-    const folder_uri = app.appWorkspaceFolder.uri;
-    let raw_cfg = await readEclairManagerSettings(folder_uri);
-    if (!raw_cfg) {
-      return { ok: { configs: [], repos: default_eclair_repos() } };
-    }
-    const resolved_cfg = deep_resolve_paths(raw_cfg, app.appWorkspaceFolder.uri);
-    const parsed = FullEclairScaConfigSchema.safeParse(resolved_cfg);
-    if (!parsed.success) {
-      // TODO not to console but to the output channel, and ideally also surface in the UI so users know their config is not being loaded
-      const out = getOutputChannel();
-      out.appendLine(`Saved ECLAIR SCA config for app '${app.appName}' failed validation and will be reset: ${parsed.error}`);
-      return { ok: { configs: [], repos: default_eclair_repos() } };
-    }
-    const data = parsed.data;
-    if (data.repos === undefined) {
-      data.repos = default_eclair_repos();
-    }
-    return { ok: data };
-  } catch (err: any) {
-    const msg = err?.message || String(err);
-    return { err: `Failed to load ECLAIR SCA config for app '${app.appName}': ${msg}` };
-  }
-}
-
-
 export function is_eclair_path(p: string) {
-  const eclair_exe = process.platform === "win32" ? path.join(p, "eclair.exe") : path.join(p, "eclair");
-  return fs.existsSync(eclair_exe) && fs.statSync(eclair_exe).isFile();
+  return isEclairPath(p);
 }
 
 export async function resolve_repo_revs(repos: Record<string, { origin: string; ref: string; rev?: string }>): Promise<Record<string, string>> {

@@ -34,6 +34,7 @@ The extension is available on the [VS Code Marketplace](https://marketplace.visu
 * Inspect builds in the Zephyr Dashboard: application summary, sys-init data and RAM/ROM usage with ELF size breakdown
 * [Run static code analysis](https://z-workbench.com/docs/category/static-code-analysis) with ECLAIR (MISRA, BARR-C, AUTOSAR) and diagnose devicetree errors with DT Doctor
 * [Generate SPDX 2.3 and SPDX 3.0 SBOM documents](https://z-workbench.com/docs/tutorials/spdx), verify them with SBOM Total and export PDF, DOCX or Markdown reports
+* Let AI coding agents (Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Gemini CLI, opencode) build your applications and read build results, set up in one click from the [AI Manager](#ai-agents-mcp)
 * IntelliSense with the C/C++ extension or clangd
 * Supported on Windows, Linux and macOS, including [VS Code Portable mode](https://z-workbench.com/docs/documentation/vscode-zephyr-workbench-portable)
 
@@ -82,6 +83,26 @@ The Devicetree Manager is a visual editor for the devicetree and the pin muxing 
 <p align="center">
   <img alt="Devicetree Manager for Zephyr" src="https://raw.githubusercontent.com/Ac6Embedded/vscode-devicetree-manager-for-zephyr/main/images/screenshot.png" width="80%">
 </p>
+
+## AI agents (MCP)
+
+Workbench for Zephyr can be driven by an AI coding agent. The agent sees your applications and build configurations, runs builds in a VS Code terminal you can watch, and gets compiler errors back with the file and line, so it can fix them and build again. It can also read memory usage, Kconfig values and the resolved devicetree of a build, change a build configuration (board, overlays, conf files), change Kconfig options the way a build would accept them, search boards, shields, snippets and samples, and check what is missing from your environment.
+
+An agent can also set things up from scratch: create an application from a sample or import one, change its toolchain, IntelliSense provider or Python environment, and run DT Doctor, the Kconfig hardening check, an SPDX SBOM or an ECLAIR analysis. With the **full** toolset it can also install and register toolchains (Zephyr SDK, Arm GNU, Rust, LLVM), create, update and edit west workspaces, and remove or delete what it no longer needs. When a choice is yours to make, such as an IAR licence token, it opens the right wizard or view for you instead.
+
+To connect an agent:
+
+1. Open the command palette and run **Zephyr Workbench: AI Manager**
+2. On the **Zephyr Workbench MCP** page, in the **Agents** tab, click **Connect** next to your agent. You are shown the exact file and change before anything is written
+3. Restart the agent session, then ask it to build your application
+
+GitHub Copilot in VS Code 1.101 or later, and Cursor, need no setup at all. For any other MCP client, run **Zephyr Workbench: Copy MCP Configuration for an Agent** and paste the result into its configuration.
+
+One agent setup serves every project and every open VS Code window: each request goes to the window that has the application open. If an agent cannot reach Workbench for Zephyr, click **Test connection** in the AI Manager, or run **Zephyr Workbench: Check AI Agent Connection (MCP)**. It runs the same command your agent runs, shows what to fix, and writes the full report to the **Zephyr Workbench: MCP** output.
+
+Everything stays on your machine: the server only accepts local connections, and each request needs a key that changes every time VS Code starts. Use the **Tools and safety** tab to limit what agents may do, down to read-only, and to choose which actions they must ask you about first. By default an agent asks before flashing or debugging a board, deleting, changing a west workspace, or installing anything, and only you can answer in VS Code.
+
+The AI Manager has two more pages. **Zephyr Project MCP** connects your agents, in the same way, to the Zephyr Project's own MCP server, run by Kapa.ai, which answers questions from Zephyr's documentation, source code and GitHub activity. It is a hosted service, so your questions leave your machine, and the first time an agent uses it you sign in once in your browser. A server you added to your Claude account as a connector shows as connected too: the page asks Claude Code which servers it reaches. The page also lists the sources it answers from and gives the configuration for any other MCP client. **Third-party skills** points to Zephyr agent skill collections written by others.
 
 ## CI and Docker
 

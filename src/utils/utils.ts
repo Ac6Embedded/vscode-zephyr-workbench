@@ -29,17 +29,9 @@ import {
   readWorkspaceApplicationEntries,
   resolveWorkspaceApplicationPath,
 } from './zephyr/workspaceApplications';
+import { APP_TEMPLATE_METADATA_FILES } from './zephyr/appTemplateMetadata';
 
 let zephyrTasksFetchPromise: Promise<vscode.Task[]> | undefined;
-type AppTemplateMetadataKind = ZephyrAppTemplateKind | 'contextual';
-
-const APP_TEMPLATE_METADATA_FILES: Record<string, AppTemplateMetadataKind> = {
-  'sample.yaml': 'sample',
-  'testcase.yaml': 'test',
-  'testcases.yml': 'test',
-  'tests.yaml': 'contextual',
-  'tests.yml': 'contextual',
-};
 const APP_TEMPLATE_DISCOVERY_BATCH_SIZE = 64;
 
 interface AppTemplateDiscoveryTask {
@@ -205,9 +197,32 @@ export function fileExists(path: string): boolean {
   return fs.existsSync(path);
 }
 
-function isRetryableDeleteError(error: unknown): boolean {
+export function isRetryableDeleteError(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | undefined)?.code;
   return code === 'EBUSY' || code === 'ENOTEMPTY' || code === 'EPERM';
+}
+
+/**
+ * Delete a folder without blocking the extension host and without any UI,
+ * and say what happened instead of notifying: 'absent' when there was nothing
+ * to delete, 'busy' when files in use kept part of it. For callers that must
+ * answer rather than show a toast, such as an agent tool; deleteFolder keeps
+ * its own behaviour for the views.
+ */
+export async function removeDirectory(dir: string): Promise<'removed' | 'absent' | 'busy'> {
+  const present = async () => fs.promises.lstat(dir).then(() => true, () => false);
+  if (!(await present())) {
+    return 'absent';
+  }
+  try {
+    await fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  } catch (error) {
+    if (!isRetryableDeleteError(error)) {
+      throw error;
+    }
+    return 'busy';
+  }
+  return (await present()) ? 'busy' : 'removed';
 }
 
 export function deleteFolder(dir: string): void {
@@ -332,16 +347,29 @@ export async function addWorkspaceFolder(path: string): Promise<boolean> {
   return folderAddedPromise;
 }
 
-export function removeWorkspaceFolder(workspaceFolder: vscode.WorkspaceFolder) {
+/**
+ * Remove a folder from the workspace, with no UI: 'none' when the window has
+ * no folders at all, 'not-found' when the path is not one of them.
+ */
+export function tryRemoveWorkspaceFolder(path: string): 'removed' | 'not-found' | 'none' {
   const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (workspaceFolders) {
-    const index = workspaceFolders.indexOf(workspaceFolder);
-    if (index !== -1) {
-      vscode.workspace.updateWorkspaceFolders(index, 1);
-    } else {
-      vscode.window.showErrorMessage('Workspace folder not found.');
-    }
-  } else {
+  if (!workspaceFolders) {
+    return 'none';
+  }
+  const folderUri: vscode.Uri = vscode.Uri.file(path);
+  const index = workspaceFolders.findIndex(folder => folder.uri.fsPath === folderUri.fsPath);
+  if (index === -1) {
+    return 'not-found';
+  }
+  vscode.workspace.updateWorkspaceFolders(index, 1);
+  return 'removed';
+}
+
+export function removeWorkspaceFolder(workspaceFolder: vscode.WorkspaceFolder) {
+  const result = tryRemoveWorkspaceFolder(workspaceFolder.uri.fsPath);
+  if (result === 'not-found') {
+    vscode.window.showErrorMessage('Workspace folder not found.');
+  } else if (result === 'none') {
     vscode.window.showErrorMessage('No workspace folders to remove.');
   }
 }

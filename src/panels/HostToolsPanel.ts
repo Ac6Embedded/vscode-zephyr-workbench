@@ -56,7 +56,12 @@ export class HostToolsPanel {
     }
   }
 
-  public async refresh() {
+  /**
+   * Re-render and re-read the tool versions. Pass `checkedVersions` when the
+   * caller has just run the installer's check (Verify Host Tools), so it does
+   * not run twice.
+   */
+  public async refresh(checkedVersions?: Record<string, string>) {
     this.loadEnvYaml();
 
     this._panel.webview.html = await this._getWebviewContent(this._panel.webview, this._extensionUri);
@@ -65,7 +70,7 @@ export class HostToolsPanel {
     // after installs or external changes.
     try {
       this._panel.webview.postMessage({ command: 'toggle-spinner', show: true });
-      await this.checkAndPublishToolVersions();
+      await this.checkAndPublishToolVersions(checkedVersions);
     } catch {}
     finally {
       try { this._panel.webview.postMessage({ command: 'toggle-spinner', show: false }); } catch {}
@@ -118,11 +123,11 @@ export class HostToolsPanel {
     return this.toolVersionsFromCheck[id.toLowerCase()];
   }
 
-  private async refreshToolVersionsFromCheck(): Promise<void> {
+  private async refreshToolVersionsFromCheck(checkedVersions?: Record<string, string>): Promise<void> {
     // Shared with the Advanced Host Tools panel: single parser of the
     // -OnlyCheck output contract. An empty map means the check failed;
     // keep the previous values so the UI does not flicker to blank.
-    const map = await fetchHostToolsCheckedVersions(this._extensionUri);
+    const map = checkedVersions ?? await fetchHostToolsCheckedVersions(this._extensionUri);
     if (Object.keys(map).length > 0) {
       this.toolVersionsFromCheck = map;
     } else {
@@ -130,8 +135,8 @@ export class HostToolsPanel {
     }
   }
 
-  private async checkAndPublishToolVersions(): Promise<void> {
-    await this.refreshToolVersionsFromCheck();
+  private async checkAndPublishToolVersions(checkedVersions?: Record<string, string>): Promise<void> {
+    await this.refreshToolVersionsFromCheck(checkedVersions);
     try {
       const tools = (this.envData?.tools && typeof this.envData.tools === "object")
         ? Object.keys(this.envData.tools)

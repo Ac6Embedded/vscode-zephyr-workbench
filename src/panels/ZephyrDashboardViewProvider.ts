@@ -70,14 +70,40 @@ interface DashboardViewModel {
 	elfStat?: ZephyrStatFileContent;
 }
 
+/** How reveal shows the application it is given. */
+export interface DashboardRevealOptions {
+	/** The build configuration to show, instead of the active one. */
+	configName?: string;
+	/**
+	 * Keep showing the application even when the active editor belongs to
+	 * another one, until the user switches editors or reveals the dashboard.
+	 */
+	pin?: boolean;
+}
+
 export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
 	public static readonly viewId = 'zephyr-workbench-dashboard';
 	public static readonly panelContainerId = 'zephyr-workbench-dashboard-panel';
 
+	private static _current?: ZephyrDashboardViewProvider;
+
+	/** The provider of this window, for callers that do not hold it, such as the MCP tools. */
+	public static get current(): ZephyrDashboardViewProvider | undefined {
+		return ZephyrDashboardViewProvider._current;
+	}
+
 	private _view?: vscode.WebviewView;
 	private _webviewDisposables: vscode.Disposable[] = [];
 	private _revealedProjectPath?: string;
+	/** The configuration a reveal asked for, shown while its application is. */
+	private _revealedConfigName?: string;
+	/** Set by a pinned reveal: the active editor when it happened. */
+	private _pin?: { editor?: string };
 	private _isReady = false;
+
+	constructor() {
+		ZephyrDashboardViewProvider._current = this;
+	}
 
 	public dispose(): void {
 		while (this._webviewDisposables.length > 0) {
@@ -113,8 +139,8 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		);
 	}
 
-	public async reveal(node?: unknown): Promise<void> {
-		this._setTargetFromNode(node);
+	public async reveal(node?: unknown, options: DashboardRevealOptions = {}): Promise<void> {
+		this._setTargetFromNode(node, options);
 		await this._revealView();
 		await this.refresh();
 	}
@@ -222,7 +248,10 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 		}
 	}
 
-	private _setTargetFromNode(node?: unknown): void {
+	private _setTargetFromNode(node?: unknown, options: DashboardRevealOptions = {}): void {
+		// Every reveal replaces what an earlier one asked for.
+		this._pin = undefined;
+		this._revealedConfigName = undefined;
 		if (!node) {
 			return;
 		}
@@ -243,6 +272,10 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 
 		if (projectPath) {
 			this._revealedProjectPath = projectPath;
+			this._revealedConfigName = options.configName;
+			if (options.pin) {
+				this._pin = { editor: vscode.window.activeTextEditor?.document.uri.toString() };
+			}
 		}
 	}
 
@@ -431,6 +464,16 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 			return undefined;
 		}
 
+		if (this._pin) {
+			const pinned = projects.find(project => project.appRootPath === this._revealedProjectPath);
+			if (pinned && vscode.window.activeTextEditor?.document.uri.toString() === this._pin.editor) {
+				return pinned;
+			}
+			// The user moved to another editor, or the application is gone: follow the editor again.
+			this._pin = undefined;
+			this._revealedConfigName = undefined;
+		}
+
 		const editor = vscode.window.activeTextEditor;
 		if (editor) {
 			const activeEditorFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
@@ -478,6 +521,13 @@ export class ZephyrDashboardViewProvider implements vscode.WebviewViewProvider, 
 	private _selectConfig(project?: ZephyrApplication): ZephyrBuildConfig | undefined {
 		if (!project || project.buildConfigs.length === 0) {
 			return undefined;
+		}
+
+		if (this._revealedConfigName && project.appRootPath === this._revealedProjectPath) {
+			const revealed = project.buildConfigs.find(config => config.name === this._revealedConfigName);
+			if (revealed) {
+				return revealed;
+			}
 		}
 
 		return project.buildConfigs.find(config => config.active) ?? project.buildConfigs[0];

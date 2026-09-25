@@ -3,13 +3,14 @@ import { ZEPHYR_DOCS_BASE_URL } from "../constants";
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import {
-  fetchHostToolsCheckedVersions,
-  probeHomebrew,
+  buildHostToolsPartsStatus,
+  displayHostToolVersion,
   probeHostToolsPartsPresence,
   probeHostToolsPresence,
   probePythonInterpreter,
   readHostToolsTargetVersions,
 } from "../utils/hostToolsStatusUtils";
+import { collectHostToolsStatus } from "../utils/hostToolsStatusCollector";
 import { getAdvancedRowParts, hasProviderColumn, HostToolsPartDef } from "../utils/hostToolsPartsRegistry";
 import { getZinstallerVersionStampPath, HostToolsPythonOptions, sanitizeRequirementsRef } from "../utils/installUtils";
 import { getGitBranches, getGitTags } from "../utils/execUtils";
@@ -116,61 +117,29 @@ export class AdvancedHostToolsPanel {
     if (this.installRunning) { return; }
     this.post({ command: 'toggle-spinner', show: true });
     try {
-      // Versions first: the registry-driven probe reuses the map for the
-      // parts whose presence derives from the check output (no double run).
-      const versions = await fetchHostToolsCheckedVersions(this._extensionUri);
-      const presence = await probeHostToolsPresence(this._extensionUri, versions);
-      const homebrew = process.platform === 'darwin' ? await probeHomebrew() : undefined;
+      // The same collector the agent environment check reads: the -OnlyCheck
+      // versions, then the registry-driven presence probe, then Homebrew.
+      const status = await collectHostToolsStatus(this._extensionUri, { versionCheck: true });
+      const presence = status.presence;
+      const versions = status.checkedVersions ?? {};
+      const homebrew = status.homebrew;
       // "Other actions" (full reinstall, venv rebuild) only make sense once
       // something is installed.
       const anyInstalled = Object.values(presence).some(v => v === true)
-        || fileExists(getZinstallerVersionStampPath());
+        || status.stamp.exists;
       this.post({
         command: 'status-updated',
-        parts: this.buildPartsStatus(presence, versions),
+        parts: buildHostToolsPartsStatus(presence, versions, ADVANCED_PARTS)
+          .map(({ part, label, present, detectedVersion, systemDetected }) => ({ part, label, present, detectedVersion, systemDetected })),
         anyInstalled,
         venvPresent: presence['venv'] === true,
         pythonPortablePresent: presence['python'] === true,
-        pythonPortableVersion: this.displayVersion(versions['python']),
+        pythonPortableVersion: displayHostToolVersion(versions['python']),
         homebrew: homebrew ? { ok: homebrew.ok, prefix: homebrew.prefix ?? '' } : undefined,
       });
     } finally {
       this.post({ command: 'toggle-spinner', show: false });
     }
-  }
-
-  private displayVersion(raw: string | undefined): string {
-    if (!raw) { return ''; }
-    if (raw.toUpperCase() === 'NOT INSTALLED') { return ''; }
-    return raw;
-  }
-
-  private buildPartsStatus(presence: Record<string, boolean>, versions: Record<string, string>) {
-    return ADVANCED_PARTS.map(p => {
-      const present = presence[p.id] === true;
-      // The -OnlyCheck run resolves the zinstaller copy first (env sourced);
-      // when the artifact is absent it falls back to a system-wide tool, so
-      // the detected version then describes what the SYSTEM provides.
-      let detectedVersion = '';
-      if (p.probe.versionKeysAllOf) {
-        // Batch row (linux system packages): list the detected constituents.
-        detectedVersion = p.probe.versionKeysAllOf
-          .map(k => ({ k, v: this.displayVersion(versions[k]) }))
-          .filter(e => e.v.length > 0)
-          .map(e => `${e.k} ${e.v}`)
-          .join(', ');
-      } else if (p.versionKey) {
-        detectedVersion = this.displayVersion(versions[p.versionKey]);
-      }
-      // "System only" contrasts the zinstaller artifact with a PATH-wide
-      // tool; on provider rows (brew/distro) the provider IS the system, so
-      // the distinction carries no meaning there.
-      const systemDetected = !p.provider && !present && detectedVersion.length > 0;
-      if (p.provider && detectedVersion.length === 0) {
-        detectedVersion = '-';
-      }
-      return { part: p.id, label: p.label, present, detectedVersion, systemDetected };
-    });
   }
 
   private buildPythonOpts(python: PythonSelection | undefined): HostToolsPythonOptions | undefined {

@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import path from "path";
 import { ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
-import { execCommandWithEnv } from '../../utils/execUtils';
-import { detectRunnerVersion } from '../../utils/debugTools/debugToolVersionUtils';
+import { captureCommand } from '../../utils/execUtils';
+import { DEFAULT_VERSION_PROBE_TIMEOUT_MS, detectRunnerVersion } from '../../utils/debugTools/debugToolVersionUtils';
 import { tokenizeArgs, unquoteToken } from '../../utils/argsTokenizer';
 
 export const ZEPHYR_WORKBENCH_DEBUG_PATH_SETTING_KEY = 'pathExec';
@@ -219,15 +219,11 @@ export class WestRunner {
     if(process.platform === 'linux' || process.platform === 'darwin') {
       versionCmd = `${versionCmd} 2>&1`;
     }
-    return new Promise<boolean>((resolve, reject) => {
-      execCommandWithEnv(`${versionCmd}`, undefined, (error: any, stdout: string, stderr: any) => {
-        if (error) {
-          resolve(false);
-        } else {
-          resolve(true);
-        }
-      });
-    });
+    // captureCommand settles even when the env script setting is empty or
+    // venv.path is missing, where a bare execCommandWithEnv callback never ran
+    // and left the Debug Manager waiting forever.
+    const result = await captureCommand(versionCmd, { timeoutMs: DEFAULT_VERSION_PROBE_TIMEOUT_MS });
+    return result.ran && !result.timedOut && result.exitCode === 0;
   }
 
   async detectVersion(): Promise<string | undefined> {

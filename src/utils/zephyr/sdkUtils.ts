@@ -1,9 +1,12 @@
 
 import * as vscode from "vscode";
+import fs from "fs";
+import os from "os";
 import path from "path";
-import { execCommand, extract, getFirstDirectoryName7z } from "../installUtils";
+import { execFile } from "child_process";
+import { extract, getFirstDirectoryName7z } from "../installUtils";
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY } from "../../constants";
-import { getGitTags } from "../execUtils";
+import { getGitTags, GitRemoteQueryOptions } from "../execUtils";
 
 export const sdkRepoURL = "https://github.com/zephyrproject-rtos/sdk-ng/";
 
@@ -74,8 +77,8 @@ export function isSdkV1OrLater(version: string): boolean {
 
 // Rejections propagate on purpose: ImportZephyrSDKPanel maps them to a
 // "versionError" message in the dialog instead of a silent empty dropdown.
-export async function getSdkVersion(): Promise<string[]> {
-	const tags = await getGitTags(sdkRepoURL);
+export async function getSdkVersion(opts?: GitRemoteQueryOptions): Promise<string[]> {
+	const tags = await getGitTags(sdkRepoURL, opts);
 	let versions: string[] = [];
 	if(tags && tags.length > 0) {
 		for(let tag of tags) {
@@ -120,7 +123,7 @@ export function generateSdkUrls(type: string, version: string, toolchains: strin
 	return urls;
 }
 
-export async function getMinimalToolchainsForVersion(version: string): Promise<string[]> {
+export async function getMinimalToolchainsForVersion(version: string, signal?: AbortSignal): Promise<string[]> {
 	const host = getSdkHostTarget();
 	if (!host) {
 		throw new Error('Unsupported host platform for Zephyr SDK downloads.');
@@ -128,7 +131,8 @@ export async function getMinimalToolchainsForVersion(version: string): Promise<s
 
 	const tag = version?.startsWith('v') ? version : `v${version}`;
 	const response = await fetch(`https://github.com/zephyrproject-rtos/sdk-ng/releases/tag/${tag}`, {
-		headers: { 'User-Agent': 'zephyr-workbench' }
+		headers: { 'User-Agent': 'zephyr-workbench' },
+		signal,
 	});
 	if (!response.ok) {
 		throw new Error(`Failed to fetch release page (${response.status})`);
@@ -210,6 +214,62 @@ export function mapToolchainIdToPackage(id: string): string {
 	}
 
 	return `${id}-zephyr-elf`;
+}
+
+/**
+ * Install bases the Zephyr build system discovers automatically, per OS.
+ * The user's home directory comes first and is the default on every platform.
+ */
+export function getRecommendedGlobalInstallBases(): string[] {
+  const home = os.homedir();
+  if (process.platform === 'win32') {
+    const bases = [home];
+    if (process.env.ProgramFiles) {
+      bases.push(process.env.ProgramFiles);
+    }
+    return bases;
+  }
+  return [
+    home,
+    path.join(home, '.local'),
+    path.join(home, '.local', 'opt'),
+    path.join(home, 'bin'),
+    '/opt',
+    '/usr/local',
+  ];
+}
+
+// True when the user can create files under targetPath (checking the nearest
+// existing ancestor when the directory itself does not exist yet).
+export function isWritableLocation(targetPath: string): boolean {
+  let probe = path.resolve(targetPath);
+  while (!fs.existsSync(probe)) {
+    const parent = path.dirname(probe);
+    if (parent === probe) {
+      return false;
+    }
+    probe = parent;
+  }
+  try {
+    fs.accessSync(probe, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The IAR root a picked folder stands for: its arm/ subfolder means the
+ * install folder above it, when that one also holds common/.
+ */
+export function normalizeIarToolchainRoot(selectedPath: string): string {
+	if (path.basename(selectedPath).toLowerCase() === "arm") {
+		const parent = path.dirname(selectedPath);
+		if (fs.existsSync(path.join(parent, "common"))) {
+			return parent;
+		}
+	}
+	return selectedPath;
 }
 
 export async function registerZephyrSDK(sdkPath: string) {
@@ -302,6 +362,47 @@ export async function unregisterIARToolchain(iarPath: string) {
 	}
   }
 
+/**
+ * The first line `tar -tf <file>` prints, newline included, as the former
+ * `tar -tf "<file>" | head -1` returned it: extractSDKTar's path.dirname
+ * relies on that newline to keep a leading "zephyr-sdk-x/" entry whole. tar
+ * runs without a shell and is stopped once the line is in, so a large archive
+ * is not listed to the end. Like that pipe run through execCommand, it rejects
+ * when tar failed or wrote to stderr, and resolves with whatever tar printed
+ * (possibly nothing) when there was no complete line.
+ */
+export function readFirstTarEntry(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    let firstLine: string | undefined;
+    const child = execFile('tar', ['-tf', filePath], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }, error => {
+      if (stderr) {
+        reject(new Error(stderr));
+      } else if (firstLine !== undefined) {
+        // Stopping tar is what ends it here, so its error does not count.
+        resolve(firstLine);
+      } else if (error) {
+        reject(error);
+      } else {
+        resolve(stdout);
+      }
+    });
+    child.stdout?.on('data', (chunk: string) => {
+      if (firstLine !== undefined) {
+        return;
+      }
+      stdout += chunk;
+      const end = stdout.indexOf('\n');
+      if (end >= 0) {
+        firstLine = stdout.slice(0, end + 1);
+        child.kill();
+      }
+    });
+    child.stderr?.on('data', (chunk: string) => { stderr += chunk; });
+  });
+}
+
 export async function extractSDKTar(filePath: string, destPath: string, progress: vscode.Progress<{
   message?: string | undefined;
   increment?: number | undefined;
@@ -309,8 +410,7 @@ export async function extractSDKTar(filePath: string, destPath: string, progress
   try {
     await extract(filePath, destPath, progress, token);
 
-    const fileNameCmd = `tar -tf "${filePath}" | head -1`;
-    let fileName = await execCommand(fileNameCmd);
+    let fileName = await readFirstTarEntry(filePath);
     fileName = path.dirname(fileName);
     return path.join(destPath, fileName);
   } catch (error) {

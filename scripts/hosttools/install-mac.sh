@@ -1380,6 +1380,20 @@ check_package() {
 		return 1
 	fi
 
+	# Without the Xcode Command Line Tools, /usr/bin/python3, git, make and
+	# gperf are stubs that open the macOS "install developer tools" dialog when
+	# run. A caller that must not show a dialog (the agent environment check)
+	# found them missing and sets ZW_DEVELOPER_TOOLS_MISSING: a stub then reads
+	# as not installed, which is true, without being run.
+	if [[ -n "${ZW_DEVELOPER_TOOLS_MISSING:-}" ]]; then
+		case "$(command -v "$probe_cmd")" in
+			/usr/bin/python3|/usr/bin/git|/usr/bin/make|/usr/bin/gperf)
+				echo "$package [NOT INSTALLED]"
+				return 1
+				;;
+		esac
+	fi
+
 	version=$(eval $version_command)
 
 	if [[ $? -ne 0 || -z $version ]]; then

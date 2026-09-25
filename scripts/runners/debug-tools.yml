@@ -10,6 +10,8 @@
 # `version-command` / `version-file` / `version-regex` = installed-version probe metadata,
 # `version-source: detect-path` = extract the version from the detected install path itself.
 # `version-command`, `version-file`, and `version-source` can be a string or OS-specific map.
+# `runners` = Zephyr runner names this tool serves when they differ from its `tool` id and `alias`
+# (the environment check uses it to tell whether a board's runner has its tool installed).
 
 #--- use versionning, this is needed to manage env.yml, mainly for auto-detect ---
 version: 3
@@ -288,6 +290,7 @@ debug_tools:
   group: STM32
   root: false
   no_edit: true
+  runners: [stlink_gdbserver]
   # Detect the STM32CubeCLT package root. The ST-LINK GDB Server,
   # STM32CubeProgrammer, and SVD paths are derived from this root.
   explicit-detect:
@@ -381,6 +384,7 @@ debug_tools:
   type: flasher
   group: Silabs
   root: false
+  runners: [silabs_commander]
   os:
     windows:
       source: https://www.silabs.com/documents/public/software/SimplicityCommander-Windows.zip

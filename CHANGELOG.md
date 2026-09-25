@@ -4,6 +4,22 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [Unreleased]
+
+### AI Manager (MCP)
+- New **AI Manager** panel: connect your AI coding agent to Workbench for Zephyr in one click. Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Gemini CLI, opencode and GitHub Copilot CLI are supported. The panel also connects agents to the Zephyr Project's own MCP server and lists third-party Zephyr agent skills.
+- **Build and fix**: agents build in a VS Code terminal you can watch, get the errors back with file and line, read memory usage, Kconfig values and the devicetree, and change build configurations and Kconfig options.
+- **Set up projects**: agents create or import applications, change their toolchain or Python environment, and search boards, shields, snippets and samples. With the full toolset they also install toolchains, create and update west workspaces, and remove what is no longer needed.
+- **Analyze and hand over**: agents run DT Doctor, the Kconfig hardening check, an SPDX SBOM or ECLAIR, and open the right Workbench view or wizard when a choice is yours to make.
+- **You stay in control**: agents ask you in VS Code before deleting, changing a west workspace or installing anything (`zephyr-workbench.mcp.confirmActions`), a toolset setting can limit them to read-only tools, and your own builds wait for an agent working in the same folder.
+- **Local only**: the server accepts connections from this machine only, with a key that changes every time VS Code starts. One setup serves every project and every open VS Code window.
+- New commands: **Check AI Agent Connection (MCP)** and **Copy MCP Configuration for an Agent**.
+
+### Other
+- **Verify Host Tools** and the Install Runners panel no longer hang on a missing environment script or virtual environment.
+- The Kconfig Manager's **Add to build config** now works for applications of a west workspace, and an export keeps the lines of earlier exports.
+- The board picker shows new board qualifiers and revisions right after a west update, without reloading the window.
+
 ## [4.2.1]
 
 ### Other
