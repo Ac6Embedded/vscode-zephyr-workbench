@@ -314,6 +314,8 @@ describe('AI Manager view', () => {
       assert.match(shown, /2 tools, core toolset/);
       assert.match(shown, />Test connection</);
       assert.match(shown, /127\.0\.0\.1:50123/);
+      // The open folders are the user's own; listing them only grows with the project count.
+      assert.doesNotMatch(shown, /This window|\/work\/zephyrproject/);
       assert.match(shown, />Restart<[\s\S]*>Show activity log</);
     });
 

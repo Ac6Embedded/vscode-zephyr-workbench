@@ -85,8 +85,6 @@ export function StatusHeader({ state }: { state: AiManagerState }) {
                 <dd className="zw-mono">127.0.0.1:{server.port}</dd>
               </>
             )}
-            <dt>This window</dt>
-            <dd>{server.workspace_folders.length > 0 ? server.workspace_folders.join(', ') : 'No folder open'}</dd>
             {server.other_windows > 0 && (
               <>
                 <dt>Other windows</dt>
