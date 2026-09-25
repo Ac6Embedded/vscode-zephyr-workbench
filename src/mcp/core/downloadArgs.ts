@@ -101,10 +101,11 @@ export interface DownloadSource {
 
 export const OFFICIAL_SOURCES = {
   zephyrSdk: { hosts: ['github.com'], pathPrefixes: ['/zephyrproject-rtos/sdk-ng/releases/download/'] },
-  // The Arm downloads page links to developer.arm.com, and to its blob store for some releases.
+  // The package registry of the Arm GitLab project (10698 is tooling/gnu-toolchains-for-arm),
+  // which redirects each download to its storage.
   armGnu: {
-    hosts: ['developer.arm.com', 'armkeil.blob.core.windows.net'],
-    pathPrefixes: ['/-/media/Files/downloads/gnu/', '/developer/Files/downloads/gnu/'],
+    hosts: ['gitlab.arm.com'],
+    pathPrefixes: ['/api/v4/projects/10698/packages/generic/gnu-toolchain/'],
   },
   rustDist: { hosts: ['static.rust-lang.org'], pathPrefixes: ['/dist/'] },
   rustupInit: { hosts: ['static.rust-lang.org'], pathPrefixes: ['/rustup/dist/'] },

@@ -71,8 +71,15 @@ describe('mcp/core/downloadArgs', () => {
       assert.ok(downloadUrlProblem(rustup, [OFFICIAL_SOURCES.rustupInit], { archive: true }));
     });
 
+    it('takes the Arm GNU Toolchain registry, and no other project of that GitLab', () => {
+      const arm = 'https://gitlab.arm.com/api/v4/projects/10698/packages/generic/gnu-toolchain/14.2.rel1/arm-gnu-toolchain-14.2.rel1-darwin-arm64-arm-none-eabi.tar.xz';
+      assert.equal(downloadUrlProblem(arm, [OFFICIAL_SOURCES.armGnu], { archive: true }), undefined);
+      assert.match(downloadUrlProblem(arm.replace('/projects/10698/', '/projects/10699/'), [OFFICIAL_SOURCES.armGnu], { archive: true }) ?? '', /not an official/);
+      assert.match(downloadUrlProblem(arm.replace('gitlab.arm.com', 'developer.arm.com'), [OFFICIAL_SOURCES.armGnu], { archive: true }) ?? '', /not an official/);
+    });
+
     it('lets a query string through, since the file is named after the path', () => {
-      const arm = 'https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-darwin-arm64-arm-none-eabi.tar.xz?rev=1&hash=2';
+      const arm = 'https://gitlab.arm.com/api/v4/projects/10698/packages/generic/gnu-toolchain/14.2.rel1/arm-gnu-toolchain-14.2.rel1-darwin-arm64-arm-none-eabi.tar.xz?rev=1&hash=2';
       assert.equal(downloadUrlProblem(arm, [OFFICIAL_SOURCES.armGnu], { archive: true }), undefined);
     });
 
