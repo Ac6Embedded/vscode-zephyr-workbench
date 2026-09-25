@@ -249,6 +249,10 @@ export class ZephyrSdkInstallation {
     const compilerPrefix = arch === 'xtensa' && socToolchain
       ? ZephyrSdkInstallation.getCompilerPrefix(arch, socToolchain)
       : ZephyrSdkInstallation.getCompilerPrefix(arch);
+    // Same guard as getCompilerPath: an unknown/empty arch has no gdb to point at.
+    if (!compilerPrefix) {
+      return '';
+    }
 
     let ext = '';
     if (process.platform === 'win32') {

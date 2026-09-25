@@ -1232,7 +1232,9 @@ export async function createLaunchConfiguration(
     throw new Error('createLaunchConfiguration: target board not found');
   }
 
-  const targetArch = targetBoard.arch;
+  // Boards described only by board.yml (no twister <board>.yaml) carry no arch,
+  // so fall back to the build's Kconfig to still locate the SDK gdb.
+  const targetArch = targetBoard.arch || buildConfig?.getKConfigValue(project, 'ARCH', domain) || '';
   let configName;
   let socToolchainName;
   let paths: LaunchConfigurationPaths | undefined;
