@@ -4,7 +4,7 @@ import path from 'path';
 import { fileExists, getWorkspaceFolder } from '../utils/utils';
 import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY } from '../constants';
 import { getBuildEnv, loadEnv } from '../utils/env/zephyrEnvUtils';
-import { buildStartupSetupShellArgs, buildTerminalEnvCommands, concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getShellCdCommand, getShellClearCommand, getResolvedShell, getShellSourceCommand, classifyShell, normalizeEnvRecordForShell, normalizePathForShell, TerminalEnvGroup } from '../utils/execUtils';
+import { buildTerminalEnvCommands, concatCommands, createSetupTerminal, getConfiguredVenvPath, getConfiguredWorkbenchPath, getShellCdCommand, getShellClearCommand, getResolvedShell, getShellSourceCommand, classifyShell, normalizeEnvRecordForShell, normalizePathForShell, TerminalEnvGroup } from '../utils/execUtils';
 
 export class WestWorkspace {
   versionArray!: { [key: string]: string };
@@ -306,34 +306,21 @@ export class WestWorkspace {
     terminal.sendText(setupCommand);
   }
 
-  // New-terminal path: bake the setup into shellArgs so it runs silently at startup.
-  // env vars are already injected via createTerminal({ env }), so the setup only
-  // sources the env script and echoes the grouped banner.
+  // New-terminal path: env vars are already injected via createTerminal({ env }),
+  // so the setup only sources the env script and prints the grouped banner, after
+  // the shell's own startup files (see createSetupTerminal).
   private static openTerminal(westWorkspace: WestWorkspace, envScript: string): vscode.Terminal {
     const context = WestWorkspace.buildTerminalContext(westWorkspace);
-    const envScriptForShell = normalizePathForShell(context.shellType, envScript);
-    const { echoCommands } = buildTerminalEnvCommands(context.shellType, context.groups);
-
-    const setupCommands = [
-      getShellSourceCommand(context.shellType, envScriptForShell),
-      ...echoCommands,
-    ];
-    const shellArgs = buildStartupSetupShellArgs(
-      context.shellPath,
-      context.shellType,
-      context.shellArgs,
-      setupCommands,
-    );
 
     const opts: vscode.TerminalOptions = {
       name: westWorkspace.name + ' Terminal',
       shellPath: `${context.shellPath}`,
-      shellArgs,
+      shellArgs: context.shellArgs,
       env: context.env,
       cwd: westWorkspace.rootUri,
     };
 
-    return vscode.window.createTerminal(opts);
+    return createSetupTerminal(opts, context.shellType, envScript, context.groups);
   }
 
   static getTerminal(westWorkspace: WestWorkspace): vscode.Terminal {

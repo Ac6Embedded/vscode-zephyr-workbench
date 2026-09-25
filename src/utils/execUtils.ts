@@ -772,28 +772,18 @@ export async function ensureTerminalStickyScrollDisabled(): Promise<void> {
 }
 
 /**
- * Build `shellArgs` that runs `setupCommands` silently at terminal startup, then
- * drops into an interactive shell. Pass to `vscode.window.createTerminal({shellArgs})`.
+ * Build `shellArgs` that run `setupCommands` silently at startup for cmd and
+ * PowerShell, then leave the shell interactive (`/k`, `-NoExit -Command`). Both
+ * shells load their own startup (AutoRun, $PROFILE) before running the command,
+ * so the setup still runs last and nothing is typed at the prompt.
  *
- * Why: `terminal.sendText` types its argument at the prompt and the shell echoes it
- * back, leaving a long `&&` chain visible in scrollback. By baking the setup into the
- * shell's launch args (`-c "<setup>; exec <shell>"` on POSIX, `-NoExit -Command` on
- * PowerShell, `/k` on cmd), no input is ever typed and only the setup's own output
- * (e.g. our env-banner echoes) is shown.
- *
- * Only usable when *creating* a terminal. For an already-running terminal (e.g. when
- * a build config changes and we want to refresh its env), there's no choice but to
- * use `sendText` because the shell is past its launch.
- *
- * `originalShellArgs` is preserved on the inner `exec` so the user's terminal-profile
- * args (e.g. `--login`) still apply to the interactive shell.
+ * Returns undefined for POSIX shells, which have no such launch option (see
+ * createSetupTerminal).
  */
 export function buildStartupSetupShellArgs(
-  shellExe: string,
   shellKind: string,
-  originalShellArgs: string[] | undefined,
   setupCommands: string[],
-): string[] {
+): string[] | undefined {
   if (shellKind === 'cmd.exe') {
     // /k = run command then stay open in interactive mode. @echo off suppresses cmd's
     // default per-line echoing of the setup commands.
@@ -806,24 +796,54 @@ export function buildStartupSetupShellArgs(
     return ['-NoExit', '-Command', setupCommands.join('; ')];
   }
 
-  // POSIX (bash/zsh/dash/fish, plus their Cygwin/MSYS2/Git Bash variants):
-  // `-c` runs the setup non-interactively, then `exec <shell>` replaces the wrapper
-  // with an interactive shell that inherits env, cwd, and any profile args the user
-  // had configured.
-  const setupChain = setupCommands.join(' && ');
-  // POSIX single-quote: survives spaces and backslashes; '\'' escapes embedded
-  // quotes. The shell exe is also forward-slashed — a Windows path like
-  // `C:\Program Files\Git\bin\bash.exe` would otherwise be word-split and
-  // backslash-stripped inside the -c string, killing the terminal at startup.
-  const posixQuote = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
-  const userArgs = (originalShellArgs ?? [])
-    .map(posixQuote)
-    .join(' ');
-  const execTail = `exec ${posixQuote(shellExe.replace(/\\/g, '/'))}${userArgs ? ' ' + userArgs : ''}`;
-  // `;` (not `&&`) before exec so the interactive shell still launches even if a
-  // setup command returns non-zero — otherwise a fluky echo or source would close
-  // the terminal.
-  return ['-c', setupChain ? `${setupChain}; ${execTail}` : execTail];
+  return undefined;
+}
+
+// Carries the env banner text into new POSIX terminals (see createSetupTerminal).
+const TERMINAL_BANNER_ENV_VAR = 'ZEPHYR_WORKBENCH_BANNER';
+
+/**
+ * Create a Zephyr terminal that sources `envScript` and prints the grouped env
+ * banner once the shell has started.
+ *
+ * The setup has to run after the shell's own startup files, or they undo it:
+ * conda or pyenv in ~/.bashrc put their python back ahead of the venv, Ubuntu's
+ * ~/.bashrc resets the (.venv) prompt, and a Git Bash/MSYS2 login shell rebuilds
+ * PATH in /etc/profile. cmd and PowerShell get the setup in their launch args
+ * (buildStartupSetupShellArgs). POSIX shells cannot run a command after their rc
+ * files and stay interactive, so, like the Python and ESP-IDF extensions, we
+ * start the user's shell as-is and type the setup into it. The leading `clear`
+ * wipes the echoed command, and the leading space keeps it out of the history
+ * when HISTCONTROL=ignorespace (bash) or HIST_IGNORE_SPACE (zsh) is set.
+ *
+ * The typed command must stay short: until the shell's line editor starts, the
+ * tty holds at most one line of typed input (4095 bytes on Linux, 1024 on
+ * macOS) and drops the rest. The banner can be long (it may echo PATH), so it
+ * travels in the terminal env and the typed command just prints it.
+ */
+export function createSetupTerminal(
+  options: vscode.TerminalOptions,
+  shellKind: string,
+  envScript: string,
+  groups: TerminalEnvGroup[],
+): vscode.Terminal {
+  const sourceCommand = getShellSourceCommand(shellKind, normalizePathForShell(shellKind, envScript));
+  const { echoCommands, bannerLines } = buildTerminalEnvCommands(shellKind, groups);
+
+  const startupArgs = buildStartupSetupShellArgs(shellKind, [sourceCommand, ...echoCommands]);
+  if (startupArgs) {
+    return vscode.window.createTerminal({ ...options, shellArgs: startupArgs });
+  }
+
+  const terminal = vscode.window.createTerminal({
+    ...options,
+    env: { ...options.env, [TERMINAL_BANNER_ENV_VAR]: bannerLines.join('\n') },
+  });
+  terminal.sendText(
+    ` ${getShellClearCommand(shellKind)} && ${sourceCommand} && `
+    + `printf '%s\\n' "$${TERMINAL_BANNER_ENV_VAR}"; unset ${TERMINAL_BANNER_ENV_VAR}`,
+  );
+  return terminal;
 }
 
 /**
@@ -849,16 +869,19 @@ export interface TerminalEnvGroup {
  *                      Run these AFTER sourcing the env script so the user sees
  *                      the final, post-source values.
  *
+ * `bannerLines` is the same banner as plain text, one line per echo command.
+ *
  * Empty groups are skipped.
  */
 export function buildTerminalEnvCommands(
   shellType: string,
   groups: TerminalEnvGroup[],
-): { setCommands: string[]; echoCommands: string[] } {
+): { setCommands: string[]; echoCommands: string[]; bannerLines: string[] } {
   const echoCommand = getShellEchoCommand(shellType);
 
   const setCommands: string[] = [];
-  const echoCommands: string[] = [`${echoCommand} "======= Zephyr Workbench Environment ======="`];
+  const bannerLines: string[] = ['======= Zephyr Workbench Environment ======='];
+  const echoCommands: string[] = [`${echoCommand} "${bannerLines[0]}"`];
 
   for (const group of groups) {
     const entries = Object.entries(group.env);
@@ -870,16 +893,21 @@ export function buildTerminalEnvCommands(
       setCommands.push(getShellSetEnvCommand(shellType, key, String(value)));
     }
 
-    echoCommands.push(`${echoCommand} "----- ${group.label} -----"`);
+    const label = `----- ${group.label} -----`;
+    bannerLines.push(label);
+    echoCommands.push(`${echoCommand} "${label}"`);
     for (const [key, value] of entries) {
       // Echo the value exactly as injected — a transformed display value
       // would not match what `echo $KEY` shows in the terminal.
+      bannerLines.push(`${key}=${String(value)}`);
       echoCommands.push(`${echoCommand} ${key}="${String(value)}"`);
     }
   }
 
-  echoCommands.push(`${echoCommand} "============================================"`);
-  return { setCommands, echoCommands };
+  const footer = '============================================';
+  bannerLines.push(footer);
+  echoCommands.push(`${echoCommand} "${footer}"`);
+  return { setCommands, echoCommands, bannerLines };
 }
 
 export function getOutputChannel(): vscode.OutputChannel {

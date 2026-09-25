@@ -7,6 +7,7 @@ import {
   buildStartupSetupShellArgs,
   buildTerminalEnvCommands,
   classifyShell,
+  createSetupTerminal,
   getResolvedShell,
   getShellSourceCommand,
   getSubstitutedShellName,
@@ -49,47 +50,86 @@ describe('getShellSourceCommand', () => {
 });
 
 describe('buildStartupSetupShellArgs', () => {
-  it('quotes and forward-slashes the exec tail for POSIX shells', () => {
-    const args = buildStartupSetupShellArgs(
-      'C:\\Program Files\\Git\\bin\\bash.exe',
-      'bash',
-      ['--login', '-i'],
-      ['. "/c/env.sh" > /dev/null 2>&1', 'echo ok'],
-    );
-    assert.deepEqual(args, [
-      '-c',
-      `. "/c/env.sh" > /dev/null 2>&1 && echo ok; exec 'C:/Program Files/Git/bin/bash.exe' '--login' '-i'`,
-    ]);
-  });
-
-  it('handles empty setup with a bare exec tail', () => {
+  it('bakes the setup into cmd.exe /k', () => {
     assert.deepEqual(
-      buildStartupSetupShellArgs('C:\\Program Files\\Git\\bin\\bash.exe', 'bash', undefined, []),
-      ['-c', `exec 'C:/Program Files/Git/bin/bash.exe'`],
-    );
-  });
-
-  it("escapes embedded single quotes with '\\''", () => {
-    const [, cmd] = buildStartupSetupShellArgs("/opt/o'shell/bash", 'bash', undefined, []);
-    assert.equal(cmd, `exec '/opt/o'\\''shell/bash'`);
-  });
-
-  it('keeps the cmd.exe branch unchanged', () => {
-    assert.deepEqual(
-      buildStartupSetupShellArgs('cmd.exe', 'cmd.exe', undefined, ['set X=1']),
+      buildStartupSetupShellArgs('cmd.exe', ['set X=1']),
       ['/k', '@echo off && set X=1'],
     );
     assert.deepEqual(
-      buildStartupSetupShellArgs('cmd.exe', 'cmd.exe', undefined, []),
+      buildStartupSetupShellArgs('cmd.exe', []),
       ['/k', '@echo off'],
     );
   });
 
-  it('keeps the PowerShell branch unchanged', () => {
+  it('bakes the setup into PowerShell -NoExit -Command', () => {
     assert.deepEqual(
-      buildStartupSetupShellArgs('powershell.exe', 'powershell.exe', undefined, ['a', 'b']),
+      buildStartupSetupShellArgs('powershell.exe', ['a', 'b']),
       ['-NoExit', '-Command', 'a; b'],
     );
+  });
+
+  it('returns undefined for POSIX shells', () => {
+    for (const kind of ['bash', 'zsh', 'dash', 'fish']) {
+      assert.equal(buildStartupSetupShellArgs(kind, ['echo ok']), undefined, kind);
+    }
+  });
+});
+
+describe('createSetupTerminal', () => {
+  const originalCreateTerminal = (vscode.window as any).createTerminal;
+  let created: { options: any; sent: string[] }[];
+
+  beforeEach(() => {
+    created = [];
+    (vscode.window as any).createTerminal = (options: any) => {
+      const record = { options, sent: [] as string[] };
+      created.push(record);
+      return { sendText: (text: string) => record.sent.push(text) };
+    };
+  });
+  afterEach(() => { (vscode.window as any).createTerminal = originalCreateTerminal; });
+
+  const groups = [{ label: 'Helpers', env: { PYTHON_VENV_PATH: '/ws/.venv' } }];
+  const banner = [
+    '======= Zephyr Workbench Environment =======',
+    '----- Helpers -----',
+    'PYTHON_VENV_PATH=/ws/.venv',
+    '============================================',
+  ].join('\n');
+
+  it('starts POSIX shells with the user args and types a short setup after startup', () => {
+    createSetupTerminal(
+      { name: 't', shellPath: '/bin/bash', shellArgs: ['--login', '-i'], env: { A: '1' } },
+      'bash',
+      '/home/u/env.sh',
+      groups,
+    );
+    assert.equal(created.length, 1);
+    assert.deepEqual(created[0].options.shellArgs, ['--login', '-i']);
+    // The banner rides in the env, so the typed line stays short whatever the groups hold.
+    assert.deepEqual(created[0].options.env, { A: '1', ZEPHYR_WORKBENCH_BANNER: banner });
+    assert.deepEqual(created[0].sent, [
+      ` clear && . /home/u/env.sh && printf '%s\\n' "$ZEPHYR_WORKBENCH_BANNER"; unset ZEPHYR_WORKBENCH_BANNER`,
+    ]);
+  });
+
+  it('keeps the silent launch-args startup for cmd and PowerShell', () => {
+    createSetupTerminal({ name: 't', shellPath: 'cmd.exe', shellArgs: ['/d'] }, 'cmd.exe', 'C:\\env.bat', []);
+    createSetupTerminal({ name: 't', shellPath: 'pwsh.exe' }, 'pwsh.exe', 'C:\\env.bat', groups);
+    assert.deepEqual(created[0].options.shellArgs, [
+      '/k',
+      '@echo off && call C:\\env.bat && echo "======= Zephyr Workbench Environment =======" '
+      + '&& echo "============================================"',
+    ]);
+    assert.deepEqual(created[1].options.shellArgs, [
+      '-NoExit',
+      '-Command',
+      '. C:\\env.ps1; Write-Output "======= Zephyr Workbench Environment ======="; '
+      + 'Write-Output "----- Helpers -----"; Write-Output PYTHON_VENV_PATH="/ws/.venv"; '
+      + 'Write-Output "============================================"',
+    ]);
+    assert.equal('ZEPHYR_WORKBENCH_BANNER' in (created[1].options.env ?? {}), false);
+    assert.deepEqual(created.map(c => c.sent), [[], []]);
   });
 });
 
@@ -322,6 +362,20 @@ describe('buildTerminalEnvCommands', () => {
     ]);
     assert.equal(setCommands[0], `$env:PYTHON_VENV_PATH = 'C:\\ws\\.venv'`);
     assert.ok(echoCommands.some(c => c.startsWith('Write-Output PYTHON_VENV_PATH=')));
+  });
+
+  it('returns the banner as plain text, one line per echo command', () => {
+    const { echoCommands, bannerLines } = buildTerminalEnvCommands('bash', [
+      { label: 'Zephyr build system', env: { ZEPHYR_BASE: '/ws/zephyr' } },
+      { label: 'Empty', env: {} },
+    ]);
+    assert.deepEqual(bannerLines, [
+      '======= Zephyr Workbench Environment =======',
+      '----- Zephyr build system -----',
+      'ZEPHYR_BASE=/ws/zephyr',
+      '============================================',
+    ]);
+    assert.equal(bannerLines.length, echoCommands.length);
   });
 });
 

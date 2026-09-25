@@ -5,9 +5,9 @@ import { ZephyrApplication } from "./ZephyrApplication";
 import { prependRustBinPath } from "./ToolchainInstallations";
 import { getBuildEnv, loadConfigEnv, resolveStoredEnvValue } from "../utils/env/zephyrEnvUtils";
 import {
-  buildStartupSetupShellArgs,
   buildTerminalEnvCommands,
   concatCommands,
+  createSetupTerminal,
   getConfiguredWorkbenchPath,
   getShellCdCommand,
   getShellClearCommand,
@@ -343,38 +343,25 @@ export class ZephyrBuildConfig {
     terminal.sendText(setupCommand);
   }
 
-  // New-terminal path: bake the setup into shellArgs so it runs silently at startup.
-  // env vars are already injected via createTerminal({ env }), so the setup only needs
-  // to source the env script and echo the grouped banner.
+  // New-terminal path: env vars are already injected via createTerminal({ env }), so
+  // the setup only needs to source the env script and print the grouped banner, after
+  // the shell's own startup files (see createSetupTerminal).
   private static openTerminal(
     application: ZephyrApplication,
     buildConfig: ZephyrBuildConfig,
     envScript: string,
   ): vscode.Terminal {
     const context = ZephyrBuildConfig.buildTerminalContext(application, buildConfig);
-    const envScriptForShell = normalizePathForShell(context.shellType, envScript);
-    const { echoCommands } = buildTerminalEnvCommands(context.shellType, context.groups);
-
-    const setupCommands = [
-      getShellSourceCommand(context.shellType, envScriptForShell),
-      ...echoCommands,
-    ];
-    const shellArgs = buildStartupSetupShellArgs(
-      context.shellPath,
-      context.shellType,
-      context.shellArgs,
-      setupCommands,
-    );
 
     const opts: vscode.TerminalOptions = {
       name: `${application.appName} (${buildConfig.name}) Terminal`,
       shellPath: `${context.shellPath}`,
-      shellArgs,
+      shellArgs: context.shellArgs,
       env: context.env,
       cwd: context.cwd,
     };
 
-    return vscode.window.createTerminal(opts);
+    return createSetupTerminal(opts, context.shellType, envScript, context.groups);
   }
 
   static getTerminal(application: ZephyrApplication, buildConfig: ZephyrBuildConfig): vscode.Terminal {
