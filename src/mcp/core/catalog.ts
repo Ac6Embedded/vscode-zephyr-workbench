@@ -10,6 +10,7 @@
 import { z } from 'zod';
 import { ToolMeta } from './toolSpec';
 import { ANALYZE } from './tools/analyze';
+import { HARDWARE } from './tools/hardware';
 import { MANAGE_APP } from './tools/manageApp';
 import { MANAGE_TOOLCHAIN } from './tools/manageToolchain';
 import { MANAGE_WEST_WORKSPACE } from './tools/manageWestWorkspace';
@@ -48,6 +49,9 @@ export function serverInstructions(served: ReadonlySet<string> | readonly string
       + ` create the application with ${toolOr('manage_app', 'Add Application')}, then build_app.`,
     'Long actions return a job: when status is "running", call job with action "status" and the job_id until it is not.',
     'Inline output is a tail only; the full log is at log.path or through job with action "log".',
+    ...(has('hardware')
+      ? ['To see what a board prints, start a capture with hardware action serial_start before flashing or resetting it, then read it with action serial_read (wait_for waits for a line). A capture stays running until serial_stop or its duration_sec, so do not poll it with job status.']
+      : []),
     'Adding a folder to the VS Code window can restart its extensions: a result with restart_pending means the server',
     'comes back within seconds, so wait briefly and call get_status; job ids stay valid.',
     'Never run menuconfig or guiconfig in a shell: they wait for keyboard input. Read Kconfig values with query_kconfig',
@@ -452,6 +456,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   MANAGE_TOOLCHAIN,
   OPEN_IN_WORKBENCH,
   REMOVE_OR_DELETE,
+  HARDWARE,
   {
     name: 'job',
     title: 'Job status, log and cancel',

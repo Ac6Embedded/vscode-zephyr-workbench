@@ -316,6 +316,19 @@ describe('mcp/jobs/jobManager results', () => {
     assert.equal(m.view(job).next, 'Updated 42 projects. Call get_status.');
   });
 
+  it('lets a job that runs until stopped say what to do while it runs, and names a serial port in a refusal', async () => {
+    const m = manager();
+    const serial = { kind: 'serial' as const, lockKey: 'serial:/dev/ttyACM0', buildDir: undefined, appPath: undefined, configName: undefined };
+    const f = fakeJob({ ...serial, requestKey: 'serial:/dev/ttyACM0:115200', runningNext: view => `Read ${view.job_id} with the hardware tool.` });
+    const { job } = m.start(f.spec);
+    assert.equal(m.view(job).next, `Read ${job.id} with the hardware tool.`);
+    const other = fakeJob({ ...serial, requestKey: 'serial:/dev/ttyACM0:9600' });
+    assert.throws(() => m.start(other.spec), (error: McpToolError) => error.code === 'BUSY' && /serial port/.test(error.message));
+    f.finish({ exitCode: 0 });
+    await m.wait(job, 1000);
+    assert.match(m.view(job).next, /"action": "log"/, 'finished, the generic step is back');
+  });
+
   it('keeps the generic next step when the job\'s own one throws', async () => {
     const m = manager();
     const f = fakeJob({ next: () => { throw new Error('broken'); } });

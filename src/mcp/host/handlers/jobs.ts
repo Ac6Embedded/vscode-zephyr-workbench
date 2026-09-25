@@ -66,6 +66,9 @@ export const job: ToolHandler<HostDeps> = async (args, ctx: Ctx) => {
     // Recorded once it finished, so there is nothing to wait for.
     return target.view;
   }
-  await jobs.wait(target, (num(args.wait_sec) ?? defaultWaitSeconds) * 1000, progressWait(ctx, jobs));
+  // A serial capture runs until it is stopped or its duration ends, so
+  // waiting the default time would only block: it waits when asked to.
+  const waitSec = num(args.wait_sec) ?? (target.spec.kind === 'serial' ? 0 : defaultWaitSeconds);
+  await jobs.wait(target, waitSec * 1000, progressWait(ctx, jobs));
   return jobs.view(target);
 };

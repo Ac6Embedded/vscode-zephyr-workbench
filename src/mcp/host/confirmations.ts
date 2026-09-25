@@ -39,7 +39,7 @@ export type ConfirmOutcome = 'not-required' | 'not-asked' | 'allowed' | 'allowed
 
 /** How each category reads in "...before <text> actions". */
 const CATEGORY_TEXT: Record<ConfirmCategory, string> = {
-  hardware: 'flash and debug',
+  hardware: 'serial send',
   delete: 'remove and delete',
   workspace: 'application and west workspace',
   install: 'install',

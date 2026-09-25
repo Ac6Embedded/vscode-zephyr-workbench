@@ -493,7 +493,7 @@ export function ToolsTab({ state }: { state: AiManagerState }) {
         ))}
       </div>
       {!readOnly && hardwareAsked && !server.confirm_actions.includes('hardware') && (
-        <p className="zw-note">Agents can flash and debug a connected board without asking.</p>
+        <p className="zw-note">Agents can send text to a connected board's serial port without asking.</p>
       )}
       {server.session_approvals > 0 && (
         <div className="zw-actions zw-spaced">

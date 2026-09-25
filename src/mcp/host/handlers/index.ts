@@ -10,6 +10,7 @@ import { manageApp } from './apps';
 import { configure } from './buildConfigs';
 import { getDiagnostics } from './diagnostics';
 import { getBuildInfo, getMemoryReport, listRunners, queryDevicetree, queryKconfig } from './artifacts';
+import { hardware } from './hardware';
 import { setKconfig } from './kconfig';
 import { job } from './jobs';
 import { searchZephyrCatalog } from './catalogSearch';
@@ -41,6 +42,7 @@ export const HANDLERS: Readonly<Record<string, ToolHandler<HostDeps>>> = {
   manage_toolchain: manageToolchain,
   open_in_workbench: openInWorkbench,
   remove_or_delete: removeOrDelete,
+  hardware,
   job,
 };
 

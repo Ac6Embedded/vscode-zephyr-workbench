@@ -67,7 +67,7 @@ export interface FolderChangeSchedulerOptions {
   context: vscode.ExtensionContext;
   windowId: string;
   /** This window's jobs: a change that restarts the host waits until none runs. */
-  jobs: { list(): ReadonlyArray<Pick<JobState, 'id' | 'status' | 'endedAt'>> };
+  jobs: { list(): ReadonlyArray<Pick<JobState, 'id' | 'status' | 'endedAt'> & { spec?: Pick<JobState['spec'], 'kind'> }> };
   log(line: string): void;
   workspace?: FolderWorkspace;
   clock?: SchedulerClock;
@@ -275,8 +275,12 @@ export class FolderChangeScheduler implements vscode.Disposable {
   }
 
   private runningJobs(): string[] {
-    // A cancelled job counts until its process has exited.
-    return this.options.jobs.list().filter(job => !isTerminal(job.status) || job.endedAt === undefined).map(job => job.id);
+    // A cancelled job counts until its process has exited. A serial capture
+    // does not: it only watches a port, for up to an hour, and waiting for it
+    // would hold the change that long; the restart ends it like a cancel.
+    return this.options.jobs.list()
+      .filter(job => (!isTerminal(job.status) || job.endedAt === undefined) && job.spec?.kind !== 'serial')
+      .map(job => job.id);
   }
 
   private exclusive<T>(work: () => Promise<T>): Promise<T> {

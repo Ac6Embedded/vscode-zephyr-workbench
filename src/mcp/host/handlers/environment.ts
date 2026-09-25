@@ -40,6 +40,7 @@ import {
 } from '../../core/environmentReport';
 import { McpToolError } from '../../core/errors';
 import { ToolContext, ToolHandler } from '../../core/toolSpec';
+import { probePyserial } from '../serial/helper';
 import { HostDeps } from './deps';
 
 type Ctx = ToolContext<HostDeps>;
@@ -428,6 +429,10 @@ export const checkEnvironment: ToolHandler<HostDeps> = async (args, ctx: Ctx) =>
     const venvPythonWork: Promise<PythonProbeResult> | undefined = depth === 'full' && sections.has('python') && venv.path && venvExists
       ? probePythonInterpreter('custom', venvBinDir(venv.path))
       : undefined;
+    // The serial actions of the hardware tool run on that venv's pyserial.
+    const pyserialWork = depth === 'full' && sections.has('python') && venv.path && venvExists
+      ? probePyserial(venv.path)
+      : undefined;
     const systemPythonWork: Promise<PythonProbeResult> | undefined = depth === 'full' && sections.has('python')
       ? probePythonInterpreter('system', undefined, { developerToolsMissing })
       : undefined;
@@ -464,8 +469,9 @@ export const checkEnvironment: ToolHandler<HostDeps> = async (args, ctx: Ctx) =>
 
     const hostQuick = await withinBudget(ctx, deadline, 'The host tools check', notes, hostQuickWork);
     phase = 'Python, west and the SDKs';
-    const [venvPython, systemPython, westVersion, sdks, internalSdk] = await Promise.all([
+    const [venvPython, pyserial, systemPython, westVersion, sdks, internalSdk] = await Promise.all([
       venvPythonWork ? withinBudget(ctx, deadline, 'The virtual environment Python probe', notes, venvPythonWork) : undefined,
+      pyserialWork ? withinBudget(ctx, deadline, 'The pyserial probe', notes, pyserialWork) : undefined,
       systemPythonWork ? withinBudget(ctx, deadline, 'The system Python probe', notes, systemPythonWork) : undefined,
       westWork ? withinBudget(ctx, deadline, 'The west version probe', notes, westWork) : undefined,
       withinBudget(ctx, deadline, 'The SDK listing', notes, sdksWork),
@@ -613,6 +619,7 @@ export const checkEnvironment: ToolHandler<HostDeps> = async (args, ctx: Ctx) =>
             source: venv.source,
             exists: venvExists,
             ...(venvPython?.ok ? { version: venvPython.version, too_old: venvPython.tooOld === true } : {}),
+            ...(pyserial ? { pyserial } : {}),
           },
           ...(systemPython ? {
             system: {

@@ -1,6 +1,6 @@
 import { strict as assert } from 'assert';
 import { SERVER_INSTRUCTIONS, SERVER_NAME, TOOL_CATALOG, findTool, serverInstructions } from '../../../mcp/core/catalog';
-import { catalogVersion, isMachineScope, routeByOf, selectTools } from '../../../mcp/core/toolSpec';
+import { catalogVersion, confirmCategoryOf, isMachineScope, routeByOf, selectTools } from '../../../mcp/core/toolSpec';
 import { toToolError } from '../../../mcp/core/errors';
 
 describe('mcp/core/catalog', () => {
@@ -144,6 +144,30 @@ describe('mcp/core/catalog', () => {
     }
   });
 
+  it('asks only before a serial send, and lets any window list and open a port', () => {
+    const tool = findTool('hardware')!;
+    assert.deepEqual(tool.toolsets, ['core']);
+    assert.equal(confirmCategoryOf(tool, { action: 'serial_send' }), 'hardware');
+    for (const action of ['list_ports', 'serial_start', 'serial_read', 'serial_stop']) {
+      assert.equal(confirmCategoryOf(tool, { action }), undefined, action);
+    }
+    assert.equal(isMachineScope(tool, { action: 'list_ports' }), true);
+    assert.equal(isMachineScope(tool, { action: 'serial_start' }), true);
+    // Any window may answer a read, send or stop: one without the capture
+    // refuses. A job_id still sends the call to the window running it, because
+    // the bridge locks on the job's window before it looks at machine scope.
+    for (const action of ['serial_read', 'serial_send', 'serial_stop']) {
+      assert.equal(isMachineScope(tool, { action }), true, action);
+    }
+    assert.ok((tool.inputSchema.shape as Record<string, unknown>).job_id, 'job_id is an argument, so the bridge can route by it');
+  });
+
+  it('tells agents to capture before flashing only when the hardware tool is served', () => {
+    const all = TOOL_CATALOG.map(t => t.name);
+    assert.match(serverInstructions(all), /serial_start before flashing or resetting/);
+    assert.doesNotMatch(serverInstructions(all.filter(name => name !== 'hardware')), /serial|hardware/);
+  });
+
   it('never names in the instructions a tool the window does not serve', () => {
     const core = selectTools(TOOL_CATALOG, 'core').map(t => t.name);
     const text = serverInstructions(core);
@@ -175,7 +199,9 @@ describe('mcp/core/catalog', () => {
 
   it('stays well inside the client tool budget', () => {
     // VS Code caps a chat request at 128 tools across every extension, and
-    // Cursor is reported to cut off near 40.
+    // Cursor is reported to cut off near 40. 22 is this server's cap, and
+    // hardware holds the last slot: flash, run and debug become its actions,
+    // and anything else new joins an existing tool as an action.
     assert.ok(TOOL_CATALOG.length <= 22, `catalog has ${TOOL_CATALOG.length} tools`);
   });
 

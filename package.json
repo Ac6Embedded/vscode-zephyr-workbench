@@ -119,7 +119,7 @@
             "type": "string",
             "enum": ["hardware", "delete", "workspace", "install", "settings"],
             "enumDescriptions": [
-              "Flash or debug a connected board.",
+              "Send text to a connected board's serial port, such as a Zephyr shell command.",
               "Remove or delete build folders, build configurations, applications, west workspaces, venvs, blobs or toolchains.",
               "Create, import or update applications and west workspaces, including west update and manifest edits.",
               "Install SDKs, toolchains, Python environments, Python packages or binary blobs.",

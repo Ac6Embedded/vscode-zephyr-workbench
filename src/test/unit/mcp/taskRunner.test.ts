@@ -167,6 +167,17 @@ describe('mcp/host/taskRunner', () => {
       assert.equal(executed[0].presentationOptions.focus, false);
     });
 
+    it('lets a step show one text in the terminal and write another to the job log', async () => {
+      // A serial capture: raw output with colours for the user, clean lines for the agent.
+      await runner.runLoggedStep('Serial', sink, new AbortController().signal, async (log, _signal, channels) => {
+        channels.terminal('\u001b[32muart:~$ \u001b[m');
+        channels.record('uart:~$ ');
+        log('\n--- serial: closed ---\n');
+      });
+      assert.equal(sink.all, 'uart:~$ \n--- serial: closed ---\n');
+      assert.equal(text(terminals[0]), 'Serial\n\n\u001b[32muart:~$ \u001b[m\n--- serial: closed ---\n');
+    });
+
     it('shows why the step failed, closes with 1 and rethrows for the job to report', async () => {
       await assert.rejects(runner.runLoggedStep('Extract', sink, new AbortController().signal, async log => {
         log('extracting\n');
@@ -215,6 +226,19 @@ describe('mcp/host/taskRunner', () => {
       job.abort();
       await assert.rejects(byJob, /stopped/);
       assert.equal(terminals[1].closedWith, 1);
+    });
+
+    it('sends its notices about the terminal to the step\'s own note, when it has one', async () => {
+      mode = 'refuse';
+      const notes: string[] = [];
+      await runner.runLoggedStep('Serial', sink, new AbortController().signal, async log => {
+        log('uart:~$ ');
+        await tick();
+      }, { note: message => notes.push(message) });
+      await tick();
+      assert.equal(notes.length, 1);
+      assert.match(notes[0], /refused to show "Serial" in a terminal/);
+      assert.doesNotMatch(sink.all, /refused/, 'a capture marks it as its own message, never as device output');
     });
 
     it('still runs the step when VS Code refuses the terminal, and says so in the log', async () => {

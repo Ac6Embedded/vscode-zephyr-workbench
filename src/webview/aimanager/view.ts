@@ -282,7 +282,7 @@ export const TOOLSETS: [string, string][] = [
 
 /** The confirmation categories, in the order the setting lists them. */
 export const CONFIRM_LABELS: [string, string][] = [
-  ['hardware', 'Flash or debug a connected board'],
+  ['hardware', 'Send text to a connected board\'s serial port'],
   ['delete', 'Remove or delete build folders, configurations, applications, workspaces or toolchains'],
   ['workspace', 'Create, import or update applications and west workspaces'],
   ['install', 'Install SDKs, toolchains, Python environments or blobs'],
@@ -330,6 +330,7 @@ const JOB_KIND: Record<string, string> = {
   clean: 'Delete',
   flash: 'Flash',
   run: 'Run',
+  serial: 'Serial',
 };
 
 export const JOB_TONE: Record<string, Tone> = {

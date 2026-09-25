@@ -16,7 +16,7 @@ import { isJobId, pruneJobRecords, readJobRecord, writeJobRecord } from './jobRe
 import { Diagnostic, MemoryRegion, parseBuildOutput } from './diagnosticsParser';
 
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-export type JobKind = 'build' | 'flash' | 'run' | 'clean' | 'west' | 'install' | 'task';
+export type JobKind = 'build' | 'flash' | 'run' | 'clean' | 'west' | 'install' | 'task' | 'serial';
 
 export interface JobSink {
   /** Raw output chunk from the process, before any cleaning. */
@@ -58,6 +58,11 @@ export interface JobSpec {
   run(sink: JobSink, signal: AbortSignal): Promise<JobRunResult>;
   /** The next step once the job has finished, in place of the generic one. */
   next?(view: JobView): string;
+  /**
+   * The next step while the job runs, in place of polling it until it ends:
+   * a serial capture runs until it is stopped, so polling it is no answer.
+   */
+  runningNext?(view: JobView): string;
 }
 
 export interface WaitOptions {
@@ -263,7 +268,8 @@ export class JobManager {
       if (!shared) {
         continue;
       }
-      const noun = RESOURCE_NOUN[shared === 'lock' ? lockedResource(spec) : shared];
+      // A capture's lock is its serial port, not a folder.
+      const noun = shared === 'lock' && spec.kind === 'serial' ? 'serial port' : RESOURCE_NOUN[shared === 'lock' ? lockedResource(spec) : shared];
       const stopping = holder.status === 'cancelled';
       throw new McpToolError('BUSY',
         stopping
@@ -347,6 +353,45 @@ export class JobManager {
         });
     }
     return job;
+  }
+
+  /**
+   * The finished jobs this window recorded but no longer holds in memory, such
+   * as those of an extension host that has restarted since, newest first and
+   * at most `limit` of them. `accept` sees each view before its log is opened.
+   */
+  listPersisted(accept: (view: JobView) => boolean, limit = 20): PersistedJob[] {
+    if (!this.options.recordPathFor) {
+      return [];
+    }
+    const dir = path.dirname(this.options.recordPathFor('probe'));
+    let names: string[];
+    try {
+      names = fs.readdirSync(dir).filter(name => name.endsWith('.json'));
+    } catch {
+      return [];
+    }
+    const dated = names
+      .map(name => {
+        try {
+          return { id: name.slice(0, -'.json'.length), at: fs.statSync(path.join(dir, name)).mtimeMs };
+        } catch {
+          return undefined;
+        }
+      })
+      .filter((entry): entry is { id: string; at: number } => !!entry && !this.jobs.has(entry.id))
+      .sort((a, b) => b.at - a.at);
+    const found: PersistedJob[] = [];
+    for (const { id } of dated) {
+      const job = this.readPersisted(id);
+      if (job && accept(job.view)) {
+        found.push(job);
+        if (found.length >= limit) {
+          break;
+        }
+      }
+    }
+    return found;
   }
 
   private readPersisted(jobId: string): PersistedJob | undefined {
@@ -496,9 +541,10 @@ export class JobManager {
         ? `Finished. If the tail is not enough, call job {"action": "log", "job_id": "${job.id}"}, optionally with a grep pattern.`
         : `Still running. Call job {"action": "status", "job_id": "${job.id}"} until status is not running.`,
     };
-    if (isTerminal(job.status) && job.spec.next) {
+    const next = isTerminal(job.status) ? job.spec.next : job.spec.runningNext;
+    if (next) {
       try {
-        view.next = job.spec.next(view);
+        view.next = next(view);
       } catch {
         // A broken hint keeps the generic one rather than failing the call.
       }

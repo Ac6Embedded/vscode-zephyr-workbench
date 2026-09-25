@@ -3,6 +3,7 @@
 import * as vscode from 'vscode';
 import { isSdkMissing, summarizeQuickEnvironment } from '../../core/environmentReport';
 import { ToolContext, ToolHandler } from '../../core/toolSpec';
+import { captureFields } from '../serial/captures';
 import { HostDeps } from './deps';
 import { readEnvironmentBasis, soleApplication } from './environment';
 import { westWorkspaceStatus } from './westWorkspaces';
@@ -83,6 +84,8 @@ export const getStatus: ToolHandler<HostDeps> = async (_args, ctx: Ctx) => {
     safety: { confirm_actions: [...ctx.deps.confirmActions] },
     running_jobs: jobs.list().filter(j => j.status === 'running').map(j => ({
       job_id: j.id, kind: j.spec.kind, app_path: j.spec.appPath, config_name: j.spec.configName,
+      // A serial capture names its port and speed instead of an application.
+      ...(j.spec.kind === 'serial' ? captureFields(j.id) : {}),
     })),
     integrations: {
       devicetree_manager: !!vscode.extensions.getExtension('Ac6.devicetree-manager-for-zephyr'),

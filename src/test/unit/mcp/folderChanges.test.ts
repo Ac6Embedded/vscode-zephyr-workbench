@@ -8,7 +8,7 @@ import {
   FolderChangeScheduler, folderChangeRestartsHost, FolderWorkspace, SchedulerClock,
 } from '../../../mcp/host/folderChanges';
 import { resolveWindowId } from '../../../mcp/host/registryWriter';
-import { JobManager, JobStatus } from '../../../mcp/jobs/jobManager';
+import { JobKind, JobManager, JobStatus } from '../../../mcp/jobs/jobManager';
 import { tryRemoveWorkspaceFolder } from '../../../utils/utils';
 
 function memento(): vscode.Memento {
@@ -102,7 +102,7 @@ function harness(initial: string[], workspaceFile: boolean) {
   const { state, workspace } = fakeWorkspace(initial, workspaceFile);
   const clock = new ManualClock();
   const shared = memento();
-  const jobs: { id: string; status: JobStatus; endedAt?: number }[] = [];
+  const jobs: { id: string; status: JobStatus; endedAt?: number; spec?: { kind: JobKind } }[] = [];
   const lines: string[] = [];
   const scheduler = new FolderChangeScheduler({
     context: hostContext(shared), windowId: 'win1', jobs: { list: () => jobs }, log: line => lines.push(line), workspace, clock,
@@ -219,6 +219,15 @@ describe('mcp/host/folderChanges', () => {
       assert.ok(after.restartNotice());
       await h.clock.advance(60_000);
       assert.equal(after.restartNotice(), undefined, 'the note expires after 15 minutes');
+    });
+
+    it('does not wait for a serial capture, which only watches a port and may run for an hour', async () => {
+      const h = harness(['/ws/app'], false);
+      h.jobs.push({ id: 'win1.serial-1-aa', status: 'running', spec: { kind: 'serial' } });
+      const outcome = await h.scheduler.apply({ add: ['/ws/new'] }, { reason: 'create_west_workspace' });
+      assert.deepEqual(outcome, { applied: false, restart_pending: true });
+      await h.clock.advance(3_000);
+      assert.deepEqual(h.state.calls, [[1, 0, ['/ws/new']]], 'the restart ends the capture like a cancel');
     });
 
     it('waits at least 2.5 seconds, so the answer is sent first', async () => {

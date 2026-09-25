@@ -59,10 +59,23 @@ export async function runCapturedTask(
 }
 
 /**
+ * The two halves of `log`, for a step whose terminal and job log must differ,
+ * such as a serial capture: the terminal shows the device's raw output with
+ * its colours, while the job log keeps clean lines an agent can match.
+ */
+export interface StepChannels {
+  /** Shown in the terminal only. */
+  terminal(text: string): void;
+  /** Written to the job log only. */
+  record(text: string): void;
+}
+
+/**
  * Run an in-process step, such as a download or an extraction, in a terminal
  * the user can watch. What `log` receives is shown there and forwarded to the
- * sink. The terminal closes with 0 when `work` resolves and 1 when it throws;
- * the error is shown in the terminal and rethrown for the caller to report.
+ * sink; `channels` reaches each of the two alone. The terminal closes with 0
+ * when `work` resolves and 1 when it throws; the error is shown in the
+ * terminal and rethrown for the caller to report.
  * Closing the terminal stops the step, as the job's signal does.
  *
  * The work does not wait for the terminal, since a window busy with a dialog
@@ -75,8 +88,16 @@ export async function runLoggedStep<T>(
   name: string,
   sink: CaptureSink,
   signal: AbortSignal,
-  work: (log: (text: string) => void, signal: AbortSignal) => Promise<T>,
-  options: TerminalOptions & { scope?: vscode.WorkspaceFolder } = {},
+  work: (log: (text: string) => void, signal: AbortSignal, channels: StepChannels) => Promise<T>,
+  options: TerminalOptions & {
+    scope?: vscode.WorkspaceFolder;
+    /**
+     * Where the step's own notices about its terminal go, one message at a
+     * time. Defaults to the job log as plain text; a serial capture marks them
+     * as its messages, so they are never taken for device output.
+     */
+    note?: (message: string) => void;
+  } = {},
 ): Promise<T> {
   if (signal.aborted) {
     throw new Error(`"${name}" was cancelled before it started.`);
@@ -84,6 +105,7 @@ export async function runLoggedStep<T>(
   const controller = new AbortController();
   const onAbort = () => controller.abort();
   signal.addEventListener('abort', onAbort, { once: true });
+  const note = options.note ?? ((message: string) => sink.onData(`\n${message}\n`));
 
   const writeEmitter = new vscode.EventEmitter<string>();
   const closeEmitter = new vscode.EventEmitter<number>();
@@ -155,15 +177,15 @@ export async function runLoggedStep<T>(
     if (!opened) {
       givenUp = true;
       pending = '';
-      sink.onData(`\nVS Code did not open a terminal for "${name}" within 10 seconds. The step goes on; its output stays in this log.\n`);
+      note(`VS Code did not open a terminal for "${name}" within 10 seconds. The step goes on; its output stays in this log.`);
     }
   }, OPEN_TIMEOUT_MS);
   vscode.tasks.executeTask(task).then(undefined, error => {
-    sink.onData(`\nVS Code refused to show "${name}" in a terminal: ${messageOf(error)}\n`);
+    note(`VS Code refused to show "${name}" in a terminal: ${messageOf(error)}`);
   });
 
   try {
-    const value = await work(log, controller.signal);
+    const value = await work(log, controller.signal, { terminal: show, record: text => sink.onData(text) });
     exitCode = 0;
     return value;
   } catch (error) {
