@@ -10,13 +10,11 @@ export type ArmGnuDownloadHostId = 'mingw-w64-x86_64' | 'x86_64' | 'darwin-arm64
 export interface ArmGnuDownloadRelease {
   version: string;
   displayVersion: string;
-  releasedAt?: string;
 }
 
 export interface ArmGnuDownloadAsset {
   version: string;
   displayVersion: string;
-  releasedAt?: string;
   hostId: ArmGnuDownloadHostId;
   hostLabel: string;
   targetTriple: ArmGnuBareMetalTargetTriple;
@@ -29,6 +27,12 @@ export interface ArmGnuDownloadAsset {
 export interface ArmGnuDownloadCatalog {
   releases: ArmGnuDownloadRelease[];
   assets: ArmGnuDownloadAsset[];
+}
+
+/** A release in the Arm GitLab package registry: its package version and the names of its files. */
+export interface ArmGnuPackage {
+  version: string;
+  fileNames: string[];
 }
 
 export interface RegisteredArmGnuToolchain {
@@ -44,12 +48,15 @@ type ArmGnuHostTarget = {
   archiveExt: 'zip' | 'tar.xz';
 };
 
-const ARM_GNU_DOWNLOADS_PAGE_URL = 'https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads';
-const ARM_GNU_BROWSER_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-} as const;
+// Arm moved the releases from developer.arm.com to the package registry of its
+// GitLab project tooling/gnu-toolchains-for-arm: one generic package per release,
+// holding every archive. The project is addressed by its id, since the encoded
+// slash of its path does not survive a vscode.Uri.
+const ARM_GNU_GITLAB_PROJECT_API_URL = 'https://gitlab.arm.com/api/v4/projects/10698';
+const ARM_GNU_PACKAGE_NAME = 'gnu-toolchain';
+const GITLAB_MAX_PER_PAGE = 100;
+
+const ARM_GNU_TARGET_TRIPLES: ArmGnuBareMetalTargetTriple[] = ['arm-none-eabi', 'aarch64-none-elf'];
 
 const ARM_GNU_SUPPORTED_HOSTS: ArmGnuHostTarget[] = [
   {
@@ -107,32 +114,37 @@ export function getArmGnuTargetLabel(targetTriple: ArmGnuBareMetalTargetTriple):
   }
 }
 
+/**
+ * The download URL of a release archive. The registry matches the version and
+ * file name case-sensitively (13.2.Rel1), so prefer the url of a catalog asset.
+ */
 export function buildArmGnuDownloadUrl(
   version: string,
   hostId: ArmGnuDownloadHostId,
   targetTriple: ArmGnuBareMetalTargetTriple,
 ): string {
-  const cleanVersion = normalizeArmGnuVersion(version);
+  const cleanVersion = version.trim().replace(/^v/i, '');
   const host = getArmGnuHostTargetFromId(hostId);
-  return `https://developer.arm.com/-/media/Files/downloads/gnu/${cleanVersion}/binrel/arm-gnu-toolchain-${cleanVersion}-${host.id}-${targetTriple}.${host.archiveExt}`;
+  return getArmGnuPackageFileUrl(cleanVersion, `arm-gnu-toolchain-${cleanVersion}-${host.id}-${targetTriple}.${host.archiveExt}`);
 }
 
 export async function fetchArmGnuDownloadCatalog(): Promise<ArmGnuDownloadCatalog> {
-  const response = await fetch(ARM_GNU_DOWNLOADS_PAGE_URL, {
-    headers: ARM_GNU_BROWSER_HEADERS,
-  });
+  const packages = (await fetchGitLabList<{ id: number; name: string; version: string }>(
+    `${ARM_GNU_GITLAB_PROJECT_API_URL}/packages?package_type=generic&package_name=${ARM_GNU_PACKAGE_NAME}`,
+  )).filter(pkg => pkg.name === ARM_GNU_PACKAGE_NAME);
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch Arm GNU downloads (${response.status})`);
+  const catalog = buildArmGnuDownloadCatalog(await Promise.all(packages.map(async pkg => ({
+    version: pkg.version,
+    fileNames: (await fetchGitLabList<{ file_name: string }>(
+      `${ARM_GNU_GITLAB_PROJECT_API_URL}/packages/${pkg.id}/package_files`,
+    )).map(file => file.file_name),
+  }))));
+
+  if (!catalog.releases.length || !catalog.assets.length) {
+    throw new Error('No Arm GNU Toolchain release found in the Arm package registry.');
   }
 
-  const html = await response.text();
-  const parsed = parseArmGnuDownloadCatalog(html);
-  if (!parsed.releases.length || !parsed.assets.length) {
-    throw new Error('Failed to parse Arm GNU downloads.');
-  }
-
-  return parsed;
+  return catalog;
 }
 
 export function filterArmGnuCatalogForHost(
@@ -148,32 +160,29 @@ export function filterArmGnuCatalogForHost(
   };
 }
 
-export function parseArmGnuDownloadCatalog(html: string): ArmGnuDownloadCatalog {
+/**
+ * The catalog of the release packages, newest release first. Only the
+ * bare-metal archives of the supported hosts are listed, and a release
+ * without any is left out.
+ */
+export function buildArmGnuDownloadCatalog(packages: ArmGnuPackage[]): ArmGnuDownloadCatalog {
   const releases: ArmGnuDownloadRelease[] = [];
   const assets: ArmGnuDownloadAsset[] = [];
   const seenVersions = new Set<string>();
-  const seenUrls = new Set<string>();
-  const accordionSections = splitAccordionSections(html);
 
-  for (const section of accordionSections) {
-    const release = parseArmGnuRelease(section);
-    if (!release) {
+  for (const pkg of [...packages].sort(compareArmGnuPackagesNewestFirst)) {
+    const release: ArmGnuDownloadRelease = {
+      version: normalizeArmGnuVersion(pkg.version),
+      displayVersion: pkg.version,
+    };
+    const releaseAssets = parseArmGnuReleaseAssets(pkg, release);
+    if (!releaseAssets.length || seenVersions.has(release.version)) {
       continue;
     }
 
-    if (!seenVersions.has(release.version)) {
-      releases.push(release);
-      seenVersions.add(release.version);
-    }
-
-    for (const asset of parseArmGnuReleaseAssets(section, release)) {
-      if (seenUrls.has(asset.url)) {
-        continue;
-      }
-
-      assets.push(asset);
-      seenUrls.add(asset.url);
-    }
+    releases.push(release);
+    assets.push(...releaseAssets);
+    seenVersions.add(release.version);
   }
 
   return {
@@ -236,136 +245,75 @@ function normalizeArmGnuVersion(version: string): string {
   return version.trim().replace(/^v/i, '').toLowerCase();
 }
 
-function decodeHtml(value: string): string {
-  return value
-    .replaceAll('&nbsp;', ' ')
-    .replaceAll('&amp;', '&')
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
-    .replaceAll('&quot;', '"')
-    .replaceAll('&#39;', '\'');
-}
+/** Every item of a paginated GitLab API list. */
+async function fetchGitLabList<T>(url: string): Promise<T[]> {
+  const items: T[] = [];
+  for (let page = 1; page > 0;) {
+    const response = await fetch(`${url}${url.includes('?') ? '&' : '?'}per_page=${GITLAB_MAX_PER_PAGE}&page=${page}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch the Arm GNU Toolchain releases (${response.status})`);
+    }
 
-function splitAccordionSections(html: string): string[] {
-  return html
-    .split(/<li[^>]*class="accordion-navigation[^"]*"[^>]*>/gi)
-    .slice(1);
-}
-
-function parseArmGnuRelease(section: string): ArmGnuDownloadRelease | undefined {
-  const releaseMatch = /Downloads:\s*([^<]+?)\s*<span[^>]*class="download__date"[^>]*>([^<]+)<\/span>/i.exec(section);
-  if (!releaseMatch) {
-    return undefined;
+    items.push(...await response.json() as T[]);
+    // Empty on the last page.
+    const nextPage = Number(response.headers.get('x-next-page'));
+    page = nextPage > page ? nextPage : 0;
   }
 
-  const displayVersion = decodeHtml(releaseMatch[1].trim());
-  return {
-    version: normalizeArmGnuVersion(displayVersion),
-    displayVersion,
-    releasedAt: decodeHtml(releaseMatch[2].trim()),
-  };
+  return items;
+}
+
+function getArmGnuPackageFileUrl(packageVersion: string, filename: string): string {
+  return `${ARM_GNU_GITLAB_PROJECT_API_URL}/packages/generic/${ARM_GNU_PACKAGE_NAME}/${encodeURIComponent(packageVersion)}/${encodeURIComponent(filename)}`;
+}
+
+/** Newest first: by GCC major.minor, then rel1 before mpacbti-rel1 before mpacbti-bet1. */
+function compareArmGnuPackagesNewestFirst(a: ArmGnuPackage, b: ArmGnuPackage): number {
+  const [aMajor, aMinor, aRest] = splitArmGnuVersion(a.version);
+  const [bMajor, bMinor, bRest] = splitArmGnuVersion(b.version);
+  return bMajor - aMajor || bMinor - aMinor || bRest.localeCompare(aRest);
+}
+
+function splitArmGnuVersion(version: string): [number, number, string] {
+  const cleanVersion = normalizeArmGnuVersion(version);
+  const match = /^(\d+)\.(\d+)(.*)$/.exec(cleanVersion);
+  return match ? [Number(match[1]), Number(match[2]), match[3]] : [0, 0, cleanVersion];
 }
 
 function parseArmGnuReleaseAssets(
-  section: string,
+  pkg: ArmGnuPackage,
   release: ArmGnuDownloadRelease,
 ): ArmGnuDownloadAsset[] {
   const assets: ArmGnuDownloadAsset[] = [];
-  const hostSections = collectSections(
-    section,
-    /<h4>\s*(?:<nobr>)?([^<]+?)(?:<\/nobr>)?\s*<\/h4>/gi,
-  );
+  // Arm names an archive arm-gnu-toolchain-<version>-<host>-<target>.<ext>.
+  const prefix = `arm-gnu-toolchain-${pkg.version}-`;
 
-  for (const hostSection of hostSections) {
-    const host = findArmGnuSupportedHost(hostSection.heading);
-    if (!host) {
+  // A package may hold several uploads of the same file.
+  for (const filename of new Set(pkg.fileNames)) {
+    if (!filename.startsWith(prefix)) {
       continue;
     }
 
-    const targetSections = collectSections(
-      hostSection.content,
-      /<p>\s*(?:<nobr>)?([\s\S]*?\((arm-none-eabi|aarch64-none-elf)\))\s*(?:<\/nobr>)?(?:\s|&nbsp;|<br\s*\/?>)*<\/p>/gi,
-    );
-
-    for (const targetSection of targetSections) {
-      const targetTriple = targetSection.match[2] as ArmGnuBareMetalTargetTriple;
-      const targetLabel = getArmGnuTargetLabel(targetTriple);
-      const anchorRegex = /<a[^>]+href="([^"]+)"[^>]*>\s*(?:<nobr>)?\s*([^<]+?)\s*(?:<\/nobr>)?\s*<\/a>/gi;
-      let anchorMatch: RegExpExecArray | null;
-
-      while ((anchorMatch = anchorRegex.exec(targetSection.content)) !== null) {
-        const url = decodeHtml(anchorMatch[1].trim());
-        const filename = decodeHtml(anchorMatch[2].trim());
-
-        if (!isArmGnuArchiveAsset(filename, url, host, targetTriple)) {
-          continue;
-        }
-
-        assets.push({
-          version: release.version,
-          displayVersion: release.displayVersion,
-          releasedAt: release.releasedAt,
-          hostId: host.id,
-          hostLabel: host.label,
-          targetTriple,
-          targetLabel,
-          filename,
-          url,
-          archiveExt: host.archiveExt,
-        });
+    const variant = filename.slice(prefix.length);
+    for (const host of ARM_GNU_SUPPORTED_HOSTS) {
+      const targetTriple = ARM_GNU_TARGET_TRIPLES.find(target => variant === `${host.id}-${target}.${host.archiveExt}`);
+      if (!targetTriple) {
+        continue;
       }
+
+      assets.push({
+        version: release.version,
+        displayVersion: release.displayVersion,
+        hostId: host.id,
+        hostLabel: host.label,
+        targetTriple,
+        targetLabel: getArmGnuTargetLabel(targetTriple),
+        filename,
+        url: getArmGnuPackageFileUrl(pkg.version, filename),
+        archiveExt: host.archiveExt,
+      });
     }
   }
 
   return assets;
-}
-
-function collectSections(content: string, regex: RegExp): Array<{
-  heading: string;
-  content: string;
-  match: RegExpExecArray;
-}> {
-  const entries: Array<{
-    heading: string;
-    index: number;
-    match: RegExpExecArray;
-  }> = [];
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(content)) !== null) {
-    entries.push({
-      heading: decodeHtml(match[1].trim()),
-      index: match.index,
-      match,
-    });
-  }
-
-  return entries.map((entry, index) => ({
-    heading: entry.heading,
-    content: content.slice(entry.index, index + 1 < entries.length ? entries[index + 1].index : content.length),
-    match: entry.match,
-  }));
-}
-
-function findArmGnuSupportedHost(heading: string): ArmGnuHostTarget | undefined {
-  const normalizedHeading = normalizeArmGnuHeading(heading);
-  return ARM_GNU_SUPPORTED_HOSTS.find(host =>
-    normalizedHeading === normalizeArmGnuHeading(`${host.label} hosted cross toolchains`)
-  );
-}
-
-function isArmGnuArchiveAsset(
-  filename: string,
-  url: string,
-  host: ArmGnuHostTarget,
-  targetTriple: ArmGnuBareMetalTargetTriple,
-): boolean {
-  return filename.startsWith('arm-gnu-toolchain-')
-    && filename.includes(`-${host.id}-${targetTriple}.`)
-    && filename.endsWith(`.${host.archiveExt}`)
-    && url.includes('/binrel/');
-}
-
-function normalizeArmGnuHeading(value: string): string {
-  return value.replace(/\s+/g, ' ').trim().toLowerCase();
 }

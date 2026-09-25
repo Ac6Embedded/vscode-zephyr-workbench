@@ -42,13 +42,11 @@ type IarSdkEntry = {
 type ArmGnuReleaseEntry = {
   version: string;
   displayVersion: string;
-  releasedAt?: string;
 };
 
 type ArmGnuAssetEntry = {
   version: string;
   displayVersion: string;
-  releasedAt?: string;
   hostId: string;
   hostLabel: string;
   targetTriple: string;
@@ -681,12 +679,11 @@ function applyArmGnuImportData(data: {
 
   versionInput.removeAttribute("disabled");
   versionInput.placeholder = "Choose the Arm GNU release...";
-  versionsDropdown.innerHTML = armGnuReleases.map(release => {
-    const description = release.releasedAt ? ` (${release.releasedAt})` : "";
-    return `<div class="dropdown-item"
+  versionsDropdown.innerHTML = armGnuReleases.map(release =>
+    `<div class="dropdown-item"
                  data-value="${escapeHtml(release.version)}"
-                 data-label="${escapeHtml(`${release.displayVersion}${description}`)}">${escapeHtml(`${release.displayVersion}${description}`)}</div>`;
-  }).join("");
+                 data-label="${escapeHtml(release.displayVersion)}">${escapeHtml(release.displayVersion)}</div>`
+  ).join("");
 
   versionInput.value = "";
   versionInput.setAttribute("data-value", "");
