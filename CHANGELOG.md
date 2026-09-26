@@ -4,7 +4,7 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
+## [4.3.0]
 
 ### AI Manager (new)
 - Connect your AI coding agent (Claude Code, Codex, Copilot, Cursor, Gemini CLI and more) to Workbench for Zephyr through a local MCP server, plus the Zephyr Project MCP server and third-party Zephyr agent skills.
@@ -17,6 +17,10 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ### Other
 - Fixes for Verify Host Tools, the Install Runners panel, Kconfig Manager exports and the board picker.
+- The Arm GNU Toolchain downloads from Arm's new GitLab package registry.
+- Downloads no longer need the File Downloader extension.
+- The Debug Manager works with boards whose metadata lists no architecture.
+- New Zephyr terminals set up the environment after your shell's own startup files, so those no longer override it.
 
 ## [4.2.1]
 
