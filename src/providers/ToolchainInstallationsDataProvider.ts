@@ -9,6 +9,8 @@ import { checkHostTools } from '../utils/installUtils';
 /** Context key behind the view's "Add Toolchain" title action. */
 const HOST_TOOLS_INSTALLED_CONTEXT = 'zephyr-workbench.hostToolsInstalled';
 
+const warningIcon = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+
 /**
  * The "Toolchains & Host Tools" view: a "Toolchains" group (SDKs, IAR, Arm GNU,
  * Rust) then a "Host Tools Dependencies" group. The view keeps the historical
@@ -18,8 +20,40 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
   private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | void>();
 	readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | void> = this._onDidChangeTreeData.event;
 
+  /** The view this provider feeds, and its title from package.json. */
+  private view?: vscode.TreeView<vscode.TreeItem>;
+  private viewTitle = '';
+
   constructor() {
 	}
+
+  /**
+   * Give the provider its view, whose header shows when the host tools need an
+   * update. The header is set right away, before the tree is ever drawn.
+   */
+  attachView(view: vscode.TreeView<vscode.TreeItem>): void {
+	this.view = view;
+	this.viewTitle = view.title ?? '';
+	void this.readHostToolsState();
+  }
+
+  /**
+   * Whether the host tools are installed and whether they need an update, also
+   * set in the context key and the view header. It runs on every refresh, not
+   * only when the tree is drawn: VS Code never asks a collapsed view for rows.
+   */
+  private async readHostToolsState(): Promise<{ installed: boolean; updateNeeded: boolean }> {
+	const installed = await checkHostTools().catch(() => false);
+	const updateNeeded = installed && isZinstallerUpdateNeeded();
+	void vscode.commands.executeCommand('setContext', HOST_TOOLS_INSTALLED_CONTEXT, installed);
+	if (this.view) {
+	  // Headers are plain text, and VS Code hides the description of a collapsed
+	  // view, so the warning emoji goes in the title itself.
+	  this.view.title = updateNeeded ? `${this.viewTitle} ⚠️` : this.viewTitle;
+	  this.view.description = updateNeeded ? 'update available' : undefined;
+	}
+	return { installed, updateNeeded };
+  }
 
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
     return element;
@@ -29,17 +63,16 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
 	if (!element) {
 	  // Nothing can use a toolchain before the host tools exist, so the view
 	  // stays empty and its welcome content asks for them instead.
-	  const installed = await checkHostTools().catch(() => false);
-	  void vscode.commands.executeCommand('setContext', HOST_TOOLS_INSTALLED_CONTEXT, installed);
+	  const { installed, updateNeeded } = await this.readHostToolsState();
 	  if (!installed) {
 		return [];
 	  }
-	  return [new ToolchainsViewGroupItem('toolchains'), new ToolchainsViewGroupItem('host-tools')];
+	  return [new ToolchainsViewGroupItem('toolchains'), new ToolchainsViewGroupItem('host-tools', updateNeeded)];
 	}
 
 	if (element instanceof ToolchainsViewGroupItem) {
 	  if (element.group === 'host-tools') {
-		return createHostToolsDependencyItems();
+		return createHostToolsDependencyItems(element.updateNeeded);
 	  }
 	  const toolchains = await this.getToolchainItems();
 	  return toolchains.length > 0 ? toolchains : [createAddToolchainItem()];
@@ -248,24 +281,28 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
     return null;
   }
 
-  resolveTreeItem?(item: vscode.TreeItem, element: vscode.TreeItem, token: vscode.CancellationToken): vscode.ProviderResult<vscode.TreeItem> {
-    throw new Error('Method not implemented.');
-  }
-
   refresh(): void {
 		this._onDidChangeTreeData.fire();
+		// A collapsed view draws nothing, so its header is updated from here too.
+		void this.readHostToolsState();
 	}
 
 }
 
 type ToolchainsViewGroup = 'toolchains' | 'host-tools';
 
-/** One of the two top-level groups. Their context values match no menu entry. */
+/**
+ * One of the two top-level groups. Their context values match no menu entry.
+ * updateNeeded marks the host tools group while the host tools are outdated.
+ */
 class ToolchainsViewGroupItem extends vscode.TreeItem {
-	constructor(public readonly group: ToolchainsViewGroup) {
+	constructor(public readonly group: ToolchainsViewGroup, public readonly updateNeeded = false) {
 	  super(group === 'toolchains' ? 'Toolchains' : 'Host Tools Dependencies', vscode.TreeItemCollapsibleState.Expanded);
 	  this.contextValue = group === 'toolchains' ? 'toolchains-group' : 'host-tools-group';
-	  this.iconPath = new vscode.ThemeIcon(group === 'toolchains' ? 'tools' : 'package');
+	  this.iconPath = updateNeeded ? warningIcon : new vscode.ThemeIcon(group === 'toolchains' ? 'tools' : 'package');
+	  if (updateNeeded) {
+		this.tooltip = 'Host tools update available';
+	  }
 	}
 }
 
@@ -277,21 +314,21 @@ function createAddToolchainItem(): vscode.TreeItem {
 	return item;
 }
 
-function createHostToolsDependencyItems(): vscode.TreeItem[] {
-	const manager = new vscode.TreeItem('Host Tools Manager', vscode.TreeItemCollapsibleState.None);
-	manager.command = { command: 'zephyr-workbench.host-tools-manager', title: 'Host Tools Manager' };
-	if (isZinstallerUpdateNeeded()) {
-	  manager.description = 'update available';
-	  manager.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
-	} else {
-	  manager.iconPath = new vscode.ThemeIcon('wrench');
-	}
-
+function createHostToolsDependencyItems(updateNeeded: boolean): vscode.TreeItem[] {
 	const runners = new vscode.TreeItem('Install Runners', vscode.TreeItemCollapsibleState.None);
 	runners.iconPath = new vscode.ThemeIcon('desktop-download');
 	runners.command = { command: 'zephyr-workbench.install-runners', title: 'Install Runners' };
 
-	return [manager, runners];
+	const manager = new vscode.TreeItem('Host Tools Manager', vscode.TreeItemCollapsibleState.None);
+	manager.command = { command: 'zephyr-workbench.host-tools-manager', title: 'Host Tools Manager' };
+	if (updateNeeded) {
+	  manager.description = 'update available';
+	  manager.iconPath = warningIcon;
+	} else {
+	  manager.iconPath = new vscode.ThemeIcon('wrench');
+	}
+
+	return [runners, manager];
 }
 
 export class ToolchainInstallationTreeItem extends vscode.TreeItem {

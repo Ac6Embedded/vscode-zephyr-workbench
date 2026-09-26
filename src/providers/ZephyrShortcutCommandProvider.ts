@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { checkHostTools } from '../utils/installUtils';
+import { isZinstallerUpdateNeeded } from '../utils/utils';
 import { ZEPHYR_DOCS_BASE_URL } from '../constants';
 import path from 'path';
 
@@ -7,7 +8,7 @@ class MenuItem extends vscode.TreeItem {
   constructor(
     public readonly label: string,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-    public readonly icon: string | { light: string; dark: string },
+    public readonly icon: string | { light: string; dark: string } | undefined,
     public readonly command?: vscode.Command
   ) {
       super(label, collapsibleState);
@@ -16,11 +17,13 @@ class MenuItem extends vscode.TreeItem {
       }
       if (typeof icon === 'string') {
         this.iconPath = new vscode.ThemeIcon(icon);
-      } else {
+      } else if (icon) {
         this.iconPath = icon;
       }
   }
 }
+
+const warningIcon = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
 
 // Shown at the top of Get Started while the host tools are missing, since
 // west workspaces, toolchains and builds all need them.
@@ -33,8 +36,22 @@ const installHostToolsMenuItem = new MenuItem(
     title: 'Install Host Tools',
   }
 );
-installHostToolsMenuItem.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+installHostToolsMenuItem.iconPath = warningIcon;
 installHostToolsMenuItem.tooltip = 'Host tools are not installed yet. West workspaces, toolchains and builds need them.';
+
+// Takes the install row's place once the host tools are installed but older
+// than this extension needs. The Host Tools Manager offers the reinstall.
+const updateHostToolsMenuItem = new MenuItem(
+  'Update Host Tools',
+  vscode.TreeItemCollapsibleState.None,
+  'warning',
+  {
+    command: 'zephyr-workbench.host-tools-manager',
+    title: 'Update Host Tools',
+  }
+);
+updateHostToolsMenuItem.iconPath = warningIcon;
+updateHostToolsMenuItem.tooltip = 'Your host tools are outdated. Builds might not work properly. Open the Host Tools Manager to update them.';
 
 const newAppMenuItem = new MenuItem(
   'Add Application',
@@ -133,10 +150,13 @@ const aiManagerMenuItem = new MenuItem(
 aiManagerMenuItem.tooltip = 'Connect AI coding agents (Claude Code, Codex, Copilot, Cursor and others) to Zephyr Workbench.';
 
 // Collapsed group at the end of Get Started: links that open in the browser.
+// No icon on purpose: VS Code only puts the rows' icons in the expand arrow's
+// column when no expandable row beside them has an icon, which keeps the Get
+// Started icons in line with the Managers ones.
 const externalResourcesMenuItem = new MenuItem(
   'External Resources',
   vscode.TreeItemCollapsibleState.Collapsed,
-  'link-external'
+  undefined
 );
 
 const workbenchDocsMenuItem = new MenuItem(
@@ -170,7 +190,8 @@ const trainingPartnersMenuItem = new MenuItem(
 
 /**
  * The "Get Started" view: the Add actions, preceded by Install Host Tools
- * while the host tools are missing, then the External Resources group.
+ * while the host tools are missing (or Update Host Tools while they are
+ * outdated), then the External Resources group.
  */
 export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<MenuItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<MenuItem | undefined> = new vscode.EventEmitter<MenuItem | undefined>();
@@ -186,6 +207,8 @@ export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<Me
     if(element === undefined) {
       if(!await checkHostTools()) {
         items.push(installHostToolsMenuItem);
+      } else if (isZinstallerUpdateNeeded()) {
+        items.push(updateHostToolsMenuItem);
       }
 
       items.push(newAppMenuItem);

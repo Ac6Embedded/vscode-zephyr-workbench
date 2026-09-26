@@ -426,7 +426,9 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.window.registerTreeDataProvider('zephyr-workbench-managers', new ZephyrManagersCommandProvider());
 
 	const toolchainInstallationsProvider = new ToolchainInstallationsDataProvider();
-	vscode.window.registerTreeDataProvider('zephyr-workbench-sdk-explorer', toolchainInstallationsProvider);
+	const toolchainsView = vscode.window.createTreeView('zephyr-workbench-sdk-explorer', { treeDataProvider: toolchainInstallationsProvider });
+	toolchainInstallationsProvider.attachView(toolchainsView);
+	context.subscriptions.push(toolchainsView);
 
 	// Drop toolchains from the global settings whose install folder was removed from disk.
 	void pruneMissingToolchains()
