@@ -72,6 +72,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'get_status',
     title: 'Workbench status',
+    summary: 'Gives the agent an overview of this window: applications, west workspaces, toolchains, readiness and running jobs.',
     description: [
       'Reports the state of the Zephyr Workbench window: workspace folders, known applications with their active build configuration, west workspaces, installed toolchains, whether the host tools and Python environment are ready, and any running jobs.',
       'Call this first in a new session, and again whenever a tool reports that something is missing; use list_apps instead when you only need the applications.',
@@ -88,6 +89,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'check_environment',
     title: 'Check the host environment',
+    summary: 'Checks that the host tools, the Python environment, the Zephyr SDKs and the flash and debug tools are installed and ready.',
     description: [
       'Checks everything the Zephyr Workbench build and flash tools depend on: the host tools install and its completion stamp, the environment script and Python virtual environment settings, west, Python, the registered Zephyr SDKs, and the flash and debug tools listed in the workbench runner manifest, with the versions it detects.',
       'Call it when get_status reports the environment is not ready, when a build fails with ENV_NOT_READY, or before flashing to confirm the tool a board\'s runner needs is installed; use list_toolchains for toolchain details and list_runners for the runners a board supports.',
@@ -113,6 +115,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'list_apps',
     title: 'List applications',
+    summary: 'Lists the applications of this window with their build configurations: board, build folder and whether they are built.',
     description: [
       'Lists every Zephyr application the window knows about, with all of its build configurations including board, sysbuild flag, build directory, whether it has been built, the default runner, west arguments and build variables.',
       'Use it to discover the app_path and config_name every other tool takes; use get_build_info when you already know the application and want the results of its last build.',
@@ -130,6 +133,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'list_toolchains',
     title: 'List toolchains',
+    summary: 'Lists the installed Zephyr SDKs and the Arm GNU, IAR and Rust toolchains, and the ones that can be installed.',
     description: [
       'Lists the toolchains Zephyr Workbench knows: Zephyr SDKs (registered, global and the host tools one) with the GNU toolchains and LLVM actually installed in each, and the Arm GNU, IAR and Rust toolchains with their versions, targets and links, plus registrations whose folder is gone; with available it lists what can be installed instead.',
       'Use it when a build fails because a toolchain is missing or the wrong variant is selected, to pick the toolchain of an application in configure or manage_app, and before installing one; use check_environment for host tools and the Python environment.',
@@ -158,6 +162,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'search_zephyr_catalog',
     title: 'Search boards, shields, snippets and samples',
+    summary: 'Searches a west workspace for boards, shields, snippets, samples, projects and binary blobs.',
     description: [
       'Searches what a west workspace offers: boards and shields as west boards and west shields list them, snippets, samples and tests, the west projects of its manifest, its binary blobs, and, to create a workspace, the Zephyr revisions of a repository and the bundled workspace templates.',
       'Use it to find a valid board identifier, shield, snippet or sample before changing a build configuration or creating an application, and the revisions, templates, projects and blobs before manage_west_workspace; use list_apps to see the boards your applications already use.',
@@ -195,6 +200,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'get_build_info',
     title: 'Read the last build',
+    summary: 'Reads the result of the last build: board, toolchain, image sizes, memory use and output files.',
     description: [
       'Reads the results of the last build of one configuration straight from the build directory: target board, toolchain, image sizes, memory region usage, produced artifacts, and whether the directory is configured and built.',
       'Use it after a build, or instead of rebuilding when you only need numbers or artifact paths; use build_app when the sources changed and get_memory_report for a breakdown by symbol or source file.',
@@ -216,6 +222,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'get_memory_report',
     title: 'Memory report',
+    summary: 'Shows what takes up flash and RAM in the built firmware, by section, symbol or source folder.',
     description: [
       'Breaks the built firmware down by memory usage, reading zephyr.elf directly: by linker section, by largest symbols, or as a tree grouped by source path.',
       'Use it to find what is filling flash or RAM after a region overflow; this replaces the west ram_report and rom_report targets, which need a terminal and refuse to run when sysbuild is enabled.',
@@ -241,6 +248,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'query_kconfig',
     title: 'Query built Kconfig values',
+    summary: 'Looks up the Kconfig values of the last build, and why each option has its value.',
     description: [
       'Looks up the resolved Kconfig values of the last build from build/zephyr/.config, and where the workbench recorded a configuration trace it also reports why each symbol holds its value, whether assigned, selected, implied or defaulted; with explain true it loads the real Kconfig tree of the build and explains each symbol instead.',
       'Use it to check what a build actually enabled, and use explain before changing an option or when a value did not take; change values with set_kconfig.',
@@ -267,6 +275,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'set_kconfig',
     title: 'Change Kconfig options',
+    summary: 'Changes Kconfig options in the application\'s prj.conf or a .conf fragment, and checks that each value takes effect.',
     description: [
       'Changes Kconfig options of one build configuration by writing them into the workbench managed region of the application prj.conf (whichever file CONF_FILE names) or of a .conf fragment, after merging the configuration files exactly as the next CMake configure will, with the new text in place, to prove that every value takes.',
       'Use it instead of editing prj.conf by hand or running menuconfig, then call build_app to apply the change; call query_kconfig with explain true first when you do not know what an option depends on.',
@@ -297,6 +306,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'query_devicetree',
     title: 'Query the built devicetree',
+    summary: 'Finds nodes in the final devicetree of the last build, with the file and line that defined each one.',
     description: [
       'Queries the final merged devicetree of the last build, read from build/zephyr/zephyr.dts, finding nodes by path, label, compatible string or status, and reporting the file and line that defined each one.',
       'Use it to confirm what a board plus its overlays actually produced; to change the devicetree, edit an overlay file yourself and then call build_app, because this tool never writes.',
@@ -324,6 +334,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'list_runners',
     title: 'List flash and debug runners',
+    summary: 'Lists the flash and debug runners a built board supports, and which one is the default.',
     description: [
       'Lists the flash and debug runners available for a built configuration, read from the runners.yaml the build produced, together with the board default and whatever default runner the workbench has configured.',
       'Call it when you need to know which runner a board supports; it needs a completed build, because runners.yaml is a build artifact.',
@@ -342,6 +353,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'get_diagnostics',
     title: 'Build errors and warnings',
+    summary: 'Reads the errors and warnings of the last build, including builds you started yourself.',
     description: [
       'Returns structured errors and warnings for one build configuration: the diagnostics parsed from the last agent build of that configuration, the VS Code Problems panel entries for the application files (which also cover builds the user started by hand and language server findings), or the findings of the last ECLAIR analysis.',
       'Use it to re-read problems without rebuilding, after the user built from VS Code, after analyze with analysis eclair, or to have the language servers check files you just wrote; build_app already returns the diagnostics of the build it ran.',
@@ -366,6 +378,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'build_app',
     title: 'Build',
+    summary: 'Builds a build configuration with west build, in a VS Code terminal you can watch.',
     description: [
       'Runs west build for one build configuration in a visible VS Code task terminal, reusing the board, sysbuild flag, west arguments, CMake flags and environment already stored in the workbench settings.',
       'Use it after editing sources, prj.conf or an overlay; pass pristine "always" only when the board or toolchain changed or CMake state is broken, and use get_build_info to read an earlier build without rebuilding.',
@@ -388,6 +401,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'configure',
     title: 'Change settings',
+    summary: 'Changes build configurations and application or west workspace settings, as the Workbench views do.',
     description: [
       'Changes the workbench settings the Zephyr Workbench views edit: with target "build_config" it creates, updates, renames or activates a build configuration (board, sysbuild, west arguments, CMake -D flags, default runner and its arguments, EXTRA_CONF_FILE, EXTRA_DTC_OVERLAY_FILE, EXTRA_ZEPHYR_MODULES, SHIELD, SNIPPETS); with target "app" it selects the application of a west workspace, or with action "update" changes its toolchain, IntelliSense provider, Python venv or linked west workspace; with target "west_workspace" and action "update" it changes the board, DTS, SoC, arch and snippet roots and the venv of a west workspace.',
       'Use it instead of editing settings.json: read the values with list_apps, list_toolchains or get_status first, then call build_app, with pristine "always" when the result says needs_pristine; it never deletes, which remove_or_delete does in the full toolset.',
@@ -460,6 +474,7 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'job',
     title: 'Job status, log and cancel',
+    summary: 'Follows a long action such as a build: its status, its log, or cancelling it.',
     description: [
       'Inspects and controls the long running actions started by tools such as build_app: action "status" polls a job and waits for it, action "log" reads a slice of its full output, and action "cancel" stops it and its process tree.',
       'Call it whenever an action returned status "running"; with no job_id and action "status" it lists the recent jobs of the window serving the call instead.',

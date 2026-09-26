@@ -13,6 +13,7 @@ export const REMOVE_OR_DELETE_WHATS = [
 export const REMOVE_OR_DELETE: ToolMeta = {
   name: 'remove_or_delete',
   title: 'Remove or delete',
+  summary: 'Removes or deletes build folders, build configurations, applications, west workspaces or toolchains.',
   description: [
     'Removes or deletes what Zephyr Workbench manages, as its views do: build folders and build configurations, applications (application unregisters and keeps the files, application_files deletes the folder), west workspaces (west_workspace removes it from the window, west_workspace_files deletes it), the venv of a west workspace, fetched binary blobs, and toolchains (toolchain unregisters, toolchain_files deletes it from disk).',
     'Use it when something is no longer wanted or is broken beyond repair; to rebuild from scratch call build_app with pristine "always" instead, and to switch an application to another toolchain use configure.',

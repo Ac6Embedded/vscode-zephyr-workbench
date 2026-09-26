@@ -7,6 +7,7 @@ import { dryRun, waitSec } from './shared';
 export const MANAGE_TOOLCHAIN: ToolMeta = {
   name: 'manage_toolchain',
   title: 'Install and register toolchains',
+  summary: 'Installs and registers toolchains: Zephyr SDKs, Arm GNU, LLVM and Rust.',
   description: [
     'Installs, extends, registers and links toolchains the way the Add Toolchain wizard and the Toolchains & Host Tools view of Zephyr Workbench do: an official Zephyr SDK into a folder or the global location (a global install skips the SDK host tools setup), extra GNU toolchains or LLVM for an installed SDK, an Arm GNU Toolchain release, a Rust toolchain through rustup or from standalone archives, the workbench managed rustup, and a host LLVM for Rust.',
     'Use action "install" or "add_components" to get a toolchain, "register" for one already on disk, and "link" to change the C toolchain or LLVM a Rust toolchain uses; list what can be installed with list_toolchains available, then select the toolchain of an application with configure.',

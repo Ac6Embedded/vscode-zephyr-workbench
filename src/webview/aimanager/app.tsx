@@ -3,7 +3,7 @@
 // server, and third-party agent skills. Each shows the essentials in one line
 // per item; paths, per-scope actions and explanations open on demand.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import {
   EXTERNAL_LINKS, ExternalLinkId, THIRD_PARTY_SKILLS, ZEPHYR_MCP_DATA_SOURCES,
 } from '../../mcp/core/externalResources';
@@ -414,18 +414,61 @@ export function ServersTab({ state }: { state: AiManagerState }) {
   );
 }
 
+/**
+ * An info icon whose text floats over the page while the icon is pointed at
+ * or focused, and never moves the rows around it. It opens above the icon
+ * when there is no room below, and Escape closes it.
+ */
+function InfoTip({ label, text }: { label: string; text: string }) {
+  const id = useId();
+  const [place, setPlace] = useState<{ above: boolean; maxWidth: number }>();
+  const [dismissed, setDismissed] = useState(false);
+  const open = (element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    setPlace({ above: window.innerHeight - rect.bottom < 120, maxWidth: Math.max(160, window.innerWidth - rect.left - 24) });
+    setDismissed(false);
+  };
+  return (
+    <span className={`zw-tip${dismissed ? ' dismissed' : ''}`} onMouseEnter={event => open(event.currentTarget)}>
+      <button
+        type="button"
+        className="zw-tip-icon"
+        aria-label={label}
+        aria-describedby={id}
+        onFocus={event => open(event.currentTarget)}
+        onKeyDown={event => {
+          if (event.key === 'Escape') {
+            setDismissed(true);
+          }
+        }}
+      >
+        <span className="codicon codicon-info" aria-hidden="true" />
+      </button>
+      <span
+        id={id}
+        role="tooltip"
+        className={`zw-tip-text${place?.above ? ' above' : ''}`}
+        style={place ? { maxWidth: `min(24rem, ${place.maxWidth}px)` } : undefined}
+      >
+        {text}
+      </span>
+    </span>
+  );
+}
+
 function ToolItem({ tool, asksFirst }: { tool: ToolRow; asksFirst: boolean }) {
   return (
-    <label className="zw-tool">
-      <input type="checkbox" checked={!tool.disabled} onChange={() => post({ command: 'toggleTool', tool: tool.name })} />
-      <span className="zw-tool-name">
-        <span className="zw-mono">{tool.name}</span> <span className="zw-meta">{tool.title}</span>
-      </span>
+    <div className="zw-tool">
+      <label className="zw-tool-name">
+        <input type="checkbox" checked={!tool.disabled} onChange={() => post({ command: 'toggleTool', tool: tool.name })} />
+        <span className="zw-mono">{tool.name}</span>
+      </label>
+      {tool.summary ? <InfoTip label={`What ${tool.name} does`} text={tool.summary} /> : <span />}
       <span className="zw-badges">
         {asksFirst && <span className="zw-badge warn">asks first</span>}
         <span className="zw-badge">{toolKind(tool)}</span>
       </span>
-    </label>
+    </div>
   );
 }
 

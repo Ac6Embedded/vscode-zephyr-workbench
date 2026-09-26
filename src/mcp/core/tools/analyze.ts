@@ -7,6 +7,7 @@ import { appPath, configName, waitSec } from './shared';
 export const ANALYZE: ToolMeta = {
   name: 'analyze',
   title: 'Analyze a build configuration',
+  summary: 'Runs an analysis in a VS Code terminal: DT Doctor, the Kconfig hardening check, an SPDX SBOM or ECLAIR.',
   description: [
     'Runs an analysis of one build configuration in a visible VS Code task terminal, the same ones the Zephyr Workbench applications view offers: dt_doctor (the devicetree static analysis build), hardenconfig (the Kconfig security hardening check), spdx (an SPDX 2.3 or 3.0 software bill of materials) and eclair (the ECLAIR static analysis, when ECLAIR is installed).',
     'Use it for devicetree problems build_app does not explain, before shipping to review hardening, to produce an SBOM, or to run a MISRA and coding guideline analysis; read ECLAIR findings afterwards with get_diagnostics source sca.',

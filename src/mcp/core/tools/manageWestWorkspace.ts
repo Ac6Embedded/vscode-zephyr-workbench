@@ -7,6 +7,7 @@ import { dryRun, listEdit, waitSec } from './shared';
 export const MANAGE_WEST_WORKSPACE: ToolMeta = {
   name: 'manage_west_workspace',
   title: 'Create and maintain west workspaces',
+  summary: 'Creates, imports and updates west workspaces: west update, manifest changes, Python environment and binary blobs.',
   description: [
     'Creates a west workspace (west init from a bundled template, a remote manifest repository or a local manifest file, then west update), imports an existing one, and maintains it: west update, manifest edits (Zephyr revision, module allowlist, Rust module), its own Python virtual environment and requirements, and binary blobs, doing what the Add West Workspace wizard, the West Manager and the west workspace actions of Zephyr Workbench do.',
     'Use it before manage_app when no west workspace fits; find templates, Zephyr revisions, projects and blobs with search_zephyr_catalog kinds template, revision, project and blob, and change the board, DTS, SoC and snippet roots or the venv setting with configure target west_workspace.',

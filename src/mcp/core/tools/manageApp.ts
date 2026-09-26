@@ -8,6 +8,7 @@ import { appPath, dryRun, toolchainChoice, waitSec } from './shared';
 export const MANAGE_APP: ToolMeta = {
   name: 'manage_app',
   title: 'Create or import an application',
+  summary: 'Creates an application from a sample, imports an existing one, or gives it its own Python environment.',
   description: [
     'Creates a Zephyr application from a sample or test of a west workspace, imports an existing application folder, or creates a Python virtual environment for one application, doing what the Add Application wizard and the Create Venv action of Zephyr Workbench do.',
     'Use action "create" to start a new application, finding the template with search_zephyr_catalog kind sample or test and the board with kind board, and "import" for a folder that already holds an application; change an existing application with configure instead.',

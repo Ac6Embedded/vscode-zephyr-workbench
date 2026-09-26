@@ -169,7 +169,7 @@ describe('mcp/core/routing', () => {
 
   describe('routingTargetOf', () => {
     const tool = (over: Partial<ToolMeta> = {}): ToolMeta => ({
-      name: 't', title: 't', description: 't', inputSchema: z.object({}),
+      name: 't', title: 't', summary: 't', description: 't', inputSchema: z.object({}),
       annotations: { openWorldHint: false }, category: 'action', toolsets: [], ...over,
     });
 
@@ -190,7 +190,7 @@ describe('mcp/core/routing', () => {
 
   describe('routeOfCall', () => {
     const tool = (over: Partial<ToolMeta> = {}): ToolMeta => ({
-      name: 't', title: 't', description: 't', inputSchema: z.object({ app_path: z.string().optional(), west_workspace: z.string().optional() }),
+      name: 't', title: 't', summary: 't', description: 't', inputSchema: z.object({ app_path: z.string().optional(), west_workspace: z.string().optional() }),
       annotations: { openWorldHint: false }, category: 'action', toolsets: [], ...over,
     });
 

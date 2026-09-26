@@ -32,10 +32,20 @@ describe('mcp/core/catalog', () => {
     }
   });
 
+  it('tells the user what every tool does in a sentence or two short enough for a tooltip', () => {
+    for (const tool of TOOL_CATALOG) {
+      const sentences = tool.summary.split(/(?<=\.)\s+/).filter(s => s.trim().length > 0);
+      assert.ok(sentences.length >= 1 && sentences.length <= 2, `${tool.name} summary has ${sentences.length} sentences`);
+      assert.ok(tool.summary.length <= 140, `${tool.name} summary is ${tool.summary.length} characters, too long for a tooltip`);
+      assert.match(tool.summary, /^[A-Z].*\.$/, `${tool.name} summary is not a sentence`);
+    }
+  });
+
   it('uses no em-dash in anything the user or agent sees', () => {
     for (const tool of TOOL_CATALOG) {
       assert.ok(!tool.description.includes('—'), `${tool.name} description contains an em-dash`);
       assert.ok(!tool.title.includes('—'), `${tool.name} title contains an em-dash`);
+      assert.ok(!tool.summary.includes('—'), `${tool.name} summary contains an em-dash`);
     }
     assert.ok(!SERVER_INSTRUCTIONS.includes('—'));
   });

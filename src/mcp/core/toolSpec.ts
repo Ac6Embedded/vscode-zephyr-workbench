@@ -32,6 +32,11 @@ export interface ToolMeta {
   name: string;
   title: string;
   /**
+   * What the AI Manager tells the user the tool does, in its tooltip: one or
+   * two plain sentences. Never sent to agents, which read `description`.
+   */
+  summary: string;
+  /**
    * What the agent sees. Four sentences: what it does and the exact command or
    * artifact behind it, when to use it and which sibling to use instead, what
    * the inputs mean, and what comes back with its limits.

@@ -13,6 +13,7 @@ export type HardwareAction = typeof HARDWARE_ACTIONS[number];
 export const HARDWARE: ToolMeta = {
   name: 'hardware',
   title: 'Serial console of a connected board',
+  summary: 'Reads a connected board\'s serial console, and can send it a line such as a shell command.',
   description: [
     'Reads what a connected board prints on its serial console and can send it a line, through a pyserial helper of the workbench: list_ports lists the serial ports without opening them, serial_start opens one as a capture job the user watches live in a VS Code terminal, serial_read returns the captured text, serial_send writes a line such as a Zephyr shell command, and serial_stop closes the port.',
     'Start a capture before flashing or resetting the board, or its boot messages are lost; serial_send asks the user in VS Code first, and a port opens in one program at a time, so a serial monitor holding it makes serial_start fail with BUSY_EXTERNAL.',

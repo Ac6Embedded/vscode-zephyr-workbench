@@ -28,7 +28,7 @@ function state(over: Partial<AiManagerState> = {}): AiManagerState {
     server: {
       running: true, enabled: 'auto', supported: true, window_id: 'w', port: 50123, toolset: 'core', tool_count: 2,
       tools: [
-        tool({ name: 'get_status', title: 'Workbench status', category: 'query', read_only: true }),
+        tool({ name: 'get_status', title: 'Workbench status', summary: 'Gives the agent an overview of this window.', category: 'query', read_only: true }),
         tool({ name: 'manage_app', title: 'Create or import an application', asks: ['workspace', 'install'] }),
       ],
       workspace_folders: ['/work/zephyrproject'], jobs: [], other_windows: 0,
@@ -350,6 +350,15 @@ describe('AI Manager view', () => {
       })));
       assert.match(shown, /zw-action primary"[^>]*>Start</);
       assert.match(shown, /waiting for your answer[\s\S]*manage_app/);
+    });
+
+    it('explains each tool in a tooltip beside its name, in place of its title', () => {
+      const shown = visible(render(React.createElement(ToolsTab, { state: state({ tab: 'tools' }) })));
+      const row = shown.slice(shown.indexOf('>get_status<'), shown.indexOf('>manage_app<'));
+      assert.match(row, /<button type="button" class="zw-tip-icon" aria-label="What get_status does" aria-describedby="([^"]+)"[\s\S]*<span id="\1" role="tooltip" class="zw-tip-text">Gives the agent an overview of this window\.</);
+      assert.doesNotMatch(shown, /Workbench status/);
+      // The tooltip is outside the label, so pointing at it never ticks the box.
+      assert.match(row, /<\/label>[\s\S]*zw-tip-icon/);
     });
 
     it('shows the toolset, the Ask me first choices and, open by default, the tool list', () => {

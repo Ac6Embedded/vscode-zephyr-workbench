@@ -6,7 +6,7 @@ import { AuditBag, ConfirmCategory, ToolContext, ToolMeta } from '../../../mcp/c
 import { AskAnswer, Confirmations } from '../../../mcp/host/confirmations';
 
 const TOOL: ToolMeta = {
-  name: 'remove_or_delete', title: 't', description: 'd', inputSchema: z.object({}),
+  name: 'remove_or_delete', title: 't', summary: 's', description: 'd', inputSchema: z.object({}),
   annotations: { destructiveHint: true, openWorldHint: false }, category: 'action', toolsets: [], confirm: 'delete',
 };
 

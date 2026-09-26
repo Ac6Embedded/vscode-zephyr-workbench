@@ -252,10 +252,87 @@
 .zw-tool {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0.6rem;
+  gap: 0.35rem;
   align-items: center;
   padding: 0.25rem 0;
 }
+
+.zw-tool-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+}
+
+/* An info icon whose text floats over the rows below it, never pushing them. */
+
+.zw-tip {
+  position: relative;
+  display: inline-flex;
+  justify-self: start;
+}
+
+.zw-ai button.zw-tip-icon {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: help;
+}
+
+.zw-ai button.zw-tip-icon:hover { color: var(--vscode-foreground); }
+.zw-tip-icon .codicon { font-size: 14px; }
+
+.zw-tip-text {
+  position: absolute;
+  z-index: 10;
+  left: -0.4rem;
+  top: calc(100% + 4px);
+  width: max-content;
+  max-width: 24rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, var(--vscode-panel-border)));
+  border-radius: 3px;
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  font-size: 0.9rem;
+  line-height: 1.4;
+  white-space: normal;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.zw-tip-text.above {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+/* Bridges the gap to the icon, so the pointer can move onto the text. */
+.zw-tip-text::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -6px;
+  height: 6px;
+}
+
+.zw-tip-text.above::before {
+  top: auto;
+  bottom: -6px;
+}
+
+.zw-tip:hover .zw-tip-text,
+.zw-tip-icon:focus-visible + .zw-tip-text {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.zw-tip.dismissed .zw-tip-text { visibility: hidden; }
 
 .zw-badges {
   display: inline-flex;

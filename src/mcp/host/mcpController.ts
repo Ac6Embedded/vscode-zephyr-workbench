@@ -568,7 +568,7 @@ export class McpController implements vscode.Disposable {
       toolset: this.settings.toolset,
       tool_count: served.size,
       tools: TOOL_CATALOG.filter(t => !!HANDLERS[t.name]).map(t => ({
-        name: t.name, title: t.title, category: t.category,
+        name: t.name, title: t.title, summary: t.summary, category: t.category,
         read_only: t.annotations.readOnlyHint === true,
         destructive: t.annotations.destructiveHint === true,
         disabled: !served.has(t.name),

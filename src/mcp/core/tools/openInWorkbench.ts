@@ -7,6 +7,7 @@ import { appPath, configName } from './shared';
 export const OPEN_IN_WORKBENCH: ToolMeta = {
   name: 'open_in_workbench',
   title: 'Show something to the user',
+  summary: 'Opens something in VS Code for you: a file at a line, a Workbench view or manager, or a wizard.',
   description: [
     'Opens a Zephyr Workbench view or editor in VS Code for the user to look at or act on: a file at a line, the Workbench dashboard, the Kconfig Manager, menuconfig or guiconfig in a terminal, the Devicetree Manager, the West Manager, the ECLAIR Manager or report, a Zephyr terminal, or the Add Application, Add West Workspace and Add Toolchain wizards.',
     'Use it to hand over to the user, for a choice they want to make themselves or a secret such as an IAR licence token that must never pass through the agent; never run menuconfig or guiconfig in your own shell, and change Kconfig values with set_kconfig rather than through menuconfig.',

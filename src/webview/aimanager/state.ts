@@ -3,6 +3,8 @@
 export interface ToolRow {
   name: string;
   title: string;
+  /** What the tool does, in a sentence or two, for its tooltip. */
+  summary?: string;
   category: string;
   read_only: boolean;
   destructive: boolean;
