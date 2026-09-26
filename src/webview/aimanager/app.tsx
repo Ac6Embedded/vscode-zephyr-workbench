@@ -10,9 +10,9 @@ import {
 import { Disclosure, DisclosureProvider } from './disclosure';
 import { AgentRow, AiManagerState, AiManagerView, ConnectionTest, JobRow, post, ToolRow } from './state';
 import {
-  confirmRows, displayPath, formatTime, groupAgents, JOB_TONE, jobTitle, RowAction, rowStatus, scopeAction, scopeLabel,
-  ServerKey, serverSummary, signInHint, SPINNER, summarizeAgent, Tone, TOOL_GROUP_LABEL, toolKind, TOOLSETS,
-  toolsSummary, zephyrClientConfig,
+  displayPath, formatTime, groupAgents, JOB_TONE, jobTitle, PERMISSION_CHOICES, permissionCounts, PRESETS,
+  RowAction, rowStatus, scopeAction, scopeLabel, ServerKey, serverSummary, signInHint, SPINNER, summarizeAgent, Tone,
+  TOOL_GROUP_LABEL, toolsSummary, zephyrClientConfig,
 } from './view';
 
 const TONE_ICON: Record<Tone, string> = {
@@ -489,116 +489,85 @@ function InfoTip({ label, text }: { label: string; text: string }) {
   );
 }
 
-function ToolItem({ tool, asksFirst }: { tool: ToolRow; asksFirst: boolean }) {
+/** One tool: its name, what it does, and its three choices. */
+function PermissionRow({ tool }: { tool: ToolRow }) {
   return (
     <div className="zw-tool">
-      <label className="zw-tool-name">
-        <input type="checkbox" checked={!tool.disabled} onChange={() => post({ command: 'toggleTool', tool: tool.name })} />
+      <span className={`zw-tool-name${tool.permission === 'block' ? ' blocked' : ''}`}>
         <span className="zw-mono">{tool.name}</span>
-      </label>
+      </span>
       {tool.summary ? <InfoTip label={`What ${tool.name} does`} text={tool.summary} /> : <span />}
-      <span className="zw-badges">
-        {asksFirst && <span className="zw-badge warn">asks first</span>}
-        <span className="zw-badge">{toolKind(tool)}</span>
+      <span className="zw-segmented zw-choices" role="radiogroup" aria-label={`Permission for ${tool.name}`}>
+        {PERMISSION_CHOICES.map(choice => (
+          <button
+            key={choice.permission}
+            type="button"
+            role="radio"
+            aria-checked={tool.permission === choice.permission}
+            className={tool.permission === choice.permission ? `active ${choice.permission}` : ''}
+            onClick={() => post({ command: 'setPermission', tool: tool.name, permission: choice.permission })}
+          >
+            <span className={`codicon codicon-${choice.icon}`} aria-hidden="true" />
+            {choice.label}
+          </button>
+        ))}
       </span>
     </div>
   );
 }
 
-export function ToolsTab({ state }: { state: AiManagerState }) {
+/** What agents may do: a preset, then each tool's own choice, under the titles of the catalog. */
+export function PermissionsTab({ state }: { state: AiManagerState }) {
   const { server } = state;
-  const readOnly = server.toolset === 'read-only';
-  const enabled = server.tools.filter(tool => !tool.disabled).length;
-  const description = TOOLSETS.find(([name]) => name === server.toolset)?.[1];
-  const confirms = confirmRows(server.tools);
-  const hardwareAsked = confirms.some(row => row.category === 'hardware' && row.tools.length > 0);
+  const preset = PRESETS.find(item => item.preset === server.permission_preset) ?? PRESETS[1];
+  const counts = permissionCounts(server.tools);
   const groups = new Map<string, ToolRow[]>();
   for (const tool of server.tools) {
     groups.set(tool.category, [...(groups.get(tool.category) ?? []), tool]);
   }
   return (
     <div>
-      <div className="zw-section-name zw-heading">Toolset</div>
-      <div className="zw-segmented" role="group" aria-label="Toolset">
-        {TOOLSETS.map(([name]) => (
-          <button
-            key={name}
-            type="button"
-            className={server.toolset === name ? 'active' : ''}
-            aria-pressed={server.toolset === name}
-            onClick={() => post({ command: 'setToolset', toolset: name })}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
-      <p className="zw-note">
-        {description} {enabled} of {server.tools.length} tools are on.
-      </p>
-
-      <div className="zw-section-name zw-heading">Ask me first</div>
-      <p className="zw-note">
-        {readOnly
-          ? 'No tool in the read-only toolset changes anything, so nothing asks.'
-          : 'Before these actions, VS Code shows a dialog naming the agent and what it wants to do. Only you can answer it.'}
-      </p>
-      <div className="zw-checks">
-        {confirms.map(row => (
-          <label
-            key={row.category}
-            className={`zw-check${row.tools.length === 0 ? ' unused' : ''}`}
-            title={row.tools.length > 0 ? `Asked by ${row.tools.join(', ')}` : undefined}
-          >
-            <input
-              type="checkbox"
-              disabled={readOnly}
-              checked={server.confirm_actions.includes(row.category)}
-              onChange={() => post({ command: 'toggleConfirm', category: row.category })}
-            />
-            <span>
-              {row.label}
-              {row.tools.length === 0 && <span className="zw-meta"> (no enabled tool does this yet)</span>}
-            </span>
-          </label>
-        ))}
-      </div>
-      {!readOnly && hardwareAsked && !server.confirm_actions.includes('hardware') && (
-        <p className="zw-note">Agents can send text to a connected board's serial port without asking.</p>
-      )}
-      {server.session_approvals > 0 && (
-        <div className="zw-actions zw-spaced">
-          <ActionButton action={{
-            label: `Forget session approvals (${server.session_approvals})`,
-            message: { command: 'forgetApprovals' },
-          }}
-          />
+      {server.permissions_locked && (
+        <div className="zw-warning error">
+          The permission settings could not be read, so agents only get the tools that read. Pick a preset to fix them.
         </div>
       )}
-
-      <Disclosure
-        id="tools:list"
-        className="zw-section"
-        defaultOpen
-        summary={(
-          <span className="zw-section-name">
-            Tools agents can call <span className="zw-count">{enabled} of {server.tools.length}</span>
+      <Group title="Preset">
+        <span className="zw-segmented" role="radiogroup" aria-label="Permission preset">
+          {PRESETS.map(item => (
+            <button
+              key={item.preset}
+              type="button"
+              role="radio"
+              aria-checked={server.permission_preset === item.preset}
+              className={server.permission_preset === item.preset ? 'active' : ''}
+              onClick={() => post({ command: 'setPreset', preset: item.preset })}
+            >
+              {item.label}
+            </button>
+          ))}
+        </span>
+        <p className="zw-note">{preset.description}</p>
+        <div className="zw-counts">
+          <span className="zw-meta">
+            {counts.allow} allowed &middot; {counts.ask} ask first &middot; {counts.block} blocked
           </span>
-        )}
-      >
-        <p className="zw-note">Agents see only the tools that are on, and fewer tools leave room for your other extensions.</p>
-        {[...groups.entries()].map(([category, tools]) => (
-          <div key={category} className="zw-tool-group">
-            <div className="zw-group-name">{TOOL_GROUP_LABEL[category] ?? category}</div>
-            {tools.map(tool => (
-              <ToolItem
-                key={tool.name}
-                tool={tool}
-                asksFirst={tool.asks.some(category => server.confirm_actions.includes(category))}
-              />
-            ))}
-          </div>
-        ))}
-      </Disclosure>
+          {server.session_approvals > 0 && (
+            <ActionButton action={{
+              label: `Forget session approvals (${server.session_approvals})`,
+              title: 'Ask again before the actions an agent was allowed for this session',
+              message: { command: 'forgetApprovals' },
+            }}
+            />
+          )}
+        </div>
+      </Group>
+
+      {[...groups.entries()].map(([category, tools]) => (
+        <Group key={category} title={TOOL_GROUP_LABEL[category] ?? category}>
+          {tools.map(tool => <PermissionRow key={tool.name} tool={tool} />)}
+        </Group>
+      ))}
     </div>
   );
 }
@@ -611,7 +580,7 @@ const VIEWS: [AiManagerView, string][] = [
 
 const TABS: [AiManagerState['tab'], string][] = [
   ['connections', 'Connections'],
-  ['tools', 'Tools and safety'],
+  ['permissions', 'Permissions'],
 ];
 
 /** The Zephyr Workbench MCP page: the server card, then its three tabs. */
@@ -635,7 +604,7 @@ export function WorkbenchView({ state }: { state: AiManagerState }) {
         ))}
       </div>
       {state.tab === 'connections' && <ConnectionsTab state={state} />}
-      {state.tab === 'tools' && <ToolsTab state={state} />}
+      {state.tab === 'permissions' && <PermissionsTab state={state} />}
     </>
   );
 }

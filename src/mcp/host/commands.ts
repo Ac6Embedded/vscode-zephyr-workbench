@@ -24,7 +24,7 @@ export function registerMcpCommands(
   register('zephyr-workbench.ai-manager', () => open('connections'));
   register('zephyr-workbench.mcp.connect', () => open('connections'));
   register('zephyr-workbench.mcp.showStatus', () => open('connections'));
-  register('zephyr-workbench.mcp.tools', () => open('tools'));
+  register('zephyr-workbench.mcp.tools', () => open('permissions'));
 
   register('zephyr-workbench.mcp.start', async () => {
     const active = controller();

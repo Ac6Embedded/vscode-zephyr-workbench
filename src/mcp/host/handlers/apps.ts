@@ -150,17 +150,17 @@ function confirmationOf(ctx: Ctx, outcome: ConfirmOutcome) {
 
 function confirmationRequired(ctx: Ctx, args: Record<string, unknown>): boolean {
   const category = confirmCategoryOf(ctx.tool, args);
-  return !!category && ctx.deps.confirmActions.includes(category);
+  return !!category && ctx.deps.permissionOf(ctx.tool) === 'ask';
 }
 
 /**
- * How a hint points at a tool only the full toolset serves: by name when this
+ * How a hint points at a tool the user may have blocked: by name when this
  * window serves it, else at the Zephyr Workbench command doing the same.
  */
 function viaTool(ctx: Ctx, tool: string, call: string, command: string): string {
   return ctx.deps.servedTools().has(tool)
     ? `call ${call}`
-    : `ask the user to run the Zephyr Workbench command "${command}" (${tool} does it too, which only the full toolset offers)`;
+    : `ask the user to run the Zephyr Workbench command "${command}" (${tool} does it too, if the user allows it in the AI Manager)`;
 }
 
 function messageOf(error: unknown): string {
@@ -751,7 +751,7 @@ async function createApp(args: Record<string, unknown>, ctx: Ctx) {
   }
   if (workspaceFolder && findWorkspaceApplicationEntry(workspaceFolder, appRoot)) {
     throw invalid(`The west workspace already declares an application at "${appRoot}".`,
-      'Pick another name, or remove that entry first with remove_or_delete what "application", which only the full toolset offers.');
+      'Pick another name, or remove that entry first with remove_or_delete what "application", if the user allows it in the AI Manager.');
   }
   const entry = await assertTemplate(ctx, workspace, template);
   if (isInside(appRoot, entry.path)) {

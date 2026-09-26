@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { findTool, TOOL_CATALOG } from '../../../mcp/core/catalog';
 import { McpToolError } from '../../../mcp/core/errors';
-import { ConfirmCategory, ToolContext } from '../../../mcp/core/toolSpec';
+import { ConfirmCategory, permissionForCategories, ToolContext } from '../../../mcp/core/toolSpec';
 import { AskAnswer, Confirmations } from '../../../mcp/host/confirmations';
 import { HostDeps, WorkbenchView } from '../../../mcp/host/handlers/deps';
 import { removeOrDelete } from '../../../mcp/host/handlers/removals';
@@ -197,7 +197,7 @@ describe('mcp/host/handlers/toolchains', function () {
     const asked: string[] = [];
     const answers: AskAnswer[] = [];
     const confirmations = new Confirmations({
-      categories: () => h.confirmActions,
+      permission: tool => permissionForCategories(tool, h.confirmActions),
       waitMs: () => 2000,
       log: { recordConfirmation: () => undefined },
       ask: async message => {
@@ -211,7 +211,7 @@ describe('mcp/host/handlers/toolchains', function () {
       services, jobs, confirmations,
       defaultWaitSeconds: 10,
       revealTerminal: 'never',
-      get confirmActions() { return h.confirmActions; },
+      permissionOf: tool => permissionForCategories(tool, h.confirmActions),
       kconfig: {} as HostDeps['kconfig'],
       extensionContext: {} as HostDeps['extensionContext'],
       folders: {} as HostDeps['folders'],
@@ -312,12 +312,13 @@ describe('mcp/host/handlers/toolchains', function () {
       assert.deepEqual(result.arm_gnu[0].used_by, ['/apps/b']);
     });
 
-    it('names the full-only tools as such when only the core toolset is served', async () => {
-      h.served = new Set(TOOL_CATALOG.filter(tool => tool.toolsets.includes('core')).map(tool => tool.name));
+    it('says a blocked tool needs the user to allow it', async () => {
+      const blocked = ['manage_toolchain', 'remove_or_delete'];
+      h.served = new Set(TOOL_CATALOG.filter(tool => !blocked.includes(tool.name)).map(tool => tool.name));
       h.lists.listArmGnuToolchains = [{ toolchainPath: path.join(h.root, 'gone') }];
       const result = await list();
-      assert.match(result.next, /manage_toolchain, which only the full toolset offers/);
-      assert.match(result.next, /remove_or_delete, which only the full toolset offers/);
+      assert.match(result.next, /manage_toolchain, if the user allows it in the AI Manager/);
+      assert.match(result.next, /remove_or_delete, if the user allows it in the AI Manager/);
     });
 
     it('lists the releases of a family, and the toolchains of one SDK version', async function () {

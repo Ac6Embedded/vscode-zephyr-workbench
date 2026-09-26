@@ -49,7 +49,7 @@ function isGoneForNow(record: WindowRecord, now = Date.now()): boolean {
 /**
  * The tools to advertise, from what the live windows publish. Undefined means
  * no window says, so the whole catalog is shown and the window decides per call.
- * A union, so two windows with different toolsets never make the list flap.
+ * A union, so two windows with different permissions never make the list flap.
  */
 export function advertisedToolNames(records: readonly WindowRecord[]): Set<string> | undefined {
   const declared = records.filter(record => Array.isArray(record.tools));

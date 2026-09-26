@@ -3,7 +3,7 @@
 
 import type * as vscode from 'vscode';
 import { JobManager } from '../../jobs/jobManager';
-import { ConfirmCategory } from '../../core/toolSpec';
+import { PermissionPreset, ToolMeta, ToolPermission } from '../../core/toolSpec';
 import { KconfigSessionPool } from '../../../utils/kconfig/kconfigSessionPool';
 import { Confirmations } from '../confirmations';
 import { FolderChangeScheduler } from '../folderChanges';
@@ -21,10 +21,12 @@ export interface HostDeps {
   readonly defaultWaitSeconds: number;
   /** Whether an agent-started task reveals its terminal. */
   readonly revealTerminal: 'always' | 'silent' | 'never';
-  /** Asks the user before an action in one of their confirmActions categories. */
+  /** Asks the user before an action of a tool they set to Ask. */
   confirmations: Confirmations;
-  /** The zephyr-workbench.mcp.confirmActions setting, read on every call. */
-  readonly confirmActions: readonly ConfirmCategory[];
+  /** What the user lets agents do with a tool, from the permission settings, read on every call. */
+  permissionOf(tool: ToolMeta): ToolPermission;
+  /** The preset of the permission settings, for get_status. */
+  readonly permissionPreset?: PermissionPreset;
   /** Kconfig sessions for query_kconfig's explain mode and set_kconfig, stopped with the server. */
   kconfig: KconfigSessionPool;
   /** The extension's context, for state that must outlive a restart of the extension host. */

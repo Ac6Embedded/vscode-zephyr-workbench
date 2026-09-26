@@ -126,11 +126,11 @@ describe('set_kconfig registering a fragment while configure changes the configu
       services,
       jobs: new JobManager({ logPathFor: id => path.join(root, `${id}.log`) }),
       confirmations: new Confirmations({
-        categories: () => [], waitMs: () => 2000, log: { recordConfirmation: () => undefined }, ask: async () => undefined,
+        permission: () => 'allow', waitMs: () => 2000, log: { recordConfirmation: () => undefined }, ask: async () => undefined,
       }),
       defaultWaitSeconds: 10,
       revealTerminal: 'never',
-      confirmActions: [],
+      permissionOf: () => 'allow',
       kconfig: {
         use: async (dir: string, _options: unknown, fn: (session: unknown) => Promise<unknown>) => {
           entered();

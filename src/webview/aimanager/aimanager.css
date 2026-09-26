@@ -229,6 +229,9 @@
 }
 
 .zw-segmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   padding: 0.3rem 0.9rem;
   border: none;
   background: var(--vscode-button-secondaryBackground);
@@ -244,6 +247,27 @@
   color: var(--vscode-button-foreground);
 }
 
+.zw-segmented button:not(.active):hover { background: var(--vscode-button-secondaryHoverBackground); }
+
+/* The three choices of one tool: compact, so a row stays one line. */
+.zw-choices button {
+  padding: 0.15rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.zw-choices .codicon { font-size: 13px; }
+
+.zw-tool-name.blocked { color: var(--vscode-descriptionForeground); }
+
+.zw-counts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+  margin-top: 0.35rem;
+}
+
 .zw-checks { margin-top: 0.35rem; }
 
 .zw-check {
@@ -255,13 +279,6 @@
 
 .zw-check input { margin-top: 0.15rem; }
 .zw-check.unused > span:first-of-type { color: var(--vscode-descriptionForeground); }
-
-.zw-group-name {
-  margin: 0.9rem 0 0.2rem;
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.9rem;
-  font-weight: 600;
-}
 
 .zw-tool {
   display: grid;
@@ -275,7 +292,6 @@
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
-  cursor: pointer;
 }
 
 /* An info icon whose text floats over the rows below it, never pushing them. */

@@ -265,7 +265,6 @@ describe('set_kconfig', () => {
     const meta = findTool('set_kconfig')!;
     assert.equal(meta.confirm, 'settings');
     assert.deepEqual(meta.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false });
-    assert.deepEqual(meta.toolsets, ['core']);
     assert.equal(findTool('query_kconfig')!.annotations.readOnlyHint, true, 'explain keeps query_kconfig read-only');
   });
 

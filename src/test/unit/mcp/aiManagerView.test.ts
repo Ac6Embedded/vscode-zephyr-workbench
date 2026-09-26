@@ -7,9 +7,9 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { AgentRow, AiManagerState, ToolRow } from '../../../webview/aimanager/state';
 import {
-  confirmRows, displayPath, groupAgents, jobTitle, rowStatus, scopeAction, serverSummary, signInHint, SPINNER, summarizeAgent,
+  displayPath, groupAgents, jobTitle, rowStatus, scopeAction, serverSummary, signInHint, SPINNER, summarizeAgent,
 } from '../../../webview/aimanager/view';
-import { ConnectionsTab, SkillsView, StatusHeader, ToolsTab, WorkbenchView, ZephyrView } from '../../../webview/aimanager/app';
+import { ConnectionsTab, PermissionsTab, SkillsView, StatusHeader, WorkbenchView, ZephyrView } from '../../../webview/aimanager/app';
 import { isOpenIn, OpenState, toggledIn } from '../../../webview/aimanager/disclosure';
 
 const row = (over: Partial<AgentRow>): AgentRow => ({
@@ -18,7 +18,7 @@ const row = (over: Partial<AgentRow>): AgentRow => ({
 });
 
 const tool = (over: Partial<ToolRow>): ToolRow => ({
-  name: 'build_app', title: 'Build', category: 'action', read_only: false, destructive: false, disabled: false, asks: [], ...over,
+  name: 'build_app', title: 'Build', category: 'action', read_only: false, destructive: false, permission: 'allow', asks: [], ...over,
 });
 
 function state(over: Partial<AiManagerState> = {}): AiManagerState {
@@ -26,13 +26,14 @@ function state(over: Partial<AiManagerState> = {}): AiManagerState {
     view: 'workbench',
     tab: 'connections',
     server: {
-      running: true, enabled: 'auto', supported: true, window_id: 'w', port: 50123, toolset: 'core', tool_count: 2,
+      running: true, enabled: 'auto', supported: true, window_id: 'w', port: 50123, permission_preset: 'core', tool_count: 2,
       tools: [
         tool({ name: 'get_status', title: 'Workbench status', summary: 'Gives the agent an overview of this window.', category: 'query', read_only: true }),
-        tool({ name: 'manage_app', title: 'Create or import an application', asks: ['workspace', 'install'] }),
+        tool({ name: 'manage_app', title: 'Create or import an application', asks: ['workspace', 'install'], permission: 'ask' }),
+        tool({ name: 'remove_or_delete', title: 'Remove or delete', asks: ['delete'], permission: 'block' }),
       ],
       workspace_folders: ['/work/zephyrproject'], jobs: [], other_windows: 0,
-      confirm_actions: ['workspace', 'install'], session_approvals: 0,
+      session_approvals: 0,
     },
     launcher: { command: '/home/u/.zephyr-workbench/mcp/zw-mcp', args: [], env: {} },
     bridge: { path: '/home/u/.zephyr-workbench/mcp/bridge.cjs', installed: true, home: '/home/u/.zephyr-workbench/mcp' },
@@ -263,15 +264,6 @@ describe('AI Manager view', () => {
     });
   });
 
-  describe('confirmRows', () => {
-    it('lists the tools each category covers, and puts the unused ones last', () => {
-      const rows = confirmRows([tool({ name: 'manage_app', asks: ['workspace'] }), tool({ name: 'off', asks: ['delete'], disabled: true })]);
-      assert.deepEqual(rows[0], { category: 'workspace', label: rows[0].label, tools: ['manage_app'] });
-      assert.ok(rows.slice(1).every(entry => entry.tools.length === 0), 'a disabled tool covers nothing');
-      assert.deepEqual(rows.map(entry => entry.category).sort(), ['delete', 'hardware', 'install', 'settings', 'workspace']);
-    });
-  });
-
   describe('jobTitle', () => {
     it('names the application and configuration, or what a job without one did', () => {
       assert.equal(jobTitle({ job_id: 'j', kind: 'build', status: 'succeeded', app_path: '/w/apps/blinky', config_name: 'primary' }), 'Build blinky (primary)');
@@ -328,7 +320,7 @@ describe('AI Manager view', () => {
       const shown = visible(markup);
       assert.match(shown, /aria-expanded="true"/);
       assert.match(shown, /Server running/);
-      assert.match(shown, /2 tools, core toolset/);
+      assert.match(shown, /2 tools, Core permissions/);
       assert.match(shown, />Test connection</);
       assert.match(shown, /127\.0\.0\.1:50123/);
       // The open folders are the user's own; listing them only grows with the project count.
@@ -370,21 +362,34 @@ describe('AI Manager view', () => {
     });
 
     it('explains each tool in a tooltip beside its name, in place of its title', () => {
-      const shown = visible(render(React.createElement(ToolsTab, { state: state({ tab: 'tools' }) })));
+      const shown = visible(render(React.createElement(PermissionsTab, { state: state({ tab: 'permissions' }) })));
       const row = shown.slice(shown.indexOf('>get_status<'), shown.indexOf('>manage_app<'));
       assert.match(row, /<button type="button" class="zw-tip-icon" aria-label="What get_status does" aria-describedby="([^"]+)"[\s\S]*<span id="\1" role="tooltip" class="zw-tip-text">Gives the agent an overview of this window\.</);
       assert.doesNotMatch(shown, /Workbench status/);
-      // The tooltip is outside the label, so pointing at it never ticks the box.
-      assert.match(row, /<\/label>[\s\S]*zw-tip-icon/);
     });
 
-    it('shows the toolset, the Ask me first choices and, open by default, the tool list', () => {
-      const shown = visible(render(React.createElement(ToolsTab, { state: state({ tab: 'tools' }) })));
-      assert.match(shown, /Toolset/);
-      assert.match(shown, /2 of 2 tools are on/);
-      assert.match(shown, /Create, import or update applications and west workspaces/);
-      assert.match(shown, /Tools agents can call/);
-      assert.match(shown, /get_status[\s\S]*manage_app/);
+    it('shows the presets, then three choices per tool under the titles of the catalog, with no hover texts', () => {
+      const shown = visible(render(React.createElement(PermissionsTab, { state: state({ tab: 'permissions' }) })));
+      assert.match(shown, />Full<[\s\S]*>Core<[\s\S]*>Custom</);
+      assert.match(shown, /role="radio" aria-checked="true" class="active">Core</);
+      assert.match(shown, /Builds and inspects freely\. Asks before changing apps, workspaces, toolchains or a board\. Blocks deleting\./);
+      assert.match(shown, /1 allowed · 1 ask first · 1 blocked/);
+      // Each category is a titled group, like Preset.
+      assert.match(shown, /<h2 class="zw-group-title">Status and search<\/h2>[\s\S]*get_status/);
+      assert.match(shown, /<h2 class="zw-group-title">Actions<\/h2>[\s\S]*manage_app[\s\S]*remove_or_delete/);
+      const row = (name: string) => shown.slice(shown.indexOf(`>${name}<`), shown.indexOf('</div>', shown.indexOf(`>${name}<`) + 1) + 1);
+      assert.match(row('manage_app'), /aria-checked="true" class="active ask"/);
+      assert.match(row('remove_or_delete'), /aria-checked="true" class="active block"/);
+      assert.match(shown, /zw-tool-name blocked[^>]*><span class="zw-mono">remove_or_delete</);
+      // Only the tools' own info icons explain anything on hover.
+      assert.equal((shown.match(/role="tooltip"/g) ?? []).length, 1, 'the one tool with a summary');
+      assert.doesNotMatch(shown, /Toolset|Ask me first|read only|type="checkbox"/);
+    });
+
+    it('says when the permission settings could not be read', () => {
+      const base = state({ tab: 'permissions' });
+      const shown = visible(render(React.createElement(PermissionsTab, { state: { ...base, server: { ...base.server, permissions_locked: true } } })));
+      assert.match(shown, /could not be read, so agents only get the tools that read/);
     });
 
     it('leads the Zephyr Project MCP page with what it answers and short facts, then the agents', () => {
@@ -442,7 +447,7 @@ describe('AI Manager view', () => {
     it('has no Server tab any more', () => {
       const shown = render(React.createElement(WorkbenchView, { state: state() }));
       const tabs = [...shown.matchAll(/role="tab"[^>]*>([^<]+)</g)].map(match => match[1]);
-      assert.deepEqual(tabs, ['Connections', 'Tools and safety']);
+      assert.deepEqual(tabs, ['Connections', 'Permissions']);
     });
   });
 });

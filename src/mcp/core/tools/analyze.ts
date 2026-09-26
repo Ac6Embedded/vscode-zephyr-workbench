@@ -33,5 +33,4 @@ export const ANALYZE: ToolMeta = {
   }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   category: 'action',
-  toolsets: ['core'],
 };

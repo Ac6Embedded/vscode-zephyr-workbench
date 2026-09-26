@@ -39,7 +39,6 @@ export const REMOVE_OR_DELETE: ToolMeta = {
   }),
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   category: 'action',
-  toolsets: [],
   confirm: 'delete',
   routeBy: ['app_path', 'west_workspace'],
   machineScope: { toolchain: true, toolchain_files: true },

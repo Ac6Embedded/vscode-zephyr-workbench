@@ -11,7 +11,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { findTool, TOOL_CATALOG } from '../../../mcp/core/catalog';
 import { McpToolError } from '../../../mcp/core/errors';
-import { ConfirmCategory, ToolContext } from '../../../mcp/core/toolSpec';
+import { ConfirmCategory, permissionForCategories, ToolContext } from '../../../mcp/core/toolSpec';
 import { AskAnswer, Confirmations } from '../../../mcp/host/confirmations';
 import { configure, deleteBuild } from '../../../mcp/host/handlers/buildConfigs';
 import { HostDeps } from '../../../mcp/host/handlers/deps';
@@ -109,7 +109,7 @@ function harness(configs: Stored[], confirmActions: ConfirmCategory[] = ['delete
   const asked: string[] = [];
   const answers: Array<{ value: AskAnswer; before?: () => void }> = [];
   const confirmations = new Confirmations({
-    categories: () => h.confirmActions,
+    permission: tool => permissionForCategories(tool, h.confirmActions),
     waitMs: () => 2000,
     log: { recordConfirmation: () => undefined },
     ask: async message => {
@@ -124,7 +124,7 @@ function harness(configs: Stored[], confirmActions: ConfirmCategory[] = ['delete
     services, jobs, confirmations,
     defaultWaitSeconds: 10,
     revealTerminal: 'never',
-    get confirmActions() { return h.confirmActions; },
+    permissionOf: tool => permissionForCategories(tool, h.confirmActions),
     // remove_or_delete stops the agent Kconfig sessions of a folder before deleting it.
     kconfig: new KconfigSessionPool({
       serverScriptPath: 'kconfig_server.py',

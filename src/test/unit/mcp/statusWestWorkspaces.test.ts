@@ -7,7 +7,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { TOOL_CATALOG } from '../../../mcp/core/catalog';
-import { AuditBag, selectTools, ToolContext } from '../../../mcp/core/toolSpec';
+import { AuditBag, Permissions, selectTools, ToolContext } from '../../../mcp/core/toolSpec';
+
+const FULL: Permissions = { preset: 'full', tools: {} };
 import { HostDeps } from '../../../mcp/host/handlers/deps';
 import { getStatus } from '../../../mcp/host/handlers/queries';
 import { westWorkspaceStatus } from '../../../mcp/host/handlers/westWorkspaces';
@@ -110,7 +112,7 @@ describe('get_status: west workspaces and next steps', () => {
     assert.deepEqual(westWorkspaceStatus([broken], []), [{ path: '/nowhere', zephyr_version: 'No version found', is_folder: false, venv: { source: 'global' }, application_count: 0 }]);
   });
 
-  function status(toolset: 'full' | 'core', folders: Partial<HostDeps['folders']> = {}) {
+  function status(permissions: Permissions, folders: Partial<HostDeps['folders']> = {}) {
     const services = {
       listApplications: async () => [],
       listWestWorkspaces: () => [],
@@ -119,13 +121,13 @@ describe('get_status: west workspaces and next steps', () => {
       findUnregisteredCandidates: async () => [path.join(tmp, 'loose')],
       isBuilt: () => false,
     };
-    const served = new Set(selectTools(TOOL_CATALOG, toolset).map(tool => tool.name));
+    const served = new Set(selectTools(TOOL_CATALOG, permissions).map(tool => tool.name));
     const ctx: ToolContext<HostDeps> = {
       signal: new AbortController().signal,
       progress: () => undefined,
       client: { name: 'test' },
       deps: {
-        services, jobs: { list: () => [] }, confirmActions: [], servedTools: () => served, folders,
+        services, jobs: { list: () => [] }, permissionOf: () => 'allow', servedTools: () => served, folders,
       } as unknown as HostDeps,
       tool: TOOL_CATALOG.find(tool => tool.name === 'get_status')!,
       startedAt: Date.now(),
@@ -134,27 +136,28 @@ describe('get_status: west workspaces and next steps', () => {
     return getStatus({}, ctx) as Promise<Record<string, any>>;
   }
 
-  it('names the tools of the full toolset, and the Zephyr Workbench commands for the core one', async () => {
-    const full = (await status('full')).next_steps.join('\n');
+  it('names the tools the window serves, and the Zephyr Workbench commands for the ones the user blocked', async () => {
+    const full = (await status(FULL)).next_steps.join('\n');
     assert.match(full, /manage_west_workspace action "create"/);
     assert.match(full, /manage_toolchain action "install"/);
     assert.match(full, /manage_app action "create"/);
     assert.match(full, /Register it with manage_app action "import"/);
 
-    const core = (await status('core')).next_steps.join('\n');
-    assert.doesNotMatch(core, /manage_west_workspace|manage_toolchain/);
-    assert.match(core, /"Add West Workspace"/);
-    assert.match(core, /"Add Toolchain"/);
-    assert.match(core, /manage_app action "create"/, 'manage_app is in the core toolset');
+    const blocked = (await status({ preset: 'custom', tools: { manage_west_workspace: 'block', manage_toolchain: 'block' } }))
+      .next_steps.join('\n');
+    assert.doesNotMatch(blocked, /manage_west_workspace|manage_toolchain/);
+    assert.match(blocked, /"Add West Workspace"/);
+    assert.match(blocked, /"Add Toolchain"/);
+    assert.match(blocked, /manage_app action "create"/, 'manage_app is still served');
   });
 
   it('reports the restart a folder change caused, and the changes still waiting', async () => {
     const note = { at: new Date().toISOString(), reason: 'west workspace created', added: ['/ws'], removed: [] };
     const pending = [{ add: ['/other'], remove: [], reason: 'import', requested_at: note.at }];
-    const out = await status('full', { restartNotice: () => note, pending: () => pending });
+    const out = await status(FULL, { restartNotice: () => note, pending: () => pending });
     assert.deepEqual(out.restart_notice, note);
     assert.deepEqual(out.pending_folder_changes, pending);
-    const quiet = await status('full', { restartNotice: () => undefined, pending: () => [] });
+    const quiet = await status(FULL, { restartNotice: () => undefined, pending: () => [] });
     assert.equal(quiet.restart_notice, undefined);
     assert.equal(quiet.pending_folder_changes, undefined);
   });

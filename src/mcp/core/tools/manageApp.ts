@@ -46,7 +46,6 @@ export const MANAGE_APP: ToolMeta = {
   }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   category: 'action',
-  toolsets: ['core'],
   confirm: { create: 'workspace', import: 'workspace', create_venv: 'install' },
   routeBy: ['app_path', 'west_workspace'],
   // A new application is by definition not in the window yet, so it cannot route by its folder.

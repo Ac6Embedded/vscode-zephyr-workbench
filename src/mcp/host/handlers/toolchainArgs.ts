@@ -138,13 +138,13 @@ export function confirmationOf(ctx: Ctx, outcome: ConfirmOutcome) {
 /** Whether the call would ask the user; an approval given for the session may still skip it. */
 export function confirmationRequired(ctx: Ctx, args: Record<string, unknown>): boolean {
   const category = confirmCategoryOf(ctx.tool, args);
-  return !!category && ctx.deps.confirmActions.includes(category);
+  return !!category && ctx.deps.permissionOf(ctx.tool) === 'ask';
 }
 
 /**
- * A hint that points at a tool of the full toolset: `served` when this window
- * serves it, else `unserved`, which says the tool is only in the full toolset
- * and names the Zephyr Workbench way for the user.
+ * A hint that points at a tool the user may have blocked: `served` when this
+ * window serves it, else `unserved`, which says the user can allow it in the
+ * AI Manager and names the Zephyr Workbench way for the user.
  */
 export function fullToolHint(ctx: Ctx, tool: string, served: string, unserved: string): string {
   return ctx.deps.servedTools().has(tool) ? served : unserved;

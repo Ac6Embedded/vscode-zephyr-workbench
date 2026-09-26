@@ -67,7 +67,6 @@ export const MANAGE_TOOLCHAIN: ToolMeta = {
   }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   category: 'action',
-  toolsets: [],
   confirm: { install: 'install', add_components: 'install', register: 'settings', link: 'settings' },
   routeBy: [],
   machineScope: true,

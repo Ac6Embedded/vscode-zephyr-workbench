@@ -13,7 +13,7 @@ import * as vscode from 'vscode';
 import { ConfirmPolicy, fingerprint } from '../core/confirmPolicy';
 import { McpToolError } from '../core/errors';
 import { logSafe } from '../core/redact';
-import { ConfirmCategory, confirmCategoryOf, ToolContext } from '../core/toolSpec';
+import { AskCategory, confirmCategoryOf, ToolContext, ToolHandler, ToolMeta, ToolPermission } from '../core/toolSpec';
 
 export interface ConfirmSubject {
   /** What will happen, in our words, completing "wants to ...": `delete the build folder of "primary"`. */
@@ -38,12 +38,13 @@ export type AskFn = (message: string, detail: string, offerSession: boolean) => 
 export type ConfirmOutcome = 'not-required' | 'not-asked' | 'allowed' | 'allowed-session' | 'remembered';
 
 /** How each category reads in "...before <text> actions". */
-const CATEGORY_TEXT: Record<ConfirmCategory, string> = {
+const CATEGORY_TEXT: Record<AskCategory, string> = {
   hardware: 'serial send',
   delete: 'remove and delete',
   workspace: 'application and west workspace',
   install: 'install',
   settings: 'settings',
+  call: 'these',
 };
 
 const HEARTBEAT_MS = 5000;
@@ -57,8 +58,8 @@ function defaultAsk(message: string, detail: string, offerSession: boolean): Pro
 }
 
 export interface ConfirmationsOptions {
-  /** The categories the user wants to approve, read on every call. */
-  categories(): readonly ConfirmCategory[];
+  /** What the user lets agents do with a tool, read on every call: only Ask asks. */
+  permission(tool: ToolMeta): ToolPermission;
   /** The longest one call waits for an answer. */
   waitMs(): number;
   log: { recordConfirmation(event: { message: string; client?: string; tool?: string; category?: string; outcome?: string }): void };
@@ -138,19 +139,24 @@ export class Confirmations {
        * the user's behalf, such as click-through licenses.
        */
       always?: boolean;
+      /**
+       * Ask about the call itself, for a tool with no action that changes
+       * anything, which the user set to Ask before each use.
+       */
+      call?: boolean;
     } = {},
   ): Promise<ConfirmOutcome> {
     ctx.audit.target = {
       app_path: subject.appPath, config_name: subject.configName, folder: subject.folder, runner: subject.runner,
     };
-    const category = confirmCategoryOf(ctx.tool, args);
+    const category: AskCategory | undefined = options.call ? 'call' : confirmCategoryOf(ctx.tool, args);
     if (!category) {
       ctx.audit.confirmation = 'not-required';
       return 'not-required';
     }
     ctx.audit.confirmCategory = category;
     const always = options.always === true;
-    if (!always && !this.options.categories().includes(category)) {
+    if (!always && this.options.permission(ctx.tool) !== 'ask') {
       // Still audited: a destructive action taken without asking stays visible.
       ctx.audit.confirmation = 'not-asked';
       return 'not-asked';
@@ -227,14 +233,14 @@ export class Confirmations {
       });
   }
 
-  private cancelled(tool: string, category: ConfirmCategory): McpToolError {
+  private cancelled(tool: string, category: AskCategory): McpToolError {
     return new McpToolError('CONFIRMATION_TIMEOUT', `The call to ${tool} was cancelled before the user was asked in VS Code, so nothing was changed.`, {
       hint: 'Repeat the identical request if it is still wanted: the user is asked then.',
       details: { category, cancelled: true },
     });
   }
 
-  private denied(tool: string, category: ConfirmCategory): McpToolError {
+  private denied(tool: string, category: AskCategory): McpToolError {
     return new McpToolError('USER_DENIED', `The user declined ${tool} in VS Code.`, {
       hint: 'Do not repeat this action unless the user asks for it. Tell the user what you wanted to do and why.',
       details: { category },
@@ -243,7 +249,7 @@ export class Confirmations {
 
   /** Queue a dialog behind any open one, and remember an answer that comes after the call gave up. */
   private open(
-    key: string, ctx: ToolContext<unknown>, category: ConfirmCategory, subject: ConfirmSubject,
+    key: string, ctx: ToolContext<unknown>, category: AskCategory, subject: ConfirmSubject,
     agent: string | undefined, generation: number, always = false,
   ): Dialog {
     // Only an agent session can be approved for the session.
@@ -259,10 +265,12 @@ export class Confirmations {
       subject.folder ? `Folder: ${subject.folder}` : undefined,
       '',
       (always
-        ? 'You are always asked before this action, whatever zephyr-workbench.mcp.confirmActions says.'
-        : `You are asked because zephyr-workbench.mcp.confirmActions includes "${category}".`)
+        ? 'You are always asked before this action, whatever the Permissions of the AI Manager say.'
+        : `You are asked because ${ctx.tool.name} is set to Ask in the Permissions of the AI Manager.`)
         + (offerSession
-          ? ` Allow for This Session stops asking this agent before ${CATEGORY_TEXT[category]} actions on ${subject.scopeLabel ?? 'this application'} until the MCP server restarts.`
+          ? ` Allow for This Session stops asking this agent before ${category === 'call'
+            ? `it uses ${ctx.tool.name}`
+            : `${CATEGORY_TEXT[category]} actions on ${subject.scopeLabel ?? 'this application'}`} until the MCP server restarts.`
           : ''),
     ].filter((line): line is string => line !== undefined).join('\n');
 
@@ -386,3 +394,27 @@ export class Confirmations {
     });
   }
 }
+
+/**
+ * Ask before each use of a tool that never asks on its own, such as build_app
+ * or a query, when the user set it to Ask. A tool with actions that change
+ * something asks itself, at the point where the change would happen, and only
+ * before those actions, so it is returned as it is.
+ */
+export function withAskBeforeUse<S extends { confirmations: Confirmations }>(meta: ToolMeta, handler: ToolHandler<S>): ToolHandler<S> {
+  if (meta.confirm !== undefined) {
+    return handler;
+  }
+  const what = meta.summary.replace(/\.$/, '');
+  return async (args, ctx) => {
+    await ctx.deps.confirmations.require(ctx, args, {
+      summary: `use ${meta.name} (${what.charAt(0).toLowerCase()}${what.slice(1)})`,
+      appPath: typeof args.app_path === 'string' ? args.app_path : undefined,
+      configName: typeof args.config_name === 'string' ? args.config_name : undefined,
+      scope: meta.name,
+      scopeLabel: meta.name,
+    }, { call: true });
+    return handler(args, ctx);
+  };
+}
+

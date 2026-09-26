@@ -2,12 +2,12 @@ import { strict as assert } from 'assert';
 import { z } from 'zod';
 import { ConfirmPolicy, fingerprint, LATE_ALLOW_TTL_MS } from '../../../mcp/core/confirmPolicy';
 import { McpToolError } from '../../../mcp/core/errors';
-import { AuditBag, ConfirmCategory, ToolContext, ToolMeta } from '../../../mcp/core/toolSpec';
-import { AskAnswer, Confirmations } from '../../../mcp/host/confirmations';
+import { AuditBag, ConfirmCategory, permissionForCategories, ToolContext, ToolMeta } from '../../../mcp/core/toolSpec';
+import { AskAnswer, Confirmations, withAskBeforeUse } from '../../../mcp/host/confirmations';
 
 const TOOL: ToolMeta = {
   name: 'remove_or_delete', title: 't', summary: 's', description: 'd', inputSchema: z.object({}),
-  annotations: { destructiveHint: true, openWorldHint: false }, category: 'action', toolsets: [], confirm: 'delete',
+  annotations: { destructiveHint: true, openWorldHint: false }, category: 'action', confirm: 'delete',
 };
 
 function context(over: Partial<ToolContext<unknown>> = {}): ToolContext<unknown> & { progressed: number } {
@@ -41,7 +41,7 @@ function harness(answers: (AskAnswer | 'never')[], categories: ConfirmCategory[]
   /** The number of session approvals each time the AI Manager is told something changed. */
   const changes: number[] = [];
   const confirmations: Confirmations = new Confirmations({
-    categories: () => categories,
+    permission: tool => permissionForCategories(tool, categories),
     waitMs: () => waitMs,
     log: { recordConfirmation: event => log.push(`${event.outcome}: ${event.message}`) },
     onDidChange: () => changes.push(confirmations.sessionApprovals),
@@ -114,7 +114,7 @@ describe('mcp/host/confirmations', () => {
   it('always asks when told to, even for a category the user turned off, and never for the session', async () => {
     const offers: boolean[] = [];
     const confirmations = new Confirmations({
-      categories: () => [],
+      permission: () => 'allow',
       waitMs: () => 200,
       log: { recordConfirmation: () => undefined },
       ask: (_message, detail, offerSession) => {
@@ -303,7 +303,7 @@ describe('mcp/host/confirmations', () => {
     const first = confirmations.require(context(), {}, SUBJECT);
     const second = confirmations.require(context(), {}, { ...SUBJECT, configName: 'other' });
     await tick(10);
-    confirmations.clear('the confirmActions setting changed');
+    confirmations.clear('the permissions changed');
     pending[0]('session');
     assert.equal(await first, 'allowed', 'the answer allows the call it was given for');
     await tick();
@@ -364,3 +364,55 @@ describe('mcp/host/confirmations', () => {
     assert.equal(asked.length, 0);
   });
 });
+
+describe('mcp/host/confirmations ask before use', () => {
+  const BUILD: ToolMeta = {
+    name: 'build_app', title: 'Build', summary: 'Builds a build configuration with west build.', description: 'd',
+    inputSchema: z.object({}), annotations: { openWorldHint: false }, category: 'action',
+  };
+
+  function setup(permission: 'allow' | 'ask', answer: AskAnswer) {
+    const asked: { message: string; detail: string }[] = [];
+    const confirmations = new Confirmations({
+      permission: () => permission,
+      waitMs: () => 500,
+      log: { recordConfirmation: () => undefined },
+      ask: async (message, detail) => {
+        asked.push({ message, detail });
+        return answer;
+      },
+    });
+    let ran = 0;
+    const handler = withAskBeforeUse<{ confirmations: Confirmations }>(BUILD, async () => {
+      ran++;
+      return 'built';
+    });
+    const ctx = { ...context({ tool: BUILD }), deps: { confirmations } } as ToolContext<{ confirmations: Confirmations }>;
+    return { asked, handler, ctx, ran: () => ran };
+  }
+
+  it('asks before each use of a tool that never asks on its own, when it is set to Ask', async () => {
+    const { asked, handler, ctx, ran } = setup('ask', 'allow');
+    assert.equal(await handler({ app_path: '/ws/app', config_name: 'primary' }, ctx), 'built');
+    assert.equal(ran(), 1);
+    assert.match(asked[0].message, /wants to use build_app \(builds a build configuration with west build\)\./);
+    assert.match(asked[0].detail, /Application: \/ws\/app/);
+    assert.match(asked[0].detail, /build_app is set to Ask in the Permissions of the AI Manager/);
+    assert.equal(ctx.audit.confirmCategory, 'call');
+  });
+
+  it('runs a tool set to Allow without asking, and never runs one the user declined', async () => {
+    const allowed = setup('allow', undefined);
+    assert.equal(await allowed.handler({}, allowed.ctx), 'built');
+    assert.equal(allowed.asked.length, 0);
+    const declined = setup('ask', undefined);
+    assert.equal(await code(declined.handler({}, declined.ctx)), 'USER_DENIED');
+    assert.equal(declined.ran(), 0);
+  });
+
+  it('leaves a tool with actions that ask on their own as it is', () => {
+    const handler = async () => 'x';
+    assert.equal(withAskBeforeUse(TOOL, handler), handler);
+  });
+});
+

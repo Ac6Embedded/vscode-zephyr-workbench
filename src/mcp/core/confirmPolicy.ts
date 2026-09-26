@@ -11,7 +11,7 @@
 // "The identical call" is whatever key the caller builds; Confirmations puts
 // the agent session in it, so late answers never pass from one agent to another.
 
-import { ConfirmCategory } from './toolSpec';
+import { AskCategory } from './toolSpec';
 
 export const LATE_ALLOW_TTL_MS = 5 * 60_000;
 export const LATE_DENY_TTL_MS = 60_000;
@@ -30,13 +30,13 @@ export function canonicalJson(value: unknown): string {
 }
 
 /** Identifies "the same call": the tool, its category and what it would act on. */
-export function fingerprint(tool: string, category: ConfirmCategory, subject: unknown): string {
+export function fingerprint(tool: string, category: AskCategory, subject: unknown): string {
   return `${tool}\u0000${category}\u0000${canonicalJson(subject)}`;
 }
 
 export interface SessionGrant {
   agent: string;
-  category: ConfirmCategory;
+  category: AskCategory;
   scope: string;
   grantedAt: number;
 }
@@ -54,15 +54,15 @@ export class ConfirmPolicy {
     return this.generation;
   }
 
-  private grantKey(agent: string, category: ConfirmCategory, scope: string): string {
+  private grantKey(agent: string, category: AskCategory, scope: string): string {
     return `${agent}\u0000${category}\u0000${scope}`;
   }
 
-  hasSessionGrant(agent: string | undefined, category: ConfirmCategory, scope: string): boolean {
+  hasSessionGrant(agent: string | undefined, category: AskCategory, scope: string): boolean {
     return !!agent && this.grants.has(this.grantKey(agent, category, scope));
   }
 
-  grantSession(agent: string, category: ConfirmCategory, scope: string, generation: number): boolean {
+  grantSession(agent: string, category: AskCategory, scope: string, generation: number): boolean {
     if (generation !== this.generation) {
       return false;
     }

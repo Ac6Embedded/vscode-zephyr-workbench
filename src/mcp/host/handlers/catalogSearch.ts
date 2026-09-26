@@ -224,7 +224,7 @@ async function searchProjects(args: Record<string, unknown>, ctx: Ctx, paging: P
     return {
       kind: 'project', url, revision, source: 'upstream west.yml',
       ...pageOf(names.map((name): ProjectEntry => ({ name })), paging),
-      note: 'These are the projects the Zephyr west.yml lists at this revision; pass the extra ones to fetch as projects to manage_west_workspace action "create", which only the full toolset offers.',
+      note: 'These are the projects the Zephyr west.yml lists at this revision; pass the extra ones to fetch as projects to manage_west_workspace action "create", if the user allows it in the AI Manager.',
     };
   }
   const { workspace, app } = await services.resolveWestWorkspace(str(args.west_workspace), str(args.app_path));
@@ -262,7 +262,7 @@ async function searchProjects(args: Record<string, unknown>, ctx: Ctx, paging: P
     },
     ...pageOf(entries, paging),
     ...(details.rustEnabled && !listing.rustModulePresent
-      ? { note: `${ZEPHYR_LANG_RUST_PROJECT_NAME} is enabled but not checked out yet: run west update with manage_west_workspace action "update", which only the full toolset offers.` }
+      ? { note: `${ZEPHYR_LANG_RUST_PROJECT_NAME} is enabled but not checked out yet: run west update with manage_west_workspace action "update", if the user allows it in the AI Manager.` }
       : {}),
   };
 }
@@ -392,7 +392,7 @@ export const searchZephyrCatalog: ToolHandler<HostDeps> = async (args, ctx: Ctx)
     notes.push('Snippets marked needs_snippet_root are in the application folder, which this Zephyr only searches once the application adds that folder to SNIPPET_ROOT (in its CMakeLists.txt, or with snippet_root in a zephyr/module.yml); west build -S does not find them otherwise.');
   }
   if (kind === 'blob' && selected.some(entry => 'status' in entry && entry.status !== 'present')) {
-    notes.push('Blobs whose status is missing or outdated are fetched with manage_west_workspace action "fetch_blobs", which only the full toolset offers.');
+    notes.push('Blobs whose status is missing or outdated are fetched with manage_west_workspace action "fetch_blobs", if the user allows it in the AI Manager.');
   }
   const coverage = selected.length === 0 ? coverageNote(kind) : undefined;
   if (coverage) {

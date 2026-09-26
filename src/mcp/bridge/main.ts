@@ -281,7 +281,7 @@ async function main(): Promise<void> {
         switch (kind) {
           case 'tool-missing':
             return failure(new McpToolError('TOOL_DISABLED', `The VS Code window does not offer ${meta.name}.`, {
-              hint: 'It is hidden by the zephyr-workbench.mcp.toolset or disabledTools setting in that window. Ask the user to enable it in the AI Manager.',
+              hint: 'It is blocked in the Permissions of the AI Manager in that window. Ask the user to allow it there.',
             }));
           case 'timeout':
             return failure(new McpToolError('TIMEOUT', `${meta.name} did not answer in time.`, {

@@ -24,9 +24,10 @@ import { launcherSpec } from '../mcp/agents/launcher';
 import { installBridge } from '../mcp/host/bridgeInstaller';
 import { getMcpPaths } from '../mcp/core/paths';
 import { McpController, readSettings } from '../mcp/host/mcpController';
-import { CONFIRM_CATEGORIES } from '../mcp/core/toolSpec';
+import { TOOL_CATALOG } from '../mcp/core/catalog';
+import { PERMISSION_PRESETS, PermissionPreset, permissionOf, TOOL_PERMISSIONS, ToolPermission } from '../mcp/core/toolSpec';
 
-export type AiManagerTab = 'connections' | 'tools';
+export type AiManagerTab = 'connections' | 'permissions';
 export type AiManagerView = 'workbench' | 'zephyr' | 'skills';
 
 /** Which server a Connect or Remove is for. */
@@ -39,17 +40,17 @@ interface InboundMessage {
   /** 'zephyr' for the Zephyr Project's server; the workbench's own otherwise. */
   server?: string;
   tool?: string;
-  toolset?: string;
+  preset?: string;
+  permission?: string;
   file?: string;
   tab?: AiManagerTab;
   view?: string;
-  category?: string;
   link?: string;
   text?: string;
 }
 
 const VIEWS: readonly AiManagerView[] = ['workbench', 'zephyr', 'skills'];
-const TABS: readonly AiManagerTab[] = ['connections', 'tools'];
+const TABS: readonly AiManagerTab[] = ['connections', 'permissions'];
 
 /** The Zephyr Project's server, the same entry for every user. */
 const ZEPHYR_TARGET = remoteTarget(ZEPHYR_PROJECT_MCP.name, ZEPHYR_PROJECT_MCP.url);
@@ -165,8 +166,8 @@ export class AiManagerPanel {
       tab: this.tab,
       server: (await controller?.snapshot()) ?? {
         running: false, enabled: settings.enabled, supported: true, tool_count: 0, tools: [], jobs: [],
-        workspace_folders: [], other_windows: 0, window_id: '', toolset: settings.toolset,
-        confirm_actions: [...settings.confirmActions], session_approvals: 0,
+        workspace_folders: [], other_windows: 0, window_id: '', permission_preset: settings.permissions.preset,
+        session_approvals: 0,
       },
       launcher,
       bridge: {
@@ -376,16 +377,11 @@ export class AiManagerPanel {
           this.checkClaude(this.workspaceFolder(), true);
           await this.post();
           return;
-        case 'setToolset':
-          await vscode.workspace.getConfiguration('zephyr-workbench.mcp')
-            .update('toolset', message.toolset, vscode.ConfigurationTarget.Global);
-          await this.post();
+        case 'setPreset':
+          await this.setPreset(message.preset);
           return;
-        case 'toggleTool':
-          await this.toggleTool(message.tool);
-          return;
-        case 'toggleConfirm':
-          await this.toggleConfirm(message.category);
+        case 'setPermission':
+          await this.setPermission(message.tool, message.permission);
           return;
         case 'forgetApprovals':
           this.controller()?.forgetApprovals();
@@ -536,37 +532,43 @@ export class AiManagerPanel {
     }
   }
 
-  private async toggleConfirm(category: string | undefined): Promise<void> {
-    if (!category || !(CONFIRM_CATEGORIES as readonly string[]).includes(category)) {
-      return;
-    }
-    const current = new Set<string>(readSettings().confirmActions);
-    if (current.has(category)) {
-      current.delete(category);
-    } else {
-      current.add(category);
-    }
-    // In the order the setting lists them, so the file stays readable.
-    const next = CONFIRM_CATEGORIES.filter(item => current.has(item));
-    await vscode.workspace.getConfiguration('zephyr-workbench.mcp')
-      .update('confirmActions', next, vscode.ConfigurationTarget.Global);
-    await this.post();
-  }
-
-  private async toggleTool(tool: string | undefined): Promise<void> {
-    if (!tool) {
+  /**
+   * Pick a preset. Custom starts from what the tab shows when the user has no
+   * choices of their own yet, and keeps them when they have: Full or Core
+   * never erases them, so picking Custom again brings them back.
+   */
+  private async setPreset(preset: string | undefined): Promise<void> {
+    if (!(PERMISSION_PRESETS as readonly string[]).includes(preset ?? '')) {
       return;
     }
     const config = vscode.workspace.getConfiguration('zephyr-workbench.mcp');
-    // The checked value: a malformed setting must not be split into letters.
-    const current = new Set(readSettings().disabledTools);
-    if (current.has(tool)) {
-      current.delete(tool);
-    } else {
-      current.add(tool);
+    const { permissions } = readSettings();
+    if (preset === 'custom' && Object.keys(permissions.tools).length === 0) {
+      await config.update('toolPermissions', this.currentPermissions(), vscode.ConfigurationTarget.Global);
     }
-    await config.update('disabledTools', [...current], vscode.ConfigurationTarget.Global);
+    await config.update('permissions', preset as PermissionPreset, vscode.ConfigurationTarget.Global);
     await this.post();
+  }
+
+  /**
+   * Change one tool, which makes the permissions custom: every other tool
+   * keeps what the tab showed for it.
+   */
+  private async setPermission(tool: string | undefined, permission: string | undefined): Promise<void> {
+    if (!TOOL_CATALOG.some(meta => meta.name === tool) || !(TOOL_PERMISSIONS as readonly string[]).includes(permission ?? '')) {
+      return;
+    }
+    const config = vscode.workspace.getConfiguration('zephyr-workbench.mcp');
+    const next = { ...this.currentPermissions(), [tool as string]: permission as ToolPermission };
+    await config.update('toolPermissions', next, vscode.ConfigurationTarget.Global);
+    await config.update('permissions', 'custom', vscode.ConfigurationTarget.Global);
+    await this.post();
+  }
+
+  /** What each tool gets now, written out in full so the settings file reads on its own. */
+  private currentPermissions(): Record<string, ToolPermission> {
+    const { permissions } = readSettings();
+    return Object.fromEntries(TOOL_CATALOG.map(meta => [meta.name, permissionOf(meta, permissions)]));
   }
 
   /**

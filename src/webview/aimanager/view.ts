@@ -286,42 +286,42 @@ export function serverSummary(server: ServerState): { tone: Tone; text: string }
 }
 
 export function toolsSummary(server: ServerState): string {
-  return `${server.tool_count} ${server.tool_count === 1 ? 'tool' : 'tools'}, ${server.toolset} toolset`;
+  const preset = PRESETS.find(item => item.preset === server.permission_preset)?.label ?? server.permission_preset;
+  return `${server.tool_count} ${server.tool_count === 1 ? 'tool' : 'tools'}, ${preset} permissions`;
 }
 
-/** The toolset presets, described as the setting describes them. */
-export const TOOLSETS: [string, string][] = [
-  ['read-only', 'Only tools that cannot change anything.'],
-  ['core', 'The tools needed for the everyday build and inspect loop.'],
-  ['full', 'Every tool the server provides.'],
+export type Permission = ToolRow['permission'];
+export type Preset = ServerState['permission_preset'];
+
+/** The presets, with what each means, shown under them. */
+export const PRESETS: { preset: Preset; label: string; description: string }[] = [
+  { preset: 'full', label: 'Full', description: 'Every tool, and nothing asks first.' },
+  {
+    preset: 'core',
+    label: 'Core',
+    description: 'Builds and inspects freely. Asks before changing apps, workspaces, toolchains or a board. Blocks deleting.',
+  },
+  {
+    preset: 'custom',
+    label: 'Custom',
+    description: 'Your own choice for each tool. Changing any tool switches to Custom, and your choices stay when you pick another preset.',
+  },
 ];
 
-/** The confirmation categories, in the order the setting lists them. */
-export const CONFIRM_LABELS: [string, string][] = [
-  ['hardware', 'Send text to a connected board\'s serial port'],
-  ['delete', 'Remove or delete build folders, configurations, applications, workspaces or toolchains'],
-  ['workspace', 'Create, import or update applications and west workspaces'],
-  ['install', 'Install SDKs, toolchains, Python environments or blobs'],
-  ['settings', 'Change build configurations, Kconfig options or application, workspace and toolchain settings'],
+/** The three choices for each tool. */
+export const PERMISSION_CHOICES: { permission: Permission; label: string; icon: string }[] = [
+  { permission: 'allow', label: 'Allow', icon: 'check' },
+  { permission: 'ask', label: 'Ask', icon: 'question' },
+  { permission: 'block', label: 'Block', icon: 'circle-slash' },
 ];
 
-export interface ConfirmRow {
-  category: string;
-  label: string;
-  /** The enabled tools that ask before this kind of action. */
-  tools: string[];
-}
-
-/**
- * The confirmation categories with the enabled tools each one covers. One that
- * no enabled tool uses comes last, since ticking it changes nothing yet.
- */
-export function confirmRows(tools: readonly ToolRow[]): ConfirmRow[] {
-  const enabled = tools.filter(tool => !tool.disabled);
-  const rows = CONFIRM_LABELS.map(([category, label]) => ({
-    category, label, tools: enabled.filter(tool => tool.asks.includes(category)).map(tool => tool.name),
-  }));
-  return [...rows.filter(row => row.tools.length > 0), ...rows.filter(row => row.tools.length === 0)];
+/** How many tools each choice has, for the line under the presets. */
+export function permissionCounts(tools: readonly ToolRow[]): Record<Permission, number> {
+  const counts: Record<Permission, number> = { allow: 0, ask: 0, block: 0 };
+  for (const tool of tools) {
+    counts[tool.permission] += 1;
+  }
+  return counts;
 }
 
 /** Headings for the tool categories of the catalog. */
@@ -334,9 +334,6 @@ export const TOOL_GROUP_LABEL: Record<string, string> = {
   job: 'Jobs',
 };
 
-export function toolKind(tool: ToolRow): string {
-  return tool.read_only ? 'read only' : tool.destructive ? 'deletes' : 'writes';
-}
 
 const JOB_KIND: Record<string, string> = {
   build: 'Build',

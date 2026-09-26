@@ -10,12 +10,12 @@ import { launcherSpec } from '../agents/launcher';
 import { getMcpPaths } from '../core/paths';
 import { readWindowRecords } from '../core/registry';
 import { McpSettings, normalizeMcpSettings } from '../core/settings';
-import { catalogVersion, selectTools } from '../core/toolSpec';
+import { catalogVersion, confirmCategoriesOf, permissionOf, selectTools } from '../core/toolSpec';
 import { JobManager } from '../jobs/jobManager';
 import { KconfigSessionPool } from '../../utils/kconfig/kconfigSessionPool';
 import { CreateZephyrAppPanel } from '../../panels/CreateZephyrAppPanel';
 import { AuditLog } from './auditLog';
-import { Confirmations } from './confirmations';
+import { Confirmations, withAskBeforeUse } from './confirmations';
 import { guardTaskLaunches, watchBuildConflicts } from './buildConflicts';
 import { probeBridge } from './bridgeProbe';
 import { checkInstall, DoctorCheck } from './doctor';
@@ -48,13 +48,12 @@ export function readSettingsChecked(): { settings: McpSettings; problems: string
   return normalizeMcpSettings({
     enabled: machine('enabled'),
     port: machine('port'),
-    toolset: machine('toolset'),
-    disabledTools: machine('disabledTools'),
+    permissions: machine('permissions'),
+    toolPermissions: machine('toolPermissions'),
     revealTerminal: config.get<unknown>('revealTerminal'),
     defaultWaitSeconds: config.get<unknown>('defaultWaitSeconds'),
     homeDir: machine('homeDir'),
     showStatusBar: config.get<unknown>('showStatusBar'),
-    confirmActions: machine('confirmActions'),
   });
 }
 
@@ -101,7 +100,7 @@ export class McpController implements vscode.Disposable {
     this.audit = new AuditLog(paths);
     this.registry = new RegistryWriter(this.windowId, this.settings.homeDir || undefined, line => this.audit.info(line));
     this.confirmations = new Confirmations({
-      categories: () => this.settings.confirmActions,
+      permission: tool => permissionOf(tool, this.settings.permissions),
       // Leaves room in the default 45 second wait, which keeps a call under
       // the 60 second timeout most agents apply.
       waitMs: () => Math.min(120, Math.max(10, this.settings.defaultWaitSeconds - 5)) * 1000,
@@ -153,7 +152,7 @@ export class McpController implements vscode.Disposable {
 
   /** Tools the settings allow. */
   get visibleTools() {
-    return selectTools(TOOL_CATALOG, this.settings.toolset, this.settings.disabledTools);
+    return selectTools(TOOL_CATALOG, this.settings.permissions);
   }
 
   /** Tools the settings allow and this version implements: what an agent really gets. */
@@ -300,7 +299,7 @@ export class McpController implements vscode.Disposable {
     const sdk = await loadSdk();
     const version = this.extensionVersion;
     const tools = this.servedTools.map(meta => ({
-      meta, handler: withSettingsWarnings(HANDLERS[meta.name], line => this.audit.warn(line)),
+      meta, handler: withAskBeforeUse(meta, withSettingsWarnings(HANDLERS[meta.name], line => this.audit.warn(line))),
     }));
     const current = () => this.settings;
     const deps: HostDeps = {
@@ -309,7 +308,8 @@ export class McpController implements vscode.Disposable {
       get defaultWaitSeconds() { return current().defaultWaitSeconds; },
       get revealTerminal() { return current().revealTerminal; },
       confirmations: this.confirmations,
-      get confirmActions() { return current().confirmActions; },
+      permissionOf: tool => permissionOf(tool, current().permissions),
+      get permissionPreset() { return current().permissions.preset; },
       kconfig: this.kconfig,
       extensionContext: this.context,
       folders: this.folders,
@@ -490,16 +490,20 @@ export class McpController implements vscode.Disposable {
     if (previous.homeDir !== this.settings.homeDir) {
       void vscode.window.showInformationMessage('Reload the window to move the Zephyr Workbench MCP files to the new folder.');
     }
-    const dropped = previous.confirmActions.filter(category => !this.settings.confirmActions.includes(category));
-    if (dropped.length > 0 || previous.confirmActions.length !== this.settings.confirmActions.length) {
-      this.confirmations.clear('the confirmActions setting changed');
+    const asking = (settings: typeof previous) =>
+      TOOL_CATALOG.filter(tool => permissionOf(tool, settings.permissions) === 'ask').map(tool => tool.name);
+    const before = asking(previous);
+    const after = asking(this.settings);
+    const dropped = before.filter(name => !after.includes(name));
+    if (dropped.length > 0 || before.length !== after.length) {
+      this.confirmations.clear('the permissions changed');
       if (dropped.length > 0) {
         // Worth a line of its own: an agent with file access could try this.
         this.audit.warn(`Agents no longer need approval for: ${dropped.join(', ')}.`);
       }
     }
-    const toolsChanged = previous.toolset !== this.settings.toolset
-      || previous.disabledTools.join('\u0000') !== this.settings.disabledTools.join('\u0000');
+    const served = (settings: typeof previous) => selectTools(TOOL_CATALOG, settings.permissions).map(tool => tool.name).join('\u0000');
+    const toolsChanged = served(previous) !== served(this.settings);
     const portChanged = previous.port !== this.settings.port;
     if (previous.enabled !== this.settings.enabled) {
       await this.applyEnabledSetting();
@@ -570,14 +574,15 @@ export class McpController implements vscode.Disposable {
       window_id: this.windowId,
       port: this.server?.port,
       url: this.server?.url,
-      toolset: this.settings.toolset,
+      permission_preset: this.settings.permissions.preset,
+      ...(this.settings.permissions.locked ? { permissions_locked: true } : {}),
       tool_count: served.size,
       tools: TOOL_CATALOG.filter(t => !!HANDLERS[t.name]).map(t => ({
         name: t.name, title: t.title, summary: t.summary, category: t.category,
         read_only: t.annotations.readOnlyHint === true,
         destructive: t.annotations.destructiveHint === true,
-        disabled: !served.has(t.name),
-        asks: t.confirm === undefined ? [] : typeof t.confirm === 'string' ? [t.confirm] : [...new Set(Object.values(t.confirm))],
+        permission: permissionOf(t, this.settings.permissions),
+        asks: confirmCategoriesOf(t),
       })),
       workspace_folders: (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath),
       jobs: this.jobs.list().slice(0, 10).map(j => ({
@@ -585,7 +590,6 @@ export class McpController implements vscode.Disposable {
         app_path: j.spec.appPath, started_at: new Date(j.startedAt).toISOString(), command: j.spec.command,
       })),
       other_windows: this.registry.otherWindows().length,
-      confirm_actions: [...this.settings.confirmActions],
       pending_confirmation: this.confirmations.pending?.tool,
       session_approvals: this.confirmations.sessionApprovals,
       testing: !!this.testRun,
@@ -659,7 +663,7 @@ export class McpController implements vscode.Disposable {
       await this.ensureStarted();
       checks.push({
         name: 'Server', ok: true,
-        detail: `Listening on 127.0.0.1:${this.server?.port} with ${this.servedTools.length} tools (toolset "${this.settings.toolset}").`,
+        detail: `Listening on 127.0.0.1:${this.server?.port} with ${this.servedTools.length} tools (${this.settings.permissions.preset} permissions).`,
       });
     } catch (error) {
       checks.push({ name: 'Server', ok: false, detail: messageOf(error), fix: 'Open the MCP activity log for details.' });

@@ -6,12 +6,34 @@ import { z } from 'zod';
 
 export type ToolCategory = 'query' | 'artifact' | 'config' | 'action' | 'editor' | 'job';
 
-/** Action classes the user can require a confirmation for. */
+/** The kinds of change an action makes, which a tool set to Ask asks about. */
 export const CONFIRM_CATEGORIES = ['hardware', 'delete', 'workspace', 'install', 'settings'] as const;
 export type ConfirmCategory = typeof CONFIRM_CATEGORIES[number];
 
-/** Asked by default: everything that touches hardware, deletes, or changes the machine. */
-export const DEFAULT_CONFIRM_ACTIONS: readonly ConfirmCategory[] = ['hardware', 'delete', 'workspace', 'install'];
+/**
+ * What a dialog is about: the kind of change an action makes, or `call` for a
+ * tool with no such action that the user set to Ask before each use.
+ */
+export type AskCategory = ConfirmCategory | 'call';
+
+/** Asked under the core preset: everything that touches hardware, deletes, or changes the machine. */
+export const CORE_ASK_CATEGORIES: readonly ConfirmCategory[] = ['hardware', 'delete', 'workspace', 'install'];
+
+/** What the user lets an agent do with one tool: use it, be asked first, or not see it at all. */
+export const TOOL_PERMISSIONS = ['allow', 'ask', 'block'] as const;
+export type ToolPermission = typeof TOOL_PERMISSIONS[number];
+
+/** The presets of the AI Manager's Permissions tab. */
+export const PERMISSION_PRESETS = ['full', 'core', 'custom'] as const;
+export type PermissionPreset = typeof PERMISSION_PRESETS[number];
+
+export interface Permissions {
+  preset: PermissionPreset;
+  /** The user's choice per tool, for the custom preset. A tool it does not name gets its core permission. */
+  tools: Readonly<Record<string, ToolPermission>>;
+  /** The settings could not be read: only the read-only tools are served until they are fixed. */
+  locked?: boolean;
+}
 
 export interface ToolAnnotations {
   readOnlyHint?: boolean;
@@ -46,8 +68,6 @@ export interface ToolMeta {
   outputSchema?: z.ZodObject<z.ZodRawShape>;
   annotations: ToolAnnotations;
   category: ToolCategory;
-  /** Toolsets this tool belongs to. Everything is in `full` implicitly. */
-  toolsets: ReadonlyArray<'core'>;
   /**
    * What the user is asked before this tool acts: one category for the whole
    * tool, or one per value of its `action` (or `target`) argument. Taken from
@@ -108,7 +128,7 @@ export interface ProgressReport {
 /** Filled in by a handler as it goes, and written to the audit log with the call. */
 export interface AuditBag {
   confirmation?: string;
-  confirmCategory?: ConfirmCategory;
+  confirmCategory?: AskCategory;
   jobId?: string;
   target?: { app_path?: string; config_name?: string; folder?: string; runner?: string };
 }
@@ -148,25 +168,46 @@ export function confirmCategoryOf(meta: ToolMeta, args: Record<string, unknown>)
 
 export type ToolHandler<S = unknown> = (args: Record<string, unknown>, ctx: ToolContext<S>) => Promise<unknown>;
 
-export type Toolset = 'full' | 'core' | 'read-only';
+/** Every kind of change the actions of a tool can make, from the catalog entry. */
+export function confirmCategoriesOf(meta: ToolMeta): ConfirmCategory[] {
+  const confirm = meta.confirm;
+  if (confirm === undefined) {
+    return [];
+  }
+  return typeof confirm === 'string' ? [confirm] : [...new Set(Object.values(confirm))];
+}
 
-/** Apply the toolset preset and the disabled list. Pure so it is unit tested. */
-export function selectTools(catalog: readonly ToolMeta[], toolset: Toolset, disabled: readonly string[] = []): ToolMeta[] {
-  const hidden = new Set(disabled);
-  return catalog.filter(tool => {
-    if (hidden.has(tool.name)) {
-      return false;
-    }
-    if (toolset === 'full') {
-      return true;
-    }
-    if (toolset === 'core') {
-      return tool.toolsets.includes('core');
-    }
-    // 'read-only', and anything not understood: fail closed. Anything not
-    // explicitly read-only is treated as a write.
-    return tool.annotations.readOnlyHint === true;
-  });
+/** Ask for a tool whose actions make one of these kinds of change, allow any other. */
+export function permissionForCategories(meta: ToolMeta, categories: readonly ConfirmCategory[]): 'ask' | 'allow' {
+  return confirmCategoriesOf(meta).some(category => categories.includes(category)) ? 'ask' : 'allow';
+}
+
+/**
+ * The core preset: asks before anything that touches hardware or changes the
+ * machine, allows the rest, and blocks the tools that delete.
+ */
+export function corePermission(meta: ToolMeta): ToolPermission {
+  return meta.annotations.destructiveHint === true ? 'block' : permissionForCategories(meta, CORE_ASK_CATEGORIES);
+}
+
+/** What the user lets an agent do with a tool. Pure so it is unit tested. */
+export function permissionOf(meta: ToolMeta, permissions: Permissions): ToolPermission {
+  if (permissions.locked) {
+    // Fail closed: anything not explicitly read-only is treated as a write.
+    return meta.annotations.readOnlyHint === true ? 'allow' : 'block';
+  }
+  if (permissions.preset === 'full') {
+    return 'allow';
+  }
+  if (permissions.preset === 'custom') {
+    return permissions.tools[meta.name] ?? corePermission(meta);
+  }
+  return corePermission(meta);
+}
+
+/** The tools agents see: every one that is not blocked. */
+export function selectTools(catalog: readonly ToolMeta[], permissions: Permissions): ToolMeta[] {
+  return catalog.filter(tool => permissionOf(tool, permissions) !== 'block');
 }
 
 /** Stable hash of the visible tool list, used to invalidate the VS Code definition. */

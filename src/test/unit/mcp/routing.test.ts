@@ -170,7 +170,7 @@ describe('mcp/core/routing', () => {
   describe('routingTargetOf', () => {
     const tool = (over: Partial<ToolMeta> = {}): ToolMeta => ({
       name: 't', title: 't', summary: 't', description: 't', inputSchema: z.object({}),
-      annotations: { openWorldHint: false }, category: 'action', toolsets: [], ...over,
+      annotations: { openWorldHint: false }, category: 'action', ...over,
     });
 
     it('routes by app_path when the tool says nothing', () => {
@@ -191,7 +191,7 @@ describe('mcp/core/routing', () => {
   describe('routeOfCall', () => {
     const tool = (over: Partial<ToolMeta> = {}): ToolMeta => ({
       name: 't', title: 't', summary: 't', description: 't', inputSchema: z.object({ app_path: z.string().optional(), west_workspace: z.string().optional() }),
-      annotations: { openWorldHint: false }, category: 'action', toolsets: [], ...over,
+      annotations: { openWorldHint: false }, category: 'action', ...over,
     });
 
     it('names for hints only the routing arguments the tool takes', () => {

@@ -29,7 +29,6 @@ export const OPEN_IN_WORKBENCH: ToolMeta = {
   }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   category: 'editor',
-  toolsets: ['core'],
   routeBy: ['app_path', 'path', 'west_workspace'],
   // The wizards take no folder, and any window can show them.
   machineScope: { add_application: true, add_west_workspace: true, add_toolchain: true },

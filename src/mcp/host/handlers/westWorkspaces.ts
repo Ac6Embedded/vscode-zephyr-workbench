@@ -140,7 +140,7 @@ function confirmationOf(ctx: Ctx, outcome: ConfirmOutcome) {
 /** Whether a real call would ask, for a dry run to say so. */
 function confirmationRequired(ctx: Ctx, args: Record<string, unknown>, always = false): boolean {
   const category = confirmCategoryOf(ctx.tool, args);
-  return !!category && (always || ctx.deps.confirmActions.includes(category));
+  return !!category && (always || ctx.deps.permissionOf(ctx.tool) === 'ask');
 }
 
 // Environment and busy checks
@@ -1390,7 +1390,7 @@ export async function updateWestWorkspace(args: Record<string, unknown>, ctx: Ct
   const folder = getExactWorkspaceFolder(root);
   if (!folder) {
     throw invalid(`"${root}" is not a folder of this window, so it has no folder settings to change.`,
-      'Add it with manage_west_workspace action "import" first, which only the full toolset offers.');
+      'Add it with manage_west_workspace action "import" first, if the user allows it in the AI Manager.');
   }
   const plan = await planWorkspaceSettings(ctx, args, workspace, folder);
   const base = { target: 'west_workspace', action: 'update', west_workspace: root, settings_file: path.join(root, '.vscode', 'settings.json') };

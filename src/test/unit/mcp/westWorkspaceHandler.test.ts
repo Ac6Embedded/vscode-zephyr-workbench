@@ -11,7 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { findTool, TOOL_CATALOG } from '../../../mcp/core/catalog';
 import { McpToolError } from '../../../mcp/core/errors';
-import { ConfirmCategory, ToolContext } from '../../../mcp/core/toolSpec';
+import { ConfirmCategory, permissionForCategories, ToolContext, ToolMeta } from '../../../mcp/core/toolSpec';
 import { AskAnswer, Confirmations } from '../../../mcp/host/confirmations';
 import { HostDeps } from '../../../mcp/host/handlers/deps';
 import { manageWestWorkspace, removeWestWorkspaceItem, updateWestWorkspace } from '../../../mcp/host/handlers/westWorkspaces';
@@ -152,7 +152,7 @@ function harness(version: [number, number, number] = [4, 2, 0], confirmActions: 
   const jobs = new JobManager({ logPathFor: id => path.join(tmp, `${id}.log`) });
   const answers: AskAnswer[] = [];
   const confirmations = new Confirmations({
-    categories: () => h.confirmActions,
+    permission: tool => permissionForCategories(tool, h.confirmActions),
     waitMs: () => 2000,
     log: { recordConfirmation: () => undefined },
     ask: async message => {
@@ -165,7 +165,7 @@ function harness(version: [number, number, number] = [4, 2, 0], confirmActions: 
     services, jobs, confirmations,
     defaultWaitSeconds: 10,
     revealTerminal: 'never',
-    get confirmActions() { return h.confirmActions; },
+    permissionOf: (tool: ToolMeta) => permissionForCategories(tool, h.confirmActions),
     kconfig: { inUseWithin: () => [], closeWithin: async () => () => undefined },
     extensionContext: { extensionUri: TestUri.file(path.resolve(__dirname, '../../../..')) },
     folders: {

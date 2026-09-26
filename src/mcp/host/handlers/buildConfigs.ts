@@ -835,7 +835,7 @@ export const deleteBuild: ToolHandler<HostDeps> = async (args, ctx: Ctx) => {
       ...(wouldActivate ? { would_activate: wouldActivate } : {}),
       ...(orphaned ? { orphaned_build_dir: orphaned } : {}),
       // An approval the user already gave for this session can still skip the dialog.
-      confirmation_required: !!category && ctx.deps.confirmActions.includes(category),
+      confirmation_required: !!category && ctx.deps.permissionOf(ctx.tool) === 'ask',
       next: 'Call remove_or_delete again without dry_run to delete.',
     };
   }

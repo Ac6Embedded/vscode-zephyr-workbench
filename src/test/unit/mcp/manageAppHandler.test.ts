@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { findTool, TOOL_CATALOG } from '../../../mcp/core/catalog';
 import { McpToolError } from '../../../mcp/core/errors';
-import { ConfirmCategory, ToolContext } from '../../../mcp/core/toolSpec';
+import { ConfirmCategory, permissionForCategories, ToolContext } from '../../../mcp/core/toolSpec';
 import { AskAnswer, Confirmations } from '../../../mcp/host/confirmations';
 import { FolderChange, folderChangeRestartsHost } from '../../../mcp/host/folderChanges';
 import { manageApp } from '../../../mcp/host/handlers/apps';
@@ -80,7 +80,7 @@ function harness(options: { open?: string[]; multiRoot?: boolean } = {}): Harnes
   const answers: AskAnswer[] = [];
   h.confirmActions = [...ALL];
   const confirmations = new Confirmations({
-    categories: () => h.confirmActions,
+    permission: tool => permissionForCategories(tool, h.confirmActions),
     waitMs: () => 2000,
     log: { recordConfirmation: () => undefined },
     ask: async message => {
@@ -95,7 +95,7 @@ function harness(options: { open?: string[]; multiRoot?: boolean } = {}): Harnes
     services, jobs, confirmations,
     defaultWaitSeconds: 5,
     revealTerminal: 'never',
-    get confirmActions() { return h.confirmActions; },
+    permissionOf: tool => permissionForCategories(tool, h.confirmActions),
     kconfig: new KconfigSessionPool({
       serverScriptPath: 'kconfig_server.py',
       start: async () => { throw new Error('no Kconfig server in these tests'); },
@@ -302,7 +302,7 @@ describe('mcp/host/handlers/apps', () => {
 
       h.served.delete('manage_toolchain');
       const core = await errorOf(manageApp({ action: 'create', template: h.sample, board: 'nrf52840dk/nrf52840', dry_run: true }, h.ctx('manage_app')));
-      assert.match(core.hint ?? '', /"Add Toolchain" \(manage_toolchain does it too, which only the full toolset offers\)/);
+      assert.match(core.hint ?? '', /"Add Toolchain" \(manage_toolchain does it too, if the user allows it in the AI Manager\)/);
     });
 
     it('warns about a board missing from the board list instead of refusing it', async () => {

@@ -58,7 +58,6 @@ export const MANAGE_WEST_WORKSPACE: ToolMeta = {
   }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   category: 'action',
-  toolsets: [],
   confirm: {
     create: 'workspace', import: 'workspace', update: 'workspace', set_manifest: 'workspace',
     create_venv: 'install', install_python_deps: 'install', fetch_blobs: 'install',

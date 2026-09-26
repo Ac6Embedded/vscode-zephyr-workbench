@@ -8,8 +8,9 @@ export interface ToolRow {
   category: string;
   read_only: boolean;
   destructive: boolean;
-  disabled: boolean;
-  /** Confirmation categories this tool can ask about. */
+  /** What agents may do with it: use it, be asked first, or not see it. */
+  permission: 'allow' | 'ask' | 'block';
+  /** The kinds of change its actions make, which Ask asks about; none means Ask asks before each use. */
   asks: string[];
 }
 
@@ -35,13 +36,15 @@ export interface ServerState {
   window_id: string;
   port?: number;
   url?: string;
-  toolset: string;
+  /** The preset of the permissions. */
+  permission_preset: 'full' | 'core' | 'custom';
+  /** The permission settings could not be read, so only the read-only tools are served. */
+  permissions_locked?: boolean;
   tool_count: number;
   tools: ToolRow[];
   workspace_folders: string[];
   jobs: JobRow[];
   other_windows: number;
-  confirm_actions: string[];
   /** The tool waiting for the user's answer in a dialog, if any. */
   pending_confirmation?: string;
   session_approvals: number;
@@ -101,7 +104,7 @@ export interface ZephyrMcpState {
 export interface AiManagerState {
   view: AiManagerView;
   /** The page of the Zephyr Workbench MCP view. */
-  tab: 'connections' | 'tools';
+  tab: 'connections' | 'permissions';
   server: ServerState;
   launcher: { command: string; args: string[]; env: Record<string, string> };
   bridge: { path: string; installed: boolean; launcher_path?: string; home: string };

@@ -52,7 +52,6 @@ export const HARDWARE: ToolMeta = {
   }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   category: 'action',
-  toolsets: ['core'],
   // Writing to a board can run any shell command on it.
   confirm: { serial_send: 'hardware' },
   maxResultChars: 60000,

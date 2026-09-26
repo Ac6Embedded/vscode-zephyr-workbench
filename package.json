@@ -94,42 +94,32 @@
           "scope": "machine",
           "markdownDescription": "Port for the local MCP server. Leave 0 to let the system choose, which is what lets several VS Code windows run at once. A fixed port is only useful for an agent that connects over HTTP directly."
         },
-        "zephyr-workbench.mcp.toolset": {
+        "zephyr-workbench.mcp.permissions": {
           "type": "string",
-          "enum": ["read-only", "core", "full"],
+          "enum": ["core", "full", "custom"],
           "enumDescriptions": [
-            "Only tools that cannot change anything.",
-            "The tools needed for the everyday build and inspect loop.",
-            "Every tool the server provides."
+            "Builds and inspects freely. Asks before changing apps, workspaces, toolchains or a board. Blocks deleting.",
+            "Every tool, and nothing asks first.",
+            "Your own choice for each tool, from zephyr-workbench.mcp.toolPermissions."
           ],
           "default": "core",
           "scope": "machine",
-          "markdownDescription": "Which tools AI agents may see. Keeping this small matters: a VS Code chat request allows 128 tools across every installed extension, and some other clients stop near 40."
+          "markdownDescription": "What AI agents may do through the Zephyr Workbench MCP server. Easiest to change from the **Permissions** tab of the AI Manager. With `custom`, each tool gets its choice from `#zephyr-workbench.mcp.toolPermissions#`."
         },
-        "zephyr-workbench.mcp.disabledTools": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": [],
-          "scope": "machine",
-          "markdownDescription": "Names of individual MCP tools to hide from AI agents."
-        },
-        "zephyr-workbench.mcp.confirmActions": {
-          "type": "array",
-          "items": {
+        "zephyr-workbench.mcp.toolPermissions": {
+          "type": "object",
+          "additionalProperties": {
             "type": "string",
-            "enum": ["hardware", "delete", "workspace", "install", "settings"],
+            "enum": ["allow", "ask", "block"],
             "enumDescriptions": [
-              "Send text to a connected board's serial port, such as a Zephyr shell command.",
-              "Remove or delete build folders, build configurations, applications, west workspaces, venvs, blobs or toolchains.",
-              "Create, import or update applications and west workspaces, including west update and manifest edits.",
-              "Install SDKs, toolchains, Python environments, Python packages or binary blobs.",
-              "Change build configurations, Kconfig options, application, west workspace or toolchain settings."
+              "Agents use the tool without asking you.",
+              "VS Code asks you before the tool acts: before it changes anything, or before each use for a tool that never does.",
+              "Agents do not see the tool at all."
             ]
           },
-          "uniqueItems": true,
-          "default": ["hardware", "delete", "workspace", "install"],
+          "default": {},
           "scope": "machine",
-          "markdownDescription": "Actions an AI agent may only take after you allow them in a VS Code dialog. The dialog names the agent, the tool, the application and the configuration, and offers **Allow** and **Allow for This Session**. Remove a category to let agents do it without asking."
+          "markdownDescription": "The choice for each tool, by tool name, used when `#zephyr-workbench.mcp.permissions#` is `custom`: `allow`, `ask` or `block`. A tool not listed gets its `core` choice."
         },
         "zephyr-workbench.mcp.revealTerminal": {
           "type": "string",
@@ -468,7 +458,7 @@
       },
       {
         "command": "zephyr-workbench.mcp.tools",
-        "title": "Configure MCP Tools",
+        "title": "Configure MCP Permissions",
         "category": "Zephyr Workbench"
       },
       {

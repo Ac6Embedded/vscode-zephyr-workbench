@@ -11,7 +11,7 @@ export type UpstreamFailure =
   | 'not-delivered'
   /** Broke during the call: the tool may have run. */
   | 'interrupted'
-  /** The window does not offer this tool, usually because of its toolset setting. */
+  /** The window does not offer this tool, usually because the user blocked it in the AI Manager. */
   | 'tool-missing'
   | 'timeout'
   | 'other';

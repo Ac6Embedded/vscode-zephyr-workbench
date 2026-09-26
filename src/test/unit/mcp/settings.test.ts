@@ -1,27 +1,39 @@
 import { strict as assert } from 'assert';
 import { TOOL_CATALOG } from '../../../mcp/core/catalog';
 import { normalizeMcpSettings } from '../../../mcp/core/settings';
-import { selectTools, Toolset } from '../../../mcp/core/toolSpec';
+import { permissionOf, selectTools } from '../../../mcp/core/toolSpec';
 
 describe('mcp/core/settings', () => {
   it('uses the defaults when nothing is set', () => {
     const { settings, problems } = normalizeMcpSettings({});
     assert.deepEqual(problems, []);
-    assert.equal(settings.toolset, 'core');
+    assert.deepEqual(settings.permissions, { preset: 'core', tools: {} });
     assert.equal(settings.enabled, 'auto');
     assert.equal(settings.defaultWaitSeconds, 45);
   });
 
-  it('fails closed on a toolset it does not understand', () => {
-    const { settings, problems } = normalizeMcpSettings({ toolset: 'everything' });
-    assert.equal(settings.toolset, 'read-only');
-    assert.equal(problems.length, 1);
+  it('reads a preset and the choice for each tool', () => {
+    const { settings, problems } = normalizeMcpSettings({ permissions: 'custom', toolPermissions: { build_app: 'ask', list_apps: 'block' } });
+    assert.deepEqual(problems, []);
+    assert.deepEqual(settings.permissions, { preset: 'custom', tools: { build_app: 'ask', list_apps: 'block' } });
   });
 
-  it('fails closed when disabledTools is not a list of names', () => {
-    const { settings } = normalizeMcpSettings({ toolset: 'full', disabledTools: 'build_app' });
-    assert.equal(settings.toolset, 'read-only', 'a string must not silently disable nothing');
-    assert.deepEqual(settings.disabledTools, []);
+  it('serves only the read-only tools for a preset it does not understand', () => {
+    const { settings, problems } = normalizeMcpSettings({ permissions: 'everything' });
+    assert.equal(settings.permissions.locked, true);
+    assert.equal(problems.length, 1);
+    const served = selectTools(TOOL_CATALOG, settings.permissions);
+    assert.ok(served.length > 0 && served.every(tool => tool.annotations.readOnlyHint === true));
+  });
+
+  it('blocks a tool whose choice it cannot read, and locks custom when the list is not a list', () => {
+    const one = normalizeMcpSettings({ permissions: 'custom', toolPermissions: { build_app: 'sometimes', list_apps: 'allow' } });
+    assert.deepEqual(one.settings.permissions.tools, { build_app: 'block', list_apps: 'allow' });
+    assert.equal(one.problems.length, 1);
+    const broken = normalizeMcpSettings({ permissions: 'custom', toolPermissions: ['build_app'] });
+    assert.equal(broken.settings.permissions.locked, true, 'an array must not silently allow everything');
+    // Under another preset the list is not used, so it cannot widen anything.
+    assert.equal(normalizeMcpSettings({ permissions: 'core', toolPermissions: 'x' }).settings.permissions.locked, undefined);
   });
 
   it('rejects out of range numbers', () => {
@@ -37,19 +49,9 @@ describe('mcp/core/settings', () => {
     }
   });
 
-  it('never gives every tool for an unknown toolset, even if one slips through', () => {
-    const chosen = selectTools(TOOL_CATALOG, 'bogus' as Toolset);
-    assert.ok(chosen.every(tool => tool.annotations.readOnlyHint === true));
-  });
-
-  it('asks before hardware, delete, workspace and install actions by default', () => {
-    assert.deepEqual(normalizeMcpSettings({}).settings.confirmActions, ['hardware', 'delete', 'workspace', 'install']);
-    assert.deepEqual(normalizeMcpSettings({ confirmActions: [] }).settings.confirmActions, [], 'an empty list never asks');
-  });
-
-  it('asks before everything when confirmActions cannot be read', () => {
-    const { settings, problems } = normalizeMcpSettings({ confirmActions: ['hardware', 'everything'] });
-    assert.deepEqual(settings.confirmActions, ['hardware', 'delete', 'workspace', 'install', 'settings']);
-    assert.equal(problems.length, 1);
+  it('never gives every tool for an unknown preset, even if one slips through', () => {
+    const chosen = selectTools(TOOL_CATALOG, { preset: 'bogus' as 'core', tools: {} });
+    assert.ok(chosen.every(tool => permissionOf(tool, { preset: 'core', tools: {} }) !== 'block'),
+      'anything unknown is read as the core preset');
   });
 });

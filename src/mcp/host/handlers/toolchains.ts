@@ -40,7 +40,7 @@ type Ctx = ToolContext<HostDeps>;
 // list_toolchains
 
 const INSTALL_HINT_SERVED = 'call manage_toolchain with action "install"';
-const INSTALL_HINT_UNSERVED = 'install one with manage_toolchain, which only the full toolset offers, or ask the user to use the Add Toolchain wizard of Zephyr Workbench';
+const INSTALL_HINT_UNSERVED = 'install one with manage_toolchain, if the user allows it in the AI Manager, or ask the user to use the Add Toolchain wizard of Zephyr Workbench';
 
 async function listInstalled(args: Record<string, unknown>, ctx: Ctx) {
   if (args.rescan === true) {
@@ -61,7 +61,7 @@ async function listInstalled(args: Record<string, unknown>, ctx: Ctx) {
     inventory.missing.length > 0
       ? fullToolHint(ctx, 'remove_or_delete',
         'Remove the registrations listed in missing with remove_or_delete what "toolchain".',
-        'The registrations listed in missing can be removed with remove_or_delete, which only the full toolset offers, or from the Toolchains & Host Tools view of Zephyr Workbench (Refresh).')
+        'The registrations listed in missing can be removed with remove_or_delete, if the user allows it in the AI Manager, or from the Toolchains & Host Tools view of Zephyr Workbench (Refresh).')
       : undefined,
   ].filter(Boolean).join(' ');
 
@@ -143,7 +143,7 @@ async function availableZephyrSdk(args: Record<string, unknown>, ctx: Ctx) {
     ...(recommended ? { recommended } : {}),
     next: fullToolHint(ctx, 'manage_toolchain',
       'Install one with manage_toolchain action "install" family "zephyr_sdk".',
-      'Installing needs manage_toolchain, which only the full toolset offers, or the Add Toolchain wizard of Zephyr Workbench.'),
+      'Installing needs manage_toolchain, if the user allows it in the AI Manager, or the Add Toolchain wizard of Zephyr Workbench.'),
   };
 }
 
@@ -163,7 +163,7 @@ async function availableArmGnu(ctx: Ctx) {
     })),
     next: fullToolHint(ctx, 'manage_toolchain',
       'Install one with manage_toolchain action "install" family "arm_gnu".',
-      'Installing needs manage_toolchain, which only the full toolset offers, or the Add Toolchain wizard of Zephyr Workbench.'),
+      'Installing needs manage_toolchain, if the user allows it in the AI Manager, or the Add Toolchain wizard of Zephyr Workbench.'),
   };
 }
 
@@ -206,7 +206,7 @@ async function availableRust(ctx: Ctx) {
       rustup.installed
         ? 'Install one with manage_toolchain action "install" family "rust", with a c_toolchain list_toolchains lists.'
         : 'Install the workbench rustup with manage_toolchain action "install" family "rustup" first, then family "rust".',
-      'Installing needs manage_toolchain, which only the full toolset offers, or the Add Toolchain wizard of Zephyr Workbench.'),
+      'Installing needs manage_toolchain, if the user allows it in the AI Manager, or the Add Toolchain wizard of Zephyr Workbench.'),
   };
 }
 
@@ -219,7 +219,7 @@ async function availableLlvm(ctx: Ctx) {
     ...(llvm.all.length > llvm.suggested.length ? { all_versions: llvm.all } : {}),
     next: fullToolHint(ctx, 'manage_toolchain',
       'A Rust install downloads one (llvm_version); link one to an installed Rust toolchain with manage_toolchain action "install" family "llvm".',
-      'A host LLVM is installed with a Rust toolchain, through manage_toolchain, which only the full toolset offers, or the Add Toolchain wizard of Zephyr Workbench.'),
+      'A host LLVM is installed with a Rust toolchain, through manage_toolchain, if the user allows it in the AI Manager, or the Add Toolchain wizard of Zephyr Workbench.'),
   };
 }
 

@@ -1,6 +1,7 @@
 // State queries. All read-only, all cheap enough to call repeatedly.
 
 import * as vscode from 'vscode';
+import { TOOL_CATALOG } from '../../core/catalog';
 import { isSdkMissing, summarizeQuickEnvironment } from '../../core/environmentReport';
 import { ToolContext, ToolHandler } from '../../core/toolSpec';
 import { captureFields } from '../serial/captures';
@@ -81,7 +82,7 @@ export const getStatus: ToolHandler<HostDeps> = async (_args, ctx: Ctx) => {
     west_workspaces: westWorkspaceStatus(workspaces, apps),
     toolchains: { zephyr_sdks: sdks.length },
     // So an agent can tell the user to watch VS Code before an action that asks.
-    safety: { confirm_actions: [...ctx.deps.confirmActions] },
+    safety: safetyOf(ctx),
     running_jobs: jobs.list().filter(j => j.status === 'running').map(j => ({
       job_id: j.id, kind: j.spec.kind, app_path: j.spec.appPath, config_name: j.spec.configName,
       // A serial capture names its port and speed instead of an application.
@@ -109,3 +110,21 @@ export const listApps: ToolHandler<HostDeps> = async (args, ctx: Ctx) => {
     })),
   };
 };
+
+/**
+ * The tools this window serves that ask the user in VS Code first, under the
+ * preset of the Permissions of the AI Manager. A tool whose actions differ
+ * asks only before the ones that change something.
+ */
+function safetyOf(ctx: Ctx): { permissions: string; ask_first: string[]; note: string } {
+  const served = ctx.deps.servedTools?.() ?? new Set<string>();
+  const askFirst = TOOL_CATALOG
+    .filter(tool => served.has(tool.name) && ctx.deps.permissionOf(tool) === 'ask')
+    .map(tool => tool.name);
+  return {
+    permissions: ctx.deps.permissionPreset ?? 'core',
+    ask_first: askFirst,
+    note: 'A tool in ask_first shows the user a dialog in VS Code before it acts; one with several actions asks only before those that change something.',
+  };
+}
+

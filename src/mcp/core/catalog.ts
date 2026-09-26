@@ -26,7 +26,7 @@ export const SERVER_TITLE = 'Zephyr Workbench (VS Code host build tooling)';
 /**
  * The server instructions for the tools actually served. Some clients show
  * the instructions and never the descriptions, so a tool this window does not
- * serve (a full-only tool under the core toolset) must never be named as
+ * serve (one the user blocked, or one outside the core preset) must never be named as
  * something to call; the equivalent Zephyr Workbench command is named instead.
  */
 export function serverInstructions(served: ReadonlySet<string> | readonly string[]): string {
@@ -84,7 +84,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: READ_ONLY,
     category: 'query',
-    toolsets: ['core'],
   },
   {
     name: 'check_environment',
@@ -109,7 +108,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: READ_ONLY,
     category: 'query',
-    toolsets: ['core'],
     maxResultChars: 60000,
   },
   {
@@ -128,7 +126,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: READ_ONLY,
     category: 'query',
-    toolsets: ['core'],
   },
   {
     name: 'list_toolchains',
@@ -156,7 +153,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: { ...READ_ONLY, openWorldHint: true },
     category: 'query',
-    toolsets: ['core'],
     routeBy: ['app_path', 'west_workspace'],
   },
   {
@@ -193,7 +189,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: { ...READ_ONLY, openWorldHint: true },
     category: 'query',
-    toolsets: ['core'],
     maxResultChars: 100000,
     routeBy: ['app_path', 'west_workspace'],
   },
@@ -216,7 +211,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: READ_ONLY,
     category: 'artifact',
-    toolsets: ['core'],
     maxResultChars: 100000,
   },
   {
@@ -242,7 +236,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: READ_ONLY,
     category: 'artifact',
-    toolsets: ['core'],
     maxResultChars: 100000,
   },
   {
@@ -269,7 +262,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: READ_ONLY,
     category: 'artifact',
-    toolsets: ['core'],
     maxResultChars: 100000,
   },
   {
@@ -299,7 +291,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     category: 'config',
-    toolsets: ['core'],
     confirm: 'settings',
     maxResultChars: 100000,
   },
@@ -328,7 +319,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: READ_ONLY,
     category: 'artifact',
-    toolsets: ['core'],
     maxResultChars: 100000,
   },
   {
@@ -348,7 +338,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: READ_ONLY,
     category: 'artifact',
-    toolsets: ['core'],
   },
   {
     name: 'get_diagnostics',
@@ -373,7 +362,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: READ_ONLY,
     category: 'query',
-    toolsets: ['core'],
   },
   {
     name: 'build_app',
@@ -395,7 +383,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     outputSchema: JOB_RESULT,
     annotations: { idempotentHint: true, openWorldHint: false },
     category: 'action',
-    toolsets: ['core'],
   },
   ANALYZE,
   {
@@ -461,7 +448,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     })(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     category: 'config',
-    toolsets: ['core'],
     confirm: 'settings',
     routeBy: ['app_path', 'west_workspace'],
   },
@@ -492,7 +478,6 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
     }),
     annotations: { openWorldHint: false },
     category: 'job',
-    toolsets: ['core'],
     maxResultChars: 100000,
   },
 ] as const;

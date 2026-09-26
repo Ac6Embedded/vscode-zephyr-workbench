@@ -1,7 +1,12 @@
 import { strict as assert } from 'assert';
 import { SERVER_INSTRUCTIONS, SERVER_NAME, TOOL_CATALOG, findTool, serverInstructions } from '../../../mcp/core/catalog';
-import { catalogVersion, confirmCategoryOf, isMachineScope, routeByOf, selectTools } from '../../../mcp/core/toolSpec';
+import {
+  catalogVersion, confirmCategoryOf, isMachineScope, permissionOf, Permissions, routeByOf, selectTools,
+} from '../../../mcp/core/toolSpec';
 import { toToolError } from '../../../mcp/core/errors';
+
+const FULL: Permissions = { preset: 'full', tools: {} };
+const CORE: Permissions = { preset: 'core', tools: {} };
 
 describe('mcp/core/catalog', () => {
   it('uses a server key that survives every client prefix scheme', () => {
@@ -156,7 +161,6 @@ describe('mcp/core/catalog', () => {
 
   it('asks only before a serial send, and lets any window list and open a port', () => {
     const tool = findTool('hardware')!;
-    assert.deepEqual(tool.toolsets, ['core']);
     assert.equal(confirmCategoryOf(tool, { action: 'serial_send' }), 'hardware');
     for (const action of ['list_ports', 'serial_start', 'serial_read', 'serial_stop']) {
       assert.equal(confirmCategoryOf(tool, { action }), undefined, action);
@@ -179,7 +183,7 @@ describe('mcp/core/catalog', () => {
   });
 
   it('never names in the instructions a tool the window does not serve', () => {
-    const core = selectTools(TOOL_CATALOG, 'core').map(t => t.name);
+    const core = selectTools(TOOL_CATALOG, CORE).map(t => t.name);
     const text = serverInstructions(core);
     for (const hidden of TOOL_CATALOG.map(t => t.name).filter(name => !core.includes(name))) {
       assert.ok(!new RegExp(`\\b${hidden}\\b`).test(text), `the core instructions name ${hidden}`);
@@ -215,23 +219,44 @@ describe('mcp/core/catalog', () => {
     assert.ok(TOOL_CATALOG.length <= 22, `catalog has ${TOOL_CATALOG.length} tools`);
   });
 
-  describe('selectTools', () => {
-    it('returns everything for the full toolset', () => {
-      assert.equal(selectTools(TOOL_CATALOG, 'full').length, TOOL_CATALOG.length);
+  describe('permissions', () => {
+    const tool = (name: string) => findTool(name)!;
+
+    it('allows every tool under full, and nothing asks', () => {
+      assert.equal(selectTools(TOOL_CATALOG, FULL).length, TOOL_CATALOG.length);
+      assert.ok(TOOL_CATALOG.every(meta => permissionOf(meta, FULL) === 'allow'));
     });
-    it('returns only read-only tools for the read-only toolset', () => {
-      const chosen = selectTools(TOOL_CATALOG, 'read-only');
+
+    it('asks under core before what touches a board or changes the machine, and blocks only deleting', () => {
+      const of = (name: string) => permissionOf(tool(name), CORE);
+      assert.equal(of('build_app'), 'allow');
+      assert.equal(of('get_status'), 'allow');
+      // Settings changes do not ask under core.
+      assert.equal(of('configure'), 'allow');
+      for (const name of ['manage_app', 'hardware', 'manage_west_workspace', 'manage_toolchain']) {
+        assert.equal(of(name), 'ask', name);
+      }
+      assert.deepEqual(TOOL_CATALOG.filter(meta => permissionOf(meta, CORE) === 'block').map(meta => meta.name), ['remove_or_delete']);
+    });
+
+    it('takes each tool of custom from the user, and the core choice for a tool it does not name', () => {
+      const custom = { preset: 'custom' as const, tools: { build_app: 'block' as const, remove_or_delete: 'ask' as const } };
+      assert.equal(permissionOf(tool('build_app'), custom), 'block');
+      assert.equal(permissionOf(tool('remove_or_delete'), custom), 'ask');
+      assert.equal(permissionOf(tool('manage_toolchain'), custom), 'ask', 'a tool added later starts as core has it');
+      assert.ok(!selectTools(TOOL_CATALOG, custom).some(meta => meta.name === 'build_app'));
+    });
+
+    it('serves only the read-only tools when the settings are locked', () => {
+      const chosen = selectTools(TOOL_CATALOG, { ...FULL, locked: true });
       assert.ok(chosen.length > 0);
       assert.ok(chosen.every(t => t.annotations.readOnlyHint === true));
-      assert.ok(!chosen.some(t => t.name === 'build_app'), 'build_app must not survive read-only');
+      assert.ok(!chosen.some(t => t.name === 'build_app'), 'build_app must not survive a lock');
     });
-    it('honours the disabled list in every toolset', () => {
-      assert.ok(!selectTools(TOOL_CATALOG, 'full', ['build_app']).some(t => t.name === 'build_app'));
-      assert.ok(!selectTools(TOOL_CATALOG, 'core', ['list_apps']).some(t => t.name === 'list_apps'));
-    });
-    it('keeps the core toolset a subset of full', () => {
-      const core = selectTools(TOOL_CATALOG, 'core').map(t => t.name);
-      const full = new Set(selectTools(TOOL_CATALOG, 'full').map(t => t.name));
+
+    it('keeps core a subset of full', () => {
+      const core = selectTools(TOOL_CATALOG, CORE).map(t => t.name);
+      const full = new Set(selectTools(TOOL_CATALOG, FULL).map(t => t.name));
       assert.ok(core.every(name => full.has(name)));
     });
   });
@@ -239,7 +264,7 @@ describe('mcp/core/catalog', () => {
   describe('catalogVersion', () => {
     it('changes when the visible tool list changes', () => {
       const all = catalogVersion(TOOL_CATALOG);
-      const fewer = catalogVersion(selectTools(TOOL_CATALOG, 'read-only'));
+      const fewer = catalogVersion(selectTools(TOOL_CATALOG, CORE));
       assert.notEqual(all, fewer, 'VS Code uses this to decide the tools changed');
     });
     it('is stable for the same list', () => {

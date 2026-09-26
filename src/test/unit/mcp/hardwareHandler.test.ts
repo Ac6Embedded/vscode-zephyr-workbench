@@ -13,7 +13,7 @@ import { findTool, TOOL_CATALOG } from '../../../mcp/core/catalog';
 import { McpToolError } from '../../../mcp/core/errors';
 import { ListedPort } from '../../../mcp/core/serialPorts';
 import { STATUS_PREFIX } from '../../../mcp/core/serialStream';
-import { ConfirmCategory, ToolContext } from '../../../mcp/core/toolSpec';
+import { ConfirmCategory, permissionForCategories, ToolContext } from '../../../mcp/core/toolSpec';
 import { AskAnswer, Confirmations } from '../../../mcp/host/confirmations';
 import { HostDeps } from '../../../mcp/host/handlers/deps';
 import { hardware } from '../../../mcp/host/handlers/hardware';
@@ -125,7 +125,7 @@ function harness(config: FakeConfig, apps: unknown[] = []): Harness {
     notes: () => (fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : []),
   } as unknown as Harness;
   const confirmations = new Confirmations({
-    categories: () => h.confirmActions,
+    permission: tool => permissionForCategories(tool, h.confirmActions),
     waitMs: () => 2000,
     log: { recordConfirmation: () => undefined },
     ask: async message => {
@@ -137,7 +137,7 @@ function harness(config: FakeConfig, apps: unknown[] = []): Harness {
     services, jobs, confirmations,
     defaultWaitSeconds: 5,
     revealTerminal: 'never',
-    get confirmActions() { return h.confirmActions; },
+    permissionOf: tool => permissionForCategories(tool, h.confirmActions),
     kconfig: {} as HostDeps['kconfig'],
     extensionContext: {} as HostDeps['extensionContext'],
     folders: {} as HostDeps['folders'],

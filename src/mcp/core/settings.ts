@@ -3,22 +3,30 @@
 // understood must never widen what an agent may do, so every security-relevant
 // setting falls back to its most restrictive meaning and the problem is logged.
 
-import { CONFIRM_CATEGORIES, ConfirmCategory, DEFAULT_CONFIRM_ACTIONS, Toolset } from './toolSpec';
+import { PERMISSION_PRESETS, PermissionPreset, Permissions, TOOL_PERMISSIONS, ToolPermission } from './toolSpec';
 
 export interface McpSettings {
   enabled: 'auto' | 'on' | 'off';
   port: number;
-  toolset: Toolset;
-  disabledTools: string[];
+  /** What agents may do with each tool: the preset, and the user's own choices for the custom one. */
+  permissions: Permissions;
   revealTerminal: 'always' | 'silent' | 'never';
   defaultWaitSeconds: number;
   homeDir: string;
   showStatusBar: boolean;
-  /** Categories the user must approve in a dialog before an agent acts. */
-  confirmActions: ConfirmCategory[];
 }
 
-export type RawMcpSettings = { [K in keyof McpSettings]?: unknown };
+/** The settings as read, one per key of zephyr-workbench.mcp. */
+export interface RawMcpSettings {
+  enabled?: unknown;
+  port?: unknown;
+  permissions?: unknown;
+  toolPermissions?: unknown;
+  revealTerminal?: unknown;
+  defaultWaitSeconds?: unknown;
+  homeDir?: unknown;
+  showStatusBar?: unknown;
+}
 
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[]): value is T =>
   typeof value === 'string' && (allowed as readonly string[]).includes(value);
@@ -28,26 +36,37 @@ export function normalizeMcpSettings(raw: RawMcpSettings): { settings: McpSettin
   const invalid = (key: string, value: unknown, used: string) =>
     problems.push(`zephyr-workbench.mcp.${key} has an invalid value (${JSON.stringify(value)}); using ${used}.`);
 
-  let toolset: Toolset = 'core';
-  if (raw.toolset !== undefined) {
-    if (oneOf(raw.toolset, ['full', 'core', 'read-only'] as const)) {
-      toolset = raw.toolset;
+  let preset: PermissionPreset = 'core';
+  let locked = false;
+  if (raw.permissions !== undefined) {
+    if (oneOf(raw.permissions, PERMISSION_PRESETS)) {
+      preset = raw.permissions;
     } else {
-      toolset = 'read-only';
-      invalid('toolset', raw.toolset, '"read-only"');
+      // What the user meant to allow is unknown, so only reading is.
+      locked = true;
+      invalid('permissions', raw.permissions, 'the read-only tools only until it is fixed');
     }
   }
 
-  let disabledTools: string[] = [];
-  if (raw.disabledTools !== undefined) {
-    if (Array.isArray(raw.disabledTools) && raw.disabledTools.every(item => typeof item === 'string')) {
-      // delete_build became remove_or_delete before release; a setting that
-      // hid the old name keeps hiding the tool that replaced it.
-      disabledTools = (raw.disabledTools as string[]).map(name => (name === 'delete_build' ? 'remove_or_delete' : name));
+  const tools: Record<string, ToolPermission> = {};
+  if (raw.toolPermissions !== undefined) {
+    const value = raw.toolPermissions;
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      for (const [name, permission] of Object.entries(value as Record<string, unknown>)) {
+        if (oneOf(permission, TOOL_PERMISSIONS)) {
+          tools[name] = permission;
+        } else {
+          // One tool the user meant to limit somehow: it is blocked.
+          tools[name] = 'block';
+          invalid(`toolPermissions.${name}`, permission, '"block"');
+        }
+      }
+    } else if (preset === 'custom') {
+      // The custom preset is made of this list, so nothing it allows is known.
+      locked = true;
+      invalid('toolPermissions', value, 'the read-only tools only until it is fixed');
     } else {
-      // Which tools were meant to be hidden is unknown, so hide every write.
-      toolset = 'read-only';
-      invalid('disabledTools', raw.disabledTools, 'the "read-only" toolset until it is fixed');
+      invalid('toolPermissions', value, 'nothing from it, since the preset is not custom');
     }
   }
 
@@ -89,17 +108,6 @@ export function normalizeMcpSettings(raw: RawMcpSettings): { settings: McpSettin
     }
   }
 
-  let confirmActions: ConfirmCategory[] = [...DEFAULT_CONFIRM_ACTIONS];
-  if (raw.confirmActions !== undefined) {
-    if (Array.isArray(raw.confirmActions) && raw.confirmActions.every(item => oneOf(item, CONFIRM_CATEGORIES))) {
-      confirmActions = [...new Set(raw.confirmActions as ConfirmCategory[])];
-    } else {
-      // What the user meant to allow is unknown, so everything asks.
-      confirmActions = [...CONFIRM_CATEGORIES];
-      invalid('confirmActions', raw.confirmActions, 'every category until it is fixed');
-    }
-  }
-
   const homeDir = typeof raw.homeDir === 'string' ? raw.homeDir : '';
   if (raw.homeDir !== undefined && typeof raw.homeDir !== 'string') {
     invalid('homeDir', raw.homeDir, 'the default folder');
@@ -107,7 +115,10 @@ export function normalizeMcpSettings(raw: RawMcpSettings): { settings: McpSettin
   const showStatusBar = typeof raw.showStatusBar === 'boolean' ? raw.showStatusBar : true;
 
   return {
-    settings: { enabled, port, toolset, disabledTools, revealTerminal, defaultWaitSeconds, homeDir, showStatusBar, confirmActions },
+    settings: {
+      enabled, port, permissions: { preset, tools, ...(locked ? { locked } : {}) },
+      revealTerminal, defaultWaitSeconds, homeDir, showStatusBar,
+    },
     problems,
   };
 }
