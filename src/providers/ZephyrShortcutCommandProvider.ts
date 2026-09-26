@@ -154,7 +154,7 @@ aiManagerMenuItem.tooltip = 'Connect AI coding agents (Claude Code, Codex, Copil
 // column when no expandable row beside them has an icon, which keeps the Get
 // Started icons in line with the Managers ones.
 const externalResourcesMenuItem = new MenuItem(
-  'External Resources',
+  'External',
   vscode.TreeItemCollapsibleState.Collapsed,
   undefined
 );
@@ -191,7 +191,7 @@ const trainingPartnersMenuItem = new MenuItem(
 /**
  * The "Get Started" view: the Add actions, preceded by Install Host Tools
  * while the host tools are missing (or Update Host Tools while they are
- * outdated), then the External Resources group.
+ * outdated), then the External group.
  */
 export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<MenuItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<MenuItem | undefined> = new vscode.EventEmitter<MenuItem | undefined>();

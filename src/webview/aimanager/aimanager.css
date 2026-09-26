@@ -288,6 +288,9 @@
 }
 
 .zw-tabs button {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -295,6 +298,15 @@
   padding: 0.5rem 0.9rem;
   cursor: pointer;
   font-size: 0.95rem;
+}
+
+/* The bold label's width, reserved on every tab, so the active one's bold text moves nothing. */
+.zw-tabs button::after {
+  content: attr(data-label);
+  font-weight: 600;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
 }
 
 .zw-tabs button.active {

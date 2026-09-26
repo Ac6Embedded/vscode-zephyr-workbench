@@ -6,23 +6,17 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
-### AI Manager (MCP)
-- New **AI Manager** panel: connect your AI coding agent to Workbench for Zephyr in one click. Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Gemini CLI, opencode and GitHub Copilot CLI are supported. The panel also connects agents to the Zephyr Project's own MCP server and lists third-party Zephyr agent skills.
-- **Build and fix**: agents build in a VS Code terminal you can watch, get the errors back with file and line, read memory usage, Kconfig values and the devicetree, and change build configurations and Kconfig options.
-- **Set up projects**: agents create or import applications, change their toolchain or Python environment, and search boards, shields, snippets and samples. With the full toolset they also install toolchains, create and update west workspaces, and remove what is no longer needed.
-- **Serial console**: agents read what a connected board prints on its serial port, live in a VS Code terminal you can stop, and can send it a line such as a Zephyr shell command after asking you.
-- **Analyze and hand over**: agents run DT Doctor, the Kconfig hardening check, an SPDX SBOM or ECLAIR, and open the right Workbench view or wizard when a choice is yours to make.
-- **You stay in control**: agents ask you in VS Code before deleting, changing a west workspace or installing anything (`zephyr-workbench.mcp.confirmActions`), a toolset setting can limit them to read-only tools, and your own builds wait for an agent working in the same folder.
-- **Local only**: the server accepts connections from this machine only, with a key that changes every time VS Code starts. One setup serves every project and every open VS Code window.
-- New commands: **Check AI Agent Connection (MCP)** and **Copy MCP Configuration for an Agent**.
+### AI Manager (new)
+- Connect your AI coding agent (Claude Code, Codex, Copilot, Cursor, Gemini CLI and more) to Workbench for Zephyr through a local MCP server, plus the Zephyr Project MCP server and third-party Zephyr agent skills.
+- Agents build and fix errors, set up applications, toolchains and west workspaces, read Kconfig, devicetree and memory usage, and run DT Doctor, SBOM and ECLAIR.
+- Hardware in the loop: agents read a connected board's serial output and, after asking you, send it commands such as Zephyr shell commands.
+- Agents ask before changing or installing anything, and only local connections are accepted.
 
 ### Sidebar
-- Reorganized sidebar: **Get Started**, **Managers**, and toolchains and host tools merged into one view.
+- Reorganized into Get Started, Managers and one Toolchains & Host Tools view, with a warning when the host tools need an update.
 
 ### Other
-- **Verify Host Tools** and the Install Runners panel no longer hang on a missing environment script or virtual environment.
-- The Kconfig Manager's **Add to build config** now works for applications of a west workspace, and an export keeps the lines of earlier exports.
-- The board picker shows new board qualifiers and revisions right after a west update, without reloading the window.
+- Fixes for Verify Host Tools, the Install Runners panel, Kconfig Manager exports and the board picker.
 
 ## [4.2.1]
 

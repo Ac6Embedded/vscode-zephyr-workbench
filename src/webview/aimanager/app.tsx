@@ -229,10 +229,6 @@ function AgentList({ agents, state, server }: { agents: AgentRow[]; state: AiMan
 export function AgentsTab({ state }: { state: AiManagerState }) {
   return (
     <div>
-      <p className="zw-note zw-intro">
-        Connecting writes one entry into the agent&apos;s own configuration, after showing you the change.
-        Restart the agent session afterwards.
-      </p>
       <AgentList agents={state.agents} state={state} />
     </div>
   );
@@ -513,11 +509,7 @@ export function ToolsTab({ state }: { state: AiManagerState }) {
           </span>
         )}
       >
-        <p className="zw-note">
-          Agents see only the tools that are on. The server applies this itself, because several agents cannot
-          filter tools on their own. Fewer tools leave room for your other extensions: a VS Code chat request
-          allows 128 tools in all, and some other clients stop near 40.
-        </p>
+        <p className="zw-note">Agents see only the tools that are on, and fewer tools leave room for your other extensions.</p>
         {[...groups.entries()].map(([category, tools]) => (
           <div key={category} className="zw-tool-group">
             <div className="zw-tool-group-name">{TOOL_GROUP_LABEL[category] ?? category}</div>
@@ -560,6 +552,7 @@ export function WorkbenchView({ state }: { state: AiManagerState }) {
             role="tab"
             aria-selected={state.tab === tab}
             className={state.tab === tab ? 'active' : ''}
+            data-label={label}
             onClick={() => post({ command: 'setTab', tab })}
           >
             {label}
@@ -596,9 +589,7 @@ export function App() {
     <DisclosureProvider>
       <div className="zw-ai">
         <h1>AI Manager</h1>
-        <p className="zw-subtitle">
-          Set up AI coding agents for Zephyr. This configures your editor and agents, not firmware.
-        </p>
+        <p className="zw-subtitle">Set up AI coding agents for Zephyr.</p>
         <div className="zw-tabs zw-views" role="tablist" aria-label="AI Manager">
           {VIEWS.map(([view, label]) => (
             <button
@@ -607,6 +598,7 @@ export function App() {
               role="tab"
               aria-selected={state.view === view}
               className={state.view === view ? 'active' : ''}
+              data-label={label}
               onClick={() => post({ command: 'setView', view })}
             >
               {label}
