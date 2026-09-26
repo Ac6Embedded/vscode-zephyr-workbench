@@ -3,7 +3,7 @@ import os from 'os';
 import { execFile, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { download, execCommand } from '../installUtils';
+import { download, DownloadHooks, execCommand } from '../installUtils';
 import { compareVersions, getInternalToolsDirRealPath } from '../utils';
 
 const RUSTUP_DIST_BASE_URL = 'https://static.rust-lang.org/rustup/dist';
@@ -138,10 +138,11 @@ export async function getRustupVersion(rustup: FoundRustup): Promise<string | un
 }
 
 /** Latest rustup version published in the official release manifest. */
-export async function fetchLatestRustupVersion(): Promise<string | undefined> {
+export async function fetchLatestRustupVersion(signal?: AbortSignal): Promise<string | undefined> {
   try {
     const response = await fetch(RUSTUP_RELEASE_MANIFEST_URL, {
       headers: { 'User-Agent': 'zephyr-workbench' },
+      signal,
     });
     if (!response.ok) {
       return undefined;
@@ -212,10 +213,10 @@ export async function checkRustPrerequisites(): Promise<RustPrerequisitesStatus>
   }
 }
 
-export async function getRustupStatus(): Promise<RustupStatus> {
+export async function getRustupStatus(signal?: AbortSignal): Promise<RustupStatus> {
   const [found, latestVersion, prereq] = await Promise.all([
     findRustup(),
-    fetchLatestRustupVersion(),
+    fetchLatestRustupVersion(signal),
     checkRustPrerequisites(),
   ]);
 
@@ -461,6 +462,7 @@ export async function installManagedRustup(
   context: vscode.ExtensionContext,
   progress: vscode.Progress<{ message?: string; increment?: number }>,
   token: vscode.CancellationToken,
+  hooks?: DownloadHooks,
 ): Promise<void> {
   const url = getRustupInitUrl();
   if (!url) {
@@ -470,7 +472,7 @@ export async function installManagedRustup(
   fs.mkdirSync(getManagedRustupRootDir(), { recursive: true });
 
   progress.report({ message: `Download ${url}` });
-  const downloadedFileUri = await download(url, getManagedRustupRootDir(), context, progress, token);
+  const downloadedFileUri = await download(url, getManagedRustupRootDir(), context, progress, token, hooks);
   const rustupInitPath = downloadedFileUri.fsPath;
 
   if (process.platform !== 'win32') {

@@ -155,6 +155,27 @@ function setProjectAllowlist(
  * into, so the manifest stays valid as a standalone manifest repository.
  */
 export function generateWestManifest(extensionUri: vscode.Uri, remotePath: string, remoteBranch: string, workspacePath: string, templateModules: string[], isFull: boolean, manifestSubfolder?: string, pathPrefix?: string, projects?: string[], enableRust = false) {
+  const { text: westManifestContent, subfolder } = renderWestManifest(extensionUri, remotePath, remoteBranch, templateModules, isFull, manifestSubfolder, pathPrefix, projects, enableRust);
+
+  if(!fs.existsSync(workspacePath)) {
+    fs.mkdirSync(workspacePath);
+  }
+  const manifestDir = path.join(workspacePath, subfolder);
+  if (!fs.existsSync(manifestDir)) {
+    fs.mkdirSync(manifestDir, { recursive: true });
+  }
+
+  const destFilePath = path.join(manifestDir, 'west.yml');
+  fs.writeFileSync(destFilePath, westManifestContent, 'utf8');
+
+  return destFilePath;
+}
+
+/**
+ * The west.yml text generateWestManifest writes, and the subfolder it goes
+ * into, without writing anything. The arguments mean what they mean there.
+ */
+export function renderWestManifest(extensionUri: vscode.Uri, remotePath: string, remoteBranch: string, templateModules: string[], isFull: boolean, manifestSubfolder?: string, pathPrefix?: string, projects?: string[], enableRust = false): { text: string; subfolder: string } {
   const prefix = (pathPrefix ?? 'deps').trim();
   // Empty / undefined falls back to the default 'manifest' folder.
   const subfolder = (manifestSubfolder ?? '').trim() || 'manifest';
@@ -211,17 +232,5 @@ export function generateWestManifest(extensionUri: vscode.Uri, remotePath: strin
     manifest.self = { ...manifest.self, path: selfPath };
   }
 
-  if(!fs.existsSync(workspacePath)) {
-    fs.mkdirSync(workspacePath);
-  }
-  const manifestDir = path.join(workspacePath, subfolder);
-  if (!fs.existsSync(manifestDir)) {
-    fs.mkdirSync(manifestDir, { recursive: true });
-  }
-
-  const destFilePath = path.join(manifestDir, 'west.yml');
-  const westManifestContent = yaml.stringify(manifestYaml);
-  fs.writeFileSync(destFilePath, westManifestContent, 'utf8');
-
-  return destFilePath;
+  return { text: yaml.stringify(manifestYaml), subfolder };
 }

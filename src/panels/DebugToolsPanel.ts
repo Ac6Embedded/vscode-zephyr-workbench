@@ -4,17 +4,13 @@ import fs from "fs";
 import yaml from 'yaml';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { getRunner } from "../utils/debugTools/debugUtils";
+import { DebugToolAliasEntry, DebugToolEntry } from "../utils/debugTools/debugToolVersionUtils";
+import { getConfiguredDebugToolPath, isDebugToolCompatible } from "../utils/debugTools/debugToolManifestUtils";
 import {
-  getDetectPlatform,
-} from "../utils/debugTools/debugToolPathUtils";
-import {
-  DebugToolEntry,
-  DebugToolAliasEntry,
-  isIgnoredReferenceVersion,
-  probeDebugToolVersion,
-} from "../utils/debugTools/debugToolVersionUtils";
-import { getInternalDirRealPath } from "../utils/utils";
+  getDebugToolExecutableName,
+  probeDebugToolAliasStatus,
+  probeDebugToolStatus,
+} from "../utils/debugTools/debugToolStatusUtils";
 import { getEnvYamlPath, loadEnvYamlState, readEnvYamlObject as readEnvYamlObjectFile, writeEnvYamlObject as writeEnvYamlObjectFile } from "../utils/env/envYamlFileUtils";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/env/envYamlUtils";
 import { setDebugToolAliasDefault } from "../utils/debugTools/debugToolEnvUtils";
@@ -68,56 +64,12 @@ export class DebugToolsPanel {
   }
 
   private getToolExecutableName(tool: any): string | undefined {
-    return this.getExecutableName(tool.alias || tool.tool);
+    return getDebugToolExecutableName(tool.alias || tool.tool);
   }
 
-  private getExecutableName(toolId: string): string | undefined {
-    return getRunner(toolId)?.executable;
-  }
-
-  private getSelectedToolForAlias(alias: string): DebugToolEntry | undefined {
-    const selectedToolId = this.getDefaultToolForAlias(alias);
-    return this.data.debug_tools.find((tool: DebugToolEntry) => tool.tool === selectedToolId);
-  }
-
-  private getAliasProbeTool(alias: string): DebugToolEntry | undefined {
-    const aliasEntry = this.data.aliases?.find((entry: DebugToolAliasEntry) => entry.alias === alias);
-    if (!aliasEntry) {
-      return undefined;
-    }
-
-    const selectedTool = this.getSelectedToolForAlias(alias);
-
-    return {
-      tool: alias,
-      version: selectedTool?.version,
-      ['version-command']: aliasEntry['version-command'],
-      ['version-file']: aliasEntry['version-file'],
-      ['version-regex']: aliasEntry['version-regex'],
-    };
-  }
-
-  private async probeTool(tool: DebugToolEntry): Promise<{ installed: boolean; status: string; version: string }> {
-    const result = await probeDebugToolVersion({
-      manifest: this.data,
-      tool,
-      executableName: this.getToolExecutableName(tool),
-      envData: this.envData,
-      ziBaseDir: getInternalDirRealPath(),
-      platform: getDetectPlatform(),
-    });
-
-    const status = isIgnoredReferenceVersion(tool.version)
-      ? ''
-      : (result.installed
-        ? (result.updateAvailable ? 'New Version Available' : 'Installed')
-        : 'Not installed');
-
-    return {
-      installed: result.installed,
-      status,
-      version: result.version || '',
-    };
+  private async probeTool(tool: DebugToolEntry): Promise<{ installed: boolean | null; status: string; version: string }> {
+    const { installed, status, version } = await probeDebugToolStatus(this.data, tool, this.envData);
+    return { installed, status, version };
   }
 
   private postDetection(toolId: string, result: { status: string; version: string }) {
@@ -130,27 +82,8 @@ export class DebugToolsPanel {
   }
 
   private async refreshAliasVersion(alias: string) {
-    const aliasTool = this.getAliasProbeTool(alias);
-    if (!aliasTool) {
-      this.postDetection(alias, { status: 'Not installed', version: '' });
-      return;
-    }
-
-    const result = await probeDebugToolVersion({
-      manifest: this.data,
-      tool: aliasTool,
-      executableName: this.getExecutableName(alias),
-      envData: this.envData,
-      ziBaseDir: getInternalDirRealPath(),
-      platform: getDetectPlatform(),
-    });
-
-    this.postDetection(alias, {
-      status: result.installed
-        ? (result.updateAvailable ? 'New Version Available' : 'Installed')
-        : 'Not installed',
-      version: result.version || '',
-    });
+    const result = await probeDebugToolAliasStatus(this.data, this.envData, alias);
+    this.postDetection(alias, result ?? { status: 'Not installed', version: '' });
   }
 
   private async refreshToolVersion(tool: DebugToolEntry) {
@@ -872,33 +805,12 @@ export class DebugToolsPanel {
   }
 
   private isToolCompatible(tool: any): boolean {
-    if(tool.os) {
-      switch(process.platform) {
-        case 'linux':
-          return tool.os.linux ? true : false;
-        case 'win32':
-          return tool.os.windows ? true : false;
-        case 'darwin':
-          return tool.os.darwin ? true : false;
-      }
-    }
-    return false;
-  }
-
-  private getDefaultToolForAlias(alias: string): string | undefined {
-    const defaultDebugToolsYml = this.data.aliases?.find((a: DebugToolAliasEntry) => a.alias === alias)?.default;
-    const firstAliasTool = this.data.debug_tools.find((t: any) => t.alias === alias)?.tool;
-    return this.envData?.runners?.[alias]?.default || defaultDebugToolsYml || firstAliasTool;
+    return isDebugToolCompatible(tool);
   }
 
   private getRunnerPath(toolId: string): string | undefined {
-    // Get path from env.yml 
-    try {
-      const p: string | undefined = (this.envData as any)?.runners?.[toolId]?.path;
-      if (p && typeof p === 'string' && p.length > 0) { return p; }
-    } catch { console.log('Error reading runner path from env.yml'); }
-
-    return undefined;
+    // Get path from env.yml
+    return getConfiguredDebugToolPath(this.envData, toolId);
   }
 
   private readEnvYamlObject(): any {

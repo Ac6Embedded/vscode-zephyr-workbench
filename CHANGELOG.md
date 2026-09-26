@@ -4,6 +4,20 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [Unreleased]
+
+### AI Manager (new)
+- Connect your AI coding agent (Claude Code, Codex, Copilot, Cursor, Gemini CLI and more) to Workbench for Zephyr through a local MCP server, plus the Zephyr Project MCP server and third-party Zephyr agent skills.
+- Agents build and fix errors, set up applications, toolchains and west workspaces, read Kconfig, devicetree and memory usage, and run DT Doctor, SBOM and ECLAIR.
+- Hardware in the loop: agents read a connected board's serial output and, after asking you, send it commands such as Zephyr shell commands.
+- Agents ask before changing or installing anything, and only local connections are accepted.
+
+### Sidebar
+- Reorganized into Get Started, Managers and one Toolchains & Host Tools view, with a warning when the host tools need an update.
+
+### Other
+- Fixes for Verify Host Tools, the Install Runners panel, Kconfig Manager exports and the board picker.
+
 ## [4.2.1]
 
 ### Other

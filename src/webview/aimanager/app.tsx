@@ -1,0 +1,657 @@
+// AI Manager UI. Three pages: the Zephyr Workbench MCP server (its agents, the
+// server itself and the tools agents may call), the Zephyr Project's own MCP
+// server, and third-party agent skills. Each shows the essentials in one line
+// per item; paths, per-scope actions and explanations open on demand.
+
+import React, { useEffect, useId, useState } from 'react';
+import {
+  EXTERNAL_LINKS, ExternalLinkId, THIRD_PARTY_SKILLS, ZEPHYR_MCP_DATA_SOURCES,
+} from '../../mcp/core/externalResources';
+import { Disclosure, DisclosureProvider } from './disclosure';
+import { AgentRow, AiManagerState, AiManagerView, ConnectionTest, JobRow, post, ToolRow } from './state';
+import {
+  displayPath, formatTime, groupAgents, JOB_TONE, jobTitle, PERMISSION_CHOICES, permissionCounts, PRESETS,
+  RowAction, rowStatus, scopeAction, scopeLabel, ServerKey, serverSummary, signInHint, SPINNER, summarizeAgent, Tone,
+  TOOL_GROUP_LABEL, toolsSummary, zephyrClientConfig,
+} from './view';
+
+const TONE_ICON: Record<Tone, string> = {
+  ok: 'pass-filled',
+  warn: 'warning',
+  off: 'circle-large-outline',
+  info: 'info',
+  error: 'error',
+};
+
+function Status({ tone, text, icon, title }: { tone: Tone; text: string; icon?: string; title?: string }) {
+  return (
+    <span className={`zw-status-text ${tone}`} title={title}>
+      <span className={`codicon codicon-${icon ?? TONE_ICON[tone]}`} aria-hidden="true" />
+      <span className="zw-status-label">{text}</span>
+    </span>
+  );
+}
+
+function ActionButton({ action }: { action: RowAction }) {
+  return (
+    <button
+      type="button"
+      className={`zw-action${action.primary ? ' primary' : ''}`}
+      title={action.title}
+      disabled={action.disabled}
+      onClick={() => post(action.message)}
+    >
+      {action.label}
+    </button>
+  );
+}
+
+export function StatusHeader({ state }: { state: AiManagerState }) {
+  const { server } = state;
+  const summary = serverSummary(server);
+  const canStart = server.supported && !server.running && server.enabled !== 'off';
+  // Stopped from VS Code, the server waits for the user: Start is the one thing to do.
+  const startFirst = canStart && server.stopped_by_user === true;
+  return (
+    <>
+      <div className="zw-card">
+        <Disclosure
+          id="server"
+          defaultOpen
+          summary={(
+            <span className="zw-summary">
+              <Status tone={summary.tone} text={summary.text} />
+              {server.supported && <span className="zw-meta">{toolsSummary(server)}</span>}
+            </span>
+          )}
+          actions={server.supported ? (
+            <>
+              {startFirst && <ActionButton action={{ label: 'Start', primary: true, message: { command: 'start' } }} />}
+              <ActionButton action={{
+                label: server.testing ? 'Testing...' : 'Test connection',
+                primary: !startFirst,
+                disabled: server.testing,
+                title: 'Start the server and reach it the way an agent does',
+                message: { command: 'testConnection' },
+              }}
+              />
+            </>
+          ) : undefined}
+        >
+          <dl className="zw-facts">
+            {server.running && server.port !== undefined && (
+              <>
+                <dt>Address</dt>
+                <dd className="zw-mono">127.0.0.1:{server.port}</dd>
+              </>
+            )}
+            {server.other_windows > 0 && (
+              <>
+                <dt>Other windows</dt>
+                <dd>
+                  {server.other_windows === 1
+                    ? '1 other VS Code window serves agents too. Each call goes to the window that has its project open.'
+                    : `${server.other_windows} other VS Code windows serve agents too. Each call goes to the window that has its project open.`}
+                </dd>
+              </>
+            )}
+          </dl>
+          <div className="zw-actions">
+            {server.running && <ActionButton action={{ label: 'Restart', message: { command: 'restart' } }} />}
+            {server.running && <ActionButton action={{ label: 'Stop', message: { command: 'stop' } }} />}
+            {canStart && !startFirst && <ActionButton action={{ label: 'Start', message: { command: 'start' } }} />}
+            <ActionButton action={{ label: 'Show activity log', message: { command: 'showLog' } }} />
+          </div>
+        </Disclosure>
+        {server.supported && <TestResult test={server.last_test} testing={server.testing} />}
+      </div>
+      {!server.supported && server.unsupported_reason && (
+        <div className="zw-warning error">{server.unsupported_reason}</div>
+      )}
+      {server.pending_confirmation && (
+        <div className="zw-warning">
+          An agent is waiting for your answer in a VS Code dialog ({server.pending_confirmation}).
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * The last Test connection, under the server line: a word when it passed, each
+ * problem with its fix when not. The full report is in the MCP output channel.
+ */
+function TestResult({ test, testing }: { test?: ConnectionTest; testing?: boolean }) {
+  if (testing) {
+    return (
+      <div className="zw-test">
+        <Status tone="info" icon={SPINNER} text="Testing the connection the way an agent makes it" />
+      </div>
+    );
+  }
+  if (!test) {
+    return null;
+  }
+  const problems = test.checks.filter(check => !check.ok);
+  const time = formatTime(test.at);
+  return (
+    <div className="zw-test">
+      <div className="zw-test-head">
+        {problems.length === 0
+          ? <Status tone="ok" text={`Connection test passed${time ? ` at ${time}` : ''}`} />
+          : <Status tone="error" text={problems.length === 1 ? 'Connection test found a problem' : `Connection test found ${problems.length} problems`} />}
+        <ActionButton action={{
+          label: 'Show report', title: 'Open the full report in the Zephyr Workbench: MCP output', message: { command: 'showLog' },
+        }}
+        />
+      </div>
+      {problems.map(problem => (
+        <div key={problem.name} className="zw-problem">
+          <div><span className="zw-section-name">{problem.name}:</span> {problem.detail}</div>
+          {problem.fix && <div className="zw-meta">Fix: {problem.fix}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AgentItem({ rows, state, server }: { rows: AgentRow[]; state: AiManagerState; server?: ServerKey }) {
+  const first = rows[0];
+  const summary = summarizeAgent(rows, server);
+  // A row can carry its own note, such as why its file could not be read.
+  const notes = [...new Set([...rows.map(row => row.note), signInHint(rows)].filter((note): note is string => !!note))];
+  const quiet = summary.tone === 'ok' || rows.some(row => row.checking);
+  return (
+    <Disclosure
+      id={`agent:${server ?? 'workbench'}:${first.id}`}
+      className="zw-item"
+      summary={(
+        <span className="zw-summary">
+          <span className="zw-name">{first.label}</span>
+          <Status tone={summary.tone} text={summary.text} icon={summary.icon} title={summary.title} />
+        </span>
+      )}
+      actions={summary.action ? <ActionButton action={summary.action} /> : undefined}
+      actionsWhenClosed
+    >
+      <div className="zw-scopes">
+        {rows.map(row => {
+          const action = scopeAction(row, server, quiet);
+          const status = rowStatus(row);
+          return (
+            <div key={`${row.scope}:${row.alias ?? ''}`} className="zw-scope">
+              <span className="zw-scope-label">{scopeLabel(row.scope)}</span>
+              <Status tone={status.tone} text={status.text} icon={status.icon} title={status.title} />
+              <span className={row.file ? 'zw-mono zw-path' : 'zw-path'} title={row.file}>
+                {row.file ? displayPath(row.file, state.home, state.workspace_folder) : row.source ?? (row.via_link ? 'VS Code settings' : '')}
+              </span>
+              <span className="zw-actions">
+                {row.file && row.exists !== false && (
+                  <ActionButton action={{ label: 'Open file', message: { command: 'openFile', file: row.file } }} />
+                )}
+                {action && <ActionButton action={action} />}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {notes.map(note => <p key={note} className="zw-note">{note}</p>)}
+    </Disclosure>
+  );
+}
+
+/** A titled group of folds, such as the agents or the server. */
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="zw-group">
+      <h2 className="zw-group-title">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * The agents found on this machine, open, and the others, folded, one line
+ * each. `children` adds more folds to the group, such as the manual setup.
+ */
+function AgentList({ agents, state, server, children }: {
+  agents: AgentRow[]; state: AiManagerState; server?: ServerKey; children?: React.ReactNode;
+}) {
+  const { installed, notInstalled } = groupAgents(agents);
+  const group = server ?? 'connections';
+  return (
+    <>
+      <Disclosure
+        id={`${group}:installed`}
+        className="zw-section"
+        defaultOpen
+        summary={<span className="zw-section-name">Installed <span className="zw-count">{installed.length}</span></span>}
+      >
+        {installed.length > 0
+          ? <div className="zw-list">{installed.map(rows => <AgentItem key={rows[0].id} rows={rows} state={state} server={server} />)}</div>
+          : <p className="zw-note">No agent was found on this machine.</p>}
+      </Disclosure>
+      {notInstalled.length > 0 && (
+        <Disclosure
+          id={`${group}:not-installed`}
+          className="zw-section"
+          summary={<span className="zw-section-name">Not installed <span className="zw-count">{notInstalled.length}</span></span>}
+        >
+          <p className="zw-note">You can still connect one, for example before you install it.</p>
+          <div className="zw-list">
+            {notInstalled.map(rows => <AgentItem key={rows[0].id} rows={rows} state={state} server={server} />)}
+          </div>
+        </Disclosure>
+      )}
+      {children}
+    </>
+  );
+}
+
+/** Who connects to the server: the agents, with the manual setup, then the server's own jobs and what it is. */
+export function ConnectionsTab({ state }: { state: AiManagerState }) {
+  const { launcher, bridge, server } = state;
+  return (
+    <div>
+      <Group title="Agents">
+        <AgentList agents={state.agents} state={state}>
+          <Disclosure id="connections:manual" className="zw-section" summary={<span className="zw-section-name">Manual setup</span>}>
+            <p className="zw-note">An agent not listed above can use this command as a local (stdio) MCP server.</p>
+            <div className="zw-code zw-mono">{[launcher.command, ...launcher.args].join(' ')}</div>
+            {Object.keys(launcher.env).length > 0 && (
+              <div className="zw-code zw-mono">{Object.entries(launcher.env).map(([k, v]) => `${k}=${v}`).join(' ')}</div>
+            )}
+            <div className="zw-actions">
+              <ActionButton action={{ label: 'Copy configuration for an agent', message: { command: 'copyConfig' } }} />
+            </div>
+            <dl className="zw-facts">
+              <dt>Bridge</dt>
+              <dd className="zw-mono">{bridge.path}{bridge.installed ? '' : ' (not installed yet)'}</dd>
+              {bridge.launcher_path && (
+                <>
+                  <dt>Launcher</dt>
+                  <dd className="zw-mono">{bridge.launcher_path}</dd>
+                </>
+              )}
+            </dl>
+          </Disclosure>
+        </AgentList>
+      </Group>
+
+      <Group title="Server">
+        <Disclosure
+          id="connections:jobs"
+          className="zw-section"
+          summary={(
+            <span className="zw-section-name">
+              Recent jobs{server.jobs.length > 0 && <span className="zw-count">{server.jobs.length}</span>}
+            </span>
+          )}
+        >
+          {server.jobs.length === 0
+            ? <p className="zw-note">No agent job has run in this VS Code window yet.</p>
+            : <div className="zw-list">{server.jobs.map(job => <JobItem key={job.job_id} job={job} />)}</div>}
+        </Disclosure>
+        <Disclosure id="connections:about" className="zw-section" summary={<span className="zw-section-name">About this server</span>}>
+          <p className="zw-note">
+            This is the workbench&apos;s own local server: it runs inside VS Code on this machine, not on any
+            external server. It listens on the loopback interface only, on a port chosen at random, and every
+            request needs a token that is regenerated each time VS Code starts. Neither the port nor the token
+            appears in any configuration file.
+          </p>
+        </Disclosure>
+      </Group>
+    </div>
+  );
+}
+
+function LinkButton({ link, label, primary }: { link: ExternalLinkId; label: string; primary?: boolean }) {
+  return (
+    <ActionButton action={{ label, primary, title: EXTERNAL_LINKS[link], message: { command: 'openLink', link } }} />
+  );
+}
+
+/** A link to a documentation page, styled as the links of the Data sources table. */
+function DocLink({ link, label }: { link: ExternalLinkId; label: string }) {
+  return (
+    <button type="button" className="zw-link" title={EXTERNAL_LINKS[link]} onClick={() => post({ command: 'openLink', link })}>
+      {label}
+    </button>
+  );
+}
+
+/** A block of text to copy, such as a configuration snippet or commands. */
+function CopyBlock({ text, label }: { text: string; label: string }) {
+  return (
+    <div className="zw-copy">
+      <pre className="zw-code zw-mono">{text}</pre>
+      <ActionButton action={{ label, message: { command: 'copy', text } }} />
+    </div>
+  );
+}
+
+/** A short fact with an icon. */
+function Chip({ icon, text }: { icon?: string; text: string }) {
+  return (
+    <span className="zw-badge zw-chip">
+      {icon && <span className={`codicon codicon-${icon}`} aria-hidden="true" />}
+      {text}
+    </span>
+  );
+}
+
+export function ZephyrView({ state }: { state: AiManagerState }) {
+  const { zephyr } = state;
+  return (
+    <div>
+      <div className="zw-card zw-panel">
+        <div className="zw-endpoint">
+          <span className="zw-lead">Answers from Zephyr&apos;s docs, code and GitHub, with sources.</span>
+          <DocLink link="zephyr-mcp-docs" label="Docs" />
+        </div>
+        <div className="zw-chips">
+          <Chip icon="verified" text="Official Zephyr Project MCP" />
+          <Chip icon="cloud-upload" text="Questions leave this machine" />
+          <Chip icon="key" text="Sign in on first use" />
+        </div>
+      </div>
+
+      <Group title="Agents">
+        <AgentList agents={zephyr.agents} state={state} server="zephyr">
+          <Disclosure id="zephyr:manual" className="zw-section" summary={<span className="zw-section-name">Manual setup</span>}>
+            <p className="zw-note">An agent not listed above can use the address directly, over streamable HTTP:</p>
+            <CopyBlock text={zephyrClientConfig(zephyr, 'url')} label="Copy" />
+            <p className="zw-note">Through mcp-remote, for a client that only starts local servers (needs Node.js):</p>
+            <CopyBlock text={zephyrClientConfig(zephyr, 'mcp-remote')} label="Copy" />
+            <div className="zw-actions"><DocLink link="mcp-remote" label="About mcp-remote" /></div>
+          </Disclosure>
+        </AgentList>
+      </Group>
+
+      <Group title="Server">
+        <Disclosure id="zephyr:sources" className="zw-section" summary={<span className="zw-section-name">Data sources</span>}>
+          <table className="zw-table">
+            <thead>
+              <tr><th>Source</th><th>Details</th><th>Refresh</th></tr>
+            </thead>
+            <tbody>
+              {ZEPHYR_MCP_DATA_SOURCES.map(row => (
+                <tr key={row.source}>
+                  <td>{row.source}</td>
+                  <td>
+                    {row.link ? (
+                      <button type="button" className="zw-link" onClick={() => post({ command: 'openLink', link: row.link })}>
+                        {row.details}
+                      </button>
+                    ) : row.details}
+                  </td>
+                  <td className="zw-nowrap">{row.refresh}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Disclosure>
+
+        <Disclosure id="zephyr:about" className="zw-section" summary={<span className="zw-section-name">About the answers</span>}>
+          <ul className="zw-bullets">
+            <li>Answers are AI-generated and can be wrong: check what matters in the docs.</li>
+            <li>Questions may be collected anonymously to improve the docs. No personally identifiable information is collected.</li>
+          </ul>
+          <div className="zw-actions"><DocLink link="zephyr-mcp-wiki" label="Kapa.ai on the Zephyr wiki" /></div>
+        </Disclosure>
+      </Group>
+    </div>
+  );
+}
+
+export function SkillsView() {
+  return (
+    <div>
+      <p className="zw-note zw-intro">Written by others. Read a skill before you rely on it.</p>
+      {THIRD_PARTY_SKILLS.map(skill => (
+        <div key={skill.link} className="zw-card zw-panel zw-skill">
+          <div className="zw-skill-head">
+            <span className="zw-name">{skill.name}</span>
+            <LinkButton link={skill.link} label="Open" primary />
+          </div>
+          <div className="zw-meta">by {skill.author}</div>
+          <p className="zw-lead zw-spaced">{skill.summary}</p>
+          {skill.install && (
+            <Disclosure id={`skill:${skill.link}`} summary={<span className="zw-section-name">How to install</span>}>
+              {skill.install.map(method => (
+                <div key={method.label}>
+                  <p className="zw-note">{method.label}:</p>
+                  <CopyBlock text={method.commands.join('\n')} label="Copy" />
+                </div>
+              ))}
+            </Disclosure>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function JobItem({ job }: { job: JobRow }) {
+  const running = job.status === 'running' || job.status === 'queued';
+  return (
+    <div className="zw-job" title={[job.job_id, job.command].filter(Boolean).join('\n')}>
+      <Status
+        tone={JOB_TONE[job.status] ?? 'off'}
+        icon={running ? 'loading codicon-modifier-spin' : undefined}
+        text={jobTitle(job)}
+      />
+      <span className="zw-meta">{job.status}</span>
+      <span className="zw-meta">{formatTime(job.started_at)}</span>
+    </div>
+  );
+}
+
+/**
+ * An info icon whose text floats over the page while the icon is pointed at
+ * or focused, and never moves the rows around it. It opens above the icon
+ * when there is no room below, and Escape closes it.
+ */
+function InfoTip({ label, text }: { label: string; text: string }) {
+  const id = useId();
+  const [place, setPlace] = useState<{ above: boolean; maxWidth: number }>();
+  const [dismissed, setDismissed] = useState(false);
+  const open = (element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    setPlace({ above: window.innerHeight - rect.bottom < 120, maxWidth: Math.max(160, window.innerWidth - rect.left - 24) });
+    setDismissed(false);
+  };
+  return (
+    <span className={`zw-tip${dismissed ? ' dismissed' : ''}`} onMouseEnter={event => open(event.currentTarget)}>
+      <button
+        type="button"
+        className="zw-tip-icon"
+        aria-label={label}
+        aria-describedby={id}
+        onFocus={event => open(event.currentTarget)}
+        onKeyDown={event => {
+          if (event.key === 'Escape') {
+            setDismissed(true);
+          }
+        }}
+      >
+        <span className="codicon codicon-info" aria-hidden="true" />
+      </button>
+      <span
+        id={id}
+        role="tooltip"
+        className={`zw-tip-text${place?.above ? ' above' : ''}`}
+        style={place ? { maxWidth: `min(24rem, ${place.maxWidth}px)` } : undefined}
+      >
+        {text}
+      </span>
+    </span>
+  );
+}
+
+/** One tool: its name, what it does, and its three choices. */
+function PermissionRow({ tool }: { tool: ToolRow }) {
+  return (
+    <div className="zw-tool">
+      <span className={`zw-tool-name${tool.permission === 'block' ? ' blocked' : ''}`}>
+        <span className="zw-mono">{tool.name}</span>
+      </span>
+      {tool.summary ? <InfoTip label={`What ${tool.name} does`} text={tool.summary} /> : <span />}
+      <span className="zw-segmented zw-choices" role="radiogroup" aria-label={`Permission for ${tool.name}`}>
+        {PERMISSION_CHOICES.map(choice => (
+          <button
+            key={choice.permission}
+            type="button"
+            role="radio"
+            aria-checked={tool.permission === choice.permission}
+            className={tool.permission === choice.permission ? `active ${choice.permission}` : ''}
+            onClick={() => post({ command: 'setPermission', tool: tool.name, permission: choice.permission })}
+          >
+            <span className={`codicon codicon-${choice.icon}`} aria-hidden="true" />
+            {choice.label}
+          </button>
+        ))}
+      </span>
+    </div>
+  );
+}
+
+/** What agents may do: a preset, then each tool's own choice, under the titles of the catalog. */
+export function PermissionsTab({ state }: { state: AiManagerState }) {
+  const { server } = state;
+  const preset = PRESETS.find(item => item.preset === server.permission_preset) ?? PRESETS[1];
+  const counts = permissionCounts(server.tools);
+  const groups = new Map<string, ToolRow[]>();
+  for (const tool of server.tools) {
+    groups.set(tool.category, [...(groups.get(tool.category) ?? []), tool]);
+  }
+  return (
+    <div>
+      {server.permissions_locked && (
+        <div className="zw-warning error">
+          The permission settings could not be read, so agents only get the tools that read. Pick a preset to fix them.
+        </div>
+      )}
+      <Group title="Preset">
+        <span className="zw-segmented" role="radiogroup" aria-label="Permission preset">
+          {PRESETS.map(item => (
+            <button
+              key={item.preset}
+              type="button"
+              role="radio"
+              aria-checked={server.permission_preset === item.preset}
+              className={server.permission_preset === item.preset ? 'active' : ''}
+              onClick={() => post({ command: 'setPreset', preset: item.preset })}
+            >
+              {item.label}
+            </button>
+          ))}
+        </span>
+        <p className="zw-note">{preset.description}</p>
+        <div className="zw-counts">
+          <span className="zw-meta">
+            {counts.allow} allowed &middot; {counts.ask} ask first &middot; {counts.block} blocked
+          </span>
+          {server.session_approvals > 0 && (
+            <ActionButton action={{
+              label: `Forget session approvals (${server.session_approvals})`,
+              title: 'Ask again before the actions an agent was allowed for this session',
+              message: { command: 'forgetApprovals' },
+            }}
+            />
+          )}
+        </div>
+      </Group>
+
+      {[...groups.entries()].map(([category, tools]) => (
+        <Group key={category} title={TOOL_GROUP_LABEL[category] ?? category}>
+          {tools.map(tool => <PermissionRow key={tool.name} tool={tool} />)}
+        </Group>
+      ))}
+    </div>
+  );
+}
+
+const VIEWS: [AiManagerView, string][] = [
+  ['workbench', 'Zephyr Workbench MCP'],
+  ['zephyr', 'Zephyr Project MCP'],
+  ['skills', 'Third-party skills'],
+];
+
+const TABS: [AiManagerState['tab'], string][] = [
+  ['connections', 'Connections'],
+  ['permissions', 'Permissions'],
+];
+
+/** The Zephyr Workbench MCP page: the server card, then its three tabs. */
+export function WorkbenchView({ state }: { state: AiManagerState }) {
+  return (
+    <>
+      <StatusHeader state={state} />
+      <div className="zw-tabs zw-subtabs" role="tablist" aria-label="Zephyr Workbench MCP">
+        {TABS.map(([tab, label]) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={state.tab === tab}
+            className={state.tab === tab ? 'active' : ''}
+            data-label={label}
+            onClick={() => post({ command: 'setTab', tab })}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {state.tab === 'connections' && <ConnectionsTab state={state} />}
+      {state.tab === 'permissions' && <PermissionsTab state={state} />}
+    </>
+  );
+}
+
+export function App() {
+  const [state, setState] = useState<AiManagerState | undefined>(undefined);
+
+  useEffect(() => {
+    const listener = (event: MessageEvent) => {
+      const message = event.data as { command?: string; state?: AiManagerState };
+      if (message?.command === 'state' && message.state) {
+        setState(message.state);
+      }
+    };
+    window.addEventListener('message', listener);
+    post({ command: 'ready' });
+    return () => window.removeEventListener('message', listener);
+  }, []);
+
+  if (!state) {
+    return <div className="zw-ai"><p>Loading the AI Manager...</p></div>;
+  }
+
+  return (
+    <DisclosureProvider>
+      <div className="zw-ai">
+        <h1>AI Manager</h1>
+        <p className="zw-subtitle">Set up AI coding agents for Zephyr.</p>
+        <div className="zw-tabs zw-views" role="tablist" aria-label="AI Manager">
+          {VIEWS.map(([view, label]) => (
+            <button
+              key={view}
+              type="button"
+              role="tab"
+              aria-selected={state.view === view}
+              className={state.view === view ? 'active' : ''}
+              data-label={label}
+              onClick={() => post({ command: 'setView', view })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {state.view === 'workbench' && <WorkbenchView state={state} />}
+        {state.view === 'zephyr' && <ZephyrView state={state} />}
+        {state.view === 'skills' && <SkillsView />}
+      </div>
+    </DisclosureProvider>
+  );
+}

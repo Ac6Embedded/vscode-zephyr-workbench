@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
 import { compareVersions, fileExists, resolveEnvScriptForShell } from './utils';
-import { isPosixShellKind, quoteIfNeeded } from './shellQuoting';
+import { isPosixShellKind, quoteIfNeeded, quoteLiteralForShell } from './shellQuoting';
 import {
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
@@ -602,7 +602,11 @@ export function getShellProfileArgs(): string[] | undefined {
   return getResolvedShell().args;
 }
 
-function getProfileEnv(): Record<string, string> | undefined {
+/**
+ * Environment contributed by the user's terminal profile. Exported so the MCP
+ * captured-task path can reproduce the same environment a task terminal gets.
+ */
+export function getProfileEnv(): Record<string, string> | undefined {
   return detectTerminalProfile()?.env;
 }
 
@@ -917,7 +921,7 @@ export function getOutputChannel(): vscode.OutputChannel {
   return _channel;
 }
 
-function logShellCommand(cmdName: string, cmd: string, cwd?: string): void {
+export function logShellCommand(cmdName: string, cmd: string, cwd?: string): void {
   const output = getOutputChannel();
   output.appendLine(`[command] ${cmdName}`);
   if (cwd) {
@@ -938,6 +942,36 @@ export function expandEnvVariables(input: string): string {
 }
 
 /**
+ * A check a task must pass before it starts, such as "no AI agent is building
+ * this configuration right now". Resolves false to hold the task back. Set by
+ * the MCP integration; with none set, every task starts as before.
+ */
+export type TaskLaunchGuard = (task: vscode.Task) => Promise<boolean>;
+
+let taskLaunchGuard: TaskLaunchGuard | undefined;
+
+export function setTaskLaunchGuard(guard: TaskLaunchGuard | undefined): void {
+  taskLaunchGuard = guard;
+}
+
+/** Thrown by `executeTask` when the launch guard held the task back. */
+export class TaskLaunchDeclined extends Error {
+  constructor(taskName: string) {
+    super(`"${taskName}" was not started.`);
+    this.name = 'TaskLaunchDeclined';
+  }
+}
+
+async function passesLaunchGuard(task: vscode.Task): Promise<boolean> {
+  try {
+    return taskLaunchGuard ? await taskLaunchGuard(task) : true;
+  } catch {
+    // A failing check must never stop the user's own work.
+    return true;
+  }
+}
+
+/**
  * Runs a `vscode.Task` and resolves when it ends. The companion of `buildDirectTask`:
  * the typical project-scoped flow is `executeTask(buildDirectTask(folder, name, cfg))`.
  *
@@ -946,6 +980,9 @@ export function expandEnvVariables(input: string): string {
  * to call `writeWestBuildState` themselves.
  */
 export async function executeTask(task: vscode.Task): Promise<vscode.TaskExecution> {
+  if (!await passesLaunchGuard(task)) {
+    throw new TaskLaunchDeclined(task.name);
+  }
   await vscode.tasks.executeTask(task);
   return new Promise(resolve => {
     const disp = vscode.tasks.onDidEndTask(e => {
@@ -972,6 +1009,9 @@ export async function executeTask(task: vscode.Task): Promise<vscode.TaskExecuti
  * Resolves undefined when the platform does not report an exit code.
  */
 export async function executeTaskCollectExitCode(task: vscode.Task): Promise<number | undefined> {
+  if (!await passesLaunchGuard(task)) {
+    return undefined;
+  }
   const execution = await vscode.tasks.executeTask(task);
   return new Promise(resolve => {
     const disp = vscode.tasks.onDidEndTaskProcess(e => {
@@ -1095,6 +1135,32 @@ export function buildEnvSourcedShellCommand(
 }
 
 /**
+ * The one-shot shell task `execShellCommand` runs, without running it. Does NOT source
+ * the Zephyr env script. Exported so a caller that runs tasks its own way (such as an
+ * agent job) starts exactly the task the UI would.
+ */
+export function buildShellTask(
+  cmdName: string,
+  cmd: string,
+  options: vscode.ShellExecutionOptions
+): vscode.Task {
+  if (!cmd) {
+    throw new Error('Missing command to execute');
+  }
+
+  const shExec = new vscode.ShellExecution(cmd, options);
+  const task = new vscode.Task(
+    { label: cmdName, type: 'zephyr-workbench-shell' },
+    vscode.TaskScope.Workspace,
+    cmdName,
+    'Zephyr Workbench',
+    shExec
+  );
+  task.presentationOptions.echo = true;
+  return task;
+}
+
+/**
  * Run a shell command as a one-shot VS Code task and await completion. Does NOT source
  * the Zephyr env script — caller is responsible for any env setup.
  *
@@ -1108,20 +1174,8 @@ export async function execShellCommand(
   cmd: string,
   options: vscode.ShellExecutionOptions
 ) {
-  if (!cmd) {
-    throw new Error('Missing command to execute');
-  }
-
+  const task = buildShellTask(cmdName, cmd, options);
   logShellCommand(cmdName, cmd, options.cwd);
-  const shExec = new vscode.ShellExecution(cmd, options);
-  const task = new vscode.Task(
-    { label: cmdName, type: 'zephyr-workbench-shell' },
-    vscode.TaskScope.Workspace,
-    cmdName,
-    'Zephyr Workbench',
-    shExec
-  );
-  task.presentationOptions.echo = true;
   await executeTask(task);
 }
 
@@ -1193,20 +1247,8 @@ export async function execShellCommandCapturingExit(
   options: vscode.ShellExecutionOptions,
   token?: vscode.CancellationToken
 ): Promise<number | undefined> {
-  if (!cmd) {
-    throw new Error('Missing command to execute');
-  }
-
+  const task = buildShellTask(cmdName, cmd, options);
   logShellCommand(cmdName, cmd, options.cwd);
-  const shExec = new vscode.ShellExecution(cmd, options);
-  const task = new vscode.Task(
-    { label: cmdName, type: 'zephyr-workbench-shell' },
-    vscode.TaskScope.Workspace,
-    cmdName,
-    'Zephyr Workbench',
-    shExec
-  );
-  task.presentationOptions.echo = true;
   return executeTaskWithExitCode(task, token);
 }
 
@@ -1232,18 +1274,37 @@ export async function execShellCommandWithEnv(
   // being discarded.
   executableOverride?: string,
 ) {
+  const task = buildEnvSourcedShellTask(cmdName, cmd, options, executableOverride);
+  logShellCommand(cmdName, (task.execution as vscode.ShellExecution).commandLine ?? '', options.cwd);
+  await executeTask(task);
+}
+
+/**
+ * The task `execShellCommandWithEnv` runs, without running it: `cmd` behind a source
+ * of the Zephyr env script, in the shell that script is for, with the Cygwin, terminal
+ * profile and venv variables merged into `options.env`. `options` itself is left
+ * unchanged. Throws like buildEnvSourcedShellCommand when the env script or the venv
+ * setting is missing.
+ */
+export function buildEnvSourcedShellTask(
+  cmdName: string,
+  cmd: string,
+  options: vscode.ShellExecutionOptions,
+  // See execShellCommandWithEnv.
+  executableOverride?: string,
+): vscode.Task {
   const prepared = buildEnvSourcedShellCommand(cmd, options.cwd, executableOverride ?? getShellExe());
-  options.executable = prepared.executable;
-  options.shellArgs = prepared.shellArgs;
-
-  options.env = {
-    ...(prepared.needsChere ? { CHERE_INVOKING: '1' } : {}),
-    ...getProfileEnv(),
-    ...options.env,
-    ...(prepared.venvPath ? { PYTHON_VENV_PATH: prepared.venvPath } : {})
-  };
-
-  await execShellCommand(cmdName, prepared.command, options);
+  return buildShellTask(cmdName, prepared.command, {
+    ...options,
+    executable: prepared.executable,
+    shellArgs: prepared.shellArgs,
+    env: {
+      ...(prepared.needsChere ? { CHERE_INVOKING: '1' } : {}),
+      ...getProfileEnv(),
+      ...options.env,
+      ...(prepared.venvPath ? { PYTHON_VENV_PATH: prepared.venvPath } : {})
+    },
+  });
 }
 
 /**
@@ -1269,16 +1330,162 @@ export async function execCommandWithEnv(
   const options: ExecOptionsWithStringEncoding = {
     encoding: 'utf8',
     cwd,
-    env: {
-      ...process.env,
-      ...(prepared.needsChere ? { CHERE_INVOKING: '1' } : {}),
-      ...getProfileEnv(),
-      ...(prepared.venvPath ? { PYTHON_VENV_PATH: prepared.venvPath } : {})
-    },
+    env: envSourcedProcessEnv(prepared),
     shell: prepared.executable
   };
 
   return exec(prepared.command, options, cb);
+}
+
+/** The environment an env-sourced command runs with, shared by the exec and capture paths. */
+function envSourcedProcessEnv(prepared: EnvSourcedShellCommand): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    ...(prepared.needsChere ? { CHERE_INVOKING: '1' } : {}),
+    ...getProfileEnv(),
+    ...(prepared.venvPath ? { PYTHON_VENV_PATH: prepared.venvPath } : {})
+  };
+}
+
+export interface CapturedCommandResult {
+  /** False when the command never started, such as when the env script setting is empty. */
+  ran: boolean;
+  exitCode?: number;
+  timedOut?: boolean;
+  aborted?: boolean;
+  /** Everything printed before the command ended, timed out or was stopped. */
+  stdout: string;
+  stderr: string;
+  /** Why the command did not start or did not exit cleanly. */
+  error?: string;
+}
+
+export interface CaptureCommandOptions {
+  timeoutMs: number;
+  /** Source the Zephyr env script first, as execCommandWithEnv does. Defaults to true. */
+  sourceEnv?: boolean;
+  /** See execShellCommandWithEnv: forces a specific shell for the env-sourced run. */
+  executableOverride?: string;
+  signal?: AbortSignal;
+  /** Receives the output as it arrives, both streams in order, for a caller that shows it live. */
+  onOutput?: (text: string) => void;
+  /** Extra variables for the command, over the environment it would get anyway. */
+  env?: Record<string, string>;
+}
+
+/** Per stream, like exec's default maxBuffer: a version listing never comes close. */
+const CAPTURE_MAX_CHARS = 1024 * 1024;
+
+/**
+ * Run a one-shot command, capture its output, and always settle.
+ *
+ * A bare `execCommandWithEnv(cmd, cwd, cb)` never calls `cb` when its
+ * preflight refuses (empty pathToEnvScript, missing venv.path), so a caller
+ * waiting on the callback hangs forever. It also has no timeout and leaves
+ * stdin open, so a vendor CLI that falls back to prompting blocks. Here a
+ * refused preflight resolves with `ran: false`, stdin is closed so a prompt
+ * sees end of input, and the timeout or abort kills the process tree and
+ * resolves with whatever was printed so far.
+ *
+ * The shell is spawned in its own process group on POSIX: the command it
+ * runs (openocd, a vendor CLI) is a grandchild, and killing only the shell
+ * would leave that running after a timeout.
+ */
+export function captureCommand(cmd: string, options: CaptureCommandOptions): Promise<CapturedCommandResult> {
+  return new Promise(resolve => {
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    let child: ChildProcess | undefined;
+    let timer: NodeJS.Timeout | undefined;
+
+    const finish = (result: Omit<CapturedCommandResult, 'stdout' | 'stderr'>) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+      options.signal?.removeEventListener('abort', onAbort);
+      resolve({ ...result, stdout, stderr });
+    };
+    const stop = (reason: 'timedOut' | 'aborted') => {
+      if (child) {
+        try { killProcessTree(child, 'SIGKILL'); } catch { /* already gone */ }
+      }
+      finish({ ran: true, [reason]: true });
+    };
+    const onAbort = () => stop('aborted');
+    const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+    // The same shell and environment execCommandWithEnv uses, so a captured
+    // probe sees exactly what the panels' probes always saw.
+    let command = cmd;
+    let shell: string | boolean = true;
+    let env: NodeJS.ProcessEnv = process.env;
+    if (options.sourceEnv !== false) {
+      try {
+        const prepared = buildEnvSourcedShellCommand(cmd, undefined, options.executableOverride ?? getShellExe());
+        command = prepared.command;
+        shell = prepared.executable;
+        env = envSourcedProcessEnv(prepared);
+      } catch (error) {
+        finish({ ran: false, error: errorText(error) });
+        return;
+      }
+    }
+    if (options.signal?.aborted) {
+      finish({ ran: false, aborted: true });
+      return;
+    }
+    if (options.env) {
+      env = { ...env, ...options.env };
+    }
+
+    try {
+      child = spawn(command, {
+        shell,
+        env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
+        windowsHide: true,
+      });
+    } catch (error) {
+      finish({ ran: false, error: errorText(error) });
+      return;
+    }
+    // A closed stdin makes a CLI that falls back to prompting read end of input.
+    child.stdin?.end();
+    // Decoded per stream, so a character split across two chunks stays whole.
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+    const forward = (text: string) => {
+      try { options.onOutput?.(text); } catch { /* a display error must not lose the result */ }
+    };
+    child.stdout?.on('data', (text: string) => {
+      if (stdout.length < CAPTURE_MAX_CHARS) { stdout += text; }
+      forward(text);
+    });
+    child.stderr?.on('data', (text: string) => {
+      if (stderr.length < CAPTURE_MAX_CHARS) { stderr += text; }
+      forward(text);
+    });
+    child.on('error', error => finish({ ran: false, error: errorText(error) }));
+    child.on('close', (code, signal) => {
+      if (code === 0) {
+        finish({ ran: true, exitCode: 0 });
+        return;
+      }
+      finish({
+        ran: true,
+        ...(typeof code === 'number' ? { exitCode: code } : {}),
+        error: signal ? `The command was stopped by ${signal}.` : `The command exited with code ${code}.`,
+      });
+    });
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+    timer = setTimeout(() => stop('timedOut'), options.timeoutMs);
+  });
 }
 
 /**
@@ -1447,42 +1654,122 @@ export function parseGitBranchesOutput(out: string): string[] {
     .sort();
 }
 
+/** How a remote git query may run, for a caller such as an agent tool call. */
+export interface GitRemoteQueryOptions {
+  /**
+   * Never wait for input: git, Git Credential Manager and ssh fail instead of
+   * asking for credentials or a host key, and a URL that git could read as
+   * one of its options is refused.
+   */
+  nonInteractive?: boolean;
+  /** Overall time limit, 30 seconds by default. */
+  timeoutMs?: number;
+}
+
+const GIT_LS_REMOTE_TIMEOUT_MS = 30000;
+
+/**
+ * The variables that stop git from prompting. ssh gets BatchMode only when the
+ * user has not chosen their own ssh command: GIT_SSH_COMMAND would also
+ * replace a GIT_SSH they set (plink, for instance).
+ */
+export function nonInteractiveGitEnv(userEnv: NodeJS.ProcessEnv): Record<string, string> {
+  return {
+    GIT_TERMINAL_PROMPT: '0',
+    GCM_INTERACTIVE: 'never',
+    ...(userEnv.GIT_SSH_COMMAND || userEnv.GIT_SSH ? {} : { GIT_SSH_COMMAND: 'ssh -o BatchMode=yes' }),
+  };
+}
+
+function gitLsRemoteTimeoutError(timeoutMs: number): Error {
+  return new Error(`git ls-remote did not finish within ${Math.round(timeoutMs / 1000)} seconds.`);
+}
+
 /**
  * One `git ls-remote` run against a repo URL. Plain PATH git first: listing a
  * public repo needs no Zephyr environment, and several callers run BEFORE the
  * host tools (and their env script) exist. The env-sourced path remains as
  * fallback for machines whose only git is the zinstaller-provided one.
+ *
+ * Given options, the fallback shares the overall time limit, runs with stdin
+ * closed and the URL quoted for the shell, and is skipped when the URL cannot
+ * be quoted safely for that shell. Without options it runs exactly as before.
  */
-function gitLsRemoteOutput(kind: '--tags' | '--heads', gitUrl: string): Promise<string> {
+function gitLsRemoteOutput(
+  kind: '--tags' | '--heads',
+  gitUrl: string,
+  opts?: GitRemoteQueryOptions,
+): Promise<string> {
+  if (opts?.nonInteractive && gitUrl.startsWith('-')) {
+    return Promise.reject(new Error(`Not a repository URL: ${gitUrl}`));
+  }
+  const timeoutMs = opts?.timeoutMs ?? GIT_LS_REMOTE_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
   return new Promise<string>((resolve, reject) => {
     execFile(
       'git',
       ['ls-remote', kind, gitUrl],
-      { timeout: 30000, maxBuffer: 16 * 1024 * 1024 },
+      {
+        timeout: timeoutMs,
+        maxBuffer: 16 * 1024 * 1024,
+        ...(opts?.nonInteractive ? { env: { ...process.env, ...nonInteractiveGitEnv(process.env) } } : {}),
+      },
       (error, stdout) => {
         if (error) { reject(error); return; }
         resolve(String(stdout));
       }
     );
-  }).catch(() => new Promise<string>((resolve, reject) => {
-    execCommandWithEnv(`git ls-remote ${kind} ${gitUrl}`, undefined, (err, out, errStr) => {
-      if (err) {
-        reject(new Error(`git ls-remote failed: ${errStr || err.message}`));
-        return;
-      }
-      resolve(out);
-    // Also settle when execCommandWithEnv itself rejects (e.g. the env-script
-    // setting is missing) — the exec callback never fires in that case.
-    }).catch(reject);
-  }));
+  }).catch(error => opts
+    ? gitLsRemoteWithEnv(kind, gitUrl, opts, deadline, timeoutMs, error)
+    : new Promise<string>((resolve, reject) => {
+      execCommandWithEnv(`git ls-remote ${kind} ${gitUrl}`, undefined, (err, out, errStr) => {
+        if (err) {
+          reject(new Error(`git ls-remote failed: ${errStr || err.message}`));
+          return;
+        }
+        resolve(out);
+      // Also settle when execCommandWithEnv itself rejects (e.g. the env-script
+      // setting is missing) — the exec callback never fires in that case.
+      }).catch(reject);
+    }));
 }
 
-export async function getGitTags(gitUrl: string): Promise<string[]> {
-  return parseGitTagsOutput(await gitLsRemoteOutput('--tags', gitUrl));
+/** The env-sourced fallback of gitLsRemoteOutput for a caller that passed options. */
+async function gitLsRemoteWithEnv(
+  kind: '--tags' | '--heads',
+  gitUrl: string,
+  opts: GitRemoteQueryOptions,
+  deadline: number,
+  timeoutMs: number,
+  firstError: unknown,
+): Promise<string> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) {
+    throw gitLsRemoteTimeoutError(timeoutMs);
+  }
+  const quotedUrl = quoteLiteralForShell(classifyShell(getShellExe()), gitUrl);
+  if (quotedUrl === undefined) {
+    throw new Error(`git ls-remote failed: ${firstError instanceof Error ? firstError.message : String(firstError)}`);
+  }
+  const result = await captureCommand(`git ls-remote ${kind} ${quotedUrl}`, {
+    timeoutMs: remaining,
+    ...(opts.nonInteractive ? { env: nonInteractiveGitEnv({ ...process.env, ...getProfileEnv() }) } : {}),
+  });
+  if (result.timedOut) {
+    throw gitLsRemoteTimeoutError(timeoutMs);
+  }
+  if (!result.ran || result.exitCode !== 0) {
+    throw new Error(`git ls-remote failed: ${result.stderr.trim() || result.error || 'unknown error'}`);
+  }
+  return result.stdout;
 }
 
-export async function getGitBranches(gitUrl: string): Promise<string[]> {
-  return parseGitBranchesOutput(await gitLsRemoteOutput('--heads', gitUrl));
+export async function getGitTags(gitUrl: string, opts?: GitRemoteQueryOptions): Promise<string[]> {
+  return parseGitTagsOutput(await gitLsRemoteOutput('--tags', gitUrl, opts));
+}
+
+export async function getGitBranches(gitUrl: string, opts?: GitRemoteQueryOptions): Promise<string[]> {
+  return parseGitBranchesOutput(await gitLsRemoteOutput('--heads', gitUrl, opts));
 }
 
 /* pyOCD helpers */

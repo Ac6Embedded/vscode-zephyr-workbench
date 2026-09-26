@@ -8,11 +8,17 @@ export interface ZephyrDeviceTreeNode {
 	name: string;
 	depth: number;
 	labels: string[];
+	/** The first compatible string, which the dashboard shows. */
 	compatible?: string;
+	/** Every compatible string, most specific first. */
+	compatibles?: string[];
 	status?: string;
 	sourceDisplay?: string;
 	sourcePath?: string;
 	sourceLine?: number;
+	/** First and last line of the node in zephyr.dts, zero based. */
+	bodyStart?: number;
+	bodyEnd?: number;
 }
 
 export interface ZephyrDeviceTreeReport {
@@ -69,8 +75,18 @@ function parseDeviceTree(input: ZephyrDeviceTreeInput): ZephyrDeviceTreeReport {
 	const stack: ZephyrDeviceTreeNode[] = [];
 	const sourceMemo = new Map<string, string | undefined>();
 	let pendingOrigin: PendingOrigin | undefined;
+	// A compatible list can continue over several lines until its ';'.
+	let collecting: ZephyrDeviceTreeNode | undefined;
 
-	for (const rawLine of lines) {
+	for (let index = 0; index < lines.length; index++) {
+		const rawLine = lines[index];
+		if (collecting) {
+			collecting.compatibles?.push(...quotedStrings(rawLine));
+			if (rawLine.includes(';')) {
+				collecting = undefined;
+			}
+			continue;
+		}
 		const originMatch = rawLine.match(ORIGIN_RE);
 		if (originMatch) {
 			pendingOrigin = {
@@ -89,7 +105,10 @@ function parseDeviceTree(input: ZephyrDeviceTreeInput): ZephyrDeviceTreeReport {
 		// Node close: a lone '};' (or '}') pops the innermost node. Clamp at an
 		// empty stack so an unexpected brace can never desync the walk.
 		if (trimmed === '};' || trimmed === '}') {
-			stack.pop();
+			const closed = stack.pop();
+			if (closed) {
+				closed.bodyEnd = index;
+			}
 			pendingOrigin = undefined;
 			continue;
 		}
@@ -110,6 +129,7 @@ function parseDeviceTree(input: ZephyrDeviceTreeInput): ZephyrDeviceTreeReport {
 					name: name || nodePath,
 					depth: stack.length,
 					labels,
+					bodyStart: index,
 				};
 
 				if (pendingOrigin) {
@@ -132,6 +152,10 @@ function parseDeviceTree(input: ZephyrDeviceTreeInput): ZephyrDeviceTreeReport {
 			const compatibleMatch = rawLine.match(COMPATIBLE_RE);
 			if (compatibleMatch) {
 				current.compatible = compatibleMatch[1];
+				current.compatibles = quotedStrings(rawLine.slice(rawLine.indexOf('=') + 1));
+				if (!rawLine.includes(';')) {
+					collecting = current;
+				}
 			}
 		}
 		if (current.status === undefined) {
@@ -153,6 +177,10 @@ function parseDeviceTree(input: ZephyrDeviceTreeInput): ZephyrDeviceTreeReport {
 		rawText: content.length > RAW_TEXT_LIMIT ? content.slice(0, RAW_TEXT_LIMIT) : content,
 		rawTruncated: content.length > RAW_TEXT_LIMIT,
 	};
+}
+
+function quotedStrings(text: string): string[] {
+	return [...text.matchAll(/"([^"]*)"/g)].map(match => match[1]);
 }
 
 function buildPath(parent: ZephyrDeviceTreeNode | undefined, name: string): string {

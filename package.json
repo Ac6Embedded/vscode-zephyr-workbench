@@ -39,7 +39,10 @@
     "sysbuild",
     "jlink",
     "stm32",
-    "nxp"
+    "nxp",
+    "mcp",
+    "ai",
+    "agent"
   ],
   "engines": {
     "vscode": "^1.88.0"
@@ -61,13 +64,89 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "zephyr-workbench.mcp",
+        "label": "Zephyr Workbench"
+      }
+    ],
     "configuration": [
       {
         "id": "zephyr-workbench",
         "title": "Zephyr Workbench",
         "order": 1,
         "properties": {
-          "zephyr-workbench.pathToEnvScript": {
+          "zephyr-workbench.mcp.enabled": {
+          "type": "string",
+          "enum": ["auto", "on", "off"],
+          "enumDescriptions": [
+            "Publish this window to AI agents, and start the local server only once an agent asks for it.",
+            "Always run the local MCP server while this window is open.",
+            "Never run the local MCP server."
+          ],
+          "default": "auto",
+          "scope": "machine",
+          "markdownDescription": "Whether AI coding agents can drive Zephyr Workbench through a local MCP server. With `auto` no socket is opened until an agent is connected."
+        },
+        "zephyr-workbench.mcp.port": {
+          "type": "number",
+          "default": 0,
+          "scope": "machine",
+          "markdownDescription": "Port for the local MCP server. Leave 0 to let the system choose, which is what lets several VS Code windows run at once. A fixed port is only useful for an agent that connects over HTTP directly."
+        },
+        "zephyr-workbench.mcp.permissions": {
+          "type": "string",
+          "enum": ["core", "full", "custom"],
+          "enumDescriptions": [
+            "Builds and inspects freely. Asks before changing apps, workspaces, toolchains or a board. Blocks deleting.",
+            "Every tool, and nothing asks first.",
+            "Your own choice for each tool, from zephyr-workbench.mcp.toolPermissions."
+          ],
+          "default": "core",
+          "scope": "machine",
+          "markdownDescription": "What AI agents may do through the Zephyr Workbench MCP server. Easiest to change from the **Permissions** tab of the AI Manager. With `custom`, each tool gets its choice from `#zephyr-workbench.mcp.toolPermissions#`."
+        },
+        "zephyr-workbench.mcp.toolPermissions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["allow", "ask", "block"],
+            "enumDescriptions": [
+              "Agents use the tool without asking you.",
+              "VS Code asks you before the tool acts: before it changes anything, or before each use for a tool that never does.",
+              "Agents do not see the tool at all."
+            ]
+          },
+          "default": {},
+          "scope": "machine",
+          "markdownDescription": "The choice for each tool, by tool name, used when `#zephyr-workbench.mcp.permissions#` is `custom`: `allow`, `ask` or `block`. A tool not listed gets its `core` choice."
+        },
+        "zephyr-workbench.mcp.revealTerminal": {
+          "type": "string",
+          "enum": ["always", "silent", "never"],
+          "default": "silent",
+          "scope": "window",
+          "markdownDescription": "Whether a task an AI agent starts reveals its terminal. The task always runs in a terminal you can read and stop."
+        },
+        "zephyr-workbench.mcp.defaultWaitSeconds": {
+          "type": "number",
+          "default": 45,
+          "scope": "window",
+          "markdownDescription": "How long a build or other long action waits before it returns a job handle instead. The default stays under the 60 second limit most agents apply to a single tool call."
+        },
+        "zephyr-workbench.mcp.homeDir": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Override the directory that holds the MCP bridge, its launcher and the per-window records. Leave empty for `~/.zephyr-workbench/mcp`."
+        },
+        "zephyr-workbench.mcp.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "Show the MCP status bar item."
+        },
+        "zephyr-workbench.pathToEnvScript": {
             "type": "string",
             "examples": [
               "${userHome}/.zinstaller/env.sh"
@@ -360,6 +439,62 @@
       }
     ],
     "commands": [
+      {
+        "command": "zephyr-workbench.ai-manager",
+        "title": "AI Manager",
+        "icon": "$(plug)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.connect",
+        "title": "Connect AI Agent (MCP)",
+        "icon": "$(plug)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.showStatus",
+        "title": "Show MCP Server Status",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.tools",
+        "title": "Configure MCP Permissions",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.start",
+        "title": "Start MCP Server",
+        "icon": "$(debug-start)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.stop",
+        "title": "Stop MCP Server",
+        "icon": "$(debug-stop)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.restart",
+        "title": "Restart MCP Server",
+        "icon": "$(debug-restart)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.showLog",
+        "title": "Show MCP Activity Log",
+        "icon": "$(output)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.doctor",
+        "title": "Check AI Agent Connection (MCP)",
+        "category": "Zephyr Workbench"
+      },
+      {
+        "command": "zephyr-workbench.mcp.copyConfig",
+        "title": "Copy MCP Configuration for an Agent",
+        "category": "Zephyr Workbench"
+      },
       {
         "command": "zephyr-workbench.install-host-tools",
         "title": "Install Host Tools",
@@ -1050,51 +1185,43 @@
       "zephyr-workbench-activitybar": [
         {
           "id": "zephyr-workbench-shortcuts",
-          "name": "Workbench for Zephyr",
-          "contextualTitle": "Workbench for Zephyr",
+          "name": "Get Started",
+          "contextualTitle": "Get Started",
+          "icon": "$(rocket)",
+          "type": "tree",
+          "initialSize": 10
+        },
+        {
+          "id": "zephyr-workbench-managers",
+          "name": "Managers",
+          "contextualTitle": "Managers",
+          "icon": "$(tools)",
+          "type": "tree",
+          "initialSize": 12
+        },
+        {
+          "id": "zephyr-workbench-app-explorer",
+          "name": "Applications",
+          "contextualTitle": "Zephyr Applications",
           "icon": "$(project)",
           "type": "tree",
           "initialSize": 25
         },
         {
-          "id": "zephyr-workbench-app-explorer",
-          "name": "Applications",
-          "contextualTitle": "Zephyr user applications",
-          "icon": "$(extensions-view-icon)",
-          "type": "tree",
-          "initialSize": 25
-        },
-        {
           "id": "zephyr-workbench-west-workspace",
-          "name": "West workspaces",
-          "contextualTitle": "west workspaces with Zephyr sources and modules",
-          "icon": "$(extensions-view-icon)",
+          "name": "West Workspaces",
+          "contextualTitle": "West Workspaces",
+          "icon": "$(repo)",
           "type": "tree",
           "initialSize": 15
         },
         {
           "id": "zephyr-workbench-sdk-explorer",
-          "name": "Toolchains",
-          "contextualTitle": "Toolchains",
-          "icon": "$(extensions-view-icon)",
+          "name": "Toolchains & Host Tools",
+          "contextualTitle": "Toolchains & Host Tools",
+          "icon": "$(package)",
           "type": "tree",
-          "initialSize": 15
-        },
-        {
-          "id": "zephyr-workbench-tools-explorer",
-          "name": "Host tools",
-          "contextualTitle": "Toolchains",
-          "icon": "$(extensions-view-icon)",
-          "type": "tree",
-          "initialSize": 10
-        },
-        {
-          "id": "zephyr-workbench-other-resources",
-          "name": "Other resources",
-          "contextualTitle": "Other resources",
-          "icon": "$(extensions-view-icon)",
-          "type": "tree",
-          "initialSize": 10
+          "initialSize": 25
         }
       ],
       "zephyr-workbench-dashboard-panel": [
@@ -1114,15 +1241,11 @@
       },
       {
         "view": "zephyr-workbench-west-workspace",
-        "contents": "[Initialize workspace](command:zephyr-workbench-west-workspace.open-wizard)\n"
-      },
-      {
-        "view": "zephyr-workbench-tools-explorer",
-        "contents": "[Install Host Tools](command:zephyr-workbench.install-host-tools.open-manager)\nOr use the [Advanced installation](command:zephyr-workbench.install-host-tools.advanced) to install or skip individual parts.\n"
+        "contents": "[Add West Workspace](command:zephyr-workbench-west-workspace.open-wizard)\n"
       },
       {
         "view": "zephyr-workbench-sdk-explorer",
-        "contents": "[Import Toolchain](command:zephyr-workbench-sdk-explorer.open-wizard)"
+        "contents": "Host tools are not installed yet. West workspaces, toolchains and builds need them.\n[Install Host Tools](command:zephyr-workbench.install-host-tools.open-manager)\nOr use the [Advanced installation](command:zephyr-workbench.install-host-tools.advanced) to install or skip individual parts.\n"
       }
     ],
     "submenus": [
@@ -1228,7 +1351,7 @@
         {
           "command": "zephyr-workbench-sdk-explorer.open-wizard",
           "group": "navigation",
-          "when": "view == zephyr-workbench-sdk-explorer"
+          "when": "view == zephyr-workbench-sdk-explorer && zephyr-workbench.hostToolsInstalled"
         },
         {
           "command": "zephyr-workbench-sdk-explorer.refresh",
@@ -2427,6 +2550,10 @@
             "type": "string",
             "description": "The name of the build configuration"
           },
+          "appRoot": {
+            "type": "string",
+            "description": "Root folder of the application the task runs for. Set by Zephyr Workbench so the tasks of two applications in one west workspace are told apart."
+          },
           "options": {
             "type": "object",
             "description": "Additional options",
@@ -2540,15 +2667,20 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "7zip-bin": "^5.2.0",
     "immer": "^11.1.18",
     "JSON": "^1.0.0",
+    "jsonc-parser": "^3.3.1",
     "node-7z": "^3.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "smol-toml": "^1.9.0",
     "sudo-prompt": "^9.2.1",
     "ts-pattern": "^5.9.0",
     "yaml": "^2.9.1",

@@ -8,13 +8,13 @@ import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
 import yaml from 'yaml';
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
-import { execShellCommand, execShellCommandCapturingExit, execShellCommandWithEnv, getConfiguredWorkbenchPath, getShellArgs, getShellExe, execCommandWithEnv, killProcessTree, resolveConfiguredPath, toPortableWorkspaceFolderPath } from "./execUtils";
+import { buildShellTask, execShellCommand, execShellCommandCapturingExit, execShellCommandWithEnv, getConfiguredWorkbenchPath, getShellArgs, getShellExe, execCommandWithEnv, killProcessTree, resolveConfiguredPath, toPortableWorkspaceFolderPath } from "./execUtils";
 import { detectGuiSudoAvailability } from "./environmentUtils";
 import { syncAutoDetectEnv } from "./debugTools/autoDetectSyncUtils";
 import { fileExists, findDefaultEnvScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSdkInstallation, getWestWorkspace } from "./utils";
 import { getRunner } from "./debugTools/debugUtils";
 import { getZephyrTerminal } from "./zephyr/zephyrTerminalUtils";
-import { ensurePowershellExecutionPolicy, quotePathForPwshCommand } from "./powershellUtils";
+import { allowPowershellScriptsForCurrentUser, ensurePowershellExecutionPolicy, quotePathForPwshCommand } from "./powershellUtils";
 import { setDebugToolAliasDefault } from './debugTools/debugToolEnvUtils';
 import { getSelectablePartIds } from './hostToolsPartsRegistry';
 import { probeHomebrew } from './hostToolsStatusUtils';
@@ -922,71 +922,6 @@ export async function installVenv(context: vscode.ExtensionContext, requirements
   }
 }
 
-export async function verifyHostTools(context: vscode.ExtensionContext) {
-  let installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
-  if(installDirUri) {
-    let installScript: string = "";
-    let installCmd: string = "";
-    let installArgs: string = "";
-    let destDir: string = "";
-    let shell: string = "";
-
-    destDir = getInstallDirRealPath();
-    switch(process.platform) {
-      case 'linux': {
-        installScript = 'install.sh';
-        installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += `${destDir}`;
-        shell = 'bash';
-        break; 
-      }
-      case 'win32': {
-        const ok = await ensurePowershellExecutionPolicy();
-        if (!ok) { return; }
-        installScript = 'install.ps1';
-        installCmd = `powershell -File ${quotePathForPwshCommand(vscode.Uri.joinPath(installDirUri, installScript).fsPath)}`;
-        installArgs += `-InstallDir ${quotePathForPwshCommand(destDir)}`;
-        shell = 'powershell.exe';
-        const pwshInstalled = await checkPwshInstalled();
-        if (pwshInstalled) {
-          return;
-          //shell = 'pwsh.exe';
-          //installCmd = `pwsh --% -File ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        }
-        break; 
-      }
-      case 'darwin': {
-        installScript = 'install-mac.sh';
-        installCmd = `bash ${vscode.Uri.joinPath(installDirUri, installScript).fsPath}`;
-        installArgs += `${destDir}`;
-        shell = 'bash';
-        break; 
-      }
-      default: {
-        vscode.window.showErrorMessage("Platform not supported !");
-        return;
-      }
-    }
-
-    let shellOpts: vscode.ShellExecutionOptions = {
-      cwd: os.homedir(),
-      executable: shell,
-      shellArgs: getShellArgs(shell),
-    };
-    
-    if(process.platform === 'linux' || process.platform === 'darwin') {
-      await execShellCommandWithEnv('Installing Host tools', installCmd + " --only-check " + installArgs, shellOpts);
-    } else {
-      // Force PowerShell: execShellCommandWithEnv otherwise routes through the
-      // user's default profile shell, and a Git Bash/Cygwin profile would
-      // mangle the backslash .ps1 path (bash eats unquoted backslashes).
-      await execShellCommandWithEnv('Installing Host tools', installCmd + " -OnlyCheck " + installArgs, shellOpts, 'powershell.exe');
-    }
-  } else {
-    vscode.window.showErrorMessage("Cannot find installation script");
-  }
-}
-
 export async function installHostDebugTools(context: vscode.ExtensionContext, listTools: any[]) {
   let scriptsDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'runners');
   if(scriptsDirUri) {
@@ -1173,6 +1108,78 @@ export async function installOpenOcdRunnerSilently(context: vscode.ExtensionCont
   }
 }
 
+/**
+ * Runs a venv setup for a caller other than the UI, such as an agent job.
+ * Given one, createLocalVenv / createWorkspaceVenv run their tasks through
+ * runTask, send their progress text to onOutput, show nothing, open no modal,
+ * and throw a VenvSetupError instead of returning undefined.
+ */
+export interface VenvRunner {
+  /** Runs the task to its end and resolves with its exit code, undefined when none was reported. */
+  runTask(task: vscode.Task): Promise<number | undefined>;
+  onOutput?(chunk: string): void;
+  /**
+   * Cancels the setup: the pip or west step running is killed and no later
+   * step starts. runTask stops its own task on it.
+   */
+  signal?: AbortSignal;
+  nonInteractive: true;
+}
+
+/**
+ * Why a venv setup run with a VenvRunner failed: ENV_NOT_READY when the host
+ * tools env script is not set, EXECUTION_POLICY when PowerShell may not run
+ * the installer script, FAILED for everything else.
+ */
+export class VenvSetupError extends Error {
+  constructor(
+    readonly code: 'ENV_NOT_READY' | 'FAILED' | 'EXECUTION_POLICY',
+    message: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = 'VenvSetupError';
+  }
+}
+
+/** Where the venv setup steps report: the output channel for the UI, onOutput for a runner. */
+interface VenvSetupLog {
+  show(): void;
+  append(text: string): void;
+  appendLine(text: string): void;
+}
+
+function venvSetupLog(runner?: VenvRunner): VenvSetupLog {
+  if (!runner) {
+    return {
+      show: () => output.show(true),
+      append: text => output.append(text),
+      appendLine: text => output.appendLine(text),
+    };
+  }
+  const emit = (text: string) => {
+    try { runner.onOutput?.(text); } catch { /* a display error must not fail the setup */ }
+  };
+  return { show: () => undefined, append: emit, appendLine: text => emit(`${text}\n`) };
+}
+
+/** A step failure as the runner's VenvSetupError, unchanged for the UI. */
+function asVenvSetupFailure(error: unknown, runner?: VenvRunner): unknown {
+  if (!runner || error instanceof VenvSetupError) {
+    return error;
+  }
+  return new VenvSetupError('FAILED', error instanceof Error ? error.message : String(error), { cause: error });
+}
+
+const VENV_SETUP_CANCELLED = 'Cancelled.';
+
+/** Stop before the next step once the runner's caller has cancelled the setup. */
+function throwIfVenvSetupCancelled(runner?: VenvRunner): void {
+  if (runner?.signal?.aborted) {
+    throw new VenvSetupError('FAILED', VENV_SETUP_CANCELLED);
+  }
+}
+
 interface CreateLocalManagedVenvOptions {
   venvDirName: string;
   westWorkspacePathOverride?: string;
@@ -1212,7 +1219,7 @@ export function getManagedVenvWestPath(venvDir: string): string {
 // exists from Zephyr ~3.6. Below that, fall back to Zephyr's requirements.txt.
 // Threshold is approximate — the create flow also degrades to the requirements
 // fallback if the `west packages` invocation fails on an unexpected version.
-function zephyrVersionSupportsWestPackages(versionArray: { [key: string]: string }): boolean {
+export function zephyrVersionSupportsWestPackages(versionArray: { [key: string]: string }): boolean {
   const major = parseInt(versionArray?.['VERSION_MAJOR'] ?? '', 10);
   const minor = parseInt(versionArray?.['VERSION_MINOR'] ?? '', 10);
   if (!Number.isFinite(major) || !Number.isFinite(minor)) {
@@ -1242,23 +1249,56 @@ export function managedVenvProcessEnv(
   };
 }
 
-// Spawn a command, streaming stdout/stderr to the output channel, and resolve on
-// exit code 0 (reject otherwise). Shared by the pip/west venv-provisioning steps.
+// Spawn a command, streaming stdout/stderr to the setup log (the output channel
+// for the UI), and resolve on exit code 0 (reject otherwise). Shared by the
+// pip/west venv-provisioning steps. A runner's signal kills the command with
+// everything it started and rejects as soon as it has exited.
 function runManagedVenvProcess(
   command: string,
   args: string[],
   cwd: string,
   env: NodeJS.ProcessEnv,
+  log: VenvSetupLog,
+  signal?: AbortSignal,
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    if (signal?.aborted) {
+      reject(new Error(VENV_SETUP_CANCELLED));
+      return;
+    }
+    // With a signal the command gets its own process group, so a cancel
+    // reaches the pip processes it starts too (see killProcessTree).
+    const child = spawn(command, args, {
+      cwd, env, stdio: ['ignore', 'pipe', 'pipe'],
+      ...(signal ? { detached: process.platform !== 'win32' } : {}),
+    });
+    const onAbort = () => {
+      killProcessTree(child, 'SIGTERM');
+      // Escalate if part of the tree survives the polite signal.
+      setTimeout(() => killProcessTree(child, 'SIGKILL'), 5000).unref();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    const stopListening = () => signal?.removeEventListener('abort', onAbort);
 
-    child.stdout?.on('data', (data: Buffer) => output.append(data.toString()));
-    child.stderr?.on('data', (data: Buffer) => output.append(data.toString()));
+    child.stdout?.on('data', (data: Buffer) => log.append(data.toString()));
+    child.stderr?.on('data', (data: Buffer) => log.append(data.toString()));
 
-    child.on('error', reject);
+    child.on('error', error => {
+      stopListening();
+      reject(error);
+    });
+    // Not 'close': a killed command's children may hold its output open.
+    child.on('exit', () => {
+      if (signal?.aborted) {
+        stopListening();
+        reject(new Error(VENV_SETUP_CANCELLED));
+      }
+    });
     child.on('close', (code) => {
-      if (code === 0) {
+      stopListening();
+      if (signal?.aborted) {
+        reject(new Error(VENV_SETUP_CANCELLED));
+      } else if (code === 0) {
         resolve();
       } else {
         reject(new Error(`${path.basename(command)} exited with code ${code}`));
@@ -1271,6 +1311,8 @@ async function installPythonPackagesInManagedVenv(
   venvDir: string,
   packages: string[],
   cwd: string,
+  log: VenvSetupLog,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (packages.length === 0) {
     return;
@@ -1281,16 +1323,18 @@ async function installPythonPackagesInManagedVenv(
     throw new Error(`Python executable not found in virtual environment: ${pythonPath}`);
   }
 
-  output.show(true);
-  output.appendLine(`Installing Python packages into ${venvDir}`);
+  log.show();
+  log.appendLine(`Installing Python packages into ${venvDir}`);
 
   await runManagedVenvProcess(
     pythonPath,
     ['-m', 'pip', 'install', '--upgrade', 'pip', ...packages],
     cwd,
     managedVenvProcessEnv(venvDir),
+    log,
+    signal,
   );
-  output.appendLine('Python package installation finished.');
+  log.appendLine('Python package installation finished.');
 }
 
 // Legacy path: install Zephyr's own requirements.txt directly with pip. Used for
@@ -1299,10 +1343,12 @@ async function installZephyrRequirementsInManagedVenv(
   venvDir: string,
   cwd: string,
   zephyrBase: string,
+  log: VenvSetupLog,
+  signal?: AbortSignal,
 ): Promise<void> {
   const requirementsFile = path.join(zephyrBase, 'scripts', 'requirements.txt');
   if (!fileExists(requirementsFile)) {
-    output.appendLine(`Zephyr requirements not found at ${requirementsFile}; skipping.`);
+    log.appendLine(`Zephyr requirements not found at ${requirementsFile}; skipping.`);
     return;
   }
 
@@ -1311,13 +1357,15 @@ async function installZephyrRequirementsInManagedVenv(
     throw new Error(`Python executable not found in virtual environment: ${pythonPath}`);
   }
 
-  output.show(true);
-  output.appendLine(`Installing Zephyr requirements from ${requirementsFile}`);
+  log.show();
+  log.appendLine(`Installing Zephyr requirements from ${requirementsFile}`);
   await runManagedVenvProcess(
     pythonPath,
     ['-m', 'pip', 'install', '-r', requirementsFile],
     cwd,
     managedVenvProcessEnv(venvDir),
+    log,
+    signal,
   );
 }
 
@@ -1328,34 +1376,47 @@ async function installZephyrDepsViaWestPackages(
   venvDir: string,
   topdir: string,
   zephyrBase: string,
+  log: VenvSetupLog,
+  signal?: AbortSignal,
 ): Promise<void> {
   const westPath = getManagedVenvWestPath(venvDir);
   if (!fileExists(westPath)) {
-    output.appendLine(`west not found in ${venvDir}; installing Zephyr requirements directly.`);
-    await installZephyrRequirementsInManagedVenv(venvDir, topdir, zephyrBase);
+    log.appendLine(`west not found in ${venvDir}; installing Zephyr requirements directly.`);
+    await installZephyrRequirementsInManagedVenv(venvDir, topdir, zephyrBase, log, signal);
     return;
   }
 
-  output.show(true);
-  output.appendLine(`Installing Zephyr module dependencies via 'west packages' into ${venvDir}`);
+  log.show();
+  log.appendLine(`Installing Zephyr module dependencies via 'west packages' into ${venvDir}`);
   try {
     await runManagedVenvProcess(
       westPath,
       ['packages', 'pip', '--install'],
       topdir,
       managedVenvProcessEnv(venvDir, { ZEPHYR_BASE: zephyrBase }),
+      log,
+      signal,
     );
   } catch (e) {
-    output.appendLine(`'west packages' failed (${e}); falling back to Zephyr requirements.txt`);
-    await installZephyrRequirementsInManagedVenv(venvDir, topdir, zephyrBase);
+    if (signal?.aborted) {
+      // Cancelled, not failed: the fallback must not start.
+      throw e;
+    }
+    log.appendLine(`'west packages' failed (${e}); falling back to Zephyr requirements.txt`);
+    await installZephyrRequirementsInManagedVenv(venvDir, topdir, zephyrBase, log, signal);
   }
 }
+
+/** Bounds each PowerShell policy call made for a VenvRunner, which has no one to wait for. */
+const RUNNER_POWERSHELL_POLICY_TIMEOUT_MS = 30000;
 
 async function createLocalManagedVenv(
   context: vscode.ExtensionContext,
   workbenchFolder: vscode.WorkspaceFolder,
   options: CreateLocalManagedVenvOptions,
+  runner?: VenvRunner,
 ): Promise<string | undefined> {
+  const log = venvSetupLog(runner);
   const installDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'hosttools');
   let envScript = getConfiguredWorkbenchPath(
     ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
@@ -1363,6 +1424,9 @@ async function createLocalManagedVenv(
   );
 
   if (!envScript) {
+    if (runner) {
+      throw new VenvSetupError('ENV_NOT_READY', 'The Zephyr environment script is not set. Install the host tools first.');
+    }
     vscode.window.showErrorMessage("Cannot find installation script");
     return undefined;
   }
@@ -1390,9 +1454,19 @@ async function createLocalManagedVenv(
       break;
     }
     case 'win32': {
-      const ok = await ensurePowershellExecutionPolicy();
-      if (!ok) {
-        return undefined;
+      if (runner) {
+        // The same silent policy fix the UI makes, without its modal warning.
+        if (!await allowPowershellScriptsForCurrentUser(RUNNER_POWERSHELL_POLICY_TIMEOUT_MS)) {
+          throw new VenvSetupError(
+            'EXECUTION_POLICY',
+            'PowerShell script execution is disabled for the current user, so the venv installer cannot run. Set the policy to RemoteSigned (Set-ExecutionPolicy -Scope CurrentUser RemoteSigned) and retry.',
+          );
+        }
+      } else {
+        const ok = await ensurePowershellExecutionPolicy();
+        if (!ok) {
+          return undefined;
+        }
       }
       installScript = 'install.ps1';
       const scriptPath = vscode.Uri.joinPath(installDirUri, installScript).fsPath;
@@ -1410,6 +1484,9 @@ async function createLocalManagedVenv(
       break;
     }
     default: {
+      if (runner) {
+        throw new VenvSetupError('FAILED', `Creating a virtual environment is not supported on ${process.platform}.`);
+      }
       vscode.window.showErrorMessage("Platform not supported !");
       return undefined;
     }
@@ -1432,42 +1509,84 @@ async function createLocalManagedVenv(
     shellArgs: getShellArgs(shell),
   };
 
-  await execShellCommand('Creating local virtual environment', installCmd + installArgs, shellOpts);
+  const taskName = 'Creating local virtual environment';
+  if (runner) {
+    let exitCode: number | undefined;
+    try {
+      const task = buildShellTask(taskName, installCmd + installArgs, shellOpts);
+      log.appendLine(`[command] ${taskName}`);
+      log.appendLine(installCmd + installArgs);
+      exitCode = await runner.runTask(task);
+    } catch (error) {
+      throw asVenvSetupFailure(error, runner);
+    }
+    // A cancelled installer reports no exit code, and has usually created
+    // the venv folder already: going on would install into it regardless.
+    throwIfVenvSetupCancelled(runner);
+    if (exitCode === undefined) {
+      throw new VenvSetupError('FAILED', 'The virtual environment installer ended without an exit code.');
+    }
+    if (exitCode !== 0) {
+      throw new VenvSetupError('FAILED', `The virtual environment installer exited with code ${exitCode}.`);
+    }
+  } else {
+    await execShellCommand(taskName, installCmd + installArgs, shellOpts);
+  }
 
   if (!fileExists(venvDir)) {
+    if (runner) {
+      throw new VenvSetupError('FAILED', `The installer did not create the virtual environment at ${venvDir}.`);
+    }
     return undefined;
   }
 
-  await installPythonPackagesInManagedVenv(
-    venvDir,
-    options.extraPackages ?? [],
-    workbenchFolder.uri.fsPath,
-  );
+  try {
+    await installPythonPackagesInManagedVenv(
+      venvDir,
+      options.extraPackages ?? [],
+      workbenchFolder.uri.fsPath,
+      log,
+      runner?.signal,
+    );
 
-  // Modern Zephyr: resolve module-aware deps with `west packages` from the topdir
-  // (the installer skipped requirements.txt for this mode). Older Zephyr keeps the
-  // installer's requirements.txt install and does not enter this branch.
-  if (options.zephyrDeps === 'west') {
-    const topdir = westWorkspacePath && fileExists(westWorkspacePath)
-      ? westWorkspacePath
-      : destDir;
-    await installZephyrDepsViaWestPackages(venvDir, topdir, zephyrBase);
+    // Modern Zephyr: resolve module-aware deps with `west packages` from the topdir
+    // (the installer skipped requirements.txt for this mode). Older Zephyr keeps the
+    // installer's requirements.txt install and does not enter this branch.
+    if (options.zephyrDeps === 'west') {
+      throwIfVenvSetupCancelled(runner);
+      const topdir = westWorkspacePath && fileExists(westWorkspacePath)
+        ? westWorkspacePath
+        : destDir;
+      await installZephyrDepsViaWestPackages(venvDir, topdir, zephyrBase, log, runner?.signal);
+    }
+  } catch (error) {
+    // Unchanged for the UI; a runner gets a VenvSetupError.
+    throw asVenvSetupFailure(error, runner);
   }
+  // Nothing may record a venv whose setup was cancelled.
+  throwIfVenvSetupCancelled(runner);
 
   return toPortableWorkspaceFolderPath(venvDir, workbenchFolder);
 }
 
+/**
+ * Create a `.venv` for an application (in its folder, or under
+ * venvBasePathOverride). Returns a portable `${workspaceFolder}`-relative venv
+ * path, or undefined on failure after telling the user. With a runner, see
+ * VenvRunner: it throws a VenvSetupError instead and shows nothing.
+ */
 export async function createLocalVenv(
   context: vscode.ExtensionContext,
   workbenchFolder: vscode.WorkspaceFolder,
   westWorkspacePathOverride?: string,
-  venvBasePathOverride?: string
+  venvBasePathOverride?: string,
+  runner?: VenvRunner,
 ): Promise<string | undefined> {
   return createLocalManagedVenv(context, workbenchFolder, {
     venvDirName: '.venv',
     westWorkspacePathOverride,
     venvBasePathOverride,
-  });
+  }, runner);
 }
 
 /**
@@ -1478,11 +1597,13 @@ export async function createLocalVenv(
  * Must run after `west update` so the Zephyr tree / manifest is present.
  *
  * Returns a portable `${workspaceFolder}`-relative venv path to store in
- * `venv.path` at the workspace-folder scope, or undefined on failure.
+ * `venv.path` at the workspace-folder scope, or undefined on failure. With a
+ * runner, see VenvRunner: failures throw a VenvSetupError instead.
  */
 export async function createWorkspaceVenv(
   context: vscode.ExtensionContext,
   westWorkspaceFolder: vscode.WorkspaceFolder,
+  runner?: VenvRunner,
 ): Promise<string | undefined> {
   const topdir = westWorkspaceFolder.uri.fsPath;
 
@@ -1497,7 +1618,7 @@ export async function createWorkspaceVenv(
     venvDirName: '.venv',
     westWorkspacePathOverride: topdir,
     zephyrDeps: useWestPackages ? 'west' : 'pip',
-  });
+  }, runner);
 }
 
 export function findManagedVenvDirectory(
@@ -1537,10 +1658,42 @@ export async function cleanupDownloadDir(context: vscode.ExtensionContext) {
   }
 }
 
+/**
+ * Delete only the given downloaded files, not the whole download folder that
+ * cleanupDownloadDir empties, so a run does not remove what another install
+ * running at the same time still needs. A file already gone is fine; the
+ * others are all tried before an error names the ones that could not be deleted.
+ */
+export async function cleanupDownloadFiles(files: string[]): Promise<void> {
+  const failed: string[] = [];
+  for (const file of files) {
+    try {
+      await fs.promises.rm(file, { force: true });
+    } catch {
+      failed.push(file);
+    }
+  }
+  if (failed.length > 0) {
+    throw new Error(`Could not delete the downloaded files: ${failed.join(', ')}`);
+  }
+}
+
+/**
+ * Lets a caller vet every URL before it is fetched and learn every file it
+ * downloaded, such as an agent job that deletes only its own downloads.
+ */
+export interface DownloadHooks {
+  /** Throws to refuse a URL before anything is fetched. */
+  beforeDownload?(url: string): void;
+  /** Called with the path of each downloaded file. */
+  onDownloaded?(filePath: string): void;
+}
+
 export async function download(url: string, destDir: string, context: vscode.ExtensionContext, progress: vscode.Progress<{
 	message?: string | undefined;
 	increment?: number | undefined;
-}>, token: vscode.CancellationToken): Promise<vscode.Uri> {
+}>, token: vscode.CancellationToken, hooks?: DownloadHooks): Promise<vscode.Uri> {
+  hooks?.beforeDownload?.(url);
   const fileName = path.basename(new URL(url).pathname);
   const filePath = path.join(context.globalStorageUri.fsPath, DOWNLOAD_DIR_NAMES[0], fileName);
 
@@ -1558,6 +1711,7 @@ export async function download(url: string, destDir: string, context: vscode.Ext
 
   // Always downloads a fresh copy: a previous one may be stale.
   await downloadFile(url, filePath, { token, onProgress });
+  hooks?.onDownloaded?.(filePath);
   return vscode.Uri.file(filePath);
 }
 

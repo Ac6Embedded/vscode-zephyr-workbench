@@ -1015,12 +1015,632 @@ def m_get_drift(params):
             "targetId": SESSION.first_node_id.get(sym.name),
         })
 
+    managed = params.get("managed")
+    if managed:
+        drift.extend(_managed_drift(kconf, managed, existing, baseline, {d["name"] for d in drift}))
+
     drift.sort(key=lambda d: d["name"])
     return {"ok": True, "drift": drift, "missingFragments": missing}
 
 
+def _managed_value(line):
+    # (name, value) a managed line assigns, the value spelled as str_value spells it.
+    import re
+    m = re.match(r"^\s*CONFIG_([A-Za-z0-9_]+)\s*=(.*)$", line)
+    if m:
+        value = m.group(2).strip()
+        if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+            value = re.sub(r'\\(.)', r"\1", value[1:-1])
+        return m.group(1), value
+    m = re.match(r"^\s*#\s*CONFIG_([A-Za-z0-9_]+)\s+is not set\s*$", line)
+    if m:
+        return m.group(1), "n"
+    return None, None
+
+
+def _same_file(a, b):
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def _managed_drift(kconf, managed, fragments, baseline, listed):
+    # The export target's managed region pins values from earlier exports (and from
+    # set_kconfig). The drift above follows savedefconfig, so it leaves out a symbol set
+    # back to its default, or one that can no longer be assigned; the export then kept
+    # the old pinned line and the next build brought the old value back. Here each
+    # pinned symbol whose line no longer gives the current value is reported: with the
+    # line that gives it, or for removal when a configuration file cannot assign it any
+    # more (the line would only make every build warn).
+    #
+    # Values are compared, not line text. With the target in the fragment list, the
+    # baseline already includes its region, and one a later fragment overrides already
+    # gives the current value, so nothing is rewritten for it. A target outside the list
+    # is compared with the value its line assigns.
+    path = managed.get("path") or ""
+    in_build = bool(path) and os.path.isfile(path) and any(_same_file(f, path) for f in fragments)
+    out = []
+    for line in managed.get("lines") or []:
+        name, value = _managed_value(line)
+        if not name or name in listed:
+            continue
+        sym = kconf.syms.get(name)
+        if sym is None or not sym.nodes:
+            continue  # not defined in this tree: the line is the user's to fix
+        cur = sym.str_value
+        if cur == (baseline.get(name) if in_build else value):
+            continue
+        listed.add(name)
+        assignable = (any(n.prompt for n in sym.nodes)
+                      and (sym.choice is not None or sym.visibility > expr_value(sym.rev_dep)))
+        cfg_line = sym.config_string.rstrip("\n")
+        update = assignable and bool(cfg_line)
+        out.append({
+            "name": name,
+            "baseline": value,
+            "current": cur,
+            # An explicit value rather than dropping the line: a fragment merged before
+            # the target may assign the symbol too, and would win again without it.
+            "configString": cfg_line if update else "",
+            "managedLine": "update" if update else "remove",
+            "targetId": SESSION.first_node_id.get(name),
+        })
+    return out
+
+
 def m_info(params):
     return build_info(params["id"])
+
+
+# ---------------------------------------------------------------------------
+# Agent methods: find, explain, check_merge
+#
+# Used by the MCP server, which runs its own session with no editor attached.
+# None of them touch the edit journal, the baselines or the dirty flag, and
+# check_merge restores the live state exactly (checked by a residue diff), so
+# the loaded .config is what every call starts from.
+# ---------------------------------------------------------------------------
+
+def _defined_names():
+    kconf = SESSION.kconf
+    names = [sym.name for sym in kconf.unique_defined_syms]
+    names.extend(choice.name for choice in kconf.unique_choices if choice.name)
+    return names
+
+
+def _suggest(name, limit=8):
+    # Close spellings first, then names that contain the text: an agent that
+    # guessed SERIAL_CONSOLE should hear about UART_CONSOLE and CONSOLE.
+    import difflib
+    wanted = name.upper()
+    names = _defined_names()
+    close = difflib.get_close_matches(wanted, names, n=5, cutoff=0.75)
+    containing = sorted((n for n in names if wanted in n),
+                        key=lambda n: (not n.startswith(wanted), len(n), n))
+    out = []
+    for candidate in close + containing:
+        if candidate not in out:
+            out.append(candidate)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _has_prompt(item):
+    return any(node.prompt for node in item.nodes)
+
+
+def _find_entry(name):
+    kconf = SESSION.kconf
+    sym = kconf.syms.get(name)
+    # kconf.syms also holds names that are only referenced, never defined;
+    # Zephyr rejects an assignment to those, so they count as unknown.
+    if sym is not None and sym.nodes:
+        return {
+            "kind": "symbol",
+            "id": SESSION.first_node_id.get(name),
+            "type": TYPE_TO_STR[sym.orig_type],
+            "hasPrompt": _has_prompt(sym),
+            "choice": (sym.choice.name or "<choice>") if sym.choice is not None else None,
+            "value": sym.str_value,
+            "nodeIds": [SESSION.id_of.get(id(node)) for node in sym.nodes],
+        }
+    choice = kconf.named_choices.get(name)
+    if choice is not None:
+        return {
+            "kind": "choice",
+            "id": SESSION.first_node_id.get(name),
+            "type": TYPE_TO_STR[choice.orig_type],
+            "hasPrompt": _has_prompt(choice),
+            "choice": None,
+            "value": choice.str_value,
+            "nodeIds": [SESSION.id_of.get(id(node)) for node in choice.nodes],
+        }
+    return None
+
+
+def m_find(params):
+    # Name to node lookup without get_tree, which serializes the whole tree.
+    found = {}
+    unknown = {}
+    for name in params.get("names") or []:
+        entry = _find_entry(name)
+        if entry is None:
+            unknown[name] = _suggest(name)
+        else:
+            found[name] = entry
+    out = {"found": found, "unknown": unknown}
+    pattern = (params.get("pattern") or "").upper()
+    if pattern:
+        limit = int(params.get("limit") or 50)
+        matches = sorted(n for n in _defined_names() if pattern in n)
+        out["matches"] = matches[:limit]
+        out["totalMatches"] = len(matches)
+    return out
+
+
+def _unique(items):
+    # A symbol defined in several places often repeats the same prompt or help.
+    out = []
+    for item in items:
+        if item not in out:
+            out.append(item)
+    return out
+
+
+def _annotated_sc(sc):
+    # Every defined symbol carries its current value, as menuconfig shows it.
+    # An undefined one (a bare `0`, a symbol from a module that is not there)
+    # has no value worth showing.
+    if isinstance(sc, Symbol) and sc.name and not sc.is_constant and sc.nodes:
+        return "{} [={}]".format(sc.name, sc.str_value)
+    if isinstance(sc, Choice):
+        return "{} [={}]".format(sc.name or "<choice>", TRI_TO_STR[sc.tri_value])
+    return standard_sc_expr_str(sc)
+
+
+def _expr_text(expr):
+    return kconfiglib.expr_str(expr, _annotated_sc)
+
+
+def _terms(expr, skip=None):
+    # `skip` drops a term that says nothing, such as the choice a choice symbol
+    # always depends on.
+    return [{"expr": _expr_text(term), "value": TRI_TO_STR[expr_value(term)]}
+            for term in split_expr(expr, AND) if skip is None or term is not skip]
+
+
+def _false_terms(expr):
+    return [{"expr": _expr_text(term), "value": TRI_TO_STR[expr_value(term)]}
+            for term in split_expr(expr, AND) if expr_value(term) == 0]
+
+
+def _reverse_deps(expr, limit=None):
+    # One entry per selecting (or implying) symbol. Each OR term is `SEL` or
+    # `SEL && <condition>`, and only the terms that currently evaluate to
+    # non-n actually force a value. Common symbols such as GPIO have hundreds
+    # of selectors, so with a limit every active one is kept and only the
+    # inactive ones are cut; the caller gets the total alongside.
+    if expr is SESSION.kconf.n:
+        return [], 0
+    active, inactive = [], []
+    subs = split_expr(expr, OR)
+    for sub in subs:
+        lead = split_expr(sub, AND)[0] if (sub.__class__ is tuple and sub[0] is AND) else sub
+        entry = {"expr": _expr_text(sub), "active": expr_value(sub) > 0}
+        if isinstance(lead, Symbol) and lead.name:
+            entry["name"] = lead.name
+            entry["value"] = lead.str_value
+        (active if entry["active"] else inactive).append(entry)
+    if limit is not None:
+        inactive = inactive[:max(0, limit - len(active))]
+    return active + inactive, len(subs)
+
+
+def _forward_refs(sym, pairs):
+    # A select or imply only acts while the symbol itself is on and its own
+    # `if` condition holds. The conditions come from orig_selects/orig_implies
+    # where available, which leave out the dependencies kconfiglib propagates
+    # from `depends on` and enclosing menus: those are listed once already.
+    out = []
+    for target, cond, *_rest in pairs:
+        entry = {"name": target.name, "active": sym.tri_value > 0 and expr_value(cond) > 0}
+        if cond is not SESSION.kconf.y:
+            entry["condition"] = _expr_text(cond)
+        out.append(entry)
+    return out
+
+
+def _definitions(item):
+    # `active` says whether the enclosing `if`/`depends on` of that definition
+    # holds: a symbol such as MAIN_STACK_SIZE is defined again in the defconfig
+    # of every SoC, and only the definitions of this board's SoC apply.
+    out = []
+    for node in item.nodes:
+        path_labels = [seg["label"] for seg in _menu_path(node)]
+        out.append({
+            "file": node.filename or "",
+            "line": node.linenr or 0,
+            "menuPath": " > ".join(path_labels),
+            "active": expr_value(node.dep) > 0,
+        })
+    return out
+
+
+def _defaults(sym, limit=15):
+    # The defaults whose condition holds, in the order kconfiglib tries them:
+    # the first one is the value the symbol takes when nothing assigns it.
+    # sym.defaults carries the propagated `depends on` and `if` conditions,
+    # which is what decides whether a default applies on this board.
+    out = []
+    for value, cond, *rest in sym.defaults:
+        cond_value = expr_value(cond)
+        if cond_value == 0:
+            continue
+        entry = {"value": _expr_text(value), "used": not out}
+        if cond is not SESSION.kconf.y:
+            entry["condition"] = _expr_text(cond)
+            entry["conditionValue"] = TRI_TO_STR[cond_value]
+        loc = rest[0] if rest else None
+        if isinstance(loc, tuple) and len(loc) >= 2:
+            entry["file"] = loc[0] or ""
+            entry["line"] = loc[1] or 0
+        out.append(entry)
+        if len(out) >= limit:
+            break
+    return out, len(sym.defaults)
+
+
+def _choice_summary(choice):
+    return {
+        "name": choice.name or "<choice>",
+        "prompt": next((node.prompt[0] for node in choice.nodes if node.prompt), None),
+        "mode": TRI_TO_STR[choice.tri_value],
+        "selected": choice.selection.name if choice.selection is not None else None,
+        "members": [{"name": sym.name, "value": sym.str_value} for sym in choice.syms],
+        "optional": bool(getattr(choice, "is_optional", False)),
+    }
+
+
+def _missing_deps(sym):
+    # Port of missing_deps() in Zephyr's scripts/kconfig/kconfig.py: the
+    # 'depends on' terms below the assigned value, which is what the build
+    # prints when an assignment does not take.
+    deps = split_expr(sym.direct_dep, AND)
+    if sym.orig_type in (BOOL, TRISTATE):
+        wanted = sym.user_value if sym.user_value is not None else 2
+        return [{"expr": _expr_text(dep), "value": TRI_TO_STR[expr_value(dep)]}
+                for dep in deps if expr_value(dep) < wanted]
+    return [{"expr": _expr_text(dep), "value": TRI_TO_STR[expr_value(dep)]}
+            for dep in deps if expr_value(dep) == 0]
+
+
+def _explain_symbol(sym):
+    kconf = SESSION.kconf
+    prompts, helps, prompt_conditions = [], [], []
+    for node in sym.nodes:
+        if node.prompt:
+            prompts.append(node.prompt[0])
+            cond = node.prompt[1]
+            # 'visible if' on an enclosing menu is folded into this condition
+            # by kconfiglib, so it covers both 'prompt ... if' and 'visible if'.
+            if cond is not kconf.y:
+                prompt_conditions.append({
+                    "prompt": node.prompt[0],
+                    "value": TRI_TO_STR[expr_value(cond)],
+                    "terms": _terms(cond, skip=sym.choice),
+                })
+        if node.help:
+            helps.append(node.help)
+
+    dep_value = expr_value(sym.direct_dep)
+    blocked_by = []
+    if dep_value == 0:
+        blocked_by.extend(dict(term, kind="depends_on") for term in _false_terms(sym.direct_dep))
+    elif sym.visibility == 0 and prompts:
+        for pc in prompt_conditions:
+            blocked_by.extend(dict(term, kind="visibility") for term in pc["terms"] if term["value"] == "n")
+
+    ranges = []
+    for low, high, cond, *_rest in sym.ranges:
+        ranges.append({
+            "low": low.str_value,
+            "high": high.str_value,
+            "condition": _expr_text(cond) if cond is not kconf.y else None,
+            "active": expr_value(cond) > 0,
+        })
+
+    defaults, defaults_total = _defaults(sym)
+    selected_by, selected_by_total = _reverse_deps(sym.rev_dep, limit=25)
+    implied_by, implied_by_total = _reverse_deps(sym.weak_rev_dep, limit=25)
+    dep_terms = _terms(sym.direct_dep, skip=sym.choice) if sym.direct_dep is not kconf.y else []
+
+    return {
+        "kind": "symbol",
+        "name": sym.name,
+        "type": TYPE_TO_STR[sym.orig_type],
+        "value": sym.str_value,
+        "userValue": _raw_user_value(sym),
+        "assignable": [TRI_TO_STR[v] for v in sym.assignable],
+        "visibility": TRI_TO_STR[sym.visibility],
+        "promptless": not prompts,
+        "prompts": _unique(prompts),
+        "helps": _unique(helps),
+        "dependsOn": {
+            "value": TRI_TO_STR[dep_value],
+            "terms": dep_terms,
+        },
+        "promptConditions": _unique(prompt_conditions),
+        "blockedBy": _unique(blocked_by),
+        "selectedBy": selected_by,
+        "selectedByTotal": selected_by_total,
+        "impliedBy": implied_by,
+        "impliedByTotal": implied_by_total,
+        "selects": _forward_refs(sym, getattr(sym, "orig_selects", sym.selects)),
+        "implies": _forward_refs(sym, getattr(sym, "orig_implies", sym.implies)),
+        "defaults": defaults,
+        "defaultsTotal": defaults_total,
+        "ranges": ranges,
+        "activeRange": _active_range(sym) if sym.orig_type in (INT, HEX) else None,
+        "choice": _choice_summary(sym.choice) if sym.choice is not None else None,
+        "definitions": _definitions(sym),
+        "configString": sym.config_string.rstrip("\n"),
+    }
+
+
+def _explain_choice(choice):
+    kconf = SESSION.kconf
+    dep_value = expr_value(choice.direct_dep)
+    out = _choice_summary(choice)
+    out.update({
+        "kind": "choice",
+        "type": TYPE_TO_STR[choice.orig_type],
+        "value": choice.str_value,
+        "visibility": TRI_TO_STR[choice.visibility],
+        "prompts": _unique(node.prompt[0] for node in choice.nodes if node.prompt),
+        "helps": _unique(node.help for node in choice.nodes if node.help),
+        "dependsOn": {
+            "value": TRI_TO_STR[dep_value],
+            "terms": _terms(choice.direct_dep) if choice.direct_dep is not kconf.y else [],
+        },
+        "blockedBy": [dict(term, kind="depends_on") for term in _false_terms(choice.direct_dep)]
+        if dep_value == 0 else [],
+        "definitions": _definitions(choice),
+    })
+    return out
+
+
+def m_explain(params):
+    kconf = SESSION.kconf
+    symbols = []
+    unknown = {}
+    for name in params.get("names") or []:
+        sym = kconf.syms.get(name)
+        if sym is not None and sym.nodes:
+            symbols.append(_explain_symbol(sym))
+            continue
+        choice = kconf.named_choices.get(name)
+        if choice is not None:
+            symbols.append(_explain_choice(choice))
+            continue
+        unknown[name] = _suggest(name)
+    return {"symbols": symbols, "unknown": unknown}
+
+
+def _capture_state():
+    # Everything needed to put the live state back exactly: see m_get_drift for
+    # why the raw user values and choice selections are kept besides the file.
+    import tempfile
+    kconf = SESSION.kconf
+    raw = {}
+    for sym in kconf.unique_defined_syms:
+        value = _raw_user_value(sym)
+        if value is not None:
+            raw[sym.name] = value
+    selections = [choice.user_selection.name for choice in kconf.unique_choices
+                  if choice.user_selection is not None]
+    fd, tmp_path = tempfile.mkstemp(prefix="kconfig-state-", suffix=".config")
+    os.close(fd)
+    # save_old=False: the empty temp file must not be kept as a .old backup.
+    kconf.write_config(tmp_path, save_old=False)
+    return {"raw": raw, "selections": selections, "path": tmp_path}
+
+
+def _restore_state(state):
+    kconf = SESSION.kconf
+    try:
+        kconf.load_config(state["path"], replace=True)
+        for sym in kconf.unique_defined_syms:
+            want = state["raw"].get(sym.name)
+            if _raw_user_value(sym) != want:
+                _apply_raw(sym, want)
+        for name in state["selections"]:
+            sel_sym = kconf.syms.get(name)
+            if sel_sym is not None:
+                sel_sym.set_value(2)
+    finally:
+        try:
+            os.unlink(state["path"])
+        except OSError:
+            pass
+
+
+def _merge_failures(kconf):
+    # What Zephyr's kconfig.py refuses once handwritten fragments are merged:
+    # an assignment to a promptless symbol (check_no_promptless_assign), a value
+    # that did not take (check_assigned_sym_values), and a choice symbol set to
+    # y that did not end up selected (check_assigned_choice_values).
+    out = {}
+    for sym in kconf.unique_defined_syms:
+        if sym.user_value is None:
+            continue
+        if not _has_prompt(sym):
+            out[sym.name] = "has no prompt, so a configuration file cannot assign it"
+            continue
+        if sym.choice is not None:
+            continue
+        assigned = TRI_TO_STR[sym.user_value] if sym.orig_type in (BOOL, TRISTATE) else sym.user_value
+        if assigned != sym.str_value:
+            out[sym.name] = "was assigned {} but got {}".format(assigned, sym.str_value)
+    for choice in kconf.unique_choices:
+        sel = choice.user_selection
+        if sel is not None and sel is not choice.selection:
+            out[sel.name] = "was selected in its choice, but {} ended up selected".format(
+                choice.selection.name if choice.selection is not None else "no symbol")
+    return out
+
+
+def _merge_run(fragments, names):
+    # Merge the fragments exactly like kconfig.py does for handwritten input,
+    # with its warning settings, and record what the build would see.
+    kconf = SESSION.kconf
+    saved = (kconf.warn, kconf.warn_assign_undef, kconf.warn_assign_override, kconf.warn_assign_redun)
+    start = len(kconf.warnings)
+    try:
+        kconf.warn = True
+        kconf.warn_assign_undef = True
+        kconf.warn_assign_override = False
+        kconf.warn_assign_redun = False
+        kconf.load_config(fragments[0], replace=True)
+        for fragment in fragments[1:]:
+            kconf.load_config(fragment, replace=False)
+        # kconfig.py writes to os.devnull first to force every value, so
+        # warnings raised while evaluating show up before it decides.
+        for sym in kconf.unique_defined_syms:
+            _ = sym.str_value
+        for choice in kconf.unique_choices:
+            _ = choice.selection
+        warnings = list(kconf.warnings[start:])
+        values = {sym.name: sym.str_value for sym in kconf.unique_defined_syms}
+        failures = _merge_failures(kconf)
+        details = {}
+        for name in names:
+            sym = kconf.syms.get(name)
+            if sym is None or not sym.nodes:
+                continue
+            loc = getattr(sym, "user_loc", None)
+            requested = sym.user_value
+            if sym.choice is not None and requested is not None:
+                took = TRI_TO_STR[requested] == sym.str_value
+            else:
+                took = name not in failures
+            details[name] = {
+                "userValue": _raw_user_value(sym),
+                "value": sym.str_value,
+                "took": took,
+                "failure": failures.get(name),
+                "promptless": not _has_prompt(sym),
+                "assignedAt": {"file": loc[0], "line": loc[1]} if loc else None,
+                "missingDeps": _missing_deps(sym) if sym.user_value is not None else [],
+                "activeSelectors": [e["name"] for e in _reverse_deps(sym.rev_dep)[0]
+                                    if e["active"] and e.get("name")],
+                "activeRange": _active_range(sym) if sym.orig_type in (INT, HEX) else None,
+                "choice": _choice_summary(sym.choice) if sym.choice is not None else None,
+            }
+        return {"values": values, "failures": failures, "warnings": warnings, "details": details}
+    finally:
+        kconf.warn, kconf.warn_assign_undef, kconf.warn_assign_override, kconf.warn_assign_redun = saved
+        # Reported in the result instead, never as session warnings.
+        del kconf.warnings[start:]
+        SESSION._warn_cursor = min(SESSION._warn_cursor, len(kconf.warnings))
+
+
+def _strip_location(warning):
+    # "path:12: warning: ..." -> "warning: ...": line numbers move when a
+    # fragment is edited, so warnings are compared without them.
+    marker = "warning: "
+    at = warning.find(marker)
+    return warning[at:] if at >= 0 else warning
+
+
+def m_check_merge(params):
+    # Would the build accept these fragments? `fragments` is the proposed merge
+    # list (with a temporary copy standing in for the file about to change),
+    # `compare` the list the build uses today. Both are merged on the live
+    # instance, the results are compared, and the live state is restored.
+    fragments = params.get("fragments") or []
+    compare = params.get("compare") or []
+    names = params.get("names") or []
+    existing = [f for f in fragments if os.path.isfile(f)]
+    missing = [f for f in fragments if not os.path.isfile(f)]
+    compare_existing = [f for f in compare if os.path.isfile(f)]
+    if not existing:
+        return {"ok": False, "error": "None of the configuration fragments exist on disk"}
+
+    kconf = SESSION.kconf
+    pre = snapshot_dynamic()
+    current = {sym.name: sym.str_value for sym in kconf.unique_defined_syms}
+    state = _capture_state()
+    before = None
+    after = None
+    try:
+        if compare_existing:
+            before = _merge_run(compare_existing, names)
+        after = _merge_run(existing, names)
+    finally:
+        _restore_state(state)
+
+    residue = diff_against(pre)
+    if residue:
+        print("check_merge: state restore left {} residue entries".format(len(residue)), file=sys.stderr)
+        return {"ok": False, "error": "Internal state check failed after the merge check"}
+
+    wanted = set(names)
+    base_values = before["values"] if before else current
+    base_failures = before["failures"] if before else {}
+    base_warnings = set(_strip_location(w) for w in before["warnings"]) if before else set()
+
+    new_failures = {name: why for name, why in after["failures"].items()
+                    if name not in wanted and base_failures.get(name) != why}
+    existing_failures = {name: why for name, why in after["failures"].items()
+                         if name not in wanted and base_failures.get(name) == why}
+    new_warnings = [w for w in after["warnings"] if _strip_location(w) not in base_warnings]
+
+    def prompted(name):
+        sym = kconf.syms.get(name)
+        return sym is not None and _has_prompt(sym)
+
+    # Only symbols with a prompt are listed: enabling one option routinely
+    # moves dozens of hidden helper symbols, which the totals still count.
+    side_effects = []
+    side_effects_total = 0
+    for name, to in after["values"].items():
+        if name in wanted:
+            continue
+        frm = base_values.get(name)
+        if frm != to:
+            side_effects_total += 1
+            if prompted(name):
+                side_effects.append({"name": name, "from": frm, "to": to})
+    side_effects.sort(key=lambda e: e["name"])
+
+    discarded = []
+    if before:
+        for name, cur in current.items():
+            if name in wanted or not prompted(name):
+                continue
+            merged = before["values"].get(name)
+            if merged != cur:
+                discarded.append({"name": name, "current": cur, "afterMerge": merged})
+        discarded.sort(key=lambda e: e["name"])
+
+    limit = int(params.get("limit") or 40)
+    return {
+        "ok": True,
+        "symbols": after["details"],
+        "current": {name: current.get(name) for name in names},
+        "before": {name: base_values.get(name) for name in names},
+        "newFailures": new_failures,
+        "existingFailures": dict(sorted(existing_failures.items())[:limit]),
+        "existingFailuresTotal": len(existing_failures),
+        "newWarnings": new_warnings[:limit],
+        "sideEffects": side_effects[:limit],
+        "sideEffectsTotal": side_effects_total,
+        "discarded": discarded[:limit],
+        "discardedTotal": len(discarded),
+        "missingFragments": missing,
+    }
 
 
 def m_write_config(params):
@@ -1095,6 +1715,9 @@ METHODS = {
     "load_config": m_load_config,
     "get_state": m_get_state,
     "shutdown": m_shutdown,
+    "find": m_find,
+    "explain": m_explain,
+    "check_merge": m_check_merge,
 }
 
 

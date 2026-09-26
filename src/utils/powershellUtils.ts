@@ -6,22 +6,25 @@ import { ZEPHYR_DOCS_BASE_URL } from "../constants";
 export type PowerShellFlavor = 'powershell' | 'pwsh';
 export function runPowershellCommand(
   cmd: string,
-  flavor: PowerShellFlavor = 'powershell'
+  flavor: PowerShellFlavor = 'powershell',
+  // 0 means no limit, as before. A read-only probe passes one so a stuck
+  // PowerShell cannot hold its caller.
+  timeoutMs = 0,
 ): Promise<{ stdout: string; stderr: string }>
 {
   const exe = flavor === 'pwsh' ? 'pwsh' : 'powershell';
   const full = `${exe} -ExecutionPolicy Bypass -NoProfile -NonInteractive -Command ${cmd}`;
   return new Promise((resolve, reject) => {
-    exec(full, (error: ExecException | null, stdout: string, stderr: string) => {
+    exec(full, { timeout: timeoutMs }, (error: ExecException | null, stdout: string, stderr: string) => {
       if (error) { return reject(Object.assign(error, { stdout, stderr })); }
       resolve({ stdout, stderr });
     });
   });
 }
 
-export async function getCurrentUserExecutionPolicy(): Promise<string> {
+export async function getCurrentUserExecutionPolicy(timeoutMs = 0): Promise<string> {
   try {
-    const { stdout } = await runPowershellCommand(`\"(Get-ExecutionPolicy -Scope CurrentUser -ErrorAction SilentlyContinue)\"`);
+    const { stdout } = await runPowershellCommand(`\"(Get-ExecutionPolicy -Scope CurrentUser -ErrorAction SilentlyContinue)\"`, 'powershell', timeoutMs);
     const val = (stdout || '').toString().trim();
     return val || 'Undefined';
   } catch {
@@ -34,27 +37,40 @@ export function isExecutionPolicyAllowed(policy: string): boolean {
   return p === 'remotesigned' || p === 'unrestricted' || p === 'bypass';
 }
 
-// Ensure PowerShell execution policy allows running scripts for CurrentUser (Windows only)
-export async function ensurePowershellExecutionPolicy(): Promise<boolean> {
+/**
+ * The silent part of ensurePowershellExecutionPolicy: true when the current
+ * user may run scripts, after trying to set their policy to RemoteSigned when
+ * not. Shows nothing, so a caller without a UI (an agent job) can report the
+ * false case itself. `timeoutMs` bounds each PowerShell call (0: no limit).
+ * Always true off Windows.
+ */
+export async function allowPowershellScriptsForCurrentUser(timeoutMs = 0): Promise<boolean> {
   if (process.platform !== 'win32') { return true; }
 
-  const docsUrl = `${ZEPHYR_DOCS_BASE_URL}/known-issues#powershell-script-execution-disabled`;
-
-  const current = await getCurrentUserExecutionPolicy();
+  const current = await getCurrentUserExecutionPolicy(timeoutMs);
   if (isExecutionPolicyAllowed(current)) {
     return true;
   }
 
   // Try to silently set the policy for CurrentUser to RemoteSigned
   try {
-    await runPowershellCommand(`\"Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force\"`);
+    await runPowershellCommand(`\"Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force\"`, 'powershell', timeoutMs);
   } catch {
-    // ignore failures here; we still warn the user below
+    // ignore failures here; the re-check below decides
   }
 
   // Re-check after attempting to set; if allowed now, proceed without warning
-  const after = await getCurrentUserExecutionPolicy();
-  if (isExecutionPolicyAllowed(after)) {
+  const after = await getCurrentUserExecutionPolicy(timeoutMs);
+  return isExecutionPolicyAllowed(after);
+}
+
+// Ensure PowerShell execution policy allows running scripts for CurrentUser (Windows only)
+export async function ensurePowershellExecutionPolicy(): Promise<boolean> {
+  if (process.platform !== 'win32') { return true; }
+
+  const docsUrl = `${ZEPHYR_DOCS_BASE_URL}/known-issues#powershell-script-execution-disabled`;
+
+  if (await allowPowershellScriptsForCurrentUser()) {
     return true;
   }
 

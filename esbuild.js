@@ -12,6 +12,9 @@ const extensionConfig = {
   platform: "node",
   mainFields: ["module", "main"],
   format: "cjs",
+  // engines.vscode ^1.88.0 allows an extension host on Node 18, so the bundle
+  // is down-levelled even though the MCP server itself is gated to Node 20.
+  target: "node18",
   entryPoints: ["./src/extension.ts"],
   outfile: "./out/extension.js",
   // electron: loaded at runtime by the downloader (src/utils/downloadUtils.ts).
@@ -22,6 +25,50 @@ const extensionConfig = {
       assets: {
         from: ["./node_modules/7zip-bin/win/**/*"],
         to: ["./out/win"],
+      },
+    }),
+  ],
+};
+
+// The stdio bridge an agent launches. A separate bundle because it runs as its
+// own Node process, outside the extension host, so it must never import `vscode`.
+// Built for node18 so the `node` fallback in the launcher works on older hosts.
+const forbidVscodeImport = {
+  name: "forbid-vscode-import",
+  setup(build) {
+    build.onResolve({ filter: /^vscode$/ }, args => ({
+      errors: [{
+        text: `The MCP bridge must not import 'vscode' (imported from ${args.importer}). `
+          + "Move the shared code into src/mcp/core or src/mcp/jobs.",
+      }],
+    }));
+  },
+};
+
+const mcpBridgeConfig = {
+  ...baseConfig,
+  platform: "node",
+  mainFields: ["module", "main"],
+  format: "cjs",
+  target: "node18",
+  entryPoints: ["./src/mcp/bridge/main.ts"],
+  outfile: "./out/bridge.cjs",
+  define: { __ZW_BRIDGE_VERSION__: JSON.stringify(require("./package.json").version) },
+  plugins: [forbidVscodeImport],
+};
+
+const webviewAiManagerConfig = {
+  ...baseConfig,
+  target: "es2020",
+  format: "esm",
+  entryPoints: ["./src/webview/aimanager/index.mts"],
+  outfile: "./out/aimanager.js",
+  plugins: [
+    copy({
+      resolveFrom: "cwd",
+      assets: {
+        from: ["./src/webview/aimanager/*.css"],
+        to: ["./out"],
       },
     }),
   ],
@@ -135,6 +182,8 @@ const webviewKconfigManagerConfig = {
 
 const buildConfigs = [
   extensionConfig,
+  mcpBridgeConfig,
+  webviewAiManagerConfig,
   webviewCreateWestWorkspaceConfig,
   webviewImportSDKConfig,
   webviewCreateZephyrAppConfig,

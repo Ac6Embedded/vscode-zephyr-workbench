@@ -450,6 +450,15 @@ function spawnWestSdkInstallChild(args: string[], workspaceRoot: string): ChildP
 }
 
 /**
+ * Whether `west sdk install` can start at all: the configured env script
+ * exists, or the managed venv has west. Checked before a long install is
+ * accepted, so a missing west is reported at once instead of from the run.
+ */
+export function canRunWestSdk(): boolean {
+  return !!resolveEnvScriptPath() || fs.existsSync(getManagedVenvWestPath(resolveManagedVenvDir()));
+}
+
+/**
  * Run `west sdk install` from the materialized workspace. Resolves on exit 0 with
  * the expected SDK path (<installBase>/zephyr-sdk-<version>); throws
  * WestSdkInstallError otherwise.
@@ -459,6 +468,7 @@ export async function runWestSdkInstall(
   options: WestSdkInstallOptions,
   progress?: vscode.Progress<{ message?: string; increment?: number }>,
   token?: vscode.CancellationToken,
+  onOutput?: (text: string) => void,
 ): Promise<{ sdkPath: string }> {
   const output = getOutputChannel();
   const workspaceRoot = await ensureWestSdkWorkspace(context);
@@ -499,6 +509,7 @@ export async function runWestSdkInstall(
     exitCode = await streamChildToOutput(child, text => {
       appendToTail(tail, text);
       reportChunk(text);
+      onOutput?.(text);
     }, sanitize);
   } catch (error) {
     const spawnError = error as NodeJS.ErrnoException;
@@ -534,9 +545,16 @@ export async function runWestSdkInstall(
   return { sdkPath };
 }
 
-async function runSetupInvocation(setupScript: string, flags: string[], sdkPath: string): Promise<number> {
+async function runSetupInvocation(
+  setupScript: string, flags: string[], sdkPath: string, onOutput?: (text: string) => void,
+  token?: vscode.CancellationToken,
+): Promise<number> {
   const output = getOutputChannel();
   output.appendLine(`[command] SDK setup: ${quote(setupScript)} ${flags.join(' ')}`);
+
+  // A cancellable run gets its own process group on POSIX, so a cancel stops
+  // the whole tree (wrapper shell, setup script, its downloads and cmake).
+  const detached = !!token && process.platform !== 'win32';
 
   const envScript = resolveEnvScriptPath();
   let child: ChildProcess;
@@ -559,30 +577,61 @@ async function runSetupInvocation(setupScript: string, flags: string[], sdkPath:
   } else if (envScript) {
     // Route through the env script so cmake is on PATH.
     const command = `${shellQuoteArg(setupScript)} ${flags.join(' ')}`.trimEnd();
-    child = spawnCommandWithEnv(command, { cwd: sdkPath });
+    child = spawnCommandWithEnv(command, { cwd: sdkPath, detached });
   } else {
     child = spawn(setupScript, flags, {
       cwd: sdkPath,
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
+      detached,
     });
   }
 
+  let cancelled = false;
+  let settled = false;
+  let escalation: NodeJS.Timeout | undefined;
+  const cancellation = token?.onCancellationRequested(() => {
+    cancelled = true;
+    output.appendLine('SDK setup cancelled. The components it was adding may be incomplete.');
+    killProcessTree(child, 'SIGTERM');
+    // Escalate if part of the tree survives the polite signal.
+    escalation = setTimeout(() => {
+      if (!settled) {
+        killProcessTree(child, 'SIGKILL');
+      }
+    }, 5000);
+  });
+
+  let exitCode: number;
   try {
-    return await streamChildToOutput(child);
+    exitCode = await streamChildToOutput(child, onOutput);
   } catch (error) {
     const reason = (error as Error)?.message ?? String(error);
     throw new WestSdkInstallError('setup-failed', `The SDK setup script could not be started: ${reason}`);
+  } finally {
+    settled = true;
+    if (escalation) {
+      clearTimeout(escalation);
+    }
+    cancellation?.dispose();
   }
+  if (cancelled) {
+    throw new WestSdkInstallError('cancelled', CANCELLED_MESSAGE);
+  }
+  return exitCode;
 }
 
 /**
  * Run an existing SDK's setup script (<sdk>/setup.sh on POSIX, <sdk>/setup.cmd on
  * Windows) directly. Mirrors sdk.py's run_setup: a first invocation with -c (CMake
  * package registration, unless disabled), then a second one with the requested
- * -t/-l/-h flags. Throws WestSdkInstallError('setup-failed') on nonzero exit.
+ * -t/-l/-h flags. Throws WestSdkInstallError('setup-failed') on nonzero exit,
+ * and WestSdkInstallError('cancelled') once `token` is cancelled, after
+ * stopping the script with everything it started.
  */
-export async function runSdkSetup(sdkPath: string, opts: SdkSetupOptions = {}): Promise<void> {
+export async function runSdkSetup(
+  sdkPath: string, opts: SdkSetupOptions = {}, onOutput?: (text: string) => void, token?: vscode.CancellationToken,
+): Promise<void> {
   const isWindows = process.platform === 'win32';
   const setupScript = path.join(sdkPath, isWindows ? 'setup.cmd' : 'setup.sh');
   const optsep = isWindows ? '/' : '-';
@@ -607,7 +656,10 @@ export async function runSdkSetup(sdkPath: string, opts: SdkSetupOptions = {}): 
   }
 
   for (const flags of invocations) {
-    const exitCode = await runSetupInvocation(setupScript, flags, sdkPath);
+    if (token?.isCancellationRequested) {
+      throw new WestSdkInstallError('cancelled', CANCELLED_MESSAGE);
+    }
+    const exitCode = await runSetupInvocation(setupScript, flags, sdkPath, onOutput, token);
     if (exitCode !== 0) {
       throw new WestSdkInstallError(
         'setup-failed',

@@ -1,18 +1,14 @@
 import vscode, {  } from "vscode";
 import { ZephyrBuildConfig } from "../models/ZephyrBuildConfig";
 import { ZephyrApplication } from "../models/ZephyrApplication";
+import { defaultNewConfigName, validateBuildConfigName } from "../utils/zephyr/buildConfigRules";
 
 export async function setConfigQuickStep(
   context: ZephyrBuildConfig,
   project?: ZephyrApplication
 ): Promise<string | undefined> {
 
-  let defaultName = 'primary';
-  if(project) {
-    if(project.buildConfigs.length > 0) {
-      defaultName = getNewConfigName(project.buildConfigs);
-    }
-  }
+  const defaultName = project ? defaultNewConfigName(project.buildConfigs) : 'primary';
 
   const inputBox = vscode.window.createInputBox();
   inputBox.title = `Enter build configuration name`;
@@ -21,23 +17,10 @@ export async function setConfigQuickStep(
   inputBox.ignoreFocusOut = true;
 
   inputBox.onDidChangeValue((input) => {
-    inputBox.validationMessage = undefined;
-
-    if (input.trim() === '') {
-      inputBox.validationMessage = 'Configuration name cannot be empty.';
-    }
-
-    const regex = /^[a-zA-Z0-9-_]+$/;
-    if (!regex.test(input)) {
-      inputBox.validationMessage = 'Configuration name can only contain letters, digits, "-", "_", and must not include spaces.';
-    }
-
-    if(project) {
-      const configNames = project.buildConfigs.map(config => config.name);
-      if(configNames.includes(input)) {
-        inputBox.validationMessage = `This "${input}" build configuration already exists`;
-      }
-    }
+    // The same rule the agent tools apply, so a name created by either one
+    // can be typed again here.
+    const configNames = project ? project.buildConfigs.map(config => config.name) : [];
+    inputBox.validationMessage = validateBuildConfigName(input, configNames);
   });
 
   return new Promise((resolve) => {
@@ -55,27 +38,4 @@ export async function setConfigQuickStep(
 
     inputBox.show();
   });
-}
-
-function getNewConfigName(configs: any[]): string {
-  const regex = /^setup(_(\d+))?$/;
-
-  const setupNumbers = configs
-    .map(config => {
-      const match = config.name.match(regex);
-      if (match && match[2]) {
-        return parseInt(match[2], 10);
-      } else if (config.name === 'setup') {
-        return 1;
-      }
-      return null;
-    })
-    .filter(num => num !== null) as number[];
-
-  if (setupNumbers.length === 0) {
-    return 'setup_2';
-  }
-
-  const latestSetupNumber = Math.max(...setupNumbers);
-  return `setup_${latestSetupNumber + 1}`;
 }

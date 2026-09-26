@@ -12,22 +12,21 @@ import { ZephyrCortexNativeDebugConfigurationProvider } from './providers/Zephyr
 import { attachDebugSessionLifecycle, disposeAllManagedServers } from './debug/backends/serverRegistry';
 import { ZW_DEBUG_TYPE } from './debug/backends/types';
 import { ZephyrBuildConfig } from './models/ZephyrBuildConfig';
-import { ArmGnuToolchainInstallation, GlobalZephyrSdkInstallation, normalizeArmGnuTargetTriple, normalizeZephyrSdkVariant, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
-import { checkAndCreateTasksJson, isReservedTaskLabel, removeCppToolsConfiguration, saveCustomTaskDefinition, setDefaultProjectSettings, setDefaultWorkspaceApplicationSettings, updateCppToolsConfiguration, updateTasks, ZephyrTaskDefinition, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
+import { ArmGnuToolchainInstallation, GlobalZephyrSdkInstallation, normalizeArmGnuTargetTriple, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
+import { checkAndCreateTasksJson, isReservedTaskLabel, saveCustomTaskDefinition, ZephyrTaskDefinition, ZephyrTaskProvider } from './providers/ZephyrTaskProvider';
 import {
 	applyCppToolsSuppression,
-	clearManagedClangdArtifacts,
 	ensureManagedClangdArguments,
-	getQueryDriverFallbackGlob,
-	getQueryDriverGlobForCompiler,
 	restartClangdServer,
-	updateClangdConfigFile,
 } from './utils/intellisense/clangdConfig';
-import { IntelliSenseProviderId } from './utils/intellisense/providerAvailability';
+import { collectQueryDriverGlobsFor, isSelectedIntelliSenseApplication, isSysbuildEnabled, setApplicationIntelliSenseProvider, syncIntellisenseAfterBuild } from './utils/intellisense/intellisenseSync';
+import { activateBuildConfig, getActiveOrDefaultBuildConfig, selectWorkspaceApplication, setBuildConfigSysbuild } from './utils/zephyr/buildConfigActions';
+import { canDeleteBuildConfig, resolveBuildDirToDelete } from './utils/zephyr/buildConfigRules';
+import { runSpdxPipeline, SpdxPipelineError, SpdxStep } from './utils/zephyr/spdxPipeline';
 import { changeBoardQuickStep } from './quicksteps/changeBoardQuickStep';
 import { changeEnvVarQuickStep } from './quicksteps/changeEnvVarQuickStep';
 import { changeWestWorkspaceQuickStep } from './quicksteps/changeWestWorkspaceQuickStep';
-import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_APPLICATIONS_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_SELECTED_APPLICATION_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_PROJECT_IAR_SETTING_KEY, ZEPHYR_PROJECT_INTELLISENSE_PROVIDER_SETTING_KEY, ZEPHYR_PROJECT_RUST_SETTING_KEY, ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
+import { ZEPHYR_BUILD_CONFIG_DEFAULT_RUNNER_SETTING_KEY, ZEPHYR_BUILD_CONFIG_CUSTOM_ARGS_SETTING_KEY, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, ZEPHYR_PROJECT_BOARD_SETTING_KEY, ZEPHYR_PROJECT_SDK_SETTING_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_APPLICATIONS_SETTING_KEY, ZEPHYR_WEST_WORKSPACE_SELECTED_APPLICATION_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_ACTIVATE_PATH_SETTING_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from './constants';
 import {
 	extractDebugBuildConfigName,
 	extractDebugDomainName,
@@ -36,13 +35,14 @@ import {
 	getRunner,
 	getFlashRunners,
 	getStaticFlashRunnerNames,
-	removeApplicationLaunchConfigurations,
 } from './utils/debugTools/debugUtils';
 import { readDomainsForBuildDir } from './utils/zephyr/domainsYamlUtils';
-import { ensureTerminalStickyScrollDisabled, executeTask, getConfiguredWorkbenchPath, getSubstitutedShellName, getTerminalDefaultProfile, isSpdxOnlyVenvPath, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
-import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, createWorkspaceVenv, download, extractTar, findManagedVenvDirectory, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, verifyHostTools, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
+import { ensureTerminalStickyScrollDisabled, executeTask, TaskLaunchDeclined, getSubstitutedShellName, getTerminalDefaultProfile, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
+import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, download, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
 import { probeHomebrew } from './utils/hostToolsStatusUtils';
+import { verifyHostTools } from './utils/hostToolsVerify';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
+import { createAndStoreWorkspaceVenv as createAndStoreWestWorkspaceVenv, deleteWestWorkspace, initWestWorkspace, removeWorkspaceVenv, setWorkspaceVenvPath, westInitProblem, westWorkspaceImportProblem } from './utils/zephyr/westWorkspaceSetup';
 import { CreateWestWorkspacePanel } from './panels/CreateWestWorkspacePanel';
 import { CreateZephyrAppPanel } from './panels/CreateZephyrAppPanel';
 import { DebugManagerPanel } from './panels/DebugManagerPanel';
@@ -55,43 +55,48 @@ import { ImportZephyrSDKPanel } from './panels/ImportZephyrSDKPanel';
 import { EclairManagerPanel } from './panels/EclairManagerPanel';
 import { KconfigManagerPanel } from './panels/KconfigManagerPanel';
 import { ZephyrDashboardViewProvider } from './panels/ZephyrDashboardViewProvider';
-import { changeToolchainQuickStep, ToolchainVariantPick } from "./quicksteps/changeToolchainQuickStep";
+import { McpController } from './mcp/host/mcpController';
+import { registerMcpCommands } from './mcp/host/commands';
+import { changeToolchainQuickStep } from "./quicksteps/changeToolchainQuickStep";
 import { changeIntellisenseQuickStep } from "./quicksteps/changeIntellisenseQuickStep";
-import { getBoardFromIdentifier } from './utils/zephyr/boardDiscovery';
 import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep';
 import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
 import { WestWorkspaceApplicationTreeItem, WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
 import { ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrCodeExplorerEntryTreeItem, ZephyrCodeExplorerTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigDefaultRunnerTreeItem, ZephyrConfigCustomArgsTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem, ZephyrConfigWestFlagsDTreeItem, ZephyrConfigWestFlagsDValueTreeItem } from './providers/ZephyrApplicationProvider';
-import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsCommandProvider';
-import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ToolchainInstallationsDataProvider, ToolchainInstallationTreeItem } from "./providers/ToolchainInstallationsDataProvider";
-import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
-import { extractSDK, generateSdkUrls, registerZephyrSDK, unregisterZephyrSDK, registerIARToolchain, unregisterIARToolchain, getMinimalToolchainsForVersion, friendlyToolchainId, isSdkV1OrLater, mapToolchainIdToPackage } from './utils/zephyr/sdkUtils';
-import { getGlobalSdkSources, refreshGlobalSdkDetection, resolveGlobalSdkForZephyr } from './utils/zephyr/globalSdkService';
-import { removeCmakeRegistryEntriesForSdk } from './utils/zephyr/globalSdkUtils';
+import { ZephyrManagersCommandProvider, ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
+import { extractSDK, registerZephyrSDK, registerIARToolchain, unregisterIARToolchain, getMinimalToolchainsForVersion, friendlyToolchainId, isSdkV1OrLater, normalizeIarToolchainRoot } from './utils/zephyr/sdkUtils';
+import { getGlobalSdkSources, refreshGlobalSdkDetection } from './utils/zephyr/globalSdkService';
 import { runSdkSetup, runWestSdkInstall, WestSdkInstallError } from './utils/zephyr/westSdkRunner';
+import { addGnuToolchainsToSdk, downloadRustLlvm, findGlobalSdkOfVersion, globalSdkComponents, installArmGnuToolchain, installLlvmIntoSdk, installRustupToolchain, installSdkToLocation, installStandaloneRustToolchain, planRustLlvm, rustCToolchainLinkError, sdkLlvmUrl, ToolchainInstallContext } from './utils/zephyr/toolchainInstall';
+import { deleteArmGnuToolchainFiles, deleteRustToolchainFiles, deleteZephyrSdkFiles, registeredRustToolchainEntry, unregisterZephyrSdk } from './utils/zephyr/toolchainRemoval';
 import os from 'os';
-import { checkSdkCompatibility, showSdkCompatWarning } from './utils/zephyr/sdkCompatUtils';
-import { registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zephyr/armGnuToolchainUtils';
-import { checkRustPrerequisites, findRustup, getManagedRustupRootDir, installManagedRustup, installMsvcBuildTools, installRustToolchainViaRustup, MSVC_BUILD_TOOLS_MANUAL_URL, resolveRustupToolchainName, uninstallRustToolchainViaRustup } from './utils/zephyr/rustupUtils';
-import { buildLlvmDownloadUrl, buildRustDistUrls, detectRustVersion, getLlvmTopLevelDirName, getRustDistTopLevelDirName, getRustHostTriple, installMingwToolchain, installRustDistComponents, isLlvmPath, registerRustToolchain, unregisterRustToolchain, updateRustToolchainLink, updateRustToolchainLlvm, WINLIBS_MANUAL_URL } from './utils/zephyr/rustToolchainUtils';
+import { showSdkCompatWarning } from './utils/zephyr/sdkCompatUtils';
+import { inferArmGnuToolchainVersion, normalizeArmGnuToolchainRoot, registerArmGnuToolchain, unregisterArmGnuToolchain } from './utils/zephyr/armGnuToolchainUtils';
+import { checkRustPrerequisites, findRustup, getManagedRustupRootDir, installManagedRustup, installMsvcBuildTools, MSVC_BUILD_TOOLS_MANUAL_URL, resolveRustupToolchainName } from './utils/zephyr/rustupUtils';
+import { getRustHostTriple, isLlvmPath, llvmRootFromSelection, unregisterRustToolchain, updateRustToolchainLink, updateRustToolchainLlvm } from './utils/zephyr/rustToolchainUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
-import { addWorkspaceFolder, copySampleSync, createWorkspaceFolderReference, deleteFolder, fileExists, findArmGnuToolchainInstallation, findConfigTask, findIarToolchainInstallation, getAllZephyrSdkInstallations, getExactWorkspaceFolder, getInternalDirRealPath, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, isGlobalSdkSettingValue, isWorkspaceFolder, msleep, pruneMissingToolchains, removeWorkspaceFolder, tryGetZephyrSdkInstallation, checkZinstallerVersion } from './utils/utils';
+import { addWorkspaceFolder, deleteFolder, fileExists, findConfigTask, getAllZephyrSdkInstallations, getExactWorkspaceFolder, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, msleep, pruneMissingToolchains, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './utils/env/zephyrEnvUtils';
-import { buildZephyrTerminalOptions, getZephyrEnvironment, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
+import { resolveEffectiveVenv } from './utils/env/venvResolution';
+import { validateVenvDirectory } from './utils/venvValidation';
+import { buildZephyrTerminalOptions, getZephyrTerminal, runCommandTerminal } from './utils/zephyr/zephyrTerminalUtils';
 import { createReport, verifySbomFile, verifySbomSet } from './sbomtotal/sbomVerifyService';
 import { syncAutoDetectEnv } from './utils/debugTools/autoDetectSyncUtils';
 import { initDtsIntegration } from './utils/zephyr/dtsIntegration';
-import { normalizeWestFlagDValue } from './utils/zephyr/westArgUtils';
+import { addWestFlagDValue, removeWestFlagDValue, replaceWestFlagDValue } from './utils/zephyr/westArgUtils';
 import {
 	findContainingWorkspaceApplicationEntry,
 	getEffectiveWorkspaceApplicationEntry,
 	isPathWithin as isPathWithinWorkspaceApplication,
 	readWorkspaceApplicationEntries,
-	removeWorkspaceApplicationEntry,
+	removeApplication,
 	resolveWorkspaceApplicationPath,
 	setSelectedWorkspaceApplicationPath,
 } from './utils/zephyr/workspaceApplications';
+import { ApplicationCreationError, createApplication, sdkCompatibilityFor } from './utils/zephyr/applicationCreation';
+import { ApplicationImportError, importApplication, importLocalApplication, IncompleteImportError } from './utils/zephyr/applicationImport';
+import { applyApplicationToolchain, setApplicationWestWorkspace } from './utils/zephyr/applicationToolchain';
 import {
 	addApplicationConfig,
 	deleteApplicationConfig,
@@ -127,76 +132,45 @@ function showPathSpaceError(label: string): boolean {
 // created/imported with a Zephyr SDK toolchain. Never throws, never blocks.
 function warnIfSdkIncompatible(westWorkspace: WestWorkspace, toolchainInstallation: unknown): void {
 	try {
-		if (toolchainInstallation instanceof ZephyrSdkInstallation) {
-			const sdkVersion = toolchainInstallation.version;
-			showSdkCompatWarning(checkSdkCompatibility(sdkVersion, westWorkspace.kernelUri.fsPath), sdkVersion);
+		const compat = sdkCompatibilityFor(westWorkspace, toolchainInstallation);
+		if (compat) {
+			showSdkCompatWarning(compat.verdict, compat.sdkVersion);
 		}
 	} catch {
 		// Unknown compatibility must never break app creation/import.
 	}
 }
 
-// Resolve the SDK installation a per-app 'sdk' setting value stands for: the
-// 'global' sentinel resolves (advisory, for display/IntelliSense/compat only)
-// to the detected global SDK the build would pick; paths resolve normally.
-function resolveSdkInstallationForSetting(sdkSettingValue: string | undefined, zephyrBasePath?: string): ZephyrSdkInstallation | undefined {
-	if (!sdkSettingValue) {
-		return undefined;
-	}
-	if (isGlobalSdkSettingValue(sdkSettingValue)) {
-		return resolveGlobalSdkForZephyr(zephyrBasePath);
-	}
-	return tryGetZephyrSdkInstallation(sdkSettingValue);
-}
-
-function hasApplicationToolchainChanged(project: ZephyrApplication, pick: ToolchainVariantPick): boolean {
-	if (project.toolchainVariant !== pick.selectedVariant) {
-		return true;
-	}
-
-	// The Rust toolchain rides on top of the C variant, so a pick can change
-	// it without changing the C side.
-	if ((project.selectedRustToolchainInstallation?.toolchainPath ?? '') !== (pick.rustToolchainPath ?? '')) {
-		return true;
-	}
-
-	if (pick.selectedVariant === 'gnuarmemb') {
-		return (project.selectedArmGnuToolchainInstallation?.toolchainPath ?? '') !== (pick.armGnuToolchainPath ?? '');
-	}
-
-	if (pick.selectedVariant === 'iar') {
-		return (project.selectedIarToolchainInstallation?.iarPath ?? '') !== (pick.iarToolchainPath ?? '');
-	}
-
-	return (project.zephyrSdkPath ?? '') !== (pick.zephyrSdkPath ?? '');
-}
-
 // A Rust toolchain only works alongside a C toolchain (Zephyr SDK or Arm
 // GNU); the wizard must always provide a valid link.
 function isValidRustCToolchainLink(cToolchainType?: string, cToolchainPath?: string): boolean {
-	if (!cToolchainType || !cToolchainPath) {
-		vscode.window.showErrorMessage("Missing linked C toolchain, please select a Zephyr SDK or ARM GNU toolchain.");
+	const error = rustCToolchainLinkError(cToolchainType, cToolchainPath);
+	if (error) {
+		vscode.window.showErrorMessage(error);
 		return false;
 	}
+	return true;
+}
 
-	if (cToolchainType === 'zephyr-sdk') {
-		if (!ZephyrSdkInstallation.isSdkPath(cToolchainPath)) {
-			vscode.window.showErrorMessage(`The linked Zephyr SDK is not valid: ${cToolchainPath}`);
-			return false;
-		}
-		return true;
-	}
-
-	if (cToolchainType === 'gnuarmemb') {
-		if (!ArmGnuToolchainInstallation.isArmGnuPath(cToolchainPath)) {
-			vscode.window.showErrorMessage(`The linked Arm GNU toolchain is not valid: ${cToolchainPath}`);
-			return false;
-		}
-		return true;
-	}
-
-	vscode.window.showErrorMessage(`Unknown linked C toolchain type: ${cToolchainType}`);
-	return false;
+// How the views run a toolchain install: their own progress notification and
+// warning toasts, deleteFolder, and the whole download folder emptied where
+// they always emptied it.
+function viewInstallContext(
+	context: vscode.ExtensionContext,
+	progress: vscode.Progress<{ message?: string; increment?: number }>,
+	token: vscode.CancellationToken,
+): ToolchainInstallContext {
+	return {
+		context,
+		reporter: {
+			report: value => progress.report(value),
+			warn: message => { vscode.window.showWarningMessage(message); },
+		},
+		token,
+		cleanupDownloads: () => cleanupDownloadDir(context),
+		removeFolder: async dir => deleteFolder(dir),
+		withRegistration: work => work(),
+	};
 }
 
 // Resolve the host LLVM linked to a Rust toolchain: validate a local
@@ -211,22 +185,13 @@ async function resolveRustLlvm(
 	downloadDestDir: string,
 	llvmVersion?: string,
 ): Promise<string | undefined> {
-	if (!llvmVersion) {
-		vscode.window.showErrorMessage("Missing LLVM version, please choose the LLVM release to download.");
+	const plan = planRustLlvm(downloadDestDir, llvmVersion);
+	if ('error' in plan) {
+		vscode.window.showErrorMessage(plan.error);
 		return undefined;
 	}
-
-	const downloadUrl = buildLlvmDownloadUrl(llvmVersion);
-	const topDir = getLlvmTopLevelDirName(llvmVersion);
-	if (!downloadUrl || !topDir) {
-		vscode.window.showErrorMessage("LLVM download is not supported on this platform; select a local LLVM instead.");
-		return undefined;
-	}
-
-	const llvmRoot = path.join(downloadDestDir, topDir);
-	if (isLlvmPath(llvmRoot)) {
-		// Already extracted by a previous import; reuse it.
-		return llvmRoot;
+	if (plan.kind === 'reuse') {
+		return plan.llvmRoot;
 	}
 
 	try {
@@ -245,22 +210,12 @@ async function resolveRustLlvm(
 		cancellable: true,
 	}, async (progress, token) => {
 		try {
-			progress.report({ message: `Download ${downloadUrl}` });
-			const downloadedFileUri = await download(downloadUrl, downloadDestDir, context, progress, token);
-
-			progress.report({ message: `Extracting ${downloadedFileUri}` });
-			await extractTar(downloadedFileUri.fsPath, downloadDestDir, progress, token);
-
-			if (!isLlvmPath(llvmRoot)) {
-				throw new Error("The extracted folder is not a valid LLVM installation (libclang not found).");
-			}
-			await cleanupDownloadDir(context);
-			resolved = llvmRoot;
+			resolved = await downloadRustLlvm(viewInstallContext(context, progress, token), plan);
 		} catch (e: any) {
 			if (e.code === 'ERR_STREAM_PREMATURE_CLOSE') {
 				vscode.window.showInformationMessage("Download cancelled");
 			} else {
-				vscode.window.showErrorMessage(`LLVM import failed [${downloadUrl}]: ${e?.message ?? e}`);
+				vscode.window.showErrorMessage(`LLVM import failed [${plan.url}]: ${e?.message ?? e}`);
 			}
 		}
 	});
@@ -268,72 +223,9 @@ async function resolveRustLlvm(
 	return resolved;
 }
 
-function inferArmGnuToolchainVersion(toolchainPath: string): string {
-	const match = /^arm-gnu-toolchain-([^-]+)-/i.exec(path.basename(toolchainPath));
-	return match?.[1] ?? '';
-}
-
 let zephyrTaskProvider: vscode.Disposable | undefined;
 let zephyrDebugConfigurationProvide: vscode.Disposable | undefined;
 const WEST_FLAGS_D_LABEL = 'west Flags -D';
-
-function addWestFlagDValue(config: ZephyrBuildConfig, value: string): boolean {
-	const normalized = normalizeWestFlagDValue(value);
-	if (!normalized || config.westFlagsD.includes(normalized)) {
-		return false;
-	}
-	config.westFlagsD.push(normalized);
-	return true;
-}
-
-function replaceWestFlagDValue(config: ZephyrBuildConfig, oldValue: string, value: string): boolean {
-	const normalized = normalizeWestFlagDValue(value);
-	if (!normalized) {
-		return false;
-	}
-
-	const index = config.westFlagsD.indexOf(oldValue);
-	if (index === -1) {
-		return false;
-	}
-
-	if (normalized !== oldValue) {
-		const duplicateIndex = config.westFlagsD.indexOf(normalized);
-		if (duplicateIndex !== -1) {
-			config.westFlagsD.splice(index, 1);
-			return true;
-		}
-	}
-
-	config.westFlagsD[index] = normalized;
-	return true;
-}
-
-function removeWestFlagDValue(config: ZephyrBuildConfig, value: string): boolean {
-	const index = config.westFlagsD.indexOf(value);
-	if (index === -1) {
-		return false;
-	}
-	config.westFlagsD.splice(index, 1);
-	return true;
-}
-
-function isValidVenvDirectory(venvPath: string): boolean {
-	const normalizedPath = path.normalize(venvPath);
-	const candidates = process.platform === 'win32'
-		? [
-			path.join(normalizedPath, 'Scripts', 'python.exe'),
-			path.join(normalizedPath, 'Scripts', 'Activate.ps1'),
-			path.join(normalizedPath, 'Scripts', 'activate.bat'),
-		]
-		: [
-			path.join(normalizedPath, 'bin', 'python'),
-			path.join(normalizedPath, 'bin', 'python3'),
-			path.join(normalizedPath, 'bin', 'activate'),
-		];
-
-	return candidates.some(candidate => fileExists(candidate));
-}
 
 async function showLocalVenvQuickStep(
 	workspaceFolder: vscode.WorkspaceFolder,
@@ -384,12 +276,9 @@ async function showLocalVenvQuickStep(
 			}
 
 			const resolvedValue = resolveConfiguredPath(trimmedValue, workspaceFolder) ?? trimmedValue;
-			if (isSpdxOnlyVenvPath(resolvedValue)) {
-				inputBox.validationMessage = 'The SPDX-only venv is ignored for normal runtime operations. Choose a normal venv such as .venv.';
-				return;
-			}
-			if (!isValidVenvDirectory(resolvedValue)) {
-				inputBox.validationMessage = 'Select the venv root folder containing Scripts/ or bin/.';
+			const invalidReason = validateVenvDirectory(resolvedValue);
+			if (invalidReason) {
+				inputBox.validationMessage = invalidReason;
 				return;
 			}
 
@@ -450,6 +339,8 @@ async function warnUnsupportedShellOnce(context: vscode.ExtensionContext): Promi
 		await context.globalState.update(SHELL_WARNING_DISMISSED_KEY, true);
 	}
 }
+
+let mcpController: McpController | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
 	// Migrate deprecated venv.activatePath to venv.path if present
@@ -532,9 +423,12 @@ export function activate(context: vscode.ExtensionContext) {
 	// Setup Tree view providers
 	const zephyrShortcutProvider = new ZephyrShortcutCommandProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-shortcuts', zephyrShortcutProvider);
+	vscode.window.registerTreeDataProvider('zephyr-workbench-managers', new ZephyrManagersCommandProvider());
 
 	const toolchainInstallationsProvider = new ToolchainInstallationsDataProvider();
-	vscode.window.registerTreeDataProvider('zephyr-workbench-sdk-explorer', toolchainInstallationsProvider);
+	const toolchainsView = vscode.window.createTreeView('zephyr-workbench-sdk-explorer', { treeDataProvider: toolchainInstallationsProvider });
+	toolchainInstallationsProvider.attachView(toolchainsView);
+	context.subscriptions.push(toolchainsView);
 
 	// Drop toolchains from the global settings whose install folder was removed from disk.
 	void pruneMissingToolchains()
@@ -841,14 +735,21 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	};
 
-	const zephyrToolsCommandProvider = new ZephyrHostToolsCommandProvider();
-	vscode.window.registerTreeDataProvider('zephyr-workbench-tools-explorer', zephyrToolsCommandProvider);
-
-	const zephyrResourcesCommandProvider = new ZephyrOtherResourcesCommandProvider();
-	vscode.window.registerTreeDataProvider('zephyr-workbench-other-resources', zephyrResourcesCommandProvider);
-
 	// Initialize DTS-LSP integration: creates contexts on .overlay/.dts opens
 	initDtsIntegration(context);
+
+	// AI agent integration (MCP). Wrapped so a failure here can never take the
+	// rest of the extension down, and never delays activation.
+	try {
+		mcpController = new McpController(context);
+		context.subscriptions.push({ dispose: () => void mcpController?.dispose() });
+		void mcpController.initialize().catch(error => {
+			console.error('Zephyr Workbench: MCP integration failed to start', error);
+		});
+		registerMcpCommands(context, () => mcpController);
+	} catch (error) {
+		console.error('Zephyr Workbench: MCP integration could not be created', error);
+	}
 
 	// Register commands
 	// TODO: Could be refactored / Optimized
@@ -857,6 +758,9 @@ export function activate(context: vscode.ExtensionContext) {
 		await refreshGlobalSdkDetection();
 		toolchainInstallationsProvider.refresh();
 	});
+	// Internal: redraw the toolchains view only, with no pruning and no detection.
+	// The MCP tools call it after they register a toolchain themselves.
+	vscode.commands.registerCommand('zephyr-workbench-sdk-explorer.refresh-view', () => toolchainInstallationsProvider.refresh());
 	vscode.commands.registerCommand('zephyr-workbench-west-workspace.refresh', () => westWorkspaceProvider.refresh());
 	vscode.commands.registerCommand('zephyr-workbench-app-explorer.refresh', () => {
 		zephyrAppProvider.refresh();
@@ -984,48 +888,32 @@ export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-app-explorer.import-local", async (projectPath, venvMode = 'global') => {
-			if (projectPath) {
-				CreateWestWorkspacePanel.currentPanel?.dispose();
-				if (ZephyrApplication.isApplicationPath(projectPath)) {
-					await withAppRefreshBatch(async () => {
-						await addWorkspaceFolder(projectPath);
-						// Optionally create a local venv for the imported project
-						if (venvMode === 'local') {
-							const workspaceFolder = getWorkspaceFolder(projectPath);
-							if (workspaceFolder) {
-								const venvPath = await createLocalVenv(context, workspaceFolder);
-								if (venvPath) {
-									await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-										.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
-								}
-							}
-						}
-
-						requestAppRefresh();
-					});
-				} else {
-					const containingWorkspace = vscode.workspace.workspaceFolders?.find(folder =>
-						WestWorkspace.isWestWorkspaceFolder(folder)
-						&& isPathWithinWorkspaceApplication(folder.uri.fsPath, projectPath)
-					);
-					const existingEntry = containingWorkspace
-						? findContainingWorkspaceApplicationEntry(containingWorkspace, projectPath)
-						: undefined;
-					if (containingWorkspace && existingEntry) {
-						const appPath = resolveWorkspaceApplicationPath(existingEntry, containingWorkspace) ?? projectPath;
-						await setSelectedWorkspaceApplicationPath(containingWorkspace, appPath);
-						requestAppRefresh();
-						westWorkspaceProvider.refresh();
-						vscode.window.showInformationMessage(`Using existing West workspace application '${path.basename(appPath)}'.`);
-					} else if (containingWorkspace && ZephyrApplication.isApplicationPathLike(projectPath)) {
-						vscode.window.showErrorMessage("This is a West workspace application. Select its workspace, board, and toolchain to link it first.");
-					} else {
-						vscode.window.showErrorMessage("The folder is not a Zephyr project");
-					}
-				}
-			} else {
+			if (!projectPath) {
 				vscode.window.showErrorMessage("The selected location folder is invalid");
+				return;
 			}
+			CreateWestWorkspacePanel.currentPanel?.dispose();
+			await withAppRefreshBatch(async () => {
+				let imported;
+				try {
+					imported = await importLocalApplication(projectPath, {
+						addFolder: addWorkspaceFolder,
+						// Optionally create a local venv for the imported project
+						createVenv: venvMode === 'local' ? folder => createLocalVenv(context, folder) : undefined,
+					});
+				} catch (error) {
+					if (error instanceof ApplicationImportError) {
+						vscode.window.showErrorMessage(error.message);
+						return;
+					}
+					throw error;
+				}
+				requestAppRefresh();
+				if (imported.outcome === 'selected') {
+					westWorkspaceProvider.refresh();
+					vscode.window.showInformationMessage(`Using existing West workspace application '${path.basename(imported.appRoot)}'.`);
+				}
+			});
 		})
 	);
 	context.subscriptions.push(
@@ -1062,27 +950,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			if (folder) {
-				const project = await getZephyrApplication(folder.uri.fsPath);
-				if (project.intellisenseProvider === 'clangd') {
-					// clangd apps do not carry a C_Cpp.default.compilerPath heuristic;
-					// re-resolve so the built config's exact compiler joins the
-					// query-driver allowlist (idempotent after the first build).
-					if (boardIdentifier.length === 0 && project.buildConfigs[0]) {
-						boardIdentifier = project.buildConfigs[0].boardIdentifier;
-					}
-					await updateCompileSetting(project, configName, boardIdentifier);
-				} else {
-					let gccPath: string | undefined = vscode.workspace.getConfiguration('C_Cpp', folder).get('default.compilerPath');
-					if (gccPath && gccPath.includes('undefined')) {
-						// Use-case if build out of APPLICATIONS view, means from WorkspaceFolder
-						// Cannot know board identifier beforehand so detect if after parsing settings.json
-						// On non-legacy project, assume first config can be the "master"
-						if (boardIdentifier.length === 0) {
-							boardIdentifier = project.buildConfigs[0].boardIdentifier;
-						}
-						await updateCompileSetting(project, configName, boardIdentifier);
-					}
-				}
+				await syncIntellisenseAfterBuild(folder, configName, boardIdentifier);
 			}
 		})
 	);
@@ -1125,24 +993,32 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.clean.delete', async (node: ZephyrApplicationTreeItem | ZephyrConfigTreeItem) => {
-			let buildDir: string = '';
-			if (node instanceof ZephyrApplicationTreeItem) {
-				if (node.project) {
-					buildDir = 'build';
+			let buildDir: string | undefined;
+			try {
+				if (node instanceof ZephyrApplicationTreeItem) {
+					if (node.project) {
+						buildDir = resolveBuildDirToDelete(node.project.appRootPath);
+					}
+				} else if (node instanceof ZephyrConfigTreeItem) {
+					if (node.buildConfig) {
+						buildDir = resolveBuildDirToDelete(node.project.appRootPath, node.buildConfig.name);
+					}
 				}
-			} else if (node instanceof ZephyrConfigTreeItem) {
-				if (node.buildConfig) {
-					buildDir = node.buildConfig.relativeBuildDir;
-				}
+			} catch (error) {
+				// A configuration name that is not a plain folder name would point
+				// the delete outside the build folder.
+				vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
+				return;
 			}
 
-			if (node.project && buildDir.length > 0) {
+			if (node.project && buildDir) {
+				const target = buildDir;
 				vscode.window.withProgress({
 					location: vscode.ProgressLocation.Notification,
 					title: "Deleting Zephyr Application build directory",
 					cancellable: false,
 				}, async () => {
-					deleteFolder(path.join(node.project.appRootPath, buildDir));
+					deleteFolder(target);
 				}
 				);
 			}
@@ -1562,60 +1438,49 @@ export function activate(context: vscode.ExtensionContext) {
 			return false;
 		}
 
-		const buildDirToDelete =
-			node instanceof ZephyrConfigTreeItem
-				? targetConfig.getBuildDir(project)
-				: path.join(project.appRootPath, 'build');
-
-		await vscode.window.withProgress({
-			location: vscode.ProgressLocation.Notification,
-			title: "Deleting Zephyr Application build directory",
-			cancellable: false,
-		}, async () => {
-			deleteFolder(buildDirToDelete);
-		});
-
-		const extraArgs = appendBuildOutputMeta(targetConfig.westArgs);
-		const previousActiveStates = project.buildConfigs.map(config => ({
-			config,
-			active: config.active,
-		}));
+		// Each step runs as it always has from this command: the west*Command
+		// functions throw on a failed SPDX step, and the build returns its code.
+		const runStep = async (step: SpdxStep): Promise<number | undefined> => {
+			switch (step.kind) {
+				case 'init':
+					await westSpdxInitCommand(project, westWorkspace, targetConfig);
+					return undefined;
+				case 'build':
+					return westBuildCommand(project, westWorkspace, step.spec.options.rawWestArgsOverride, targetConfig.name);
+				case 'generate':
+					await westSpdxGenerateCommand(project, westWorkspace, targetConfig, spdxVersion);
+					return undefined;
+			}
+		};
 
 		try {
-			await westSpdxInitCommand(project, westWorkspace, targetConfig);
-
-			for (const config of project.buildConfigs) {
-				config.active = config.name === targetConfig.name;
-			}
-
-			const buildExitCode = await westBuildCommand(project, westWorkspace, extraArgs, targetConfig.name);
-			if (typeof buildExitCode === 'number' && buildExitCode !== 0) {
-				vscode.window.showErrorMessage(`West build failed with exit code ${buildExitCode}. See the terminal output.`);
+			const outcome = await runSpdxPipeline(project, targetConfig, spdxVersion, runStep, {
+				deleteScope: node instanceof ZephyrConfigTreeItem ? 'config' : 'app',
+				deleteBuildDir: async (buildDirToDelete) => {
+					await vscode.window.withProgress({
+						location: vscode.ProgressLocation.Notification,
+						title: "Deleting Zephyr Application build directory",
+						cancellable: false,
+					}, async () => {
+						deleteFolder(buildDirToDelete);
+					});
+				},
+			});
+			if (!outcome.ok) {
+				vscode.window.showErrorMessage(`West build failed with exit code ${outcome.exitCode}. See the terminal output.`);
 				return false;
 			}
-			await westSpdxGenerateCommand(project, westWorkspace, targetConfig, spdxVersion);
 			return true;
 		} catch (error) {
-			vscode.window.showErrorMessage(`Error generating SPDX: ${error}`);
-			return false;
-		} finally {
-			for (const state of previousActiveStates) {
-				state.config.active = state.active;
+			if (!(error instanceof SpdxPipelineError)) {
+				throw error;
 			}
-		}
-
-		function appendBuildOutputMeta(input: string): string {
-			if (input) {
-				if (input.includes('CONFIG_BUILD_OUTPUT_META=y')) {
-					return input;
-				} else if (input.includes('--')) {
-					return `${input} -DCONFIG_BUILD_OUTPUT_META=y`;
-				} else {
-					return `${input} -- -DCONFIG_BUILD_OUTPUT_META=y`;
-				}
+			if (error.phase === 'resolve') {
+				vscode.window.showErrorMessage(error.message);
 			} else {
-				return '-- -DCONFIG_BUILD_OUTPUT_META=y';
+				vscode.window.showErrorMessage(`Error generating SPDX: ${error.reason}`);
 			}
+			return false;
 		}
 	}
 
@@ -1635,12 +1500,10 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-app-explorer.remove", async (node: ZephyrApplicationTreeItem) => {
 			if (node.project) {
+				await removeApplication(node.project, { removeFolder: removeWorkspaceFolder });
 				if (node.project.isWestWorkspaceApplication) {
-					await removeWorkspaceApplicationAndGeneratedConfig(node.project);
 					zephyrAppProvider.refresh();
 					westWorkspaceProvider.refresh();
-				} else {
-					removeWorkspaceFolder(node.project.appWorkspaceFolder);
 				}
 			}
 		})
@@ -1654,12 +1517,7 @@ export function activate(context: vscode.ExtensionContext) {
 						title: "Deleting Zephyr Application",
 						cancellable: false,
 					}, async () => {
-						if (node.project.isWestWorkspaceApplication) {
-							await removeWorkspaceApplicationAndGeneratedConfig(node.project);
-						} else {
-							removeWorkspaceFolder(node.project.appWorkspaceFolder);
-						}
-						deleteFolder(node.project.appRootPath);
+						await removeApplication(node.project, { removeFolder: removeWorkspaceFolder, deleteFiles: deleteFolder });
 						zephyrAppProvider.refresh();
 						westWorkspaceProvider.refresh();
 					}
@@ -1761,20 +1619,10 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 				const westWorkspacePath = await changeWestWorkspaceQuickStep(context, node.project);
 				if (westWorkspacePath) {
-					await vscode.workspace.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, node.project.appWorkspaceFolder).update(
-						ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY,
-						westWorkspacePath,
-						vscode.ConfigurationTarget.WorkspaceFolder,
-					);
+					const sdkCompat = await setApplicationWestWorkspace(node.project, westWorkspacePath);
 					// Non-blocking: warn if the app's SDK doesn't match the new workspace's Zephyr version
-					try {
-						const westWorkspace = getWestWorkspace(westWorkspacePath);
-						showSdkCompatWarning(
-							checkSdkCompatibility(node.project.zephyrSdkVersion, westWorkspace.kernelUri.fsPath),
-							node.project.zephyrSdkVersion,
-						);
-					} catch {
-						// Unknown compatibility must never break the workspace change.
+					if (sdkCompat) {
+						showSdkCompatWarning(sdkCompat.verdict, sdkCompat.sdkVersion);
 					}
 				}
 			}
@@ -1790,110 +1638,16 @@ export function activate(context: vscode.ExtensionContext) {
 				const pick = await changeToolchainQuickStep(context, node.project);
 				if (!pick) { return; }
 
-				const toolchainChanged = hasApplicationToolchainChanged(node.project, pick);
-				if (pick.selectedVariant === "zephyr" || pick.selectedVariant === "zephyr/llvm") {
-					await updateApplicationSettings(node.project, {
-						[ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY]: pick.selectedVariant,
-						[ZEPHYR_PROJECT_SDK_SETTING_KEY]: pick.zephyrSdkPath,
-						[ZEPHYR_PROJECT_IAR_SETTING_KEY]: undefined,
-						[ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY]: undefined,
-						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: pick.rustToolchainPath,
-					});
-
+				const result = await applyApplicationToolchain(node.project, pick, {
 					// Non-blocking: warn if the newly assigned SDK doesn't match the app's Zephyr version
-					if (pick.zephyrSdkPath) {
-						try {
-							const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
-							const effectiveSdk = resolveSdkInstallationForSetting(pick.zephyrSdkPath, westWorkspace.kernelUri.fsPath);
-							if (effectiveSdk) {
-								const sdkVersion = effectiveSdk.version;
-								showSdkCompatWarning(
-									checkSdkCompatibility(sdkVersion, westWorkspace.kernelUri.fsPath),
-									sdkVersion,
-								);
-							}
-						} catch {
-							// Unknown compatibility must never break the toolchain change.
-						}
-					}
-
-					if (pick.zephyrSdkPath) {
-						const activeConfig = node.project.buildConfigs.find(config => config.active) ?? node.project.buildConfigs[0];
-						if (activeConfig?.boardIdentifier) {
-							try {
-								const westWorkspace = getWestWorkspace(node.project.westWorkspaceRootPath);
-								const zephyrSdkInstallation = resolveSdkInstallationForSetting(pick.zephyrSdkPath, westWorkspace.kernelUri.fsPath);
-								if (zephyrSdkInstallation) {
-									const board = await getBoardFromIdentifier(
-										activeConfig.boardIdentifier,
-										westWorkspace,
-										node.project,
-										activeConfig
-									);
-									const socToolchainName = activeConfig.getKConfigValue(node.project, 'SOC_TOOLCHAIN_NAME');
-									if (isSelectedIntelliSenseApplication(node.project)) {
-										await applyIntelliSenseCompilerPath(
-											node.project,
-											zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, pick.selectedVariant),
-										);
-									}
-								}
-							} catch {
-								// Keep the variant change even if the compiler path cannot be refreshed yet.
-							}
-						}
-					}
-				} else if (pick.selectedVariant === 'gnuarmemb') {
-					const armGnuToolchainInstallation = pick.armGnuToolchainPath ? findArmGnuToolchainInstallation(pick.armGnuToolchainPath) : undefined;
-					if (!armGnuToolchainInstallation) {
-						vscode.window.showErrorMessage("The selected Arm GNU toolchain could not be found.");
-						return;
-					}
-
-					await updateApplicationSettings(node.project, {
-						[ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY]: armGnuToolchainInstallation.toolchainPath,
-						[ZEPHYR_PROJECT_SDK_SETTING_KEY]: undefined,
-						[ZEPHYR_PROJECT_IAR_SETTING_KEY]: undefined,
-						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: pick.rustToolchainPath,
-						[ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY]: "gnuarmemb",
-					});
-
-					try {
-						if (isSelectedIntelliSenseApplication(node.project)) {
-							await applyIntelliSenseCompilerPath(node.project, armGnuToolchainInstallation.compilerPath);
-						}
-					} catch {
-						// Keep the toolchain change even if the compiler path cannot be refreshed yet.
-					}
-				} else {
-					const iarToolchainInstallation = pick.iarToolchainPath ? findIarToolchainInstallation(pick.iarToolchainPath) : undefined;
-					await updateApplicationSettings(node.project, {
-						[ZEPHYR_PROJECT_TOOLCHAIN_SETTING_KEY]: "iar",
-						[ZEPHYR_PROJECT_IAR_SETTING_KEY]: pick.iarToolchainPath,
-						[ZEPHYR_PROJECT_SDK_SETTING_KEY]: iarToolchainInstallation?.zephyrSdkPath,
-						[ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY]: undefined,
-						[ZEPHYR_PROJECT_RUST_SETTING_KEY]: undefined,
-					});
-					if (pick.iarToolchainPath) {
-						try {
-							if (iarToolchainInstallation) {
-								if (isSelectedIntelliSenseApplication(node.project)) {
-									await applyIntelliSenseCompilerPath(node.project, iarToolchainInstallation.compilerPath);
-								}
-							}
-						} catch {
-							// Keep the toolchain change even if the compiler path cannot be refreshed yet.
-						}
-					}
+					onSdkCompat: sdkCompat => showSdkCompatWarning(sdkCompat.verdict, sdkCompat.sdkVersion),
+				});
+				if (result.error) {
+					vscode.window.showErrorMessage(result.error);
+					return;
 				}
-
-				if (toolchainChanged) {
-					try {
-						await removeApplicationLaunchConfigurations(node.project);
-					} catch (error) {
-						console.error('Failed to remove stale debug launch configurations after toolchain change', error);
-						vscode.window.showWarningMessage('Toolchain changed, but stale debug launch configurations could not be removed.');
-					}
+				if (result.launchCleanupWarning) {
+					vscode.window.showWarningMessage(result.launchCleanupWarning);
 				}
 			}
 		)
@@ -1908,22 +1662,7 @@ export function activate(context: vscode.ExtensionContext) {
 				const pick = await changeIntellisenseQuickStep(node.project);
 				if (!pick || pick === node.project.intellisenseProvider) { return; }
 
-				await updateApplicationSettings(node.project, {
-					[ZEPHYR_PROJECT_INTELLISENSE_PROVIDER_SETTING_KEY]: pick,
-				});
-
-				// Re-hydrate so the provider-aware sync sees the new choice, then
-				// reconfigure the active build config. Switching to clangd writes
-				// the .clangd file plus the folder-scoped cpptools suppression;
-				// switching back removes them and refreshes c_cpp_properties.json.
-				const refreshed = await getZephyrApplication(node.project.appRootPath);
-				const activeConfig = refreshed.buildConfigs.find(config => config.active) ?? refreshed.buildConfigs[0];
-				if (activeConfig) {
-					await updateBuildConfigCompileCommandsSetting(refreshed, activeConfig);
-					if (pick === 'cpptools') {
-						await updateCompileSetting(refreshed, activeConfig.name, activeConfig.boardIdentifier);
-					}
-				}
+				await setApplicationIntelliSenseProvider(node.project, pick);
 				requestAppRefresh();
 			}
 		)
@@ -1932,15 +1671,11 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.sysbuild.enable', async (node: any) => {
 			if (node instanceof ZephyrConfigTreeItem) {
-				node.buildConfig.sysbuild = 'true';
-				await saveApplicationConfigSetting(node.project, node.buildConfig.name, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, 'true');
-				await updateBuildConfigCompileCommandsSetting(node.project, node.buildConfig, true);
+				await setBuildConfigSysbuild(node.project, node.buildConfig, true);
 			} else if (node.project) {
 				const targetConfig = getActiveOrDefaultBuildConfig(node.project);
 				if (targetConfig) {
-					targetConfig.sysbuild = 'true';
-					await saveApplicationConfigSetting(node.project, targetConfig.name, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, 'true');
-					await updateBuildConfigCompileCommandsSetting(node.project, targetConfig, true);
+					await setBuildConfigSysbuild(node.project, targetConfig, true);
 				}
 			}
 			vscode.window.showInformationMessage("Sysbuild enabled.");
@@ -1950,15 +1685,11 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.sysbuild.disable', async (node: any) => {
 			if (node instanceof ZephyrConfigTreeItem) {
-				node.buildConfig.sysbuild = 'false';
-				await saveApplicationConfigSetting(node.project, node.buildConfig.name, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, 'false');
-				await updateBuildConfigCompileCommandsSetting(node.project, node.buildConfig, false);
+				await setBuildConfigSysbuild(node.project, node.buildConfig, false);
 			} else if (node.project) {
 				const targetConfig = getActiveOrDefaultBuildConfig(node.project);
 				if (targetConfig) {
-					targetConfig.sysbuild = 'false';
-					await saveApplicationConfigSetting(node.project, targetConfig.name, ZEPHYR_BUILD_CONFIG_SYSBUILD_SETTING_KEY, 'false');
-					await updateBuildConfigCompileCommandsSetting(node.project, targetConfig, false);
+					await setBuildConfigSysbuild(node.project, targetConfig, false);
 				}
 			}
 			vscode.window.showInformationMessage("Sysbuild disabled.");
@@ -2143,12 +1874,7 @@ export function activate(context: vscode.ExtensionContext) {
 				if (!workspaceFolder) {
 					return;
 				}
-				await setSelectedWorkspaceApplicationPath(workspaceFolder, node.appRootPath);
-				const project = await getZephyrApplication(node.appRootPath).catch(() => undefined);
-				const targetConfig = project ? getActiveOrDefaultBuildConfig(project) : undefined;
-				if (project && targetConfig) {
-					await updateBuildConfigCompileCommandsSetting(project, targetConfig);
-				}
+				await selectWorkspaceApplication(workspaceFolder, node.appRootPath);
 				zephyrAppProvider.refresh();
 				westWorkspaceProvider.refresh();
 				void dashboardViewProvider.refresh();
@@ -2160,11 +1886,7 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			await setSelectedWorkspaceApplicationPath(node.project.appWorkspaceFolder, node.project.appRootPath);
-			const targetConfig = getActiveOrDefaultBuildConfig(node.project);
-			if (targetConfig) {
-				await updateBuildConfigCompileCommandsSetting(node.project, targetConfig);
-			}
+			await selectWorkspaceApplication(node.project.appWorkspaceFolder, node.project.appRootPath, node.project);
 			zephyrAppProvider.refresh();
 			westWorkspaceProvider.refresh();
 			void dashboardViewProvider.refresh();
@@ -2232,12 +1954,7 @@ export function activate(context: vscode.ExtensionContext) {
 			// Reuse the same downstream side-effects as the tree-driven command:
 			// persist the selection, refresh IntelliSense for the newly active app,
 			// and refresh views/status bar so all surfaces agree.
-			await setSelectedWorkspaceApplicationPath(workspaceFolder, picked.appRootPath);
-			const project = await getZephyrApplication(picked.appRootPath).catch(() => undefined);
-			const targetConfig = project ? getActiveOrDefaultBuildConfig(project) : undefined;
-			if (project && targetConfig) {
-				await updateBuildConfigCompileCommandsSetting(project, targetConfig);
-			}
+			await selectWorkspaceApplication(workspaceFolder, picked.appRootPath);
 			zephyrAppProvider.refresh();
 			westWorkspaceProvider.refresh();
 			void dashboardViewProvider.refresh();
@@ -2246,7 +1963,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.delete-config', async (node: ZephyrConfigTreeItem) => {
-			if (node.project.buildConfigs.length <= 1) {
+			if (!canDeleteBuildConfig(node.project.buildConfigs.length)) {
 				vscode.window.showErrorMessage("One build configuration is required, firstly create a new one before deleting.");
 			} else {
 				if (node.buildConfig) {
@@ -2273,19 +1990,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('zephyr-workbench-app-explorer.activate-config', async (node: ZephyrConfigTreeItem) => {
 			if (node.buildConfig) {
-				node.buildConfig.active = true;
-
-				let activeIndex = 0;
-				for (let configIndex = 0; configIndex < node.project.buildConfigs.length; configIndex++) {
-					if (node.project.buildConfigs[configIndex].name !== node.buildConfig.name) {
-						await saveApplicationConfigSetting(node.project, node.project.buildConfigs[configIndex].name, 'active', '');
-					} else {
-						await saveApplicationConfigSetting(node.project, node.buildConfig.name, 'active', 'true');
-						await updateBuildConfigCompileCommandsSetting(node.project, node.buildConfig);
-						activeIndex = configIndex;
-					}
-				}
-				updateTasks(node.project.appWorkspaceFolder, node.buildConfig.name, activeIndex);
+				await activateBuildConfig(node.project, node.buildConfig);
 			}
 		})
 	);
@@ -2370,11 +2075,10 @@ export function activate(context: vscode.ExtensionContext) {
 						title: "Deleting West Workspace",
 						cancellable: false,
 					}, async () => {
-						let workspaceFolder = getWorkspaceFolder(node.westWorkspace.rootUri.fsPath);
-						if (workspaceFolder) {
-							removeWorkspaceFolder(workspaceFolder);
-							deleteFolder(node.westWorkspace.rootUri.fsPath);
-						}
+						await deleteWestWorkspace(node.westWorkspace.rootUri.fsPath, {
+							unregister: removeWorkspaceFolder,
+							remove: deleteFolder,
+						});
 					}
 					);
 				}
@@ -2424,7 +2128,7 @@ export function activate(context: vscode.ExtensionContext) {
 					const config = node.config;
 					const value = await changeEnvVarQuickStep(config, WEST_FLAGS_D_LABEL);
 					if (value) {
-						addWestFlagDValue(config, value);
+						addWestFlagDValue(config.westFlagsD, value);
 						await saveApplicationConfigSetting(project, config.name, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, config.westFlagsD);
 					}
 					zephyrAppProvider.refresh();
@@ -2474,7 +2178,7 @@ export function activate(context: vscode.ExtensionContext) {
 					const project = node.project;
 					const config = node.config;
 					const value = await changeEnvVarQuickStep(config, WEST_FLAGS_D_LABEL, node.flagValue);
-					if (value && replaceWestFlagDValue(config, node.flagValue, value)) {
+					if (value && replaceWestFlagDValue(config.westFlagsD, node.flagValue, value)) {
 						await saveApplicationConfigSetting(project, config.name, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, config.westFlagsD);
 					}
 					zephyrAppProvider.refresh();
@@ -2514,7 +2218,7 @@ export function activate(context: vscode.ExtensionContext) {
 				if (node.config) {
 					const project = node.project;
 					const config = node.config;
-					if (removeWestFlagDValue(config, node.flagValue)) {
+					if (removeWestFlagDValue(config.westFlagsD, node.flagValue)) {
 						await saveApplicationConfigSetting(project, config.name, ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY, config.westFlagsD);
 					}
 					zephyrAppProvider.refresh();
@@ -2576,7 +2280,6 @@ export function activate(context: vscode.ExtensionContext) {
 
                         toolchainInstallationsProvider.refresh();
                         zephyrShortcutProvider.refresh();
-                        zephyrToolsCommandProvider.refresh();
                         // If Host Tools Manager is open, refresh its content
                         try { HostToolsPanel.currentPanel?.refresh(); } catch {}
                         try { AdvancedHostToolsPanel.currentPanel?.refreshStatus(); } catch {}
@@ -2719,7 +2422,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 							toolchainInstallationsProvider.refresh();
 							zephyrShortcutProvider.refresh();
-							zephyrToolsCommandProvider.refresh();
 							// If Host Tools Manager is open, refresh its content
 							// (the Advanced panel refreshes itself after awaiting this command)
 							try { HostToolsPanel.currentPanel?.refresh(); } catch {}
@@ -2756,9 +2458,10 @@ export function activate(context: vscode.ExtensionContext) {
 				cancellable: true,
 			}, async () => {
 				try {
-					await verifyHostTools(context);
-					// Refresh Host Tools Manager to reflect parsed versions from check output
-					try { HostToolsPanel.currentPanel?.refresh(); } catch {}
+					const status = await verifyHostTools(context);
+					// Refresh Host Tools Manager from the versions the check just
+					// printed, instead of running the check a second time.
+					try { HostToolsPanel.currentPanel?.refresh(status?.checkedVersions); } catch {}
 				} catch (error) {
 
 					if (error instanceof Error) {
@@ -3048,18 +2751,13 @@ export function activate(context: vscode.ExtensionContext) {
 					cancellable: true,
 				}, async (progress, token) => {
 					try {
-						const toolchainPath = await installRustToolchainViaRustup(rustup, toolchainName, targets, progress, token);
-						const version = await detectRustVersion(toolchainPath);
-						const detectedTargets = RustToolchainInstallation.detectInstalledTargets(toolchainPath);
-
-						await registerRustToolchain({
-							toolchainPath,
-							version,
-							targets: detectedTargets.length ? detectedTargets : targets,
-							rustupToolchain: toolchainName,
+						await installRustupToolchain(viewInstallContext(context, progress, token), {
+							rustup,
+							toolchainName,
+							targets,
 							cToolchainType: cToolchainType as 'zephyr-sdk' | 'gnuarmemb',
-							cToolchainPath,
-							llvmPath: llvmRoot,
+							cToolchainPath: cToolchainPath as string,
+							llvmRoot,
 						});
 
 						if (process.platform === 'win32' && !prereq.ok) {
@@ -3146,8 +2844,6 @@ export function activate(context: vscode.ExtensionContext) {
 					return;
 				}
 
-				const urls = buildRustDistUrls(version, hostTriple, targets);
-
 				ImportZephyrSDKPanel.currentPanel?.dispose();
 
 				// Downloaded LLVM lands in the same Location as the toolchain.
@@ -3161,77 +2857,24 @@ export function activate(context: vscode.ExtensionContext) {
 					title: "Importing Rust Toolchain",
 					cancellable: true,
 				}, async (progress, token) => {
-					// Staging lives inside the install folder so component moves
-					// stay on the same volume.
-					const stagingPath = path.join(installPath, '.zw-rust-staging');
-					let currentUrl = '';
+					// The install deletes the partial folder itself when it fails.
+					const track = { currentUrl: '' };
 					try {
-						fs.mkdirSync(stagingPath, { recursive: true });
-						const incrementPerComponent = 90 / urls.length;
-
-						for (const url of urls) {
-							if (token.isCancellationRequested) {
-								throw Object.assign(new Error('Download cancelled'), { code: 'ERR_STREAM_PREMATURE_CLOSE' });
-							}
-							currentUrl = url;
-							progress.report({ message: `Download ${url}` });
-							const downloadedFileUri = await download(url, parentPath, context, progress, token);
-
-							progress.report({ message: `Extracting ${downloadedFileUri}` });
-							await extractTar(downloadedFileUri.fsPath, stagingPath, progress, token);
-
-							const extractedDir = path.join(stagingPath, getRustDistTopLevelDirName(url));
-							progress.report({
-								message: `Installing ${path.basename(extractedDir)}`,
-								increment: incrementPerComponent,
-							});
-							await installRustDistComponents(extractedDir, installPath);
-							deleteFolder(extractedDir);
-						}
-
-						if (!RustToolchainInstallation.isRustPath(installPath)) {
-							throw new Error("The assembled folder is not a valid Rust toolchain.");
-						}
-
-						// Optional Windows host dependencies: a full MinGW-w64 GCC
-						// (gcc, dlltool, ...) bundled inside the toolchain; its bin
-						// is added to PATH automatically once present.
-						if (installMingw && process.platform === 'win32') {
-							try {
-								progress.report({ message: "Installing MinGW-w64 host dependencies..." });
-								await installMingwToolchain(context, installPath, progress, token);
-							} catch (mingwError: any) {
-								if (mingwError.code === 'ERR_STREAM_PREMATURE_CLOSE') {
-									throw mingwError;
-								}
-								vscode.window.showWarningMessage(
-									`MinGW-w64 install failed: ${mingwError?.message ?? mingwError}. `
-									+ `Download it manually from ${WINLIBS_MANUAL_URL} (Win64/UCRT) and extract it to ${path.join(installPath, 'mingw64')}.`
-								);
-							}
-						}
-
-						await registerRustToolchain({
-							toolchainPath: installPath,
+						await installStandaloneRustToolchain(viewInstallContext(context, progress, token), {
 							version,
 							targets,
 							hostTriple,
+							parentPath,
+							installPath,
 							cToolchainType: cToolchainType as 'zephyr-sdk' | 'gnuarmemb',
-							cToolchainPath,
-							llvmPath: llvmRoot,
-						});
-						await cleanupDownloadDir(context);
-
-						progress.report({
-							message: "Importing Rust Toolchain done",
-							increment: 10,
-						});
+							cToolchainPath: cToolchainPath as string,
+							llvmRoot,
+							installMingw,
+						}, track);
 						toolchainInstallationsProvider.refresh();
 						vscode.window.showInformationMessage("Rust toolchain imported.");
 					} catch (e: any) {
-						// A partially assembled install is unusable and would block a
-						// retry because the destination must be empty.
-						deleteFolder(installPath);
+						const currentUrl = track.currentUrl;
 						if (e.code === 'ERR_STREAM_PREMATURE_CLOSE') {
 							vscode.window.showInformationMessage("Download cancelled");
 						} else if (e.code === 'TAR_BAD_ARCHIVE') {
@@ -3239,8 +2882,6 @@ export function activate(context: vscode.ExtensionContext) {
 						} else {
 							vscode.window.showErrorMessage(`Rust toolchain import failed${currentUrl ? ` [${currentUrl}]` : ''}: ${e?.message ?? e}`);
 						}
-					} finally {
-						deleteFolder(stagingPath);
 					}
 				});
 			}
@@ -3269,59 +2910,15 @@ export function activate(context: vscode.ExtensionContext) {
 					cancellable: true,
 				}, async (progress, token) => {
 					let toolchains = listToolchains.split(' ');
-					let urls = generateSdkUrls(sdkType, sdkVersion, toolchains, includeLlvm);
 
 					try {
-						let url = urls[0];
-						if (url) {
-							// Download SDK then extract SDK and get the first level extracted folder
-							progress.report({
-								message: `Download ${url}`,
-								increment: 0,
-							});
-							let downloadedFileUri = await download(url, parentPath, context, progress, token);
-
-							progress.report({
-								message: `Extracting ${downloadedFileUri}`,
-								increment: 40,
-							});
-							let zephyrSDKPath = await extractSDK(downloadedFileUri.fsPath, parentPath, progress, token);
-
-							// If toolchain urls exist, download them
-							if (urls.length > 1) {
-								const gnuToolchainDestPath =
-									(sdkVersion.startsWith('1.') || sdkVersion.startsWith('v1.'))
-										? path.join(zephyrSDKPath, 'gnu')
-										: zephyrSDKPath;
-								if (!fs.existsSync(gnuToolchainDestPath)) {
-									fs.mkdirSync(gnuToolchainDestPath, { recursive: true });
-								}
-								for (let i = 1; i < urls.length; i++) {
-									progress.report({
-										message: `Download ${urls[i]}`,
-									});
-									let downloadedFileUri = await download(urls[i], parentPath, context, progress, token);
-									progress.report({
-										message: `Extracting ${downloadedFileUri}`,
-									});
-									// LLVM archive already contains its llvm/ top-level folder; extract at SDK root.
-									const isLlvm = urls[i].includes('/toolchain_llvm_');
-									const destPath = isLlvm ? zephyrSDKPath : gnuToolchainDestPath;
-									await extractSDK(downloadedFileUri.fsPath, destPath, progress, token);
-								}
-							}
-
-							progress.report({
-								message: `Importing SDK done`,
-								increment: 60,
-							});
-
-							// Register the SDK into settings
-							if (zephyrSDKPath) {
-								await registerZephyrSDK(zephyrSDKPath);
-								await cleanupDownloadDir(context);
-							}
-						}
+						await installSdkToLocation(viewInstallContext(context, progress, token), {
+							sdkType,
+							sdkVersion,
+							toolchains,
+							parentPath,
+							includeLlvm,
+						});
 					} catch (e: any) {
 						if (e.code === 'ERR_STREAM_PREMATURE_CLOSE') {
 							vscode.window.showInformationMessage("Download cancelled");
@@ -3367,15 +2964,12 @@ export function activate(context: vscode.ExtensionContext) {
 			const selectedToolchains: string[] = typeof listToolchains === 'string'
 				? listToolchains.split(' ').filter((toolchain: string) => toolchain.length > 0)
 				: (Array.isArray(listToolchains) ? listToolchains : []);
-			const gnuToolchains = sdkType === 'minimal'
-				? selectedToolchains.map(mapToolchainIdToPackage)
-				: undefined;
+			const components = globalSdkComponents(sdkType, selectedToolchains);
 
 			// An SDK of this version that is already globally discoverable is reused
 			// (like west sdk install does): its setup script still runs with the
 			// requested components, downloading any missing toolchains into it.
-			const detected = await refreshGlobalSdkDetection();
-			const existing = detected.find(sdk => sdk.version.trim() === version);
+			const existing = await findGlobalSdkOfVersion(version);
 			if (existing) {
 				await vscode.window.withProgress({
 					location: vscode.ProgressLocation.Notification,
@@ -3384,7 +2978,7 @@ export function activate(context: vscode.ExtensionContext) {
 				}, async () => {
 					try {
 						await runSdkSetup(existing.rootUri.fsPath, {
-							gnuToolchains: sdkType === 'minimal' ? gnuToolchains : ['all'],
+							gnuToolchains: components.setupGnuToolchains,
 							llvm: !!includeLlvm,
 							hostTools: true,
 						});
@@ -3411,8 +3005,8 @@ export function activate(context: vscode.ExtensionContext) {
 					const result = await runWestSdkInstall(context, {
 						version,
 						installBase,
-						gnuToolchains,
-						noGnuToolchains: sdkType === 'minimal' && (gnuToolchains?.length ?? 0) === 0,
+						gnuToolchains: components.gnuToolchains,
+						noGnuToolchains: components.noGnuToolchains,
 						llvm: !!includeLlvm,
 					}, progress, token);
 					await refreshGlobalSdkDetection();
@@ -3572,36 +3166,12 @@ export function activate(context: vscode.ExtensionContext) {
 					cancellable: true,
 				}, async (progress, token) => {
 					try {
-						progress.report({
-							message: `Download ${downloadUrl}`,
-							increment: 0,
-						});
-						const downloadedFileUri = await download(downloadUrl, parentPath, context, progress, token);
-
-						progress.report({
-							message: `Extracting ${downloadedFileUri}`,
-							increment: 60,
-						});
-						let toolchainPath = await extractSDK(downloadedFileUri.fsPath, installPath, progress, token);
-						if (!ArmGnuToolchainInstallation.isArmGnuPath(toolchainPath) && ArmGnuToolchainInstallation.isArmGnuPath(installPath)) {
-							toolchainPath = installPath;
-						}
-
-						if (toolchainPath) {
-							if (!ArmGnuToolchainInstallation.isArmGnuPath(toolchainPath)) {
-								throw new Error("The extracted folder is not a valid Arm GNU toolchain.");
-							}
-							await registerArmGnuToolchain({
-								toolchainPath,
-								targetTriple: targetTriple as 'arm-none-eabi' | 'aarch64-none-elf',
-								version,
-							});
-							await cleanupDownloadDir(context);
-						}
-
-						progress.report({
-							message: "Importing ARM GNU Toolchain done",
-							increment: 40,
+						await installArmGnuToolchain(viewInstallContext(context, progress, token), {
+							version,
+							targetTriple: targetTriple as 'arm-none-eabi' | 'aarch64-none-elf',
+							downloadUrl,
+							parentPath,
+							installPath,
 						});
 						toolchainInstallationsProvider.refresh();
 						vscode.window.showInformationMessage("ARM GNU toolchain imported.");
@@ -3628,10 +3198,7 @@ export function activate(context: vscode.ExtensionContext) {
 					return;
 				}
 
-				let candidate = toolchainPath;
-				if (path.basename(candidate).toLowerCase() === "bin") {
-					candidate = path.dirname(candidate);
-				}
+				const candidate = normalizeArmGnuToolchainRoot(toolchainPath);
 
 				if (!ArmGnuToolchainInstallation.isArmGnuPath(candidate)) {
 					vscode.window.showErrorMessage("The folder is not a valid Arm GNU toolchain.");
@@ -3671,14 +3238,7 @@ export function activate(context: vscode.ExtensionContext) {
 					return;
 				}
 
-				let candidate = iarPath;
-				if (path.basename(candidate).toLowerCase() === "arm") {
-					const parent = path.dirname(candidate);
-					if (fs.existsSync(path.join(parent, "common"))) {
-						candidate = parent;
-					}
-				}
-				iarPath = candidate;
+				iarPath = normalizeIarToolchainRoot(iarPath);
 
 				if (!IarToolchainInstallation.isIarPath(iarPath)) {
 					vscode.window.showErrorMessage("The folder is not a valid IAR SDK.");
@@ -3708,10 +3268,9 @@ export function activate(context: vscode.ExtensionContext) {
 			if (node.installation) {
 				if (await showConfirmMessage(`Remove ${node.installation.name} from workspace?`)) {
 					if (node.installation instanceof ZephyrSdkInstallation) {
-						await unregisterZephyrSDK(node.installation.rootUri.fsPath);
 						// A removed listSDKs entry may still be globally discoverable;
-						// refresh detection so it reappears as a [global] item right away.
-						await refreshGlobalSdkDetection();
+						// detection runs again so it reappears as a [global] item right away.
+						await unregisterZephyrSdk(node.installation.rootUri.fsPath);
 						toolchainInstallationsProvider.refresh();
 					} else {
 						vscode.window.showWarningMessage("Cannot remove IAR Toolchain using this command.");
@@ -3740,15 +3299,15 @@ export function activate(context: vscode.ExtensionContext) {
 					cancellable: false,
 				},
 				async () => {
-					try {
-						deleteFolder(sdkPath);
-					} catch (e: any) {
-						vscode.window.showErrorMessage(`Could not delete ${sdkPath}: ${e?.message ?? e}`);
-					}
-					// Clean up the registration even if the folder was already gone,
-					// so no stale registry entry is left behind.
-					await removeCmakeRegistryEntriesForSdk(sdkPath);
-					await refreshGlobalSdkDetection();
+					// The registry entries go even if the folder was already gone,
+					// so no stale registration is left behind.
+					await deleteZephyrSdkFiles(sdkPath, {
+						unregister: false,
+						remove: deleteFolder,
+						onRemoveError: (e: any) => {
+							vscode.window.showErrorMessage(`Could not delete ${sdkPath}: ${e?.message ?? e}`);
+						},
+					});
 					toolchainInstallationsProvider.refresh();
 					void CreateZephyrAppPanel.currentPanel?.refreshToolchains();
 					if (sources.includes('env')) {
@@ -3806,25 +3365,8 @@ export function activate(context: vscode.ExtensionContext) {
 				title: `Adding toolchain to Zephyr SDK ${version}`,
 				cancellable: true,
 			}, async (progress, token) => {
-				const dest = sdk.getGnuToolchainsRootPath();
 				try {
-					if (!fs.existsSync(dest)) {
-						fs.mkdirSync(dest, { recursive: true });
-					}
-					for (const toolchain of selected) {
-						// generateSdkUrls returns [baseMinimalSdkUrl, toolchainUrl]; keep only the toolchain package.
-						const url = generateSdkUrls('minimal', version, [toolchain], false)[1];
-						if (!url) {
-							continue;
-						}
-						progress.report({ message: `Download ${url}` });
-						const downloadedFileUri = await download(url, dest, context, progress, token);
-						progress.report({ message: `Extracting ${downloadedFileUri.fsPath}` });
-						await extractSDK(downloadedFileUri.fsPath, dest, progress, token);
-						// The extracted `<prefix>/` directory is the source of truth for the tree;
-						// a refresh below re-scans the toolchains root and picks it up.
-					}
-					await cleanupDownloadDir(context);
+					await addGnuToolchainsToSdk(viewInstallContext(context, progress, token), sdk, selected);
 					vscode.window.showInformationMessage(`Added ${selected.join(', ')} to Zephyr SDK ${version}.`);
 				} catch (e: any) {
 					if (e.code === 'ERR_STREAM_PREMATURE_CLOSE') {
@@ -3858,8 +3400,7 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			// generateSdkUrls returns [baseMinimalSdkUrl, llvmUrl]; keep only the LLVM package.
-			const url = generateSdkUrls('minimal', version, [], true)[1];
+			const url = sdkLlvmUrl(version);
 			if (!url) {
 				vscode.window.showErrorMessage("No LLVM toolchain package is available for this platform/version.");
 				return;
@@ -3870,14 +3411,8 @@ export function activate(context: vscode.ExtensionContext) {
 				title: `Installing LLVM toolchain for Zephyr SDK ${version}`,
 				cancellable: true,
 			}, async (progress, token) => {
-				// The LLVM archive already contains its own llvm/ folder, so extract at the SDK root.
-				const dest = sdk.rootUri.fsPath;
 				try {
-					progress.report({ message: `Download ${url}` });
-					const downloadedFileUri = await download(url, dest, context, progress, token);
-					progress.report({ message: `Extracting ${downloadedFileUri.fsPath}` });
-					await extractSDK(downloadedFileUri.fsPath, dest, progress, token);
-					await cleanupDownloadDir(context);
+					await installLlvmIntoSdk(viewInstallContext(context, progress, token), sdk, url);
 					vscode.window.showInformationMessage(`LLVM toolchain installed for Zephyr SDK ${version}.`);
 				} catch (e: any) {
 					if (e.code === 'ERR_STREAM_PREMATURE_CLOSE') {
@@ -3909,12 +3444,9 @@ export function activate(context: vscode.ExtensionContext) {
 							cancellable: false,
 						},
 						async () => {
-							await unregisterZephyrSDK(sdkPath);
-							deleteFolder(sdkPath);
 							// Good practice: if this SDK was also registered in the CMake
-							// package registry, do not leave a stale entry behind.
-							await removeCmakeRegistryEntriesForSdk(sdkPath);
-							await refreshGlobalSdkDetection();
+							// package registry, no stale entry is left behind.
+							await deleteZephyrSdkFiles(sdkPath, { unregister: true, remove: deleteFolder });
 							toolchainInstallationsProvider.refresh();
 						}
 					);
@@ -3977,8 +3509,7 @@ export function activate(context: vscode.ExtensionContext) {
 						cancellable: false,
 					},
 					async () => {
-						await unregisterArmGnuToolchain(toolchainPath);
-						deleteFolder(toolchainPath);
+						await deleteArmGnuToolchainFiles(toolchainPath, { remove: deleteFolder });
 						toolchainInstallationsProvider.refresh();
 					}
 				);
@@ -4014,10 +3545,7 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 
 				const toolchainPath = node.installation.toolchainPath;
-				const registeredEntries = vscode.workspace
-					.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY)
-					.get<any[]>(ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY, []);
-				const rustupToolchain = registeredEntries.find(entry => entry.toolchainPath === toolchainPath)?.rustupToolchain;
+				const rustupToolchain = registeredRustToolchainEntry(toolchainPath)?.rustupToolchain;
 
 				vscode.window.withProgress(
 					{
@@ -4026,18 +3554,10 @@ export function activate(context: vscode.ExtensionContext) {
 						cancellable: false,
 					},
 					async () => {
-						let uninstalled = false;
-						if (rustupToolchain) {
-							try {
-								uninstalled = await uninstallRustToolchainViaRustup(toolchainPath, rustupToolchain);
-							} catch (error: any) {
-								vscode.window.showWarningMessage(`rustup uninstall failed, deleting the folder instead: ${error?.message ?? error}`);
-							}
-						}
-						if (!uninstalled) {
-							deleteFolder(toolchainPath);
-						}
-						await unregisterRustToolchain(toolchainPath);
+						await deleteRustToolchainFiles(toolchainPath, rustupToolchain, {
+							remove: deleteFolder,
+							warn: message => { vscode.window.showWarningMessage(message); },
+						});
 						toolchainInstallationsProvider.refresh();
 					}
 				);
@@ -4146,11 +3666,7 @@ export function activate(context: vscode.ExtensionContext) {
 				});
 				if (!uris?.length) {return;}
 
-				let candidate = uris[0].fsPath;
-				const base = path.basename(candidate).toLowerCase();
-				if (base === 'bin' || base === 'lib') {
-					candidate = path.dirname(candidate);
-				}
+				const candidate = llvmRootFromSelection(uris[0].fsPath);
 				if (!isLlvmPath(candidate)) {
 					vscode.window.showErrorMessage("The folder is not a valid LLVM installation (libclang not found).");
 					return;
@@ -4277,78 +3793,50 @@ export function activate(context: vscode.ExtensionContext) {
 					title: "Adding application...",
 					cancellable: false,
 				}, async (progress, token) => {
-					let projLoc: string;
-					if (projectLoc.length === 0) {
-						projLoc = zephyrSample.rootDir.fsPath;
-					} else {
-						if (isWorkspaceApplication && !fileExists(projectLoc)) {
-							fs.mkdirSync(projectLoc, { recursive: true });
-						}
-						let projectPath = path.join(projectLoc, projectName);
-						if (fileExists(projectPath)) {
-							vscode.window.showErrorMessage(`The folder [${projectPath}] already exists. Please change the project name or its location.`);
+					let created;
+					try {
+						created = await createApplication({
+							westWorkspace,
+							templatePath: zephyrSample.rootDir.fsPath,
+							board: zephyrBoard,
+							toolchain: toolchainInstallation,
+							kind: isWorkspaceApplication ? 'workspace' : 'freestanding',
+							parentDir: projectLoc,
+							name: projectName,
+							toolchainVariant,
+							settingsPathMode,
+							intellisenseProvider,
+							debugPreset,
+							createVenv: venvMode === 'local'
+								? (folder, westWorkspaceRootPath, appRootPath) => createLocalVenv(context, folder, westWorkspaceRootPath, appRootPath)
+								: undefined,
+						});
+					} catch (error) {
+						if (error instanceof ApplicationCreationError) {
+							vscode.window.showErrorMessage(error.message);
+							if (error.code === 'settings-missing') {
+								throw error;
+							}
 							return;
 						}
-						projLoc = copySampleSync(zephyrSample.rootDir.fsPath, projectPath);
+						throw error;
 					}
 
-					if (isWorkspaceApplication) {
-						const workspaceFolder = getWorkspaceFolder(westWorkspace.rootUri.fsPath);
-						if (!workspaceFolder) {
-							vscode.window.showErrorMessage('The selected west workspace is not open in VS Code.');
-							return;
-						}
-
-						if (debugPreset) {
-							await debugPresetContent(projLoc);
-						}
-
-						let venvPath: string | undefined;
-						if (venvMode === 'local') {
-							venvPath = await createLocalVenv(context, workspaceFolder, westWorkspace.rootUri.fsPath, projLoc);
-						}
-
-						await setDefaultWorkspaceApplicationSettings(workspaceFolder, projLoc, westWorkspace, zephyrBoard, toolchainInstallation, {
-							toolchainVariant,
-							intellisenseProvider,
-							venvPath,
-							pathMode: settingsPathMode,
-						});
+					if (created.kind === 'workspace') {
 						CreateZephyrAppPanel.currentPanel?.dispose();
 
-						vscode.window.showInformationMessage(`Application '${path.basename(projLoc)}' added to ${westWorkspace.name} !`);
+						vscode.window.showInformationMessage(`Application '${path.basename(created.appRoot)}' added to ${westWorkspace.name} !`);
 						requestAppRefresh();
 						westWorkspaceProvider.refresh();
 						return;
 					}
 
-					// Freestanding settings are app-local by contract. Write them
-					// against the new path directly; adding the folder to VS Code is
-					// a UI step and may lag/fail when the current window is a plain
-					// folder window rather than a saved multi-root workspace.
-					const workspaceFolder = createWorkspaceFolderReference(projLoc);
-					if (debugPreset) {
-						await debugPresetContent(workspaceFolder.uri.fsPath);
-					}
-					let venvPath: string | undefined;
-					if (venvMode === 'local') {
-						venvPath = await createLocalVenv(context, workspaceFolder, westWorkspace.rootUri.fsPath);
-					}
-
-					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, {
-						toolchainVariant,
-						intellisenseProvider,
-						venvPath,
-						pathMode: settingsPathMode,
-					});
-					await assertFreestandingApplicationFilesCreated(projLoc);
-
-					const addedToWorkspace = await addWorkspaceFolder(projLoc);
+					const addedToWorkspace = await addWorkspaceFolder(created.appRoot);
 					CreateZephyrAppPanel.currentPanel?.dispose();
 
-					vscode.window.showInformationMessage(`Application '${workspaceFolder.name}' added !`);
-					if (!addedToWorkspace && !getExactWorkspaceFolder(projLoc)) {
-						vscode.window.showWarningMessage(`Application settings were created, but '${workspaceFolder.name}' could not be added as a VS Code workspace folder.`);
+					vscode.window.showInformationMessage(`Application '${created.settingsFolder.name}' added !`);
+					if (!addedToWorkspace && !getExactWorkspaceFolder(created.appRoot)) {
+						vscode.window.showWarningMessage(`Application settings were created, but '${created.settingsFolder.name}' could not be added as a VS Code workspace folder.`);
 					}
 					requestAppRefresh();
 				});
@@ -4369,73 +3857,57 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 
 			await withAppRefreshBatch(async () => {
-				const detectedWestWorkspace = westWorkspace
-					?? getWestWorkspaces().find(candidate => isPathWithinWorkspaceApplication(candidate.rootUri.fsPath, projectLoc));
-				const isWorkspaceApplication = !!detectedWestWorkspace
-					&& isPathWithinWorkspaceApplication(detectedWestWorkspace.rootUri.fsPath, projectLoc);
-
-				if (isWorkspaceApplication && detectedWestWorkspace) {
-					const workspaceFolder = getWorkspaceFolder(detectedWestWorkspace.rootUri.fsPath);
-					if (!workspaceFolder) {
-						vscode.window.showErrorMessage('The detected west workspace is not open in VS Code.');
-						return;
-					}
-
-					if (!zephyrBoard || !toolchainInstallation) {
-						const existingEntry = findContainingWorkspaceApplicationEntry(workspaceFolder, projectLoc);
-						if (existingEntry) {
-							const appPath = resolveWorkspaceApplicationPath(existingEntry, workspaceFolder) ?? projectLoc;
-							await setSelectedWorkspaceApplicationPath(workspaceFolder, appPath);
-							vscode.window.showInformationMessage(`Using existing West workspace application '${path.basename(appPath)}'.`);
-							requestAppRefresh();
-							westWorkspaceProvider.refresh();
-							return;
-						}
-						vscode.window.showErrorMessage('Importing a West workspace application requires a board and toolchain the first time it is linked.');
-						return;
-					}
-
-					let venvPath: string | undefined;
-					if (venvMode === 'local') {
-						venvPath = await createLocalVenv(context, workspaceFolder, detectedWestWorkspace.rootUri.fsPath, projectLoc);
-					}
-
-					await setDefaultWorkspaceApplicationSettings(workspaceFolder, projectLoc, detectedWestWorkspace, zephyrBoard, toolchainInstallation, {
+				let imported;
+				try {
+					imported = await importApplication({
+						appRoot: projectLoc,
+						westWorkspace,
+						board: zephyrBoard,
+						toolchain: toolchainInstallation,
 						toolchainVariant,
+						settingsPathMode,
 						intellisenseProvider,
-						venvPath,
-						pathMode: settingsPathMode,
+						createVenv: venvMode === 'local'
+							? (folder, westWorkspaceRootPath, appRootPath) => createLocalVenv(context, folder, westWorkspaceRootPath, appRootPath)
+							: undefined,
 					});
-					warnIfSdkIncompatible(detectedWestWorkspace, toolchainInstallation);
+				} catch (error) {
+					if (error instanceof IncompleteImportError) {
+						// The wizard only sends it to keep the existing settings.
+						return;
+					}
+					if (error instanceof ApplicationImportError) {
+						vscode.window.showErrorMessage(error.message);
+						return;
+					}
+					if (error instanceof ApplicationCreationError) {
+						vscode.window.showErrorMessage(error.message);
+					}
+					throw error;
+				}
+
+				if (imported.outcome === 'selected') {
+					vscode.window.showInformationMessage(`Using existing West workspace application '${path.basename(imported.appRoot)}'.`);
+					requestAppRefresh();
+					westWorkspaceProvider.refresh();
+					return;
+				}
+
+				if (imported.kind === 'workspace') {
+					warnIfSdkIncompatible(imported.westWorkspace, toolchainInstallation);
 					vscode.window.showInformationMessage(`Importing West workspace application '${path.basename(projectLoc)}' done`);
 					requestAppRefresh();
 					westWorkspaceProvider.refresh();
 					return;
 				}
 
-				let workspaceFolder = createWorkspaceFolderReference(projectLoc);
-				if (workspaceFolder && westWorkspace && zephyrBoard && toolchainInstallation) {
-					let venvPath: string | undefined;
-					if (venvMode === 'local') {
-						venvPath = await createLocalVenv(context, workspaceFolder, westWorkspace.rootUri.fsPath);
-					}
-
-					await setDefaultProjectSettings(workspaceFolder, westWorkspace, zephyrBoard, toolchainInstallation, {
-						toolchainVariant,
-						intellisenseProvider,
-						venvPath,
-						pathMode: settingsPathMode,
-					});
-					await assertFreestandingApplicationFilesCreated(projectLoc);
-
-					const addedToWorkspace = await addWorkspaceFolder(projectLoc);
-					warnIfSdkIncompatible(westWorkspace, toolchainInstallation);
-					vscode.window.showInformationMessage(`Importing Application '${workspaceFolder.name}' done`);
-					if (!addedToWorkspace && !getExactWorkspaceFolder(projectLoc)) {
-						vscode.window.showWarningMessage(`Application settings were created, but '${workspaceFolder.name}' could not be added as a VS Code workspace folder.`);
-					}
-					requestAppRefresh();
+				const addedToWorkspace = await addWorkspaceFolder(projectLoc);
+				warnIfSdkIncompatible(imported.westWorkspace, toolchainInstallation);
+				vscode.window.showInformationMessage(`Importing Application '${imported.settingsFolder.name}' done`);
+				if (!addedToWorkspace && !getExactWorkspaceFolder(projectLoc)) {
+					vscode.window.showWarningMessage(`Application settings were created, but '${imported.settingsFolder.name}' could not be added as a VS Code workspace folder.`);
 				}
+				requestAppRefresh();
 			});
 		})
 	);
@@ -4452,98 +3924,55 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	// Create a dedicated venv for a west workspace and persist its path at the
-	// workspace-folder scope so every application of the workspace inherits it
-	// (see WestWorkspace.venvPath / ZephyrApplication.venvPath). Uses a folder
-	// reference rather than getWorkspaceFolder so it also works during import,
-	// before the folder is registered (adding the first folder can reload the
-	// window). When the folder is not yet registered the settings write is a
-	// no-op and WestWorkspace.venvPath auto-detects `<root>/.venv` instead.
-	const createAndStoreWorkspaceVenv = async (workspacePath: string): Promise<string | undefined> => {
-		const workspaceFolder = createWorkspaceFolderReference(workspacePath);
-		const venvPath = await createWorkspaceVenv(context, workspaceFolder);
-		if (venvPath) {
-			try {
-				await vscode.workspace
-					.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-					.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, venvPath, vscode.ConfigurationTarget.WorkspaceFolder);
-			} catch {
-				// Folder not registered yet (created during import, pre-registration):
-				// the on-disk `<root>/.venv` is picked up by WestWorkspace auto-detection.
-			}
-		}
-		return venvPath;
-	};
+	// workspace-folder scope (see createAndStoreWorkspaceVenv in westWorkspaceSetup).
+	const createAndStoreWorkspaceVenv = (workspacePath: string): Promise<string | undefined> =>
+		createAndStoreWestWorkspaceVenv(context, workspacePath);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("west.init", async (srcUrl, srcRev, workspaceDestPath, manifestPath, enableRust = false, createWorkspaceVenvFlag = false, fetchBlobsFlag = false) => {
-			if (workspaceDestPath && !isWorkspaceFolder(workspaceDestPath)) {
+			const initProblem = westInitProblem(workspaceDestPath);
+			if (!initProblem) {
 				vscode.window.withProgress({
 					location: vscode.ProgressLocation.Notification,
 					title: "Initializing west workspace",
 					cancellable: true,
 				}, async (progress, token) => {
 					try {
-						progress.report({ increment: 5, message: 'Initializing manifest...' });
-						await westInitCommand(srcUrl, srcRev, workspaceDestPath, manifestPath);
-						if (token.isCancellationRequested) {
-							throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
-						}
-						if (enableRust) {
-							progress.report({ increment: 2, message: 'Enabling Rust module...' });
-							await westEnableRustModuleCommand(workspaceDestPath);
-							if (token.isCancellationRequested) {
-								throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
-							}
-						}
-						progress.report({ increment: 5, message: 'Updating projects...' });
-						await westUpdateCommand(workspaceDestPath, progress, token);
-						if (token.isCancellationRequested) {
-							throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
-						}
-						progress.report({ increment: 10, message: 'Loading boards...' });
-						await westBoardsCommand(workspaceDestPath);
-						if (token.isCancellationRequested) {
-							throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
-						}
-						// Optional dedicated per-workspace venv (Advanced import option). Created
-						// BEFORE addWorkspaceFolder: adding the first folder can reload the window
-						// and abort this callback, so the long-running install must finish first.
-						// It runs after `west update` so `west packages` / requirements.txt can
-						// resolve the Zephyr tree.
-						if (createWorkspaceVenvFlag) {
-							progress.report({ increment: 5, message: 'Creating workspace virtual environment...' });
-							await createAndStoreWorkspaceVenv(workspaceDestPath);
-							if (token.isCancellationRequested) {
-								throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
-							}
-						}
-						// Fetch binary blobs after the workspace is populated (and after the
-						// dedicated venv when one was requested), but before addWorkspaceFolder
-						// which can reload the window and abort this callback. Skipped on
-						// Zephyr < 3.2 where `west blobs` does not exist. Read the version from
-						// disk via getWestWorkspace (works pre-registration, like the venv step).
-						// Best-effort: a failed blob download must NOT abort the import (the
-						// folder still needs registering), so failures degrade to a warning.
-						if (fetchBlobsFlag) {
-							try {
-								const ws = getWestWorkspace(workspaceDestPath);
-								if (ws?.supportsBlobs) {
-									progress.report({ increment: 5, message: 'Fetching binary blobs...' });
-									await westBlobsFetchCommand(workspaceDestPath, ws.supportsBlobsAutoAccept);
+						await initWestWorkspace({ enableRust, createVenv: createWorkspaceVenvFlag, fetchBlobs: fetchBlobsFlag }, {
+							init: () => westInitCommand(srcUrl, srcRev, workspaceDestPath, manifestPath),
+							enableRust: () => westEnableRustModuleCommand(workspaceDestPath),
+							update: () => westUpdateCommand(workspaceDestPath, progress, token),
+							boards: () => westBoardsCommand(workspaceDestPath),
+							createVenv: async () => {
+								await createAndStoreWorkspaceVenv(workspaceDestPath);
+							},
+							// Skipped on Zephyr < 3.2 where `west blobs` does not exist. Read the
+							// version from disk via getWestWorkspace (works pre-registration, like
+							// the venv step). Best-effort: a failed blob download must NOT abort the
+							// import (the folder still needs registering), so failures degrade to a warning.
+							fetchBlobs: async () => {
+								try {
+									const ws = getWestWorkspace(workspaceDestPath);
+									if (ws?.supportsBlobs) {
+										progress.report({ increment: 5, message: 'Fetching binary blobs...' });
+										await westBlobsFetchCommand(workspaceDestPath, ws.supportsBlobsAutoAccept);
+									}
+								} catch (blobErr) {
+									vscode.window.showWarningMessage(`Some binary blobs could not be fetched (${blobErr instanceof Error ? blobErr.message : String(blobErr)}). You can retry later from the workspace's Blobs > Fetch menu.`);
 								}
-							} catch (blobErr) {
-								vscode.window.showWarningMessage(`Some binary blobs could not be fetched (${blobErr instanceof Error ? blobErr.message : String(blobErr)}). You can retry later from the workspace's Blobs > Fetch menu.`);
-							}
-							if (token.isCancellationRequested) {
-								throw new Error('West workspace import cancelled.', { cause: 'cancelled' });
-							}
-						}
-						await addWorkspaceFolder(workspaceDestPath);
+							},
+							register: async () => {
+								await addWorkspaceFolder(workspaceDestPath);
 
-						// Update settings.json to avoid CMake automatic scan after importing west workspace
-						const workspaceFolder = getWorkspaceFolder(workspaceDestPath);
-						await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('enableAutomaticKitScan', false, vscode.ConfigurationTarget.WorkspaceFolder);
-						westWorkspaceProvider.refresh();
+								// Update settings.json to avoid CMake automatic scan after importing west workspace
+								const workspaceFolder = getWorkspaceFolder(workspaceDestPath);
+								await vscode.workspace.getConfiguration('cmake', workspaceFolder).update('enableAutomaticKitScan', false, vscode.ConfigurationTarget.WorkspaceFolder);
+								westWorkspaceProvider.refresh();
+							},
+						}, {
+							report: (increment, message) => progress.report({ increment, message }),
+							isCancelled: () => token.isCancellationRequested,
+						});
 						progress.report({ increment: 80, message: 'Import complete' });
 					} catch (e) {
 						if (e instanceof Error) {
@@ -4566,34 +3995,31 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				});
 			} else {
-				vscode.window.showErrorMessage("The west workspace location folder is invalid or already exists");
+				vscode.window.showErrorMessage(initProblem);
 			}
 		})
 	);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand("zephyr-workbench-west-workspace.import-local", async (workspaceDestPath, createWorkspaceVenvFlag = false) => {
-			if (workspaceDestPath && !isWorkspaceFolder(workspaceDestPath)) {
-				if (WestWorkspace.isWestWorkspacePath(workspaceDestPath)) {
-					// Create the venv before registering the folder (see west.init: adding
-					// the first folder can reload the window and abort this handler).
-					if (createWorkspaceVenvFlag) {
-						await vscode.window.withProgress({
-							location: vscode.ProgressLocation.Notification,
-							title: "Creating workspace virtual environment",
-							cancellable: false,
-						}, async () => {
-							await createAndStoreWorkspaceVenv(workspaceDestPath);
-						});
-					}
-					await addWorkspaceFolder(workspaceDestPath);
-					await westBoardsCommand(workspaceDestPath);
-				} else {
-					vscode.window.showErrorMessage("The folder is not a West workspace");
-				}
-			} else {
-				vscode.window.showErrorMessage("The west workspace location folder is invalid or already exists");
+			const importProblem = westWorkspaceImportProblem(workspaceDestPath);
+			if (importProblem) {
+				vscode.window.showErrorMessage(importProblem);
+				return;
 			}
+			// Create the venv before registering the folder (see west.init: adding
+			// the first folder can reload the window and abort this handler).
+			if (createWorkspaceVenvFlag) {
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: "Creating workspace virtual environment",
+					cancellable: false,
+				}, async () => {
+					await createAndStoreWorkspaceVenv(workspaceDestPath);
+				});
+			}
+			await addWorkspaceFolder(workspaceDestPath);
+			await westBoardsCommand(workspaceDestPath);
 		})
 	);
 
@@ -4651,13 +4077,7 @@ export function activate(context: vscode.ExtensionContext) {
 			if (typeof nextVenvPath === 'undefined') {
 				return;
 			}
-			await vscode.workspace
-				.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-				.update(
-					ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY,
-					nextVenvPath.length > 0 ? nextVenvPath : undefined,
-					vscode.ConfigurationTarget.WorkspaceFolder,
-				);
+			await setWorkspaceVenvPath(workspaceFolder, nextVenvPath);
 			westWorkspaceProvider.refresh();
 		})
 	);
@@ -4674,15 +4094,9 @@ export function activate(context: vscode.ExtensionContext) {
 			if (!(await showConfirmMessage(`Remove the dedicated venv for ${node.westWorkspace.name} ?`))) {
 				return;
 			}
-			await vscode.workspace
-				.getConfiguration(ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, workspaceFolder)
-				.update(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
-			// Drop the managed `<topdir>/.venv` on disk if present (a user-pointed
+			// Drops the managed `<topdir>/.venv` on disk if present (a user-pointed
 			// external venv path lives elsewhere and is left untouched).
-			const managedVenvDir = path.join(node.westWorkspace.rootUri.fsPath, '.venv');
-			if (fileExists(managedVenvDir)) {
-				deleteFolder(managedVenvDir);
-			}
+			await removeWorkspaceVenv(workspaceFolder, deleteFolder, node.westWorkspace.rootUri.fsPath);
 			westWorkspaceProvider.refresh();
 		})
 	);
@@ -4732,7 +4146,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 			if (event.affectsConfiguration(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY)) {
 				zephyrShortcutProvider.refresh();
-				zephyrToolsCommandProvider.refresh();
+				toolchainInstallationsProvider.refresh();
 			}
 
 			if (event.affectsConfiguration(`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY}`) ||
@@ -4844,27 +4258,13 @@ export function activate(context: vscode.ExtensionContext) {
 					scope = undefined;
 				}
 			}
-			// 1. Application-resolved venv: explicit per-app `venv.path`, else the
-			//    linked west workspace's venv. ZephyrApplication.venvPath already
-			//    applies that precedence, so sibling extensions transparently get
-			//    the shared workspace venv.
-			if (app?.venvPath) {
-				return app.venvPath;
-			}
-			// 2. Explicit `venv.path` setting at the resolved scope (covers callers
-			//    that pass a folder without a resolvable application).
-			const configured = getConfiguredWorkbenchPath(ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY, scope);
-			if (configured) {
-				return configured;
-			}
-			// 3. Otherwise fall back to the zinstaller-managed venv — the same
-			//    environment the host-tools / runners installers create and run
-			//    against (`<.zinstaller>/.venv`). `venv.path` is usually empty on
-			//    zinstaller setups (the venv is recorded in env.yml, which only
-			//    the sourced env.sh reads), so without this fallback every
-			//    headless consumer of this API gets `undefined` even though a
-			//    perfectly good Zephyr venv exists.
-			return findManagedVenvDirectory(getInternalDirRealPath(), '.venv');
+			// The application's venv (ZephyrApplication.venvPath already prefers
+			// the per-app venv.path over the linked west workspace's venv, so
+			// sibling extensions transparently get the shared workspace venv),
+			// then venv.path at the resolved scope (callers that pass a folder
+			// without a resolvable application), then the zinstaller-managed
+			// venv the host-tools and runners installers create and run against.
+			return resolveEffectiveVenv(app, scope).path;
 		},
 	};
 }
@@ -5003,203 +4403,12 @@ function updateSelectedWorkspaceAppStatusBar(resource: vscode.Uri | undefined): 
 	statusBarSelectedAppItem.show();
 }
 
-function getActiveOrDefaultBuildConfig(project: ZephyrApplication): ZephyrBuildConfig | undefined {
-	return project.buildConfigs.find(config => config.active) ?? project.buildConfigs[0];
-}
-
-function isSysbuildEnabled(buildConfig: ZephyrBuildConfig, override?: boolean): boolean {
-	return typeof override === 'boolean'
-		? override
-		: String(buildConfig.sysbuild).toLowerCase() === 'true';
-}
-
-function getBuildConfigCompileCommandsPath(
-	project: ZephyrApplication,
-	buildConfig: ZephyrBuildConfig,
-	sysbuildOverride?: boolean,
-): string {
-	const buildDir = buildConfig.getBuildDir(project);
-	if (isSysbuildEnabled(buildConfig, sysbuildOverride)) {
-		return path.join(buildDir, path.basename(project.appRootPath), 'compile_commands.json');
-	}
-	return path.join(buildDir, 'compile_commands.json');
-}
-
 function findLaunchConfigurationForProject(
 	configurations: vscode.DebugConfiguration[] | undefined,
 	configName: string,
 ): vscode.DebugConfiguration | undefined {
 	const matchingConfigurations = (configurations ?? []).filter(config => config && config.name === configName);
 	return matchingConfigurations[0];
-}
-
-async function removeWorkspaceApplicationAndGeneratedConfig(project: ZephyrApplication): Promise<void> {
-	const removed = await removeWorkspaceApplicationEntry(project.appWorkspaceFolder, project.appRootPath);
-	if (!removed) {
-		return;
-	}
-
-	if (readWorkspaceApplicationEntries(project.appWorkspaceFolder).length === 0) {
-		await removeCppToolsConfiguration(project.appWorkspaceFolder);
-		await clearManagedClangdArtifacts(project.appWorkspaceFolder);
-	}
-}
-
-async function assertFreestandingApplicationFilesCreated(applicationRootPath: string): Promise<void> {
-	const requiredFiles = [
-		path.join(applicationRootPath, '.vscode', 'settings.json'),
-		path.join(applicationRootPath, '.vscode', 'c_cpp_properties.json'),
-	];
-	const missingFiles = requiredFiles.filter(requiredFile => !fileExists(requiredFile));
-	if (missingFiles.length === 0) {
-		return;
-	}
-
-	const message = `Freestanding application settings were not created in '${applicationRootPath}'. Missing: ${missingFiles.map(file => path.basename(file)).join(', ')}`;
-	vscode.window.showErrorMessage(message);
-	throw new Error(message);
-}
-
-function isSelectedIntelliSenseApplication(project: ZephyrApplication): boolean {
-	if (!project.isWestWorkspaceApplication) {
-		return true;
-	}
-
-	const effectiveEntry = getEffectiveWorkspaceApplicationEntry(project.appWorkspaceFolder);
-	const effectivePath = effectiveEntry
-		? resolveWorkspaceApplicationPath(effectiveEntry, project.appWorkspaceFolder)
-		: undefined;
-	return !!effectivePath && path.normalize(effectivePath) === path.normalize(project.appRootPath);
-}
-
-// Query-driver globs that let clangd trust this application's cross-compiler.
-// Broad by design (an allowlist): the exact per-compiler glob is merged in by
-// updateCompileSetting after the first build resolves SOC_TOOLCHAIN_NAME.
-function collectQueryDriverGlobsFor(project: ZephyrApplication): Array<string | undefined> {
-	if (project.toolchainVariant === 'gnuarmemb') {
-		return [getQueryDriverGlobForCompiler(project.selectedArmGnuToolchainInstallation?.compilerPath ?? '')];
-	}
-	if (project.zephyrSdkPath && !project.isGlobalSdk) {
-		return [getQueryDriverFallbackGlob(project.zephyrSdkPath)];
-	}
-	return [];
-}
-
-// Route a resolved compiler path to whichever IntelliSense provider the app
-// uses. cpptools keeps its existing c_cpp_properties.json write; clangd merges
-// the compiler's query-driver glob (idempotent) and restarts only on change.
-async function applyIntelliSenseCompilerPath(project: ZephyrApplication, compilerPath: string): Promise<void> {
-	if (!compilerPath) {
-		return;
-	}
-	if (project.intellisenseProvider === 'clangd') {
-		if (await ensureManagedClangdArguments([getQueryDriverGlobForCompiler(compilerPath)])) {
-			await restartClangdServer();
-		}
-		return;
-	}
-	await updateCppToolsConfiguration(project.appWorkspaceFolder, { compilerPath });
-}
-
-async function updateBuildConfigCompileCommandsSetting(
-	project: ZephyrApplication,
-	buildConfig: ZephyrBuildConfig,
-	sysbuildOverride?: boolean,
-): Promise<void> {
-	if (!isSelectedIntelliSenseApplication(project)) {
-		return;
-	}
-	const compileCommandsPath = getBuildConfigCompileCommandsPath(project, buildConfig, sysbuildOverride);
-	if (project.intellisenseProvider === 'clangd') {
-		await updateClangdConfigFile(project.appWorkspaceFolder, {
-			compileCommandsDir: path.dirname(compileCommandsPath),
-		});
-		await applyCppToolsSuppression(project.appWorkspaceFolder);
-		if (await ensureManagedClangdArguments(collectQueryDriverGlobsFor(project))) {
-			await restartClangdServer();
-		}
-		return;
-	}
-	// cpptools app: reconcile a shared west root that a workbench-managed clangd
-	// app configured. Gated on a managed .clangd, so a folder the workbench never
-	// configured for clangd (including a user's own C_Cpp settings) is untouched.
-	await clearManagedClangdArtifacts(project.appWorkspaceFolder);
-	await updateCppToolsConfiguration(project.appWorkspaceFolder, {
-		compileCommandsPath,
-	});
-}
-
-async function updateCompileSetting(project: ZephyrApplication, configName: string, boardIdentifier: string) {
-	if (!isSelectedIntelliSenseApplication(project)) {
-		return;
-	}
-	const buildConfig = project.getBuildConfiguration(configName);
-	const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
-	const board = await getBoardFromIdentifier(boardIdentifier, westWorkspace);
-	const toolchainVariantId = project.toolchainVariant;
-	const zephyrSdkInstallation = resolveSdkInstallationForSetting(project.zephyrSdkPath, westWorkspace.kernelUri.fsPath);
-	const toolchainVariant = normalizeZephyrSdkVariant(toolchainVariantId, zephyrSdkInstallation);
-
-	if (buildConfig) {
-		let socToolchainName = buildConfig.getKConfigValue(project, 'SOC_TOOLCHAIN_NAME');
-		if (socToolchainName) {
-			let compilerPath: string | undefined;
-			if (toolchainVariantId === 'gnuarmemb') {
-				compilerPath = project.selectedArmGnuToolchainInstallation?.compilerPath;
-			} else if (zephyrSdkInstallation) {
-				compilerPath = zephyrSdkInstallation.getCompilerPath(board.arch, socToolchainName, toolchainVariant);
-			}
-			if (compilerPath) {
-				await applyIntelliSenseCompilerPath(project, compilerPath);
-			}
-		}
-	}
-}
-
-async function debugPresetContent(projectRoot: string): Promise<void> {
-	const prjConfPath = path.join(projectRoot, 'prj.conf');
-	let content = '';
-	if (fs.existsSync(prjConfPath)) {
-		content = fs.readFileSync(prjConfPath, 'utf8');
-	}
-
-	// Avoid adding the block more than once.
-	if (/^\s*CONFIG_DEBUG_OPTIMIZATIONS=y\s*$/m.test(content)) {
-		return;
-	}
-
-	// Remove placeholder comments like "# nothing here" when debug preset is enabled.
-	content = content
-		.split(/\r?\n/)
-		.filter(line => !/^\s*#\s*nothing\s+here\s*$/i.test(line))
-		.join('\n');
-
-	if (content.length > 0 && !content.endsWith('\n')) {
-		content += '\n';
-	}
-
-	const block = [
-		'',
-		'# Added automatically by Workbench for Zephyr',
-		'#--- DEBUG PRESET - BEGIN ---#',
-		'# Set to -Og',
-		'CONFIG_DEBUG_OPTIMIZATIONS=y',
-		'# Thread awareness support',
-		'CONFIG_DEBUG_THREAD_INFO=y',
-		'# Generate stack usage per-function',
-		'CONFIG_STACK_USAGE=y',
-		'# Other options in case not set by default',
-		'CONFIG_BUILD_OUTPUT_HEX=y',
-		'CONFIG_BUILD_OUTPUT_META=y',
-		'CONFIG_OUTPUT_SYMBOLS=y',
-		'CONFIG_OUTPUT_STAT=y',
-		'CONFIG_OUTPUT_DISASSEMBLY=y',
-		'CONFIG_OUTPUT_PRINT_MEMORY_USAGE=y',
-		'#--- DEBUG PRESET - END ---#',
-		''
-	].join('\n');
-
-	fs.writeFileSync(prjConfPath, `${content}${block}`, 'utf8');
 }
 
 type CustomTaskConfigPickItem = vscode.QuickPickItem & {
@@ -5375,7 +4584,9 @@ export async function executeConfigTask(taskName: string, node: any, configName?
 				}
 				resolve(tasksExec);
 			} catch (error) {
-				vscode.window.showErrorMessage(`Error executing task: ${error}`);
+				if (!(error instanceof TaskLaunchDeclined)) {
+					vscode.window.showErrorMessage(`Error executing task: ${error}`);
+				}
 				resolve(undefined);
 			}
 		} else {
@@ -5442,5 +4653,8 @@ export function deactivate() {
 	zephyrTaskProvider?.dispose();
 	zephyrDebugConfigurationProvide?.dispose();
 	// Returned so VS Code awaits the debug-server tree kill during shutdown.
-	return disposeAllManagedServers();
+	return Promise.all([
+		disposeAllManagedServers(),
+		mcpController?.dispose() ?? Promise.resolve(),
+	]).then(() => undefined);
 }

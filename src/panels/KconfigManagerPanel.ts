@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as fs from 'fs';
 import { getNonce } from '../utilities/getNonce';
 import { getUri } from '../utilities/getUri';
 import { executeTaskWithExitCode } from '../utils/execUtils';
@@ -8,28 +7,38 @@ import { buildDirectTask } from '../providers/ZephyrTaskProvider';
 import { ZephyrApplication } from '../models/ZephyrApplication';
 import type { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import type { RpcHandlerMap } from '../utils/eclair/eclairRpcTypes';
-import {
-  extractKconfigLaunchSpec,
-  isExtractError,
-  preflight,
-  type KconfigLaunchSpec,
-} from '../utils/kconfig/kconfigEnvExtractor';
-import { KconfigServerClient } from '../utils/kconfig/kconfigServerClient';
+import { preflight, type KconfigLaunchSpec } from '../utils/kconfig/kconfigEnvExtractor';
+import type { KconfigServerClient } from '../utils/kconfig/kconfigServerClient';
+import { resolveKconfigFile, startKconfigServer } from '../utils/kconfig/kconfigSession';
 import type {
   KconfigRpcMethods,
   KcTarget,
   KcDriftEntry,
 } from '../utils/kconfig/kconfigRpcTypes';
 import type { KcExtensionMessage, KcWebviewMessage, RpcRequestMessage } from '../utils/kconfig/kconfigEvent';
-import { writePrjConfManagedRegion } from '../utils/kconfig/prjConfWriter';
+import { readPrjConfManagedRegion, upsertPrjConfManagedRegion } from '../utils/kconfig/prjConfWriter';
+import { offeredRemovals } from '../utils/kconfig/driftExport';
 import {
   checkFragmentStaleness,
   findBuildInfoYml,
   findLaterFragmentOverrides,
+  fragmentsMergedAfter,
   readKconfigFragments,
-  type KconfigFragmentInfo,
 } from '../utils/kconfig/fragmentStaleness';
-import { saveConfigEnv } from '../utils/env/zephyrEnvUtils';
+import { isInExtraConfFiles } from '../utils/kconfig/extraConfFiles';
+import { addExtraConfFile } from '../utils/kconfig/extraConfFileSettings';
+
+/** A Kconfig Manager tab, as KconfigManagerPanel.editors() lists it. */
+export interface KconfigEditorInfo {
+  /** The build directory of its configuration (ZephyrBuildConfig.getBuildDir). */
+  buildDir: string;
+  /** The image directory it edits, where that image's build_info.yml is (a domain folder under sysbuild). */
+  imageDir: string;
+  configName: string;
+  /** False once the tab was closed, while its save prompt is still open. */
+  open: boolean;
+  dirty: boolean;
+}
 
 const CONFIGURE_TASK_LABEL = 'Configure (CMake only)';
 const BUILD_TASK_LABEL = 'West Build';
@@ -51,6 +60,64 @@ function kconfigOutput(): vscode.OutputChannel {
 export class KconfigManagerPanel {
   private static panels = new Map<string, KconfigManagerPanel>();
 
+  /**
+   * Build dirs whose panel was closed with unsaved changes while the save prompt is
+   * still open. dispose() has already removed the panel from `panels` by then, so
+   * without this the unsaved edits would be invisible to editorState().
+   */
+  private static readonly closingWithUnsaved = new Map<string, { imageDir: string; configName: string }>();
+
+  private static sameBuildDir(a: string, b: string): boolean {
+    const ra = path.resolve(a);
+    const rb = path.resolve(b);
+    return process.platform === 'win32' ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
+  }
+
+  /**
+   * Whether a Kconfig Manager tab is open on a build dir (the value returned by
+   * `ZephyrBuildConfig.getBuildDir`), and whether it holds changes not yet saved to
+   * .config. Lets headless callers such as the MCP server avoid writing the build's
+   * Kconfig inputs underneath the user's edits. Never opens or reveals anything.
+   */
+  public static editorState(buildDir: string): { open: boolean; dirty: boolean } | undefined {
+    for (const [dir, panel] of KconfigManagerPanel.panels) {
+      if (KconfigManagerPanel.sameBuildDir(dir, buildDir)) {
+        const closing = [...KconfigManagerPanel.closingWithUnsaved.keys()].some((d) => KconfigManagerPanel.sameBuildDir(d, buildDir));
+        return { open: true, dirty: panel._dirty || closing };
+      }
+    }
+    for (const dir of KconfigManagerPanel.closingWithUnsaved.keys()) {
+      if (KconfigManagerPanel.sameBuildDir(dir, buildDir)) {
+        return { open: false, dirty: true };
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Every Kconfig Manager tab, including one closed while its save prompt is open, so a
+   * headless caller can tell which builds hold unsaved edits (a file it writes may be
+   * merged by another configuration's build) and which build folders hold a Kconfig
+   * server. Never opens or reveals anything.
+   */
+  public static editors(): KconfigEditorInfo[] {
+    const closing = [...KconfigManagerPanel.closingWithUnsaved.keys()];
+    const isClosing = (dir: string) => closing.some((d) => KconfigManagerPanel.sameBuildDir(d, dir));
+    const out: KconfigEditorInfo[] = [...KconfigManagerPanel.panels].map(([dir, panel]) => ({
+      buildDir: dir,
+      imageDir: panel._spec?.buildDir ?? dir,
+      configName: panel._buildConfig.name,
+      open: true,
+      dirty: panel._dirty || isClosing(dir),
+    }));
+    for (const [dir, info] of KconfigManagerPanel.closingWithUnsaved) {
+      if (!out.some((editor) => KconfigManagerPanel.sameBuildDir(editor.buildDir, dir))) {
+        out.push({ buildDir: dir, imageDir: info.imageDir, configName: info.configName, open: false, dirty: true });
+      }
+    }
+    return out;
+  }
+
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private readonly _app: ZephyrApplication;
@@ -65,7 +132,7 @@ export class KconfigManagerPanel {
   private _booted = false;
   private _bootStarted = false;
   private _lastPhase: KcExtensionMessage | undefined;
-  private _pendingExport: { target: 'prj' | 'fragment'; targetPath: string } | undefined;
+  private _pendingExport: { target: 'prj' | 'fragment'; targetPath: string; removable: string[] } | undefined;
   private _restartCount = 0;
   private _lastRestart = 0;
   private _disposed = false;
@@ -222,63 +289,21 @@ export class KconfigManagerPanel {
   }
 
   private async _startServer(): Promise<void> {
-    const spec = extractKconfigLaunchSpec(this._buildDir, this._app.appName);
-    if (isExtractError(spec)) {
-      throw new Error(`Could not reproduce the Kconfig environment: ${spec.error}`);
-    }
-    // build.ninja carries the authoritative interpreter; fall back to the app venv.
-    if (!spec.python) {
-      const venvPython = this._venvPython();
-      if (!venvPython) {
-        throw new Error('No Python interpreter found (build.ninja and app venv both unavailable).');
-      }
-      spec.python = venvPython;
-    }
-    this._spec = spec;
-    kconfigOutput().appendLine(
-      `[server] python: ${spec.python} (env source: ${spec.source}, config: ${spec.configPath})`,
-    );
-    if (spec.fallbackReason) {
-      kconfigOutput().appendLine(`[server] build.ninja not used: ${spec.fallbackReason}`);
-    }
-
-    const client = new KconfigServerClient({
-      spec,
+    await startKconfigServer({
+      buildDir: this._buildDir,
+      appName: this._app.appName,
+      venvPath: this._app.venvPath,
       serverScriptPath: vscode.Uri.joinPath(this._extensionUri, ...SERVER_SCRIPT).fsPath,
       log: (line) => kconfigOutput().appendLine(line),
       onDirty: (dirty) => this._onDirty(dirty),
       onWarnings: (warnings) => this._post({ command: 'kconfig-event', event: { kind: 'warnings', warnings } }),
       onExit: (code, expected) => { if (!expected) { this._onCrash(code); } },
+      // Held before start, so a failed start or init still leaves a client to dispose.
+      onCreated: (client, spec) => {
+        this._spec = spec;
+        this._client = client;
+      },
     });
-    this._client = client;
-    try {
-      await client.start();
-      await client.call('init', {}, 120000);
-    } catch (e) {
-      // The CMakeCache fallback cannot reproduce the per-module ZEPHYR_<NAME>_KCONFIG
-      // variables, so kconfiglib fails on `osource "$(ZEPHYR_<NAME>_KCONFIG)"` with an
-      // error that says nothing about the real cause. Name it.
-      if (spec.source === 'fallback') {
-        const why = spec.fallbackReason ? ` (${spec.fallbackReason})` : '';
-        throw new Error(
-          `${e instanceof Error ? e.message : String(e)}\n\n` +
-          `The Kconfig environment had to be reconstructed from the CMake cache because ` +
-          `build.ninja could not be used${why}. That reconstruction cannot supply the ` +
-          `per-module Kconfig paths, which is the likely cause of the error above. ` +
-          `Re-run the CMake configure stage, then Retry.`,
-        );
-      }
-      throw e;
-    }
-  }
-
-  private _venvPython(): string | undefined {
-    const venv = this._app.venvPath;
-    if (!venv) { return undefined; }
-    const candidate = process.platform === 'win32'
-      ? path.join(venv, 'Scripts', 'python.exe')
-      : path.join(venv, 'bin', 'python');
-    return fs.existsSync(candidate) ? candidate : undefined;
   }
 
   private async _restart(): Promise<{ ok: boolean }> {
@@ -429,7 +454,9 @@ export class KconfigManagerPanel {
       const buildInfoPath = findBuildInfoYml(innerBuildDir);
       const fragments = buildInfoPath ? readKconfigFragments(buildInfoPath) : undefined;
       if (!fragments) { return { count: 0, stale: false }; }
-      const res = await client.call('get_drift', { fragments: fragments.files });
+      const res = await client.call('get_drift', {
+        fragments: fragments.files, managed: this._managedRegionOf(this._app.prjConfUri.fsPath),
+      });
       if (!res.ok) { return { count: 0, stale: false }; }
       const staleness = checkFragmentStaleness(innerBuildDir, fragments.files);
       return { count: (res.drift ?? []).length, stale: staleness.stale };
@@ -476,7 +503,7 @@ export class KconfigManagerPanel {
 
     const staleness = checkFragmentStaleness(innerBuildDir, fragments.files);
 
-    const res = await client.call('get_drift', { fragments: fragments.files });
+    const res = await client.call('get_drift', { fragments: fragments.files, managed: this._managedRegionOf(targetPath) });
     if (!res.ok) {
       if (res.changes) {
         // The state check failed; forward the residue delta so the webview resyncs.
@@ -488,14 +515,18 @@ export class KconfigManagerPanel {
 
     // Values assigned by fragments that merge AFTER the target override the export.
     const drift: KcDriftEntry[] = res.drift;
-    const afterIdx = this._fragmentsMergedAfter(fragments, p.target, targetPath);
-    const overrides = findLaterFragmentOverrides(afterIdx, drift.map((d) => d.name));
+    const afterIdx = fragmentsMergedAfter(fragments, targetPath, p.target === 'prj');
+    const overrides = findLaterFragmentOverrides(afterIdx, drift.filter((d) => d.managedLine !== 'remove').map((d) => d.name));
     for (const d of drift) {
       const by = overrides.get(d.name);
       if (by) { d.overriddenBy = by; }
     }
 
-    this._pendingExport = { target: p.target, targetPath };
+    this._pendingExport = {
+      target: p.target,
+      targetPath,
+      removable: drift.filter((d) => d.managedLine === 'remove').map((d) => d.name),
+    };
     this._post({
       command: 'kconfig-event',
       event: {
@@ -511,30 +542,6 @@ export class KconfigManagerPanel {
     return { started: true };
   }
 
-  /** Fragments that merge after the export target (their assignments win). */
-  private _fragmentsMergedAfter(info: KconfigFragmentInfo, target: 'prj' | 'fragment', targetPath: string): string[] {
-    const files = info.files;
-    let anchor = -1;
-    if (target === 'prj') {
-      const prj = this._app.prjConfUri.fsPath;
-      anchor = files.findIndex((f) => path.resolve(f) === path.resolve(prj));
-      if (anchor < 0 && info.userFiles.length > 0) {
-        anchor = files.findIndex((f) => path.resolve(f) === path.resolve(info.userFiles[0]));
-      }
-    } else {
-      anchor = files.findIndex((f) => path.resolve(f) === path.resolve(targetPath));
-      if (anchor < 0) {
-        // New fragment: it would merge at the EXTRA_CONF_FILE position; only the
-        // generated CLI options file and build-dir *.conf glob come after.
-        const lastExtra = info.extraUserFiles.length
-          ? files.findIndex((f) => path.resolve(f) === path.resolve(info.extraUserFiles[info.extraUserFiles.length - 1]))
-          : -1;
-        anchor = lastExtra >= 0 ? lastExtra : files.length - 1;
-      }
-    }
-    return anchor >= 0 ? files.slice(anchor + 1) : [];
-  }
-
   private async _writeDriftExport(p: KconfigRpcMethods['kconfig/persistPrjConfWrite']['params']) {
     const pending = this._pendingExport;
     if (!pending) {
@@ -542,7 +549,12 @@ export class KconfigManagerPanel {
     }
     this._pendingExport = undefined;
     const lines = p.lines.filter(Boolean);
-    const result = writePrjConfManagedRegion(pending.targetPath, lines);
+    const removals = offeredRemovals(p.remove, pending.removable);
+    // An upsert: managed lines from an earlier export (by then baseline, so absent from
+    // this drift) and lines written by an agent are kept while they still give the
+    // current value. The ones that no longer do came back from get_drift, to be
+    // rewritten or, for a symbol a configuration file cannot assign any more, removed.
+    const result = upsertPrjConfManagedRegion(pending.targetPath, lines, removals);
     const fileLabel = pending.target === 'prj' ? 'prj.conf' : path.basename(pending.targetPath);
 
     if (result.outsideConflicts.length) {
@@ -556,7 +568,9 @@ export class KconfigManagerPanel {
     const needsRegistration = pending.target === 'fragment' && !this._isInExtraConfFiles(pending.targetPath);
     if (needsRegistration) { actions.push('Add to build config'); }
     void vscode.window
-      .showInformationMessage(`Wrote ${result.written} option(s) to ${fileLabel}.`, ...actions)
+      .showInformationMessage(removals.length
+        ? `Wrote ${result.written} option(s) to ${fileLabel} and removed ${removals.length} managed line(s) that no longer apply.`
+        : `Wrote ${result.written} option(s) to ${fileLabel}.`, ...actions)
       .then((choice) => {
         if (choice === openAction) {
           void vscode.window.showTextDocument(vscode.Uri.file(pending.targetPath));
@@ -568,23 +582,28 @@ export class KconfigManagerPanel {
     return { ok: true, written: result.written, path: pending.targetPath, outsideConflicts: result.outsideConflicts };
   }
 
+  /**
+   * The managed region of an export target, for get_drift: a value set back to its
+   * default is not drift, yet the region may still pin the old one.
+   */
+  private _managedRegionOf(targetPath: string): { path: string; lines: string[] } {
+    return { path: targetPath, lines: readPrjConfManagedRegion(targetPath) };
+  }
+
   private _isInExtraConfFiles(file: string): boolean {
-    const list = this._buildConfig.envVars?.['EXTRA_CONF_FILE'];
-    if (!Array.isArray(list)) { return false; }
-    return list.some((entry: string) => typeof entry === 'string' && path.resolve(entry) === path.resolve(file));
+    return isInExtraConfFiles(this._buildConfig.envVars, file);
   }
 
   private async _addToExtraConfFiles(file: string): Promise<void> {
     try {
-      const current = Array.isArray(this._buildConfig.envVars?.['EXTRA_CONF_FILE'])
-        ? [...this._buildConfig.envVars['EXTRA_CONF_FILE']]
-        : [];
-      if (!current.includes(file)) { current.push(file); }
-      await saveConfigEnv(this._app.appWorkspaceFolder, this._buildConfig.name, 'EXTRA_CONF_FILE', current);
-      this._buildConfig.envVars['EXTRA_CONF_FILE'] = current;
-      vscode.window.showInformationMessage(
-        `Added ${path.basename(file)} to EXTRA_CONF_FILE of build config "${this._buildConfig.name}". The next build will apply it.`,
-      );
+      const outcome = await addExtraConfFile(this._app, this._buildConfig, file);
+      if (outcome === 'missing') {
+        vscode.window.showErrorMessage(`Could not update the build config: "${this._buildConfig.name}" is no longer in the settings.`);
+        return;
+      }
+      vscode.window.showInformationMessage(outcome === 'listed'
+        ? `${path.basename(file)} is already in EXTRA_CONF_FILE of build config "${this._buildConfig.name}".`
+        : `Added ${path.basename(file)} to EXTRA_CONF_FILE of build config "${this._buildConfig.name}". The next build will apply it.`);
     } catch (e) {
       vscode.window.showErrorMessage(`Could not update the build config: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -592,9 +611,8 @@ export class KconfigManagerPanel {
 
   private async _openLocation(p: { file: string; line: number }): Promise<void> {
     let file = p.file;
-    if (!path.isAbsolute(file) && this._spec) {
-      const candidate = path.join(this._spec.zephyrBase, file);
-      if (fs.existsSync(candidate)) { file = candidate; }
+    if (this._spec) {
+      file = resolveKconfigFile(file, this._spec.zephyrBase);
     }
     try {
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
@@ -702,6 +720,10 @@ export class KconfigManagerPanel {
 
   private async _promptSaveOnClose(client: KconfigServerClient): Promise<void> {
     let keepAlive = false;
+    KconfigManagerPanel.closingWithUnsaved.set(this._buildDir, {
+      imageDir: this._spec?.buildDir ?? this._buildDir,
+      configName: this._buildConfig.name,
+    });
     try {
       const choice = await vscode.window.showWarningMessage(
         `The Kconfig Manager for ${this._app.appName} [${this._buildConfig.name}] was closed with unsaved changes.`,
@@ -723,6 +745,7 @@ export class KconfigManagerPanel {
     } catch (e) {
       vscode.window.showErrorMessage(`Could not save the configuration: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
+      KconfigManagerPanel.closingWithUnsaved.delete(this._buildDir);
       if (!keepAlive) { void client.dispose(); }
     }
   }

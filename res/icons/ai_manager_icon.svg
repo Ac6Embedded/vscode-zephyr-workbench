@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="AI">
+  <defs>
+    <linearGradient id="ai-gradient" gradientUnits="userSpaceOnUse" x1="2" y1="22" x2="22" y2="2">
+      <stop offset="0" stop-color="#9454db"/>
+      <stop offset="1" stop-color="#4a9af1"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#ai-gradient)" d="M9.5 5.5C12.05 11.45 12.05 11.45 18 14C12.05 16.55 12.05 16.55 9.5 22.5C6.95 16.55 6.95 16.55 1 14C6.95 11.45 6.95 11.45 9.5 5.5Z M18.5 0.8C19.91 4.09 19.91 4.09 23.2 5.5C19.91 6.91 19.91 6.91 18.5 10.2C17.09 6.91 17.09 6.91 13.8 5.5C17.09 4.09 17.09 4.09 18.5 0.8Z M19.2 15.5C20.19 17.81 20.19 17.81 22.5 18.8C20.19 19.79 20.19 19.79 19.2 22.1C18.21 19.79 18.21 19.79 15.9 18.8C18.21 17.81 18.21 17.81 19.2 15.5Z"/>
+</svg>

@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import path from "path";
 import { ZEPHYR_WORKBENCH_LIST_ARM_GNU_TOOLCHAINS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_IARS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_RUST_TOOLCHAINS_SETTING_KEY, ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from "../constants";
-import { normalizeZephyrSdkVariant, RustToolchainInstallation, ZephyrSdkVariantId } from "../models/ToolchainInstallations";
 import { WestWorkspace } from "../models/WestWorkspace";
 import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
@@ -15,6 +14,7 @@ import { getUri } from "../utilities/getUri";
 import { isPathWithin as isPathWithinWorkspaceApplication } from "../utils/zephyr/workspaceApplications";
 import { checkSdkCompatibility, formatSdkCompatMessage } from "../utils/zephyr/sdkCompatUtils";
 import { describeIntelliSenseAvailability, pickDefaultIntelliSenseProvider } from "../utils/intellisense/providerAvailability";
+import { findCreateParameterError, getRequestedToolchainVariant, hasPathSpace, toRequestedVariantFor, workspaceApplicationParentPath } from "../utils/zephyr/applicationCreation";
 
 type CreateAppDiscoveryTarget = 'board' | 'sample';
 type CreateAppDiscoveryIssueCode = 'invalid-workspace' | 'missing-workspace-content' | 'env-script' | 'invalid-venv' | 'generic';
@@ -632,7 +632,9 @@ async function handleCreateMessage(message: any) {
     : getStringValue(message.projectParentPath);
 
   if (isCreate) {
-    if (!checkCreateParameters(message, projectLoc)) {
+    const parameterError = findCreateParameterError(message, projectLoc);
+    if (parameterError) {
+      vscode.window.showErrorMessage(parameterError);
       return;
     }
 
@@ -760,29 +762,7 @@ function resolveBoardFromMessage(message: any): ReturnType<typeof getBoard> | un
 }
 
 function getWorkspaceApplicationParentPath(westWorkspaceRootPath: string, applicationsSubfolder: string): string {
-  const workspaceRootPath = vscode.Uri.parse(westWorkspaceRootPath, true).fsPath;
-  const subfolder = applicationsSubfolder.trim().replace(/^[\\/]+|[\\/]+$/g, '');
-  return subfolder.length > 0
-    ? path.join(workspaceRootPath, subfolder)
-    : workspaceRootPath;
-}
-
-function getRequestedToolchainVariant(rawVariant: unknown): ZephyrSdkVariantId {
-  return normalizeZephyrSdkVariant(typeof rawVariant === 'string' ? rawVariant : undefined);
-}
-
-// The webview's SDK Variant radio always speaks 'zephyr' / 'zephyr/llvm'.
-// A Rust entry stores the C variant derived from its linked toolchain (the
-// radio applies to SDK links); the rust path itself is stored separately.
-function toRequestedVariantFor(
-  toolchainInstallation: unknown,
-  toolchainVariant: ZephyrSdkVariantId,
-): string {
-  if (toolchainInstallation instanceof RustToolchainInstallation
-    && toolchainInstallation.cToolchainType === 'gnuarmemb') {
-    return 'gnuarmemb';
-  }
-  return toolchainVariant;
+  return workspaceApplicationParentPath(vscode.Uri.parse(westWorkspaceRootPath, true).fsPath, applicationsSubfolder);
 }
 
 function getSettingsPathMode(rawMode: unknown): 'relative' | 'absolute' {
@@ -1220,67 +1200,7 @@ function getSdkCompatWarningMessage(westWorkspaceUri: unknown, toolchainUri: unk
   }
 }
 
-function isMissingValue(value: unknown): boolean {
-  return getStringValue(value).length === 0;
-}
-
-function hasPathSpace(value: string): boolean {
-  return value.includes(' ');
-}
-
 function showPathSpaceError(label: string): boolean {
   vscode.window.showErrorMessage(`${label} cannot contain spaces.`);
   return false;
-}
-
-function checkCreateParameters(message: any, projectParentPath: string) {
-  if (isMissingValue(message.westWorkspaceRootPath)) {
-    vscode.window.showErrorMessage('Missing west workspace, please select a west workspace');
-    return false;
-  }
-
-  if (isMissingValue(message.toolchainInstallationPath)) {
-    vscode.window.showErrorMessage('Missing toolchain, please select a toolchain for your project. Use "Add new toolchain..." in the toolchain list to install one.');
-    return false;
-  }
-
-  if (isMissingValue(message.projectName)) {
-    vscode.window.showErrorMessage('The project name is empty or invalid');
-    return false;
-  }
-
-  const projectName = getStringValue(message.projectName);
-  if (hasPathSpace(projectName)) {
-    return showPathSpaceError('The project name');
-  }
-
-  const applicationType = getStringValue(message.appLocationType) === 'workspace'
-    ? 'workspace'
-    : 'freestanding';
-  const applicationsSubfolder = getStringValue(message.applicationsSubfolder).trim();
-  if (applicationType === 'workspace' && hasPathSpace(applicationsSubfolder)) {
-    return showPathSpaceError('The applications subfolder');
-  }
-
-  if (hasPathSpace(projectParentPath)) {
-    return showPathSpaceError('The project location');
-  }
-
-  if (hasPathSpace(path.join(projectParentPath, projectName))) {
-    return showPathSpaceError('The application path');
-  }
-
-  // A board can be picked from the list (boardYamlPath) or typed by hand
-  // (boardIdentifier only); accept either.
-  if (isMissingValue(message.boardYamlPath) && isMissingValue(message.boardIdentifier)) {
-    vscode.window.showErrorMessage('Missing target board');
-    return false;
-  }
-
-  if (isMissingValue(message.samplePath)) {
-    vscode.window.showErrorMessage('Missing selected sample or test app, it serves as base for your project');
-    return false;
-  }
-
-  return true;
 }
