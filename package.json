@@ -1195,51 +1195,43 @@
       "zephyr-workbench-activitybar": [
         {
           "id": "zephyr-workbench-shortcuts",
-          "name": "Workbench for Zephyr",
-          "contextualTitle": "Workbench for Zephyr",
+          "name": "Get Started",
+          "contextualTitle": "Get Started",
+          "icon": "$(rocket)",
+          "type": "tree",
+          "initialSize": 10
+        },
+        {
+          "id": "zephyr-workbench-managers",
+          "name": "Managers",
+          "contextualTitle": "Managers",
+          "icon": "$(tools)",
+          "type": "tree",
+          "initialSize": 12
+        },
+        {
+          "id": "zephyr-workbench-app-explorer",
+          "name": "Applications",
+          "contextualTitle": "Zephyr Applications",
           "icon": "$(project)",
           "type": "tree",
           "initialSize": 25
         },
         {
-          "id": "zephyr-workbench-app-explorer",
-          "name": "Applications",
-          "contextualTitle": "Zephyr user applications",
-          "icon": "$(extensions-view-icon)",
-          "type": "tree",
-          "initialSize": 25
-        },
-        {
           "id": "zephyr-workbench-west-workspace",
-          "name": "West workspaces",
-          "contextualTitle": "west workspaces with Zephyr sources and modules",
-          "icon": "$(extensions-view-icon)",
+          "name": "West Workspaces",
+          "contextualTitle": "West Workspaces",
+          "icon": "$(repo)",
           "type": "tree",
           "initialSize": 15
         },
         {
           "id": "zephyr-workbench-sdk-explorer",
-          "name": "Toolchains",
-          "contextualTitle": "Toolchains",
-          "icon": "$(extensions-view-icon)",
+          "name": "Toolchains & Host Tools",
+          "contextualTitle": "Toolchains & Host Tools",
+          "icon": "$(package)",
           "type": "tree",
-          "initialSize": 15
-        },
-        {
-          "id": "zephyr-workbench-tools-explorer",
-          "name": "Host tools",
-          "contextualTitle": "Toolchains",
-          "icon": "$(extensions-view-icon)",
-          "type": "tree",
-          "initialSize": 10
-        },
-        {
-          "id": "zephyr-workbench-other-resources",
-          "name": "Other resources",
-          "contextualTitle": "Other resources",
-          "icon": "$(extensions-view-icon)",
-          "type": "tree",
-          "initialSize": 10
+          "initialSize": 25
         }
       ],
       "zephyr-workbench-dashboard-panel": [
@@ -1259,15 +1251,11 @@
       },
       {
         "view": "zephyr-workbench-west-workspace",
-        "contents": "[Initialize workspace](command:zephyr-workbench-west-workspace.open-wizard)\n"
-      },
-      {
-        "view": "zephyr-workbench-tools-explorer",
-        "contents": "[Install Host Tools](command:zephyr-workbench.install-host-tools.open-manager)\nOr use the [Advanced installation](command:zephyr-workbench.install-host-tools.advanced) to install or skip individual parts.\n"
+        "contents": "[Add West Workspace](command:zephyr-workbench-west-workspace.open-wizard)\n"
       },
       {
         "view": "zephyr-workbench-sdk-explorer",
-        "contents": "[Import Toolchain](command:zephyr-workbench-sdk-explorer.open-wizard)"
+        "contents": "Host tools are not installed yet. West workspaces, toolchains and builds need them.\n[Install Host Tools](command:zephyr-workbench.install-host-tools.open-manager)\nOr use the [Advanced installation](command:zephyr-workbench.install-host-tools.advanced) to install or skip individual parts.\n"
       }
     ],
     "submenus": [
@@ -1373,7 +1361,7 @@
         {
           "command": "zephyr-workbench-sdk-explorer.open-wizard",
           "group": "navigation",
-          "when": "view == zephyr-workbench-sdk-explorer"
+          "when": "view == zephyr-workbench-sdk-explorer && zephyr-workbench.hostToolsInstalled"
         },
         {
           "command": "zephyr-workbench-sdk-explorer.refresh",

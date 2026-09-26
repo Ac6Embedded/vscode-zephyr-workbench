@@ -116,6 +116,7 @@ export class AiManagerPanel {
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'out')],
       },
     );
+    panel.iconPath = vscode.Uri.joinPath(extensionUri, 'res', 'icons', 'ai_manager_icon.svg');
     AiManagerPanel.currentPanel = new AiManagerPanel(panel, extensionUri, controller, tab, globalStorageUri);
   }
 

@@ -1,22 +1,58 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { ArmGnuToolchainInstallation, GlobalZephyrSdkInstallation, RustToolchainInstallation, ToolchainInstallation, IarToolchainInstallation, ZephyrSdkInstallation } from '../models/ToolchainInstallations';
-import { getAllZephyrSdkInstallations, getInternalZephyrSdkInstallation, getRegisteredArmGnuToolchainInstallations, getRegisteredRustToolchainInstallations, getRegisteredIarToolchainInstallations, normalizeSdkPathKey} from '../utils/utils';
+import { getAllZephyrSdkInstallations, getInternalZephyrSdkInstallation, getRegisteredArmGnuToolchainInstallations, getRegisteredRustToolchainInstallations, getRegisteredIarToolchainInstallations, isZinstallerUpdateNeeded, normalizeSdkPathKey} from '../utils/utils';
 import { getCachedGlobalSdks } from '../utils/zephyr/globalSdkService';
 import { friendlyToolchainId, isSdkV1OrLater } from '../utils/zephyr/sdkUtils';
+import { checkHostTools } from '../utils/installUtils';
 
-export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvider<ToolchainInstallationTreeItem> {
-  private _onDidChangeTreeData: vscode.EventEmitter<ToolchainInstallationTreeItem | undefined | void> = new vscode.EventEmitter<ToolchainInstallationTreeItem | undefined | void>();
-	readonly onDidChangeTreeData: vscode.Event<ToolchainInstallationTreeItem | undefined | void> = this._onDidChangeTreeData.event;
+/** Context key behind the view's "Add Toolchain" title action. */
+const HOST_TOOLS_INSTALLED_CONTEXT = 'zephyr-workbench.hostToolsInstalled';
+
+/**
+ * The "Toolchains & Host Tools" view: a "Toolchains" group (SDKs, IAR, Arm GNU,
+ * Rust) then a "Host Tools Dependencies" group. The view keeps the historical
+ * zephyr-workbench-sdk-explorer id so its menus and saved layout still apply.
+ */
+export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
+  private _onDidChangeTreeData: vscode.EventEmitter<vscode.TreeItem | undefined | void> = new vscode.EventEmitter<vscode.TreeItem | undefined | void>();
+	readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | void> = this._onDidChangeTreeData.event;
 
   constructor() {
 	}
 
-  getTreeItem(element: ToolchainInstallationTreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
+  getTreeItem(element: vscode.TreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
     return element;
   }
 
-  async getChildren(element?: ToolchainInstallationTreeItem): Promise<ToolchainInstallationTreeItem[]> {
+  async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+	if (!element) {
+	  // Nothing can use a toolchain before the host tools exist, so the view
+	  // stays empty and its welcome content asks for them instead.
+	  const installed = await checkHostTools().catch(() => false);
+	  void vscode.commands.executeCommand('setContext', HOST_TOOLS_INSTALLED_CONTEXT, installed);
+	  if (!installed) {
+		return [];
+	  }
+	  return [new ToolchainsViewGroupItem('toolchains'), new ToolchainsViewGroupItem('host-tools')];
+	}
+
+	if (element instanceof ToolchainsViewGroupItem) {
+	  if (element.group === 'host-tools') {
+		return createHostToolsDependencyItems();
+	  }
+	  const toolchains = await this.getToolchainItems();
+	  return toolchains.length > 0 ? toolchains : [createAddToolchainItem()];
+	}
+
+	if (element instanceof ToolchainInstallationTreeItem) {
+	  return this.getToolchainItems(element);
+	}
+	return [];
+  }
+
+  /** The toolchains group's rows (no element) or the children of one toolchain row. */
+  private async getToolchainItems(element?: ToolchainInstallationTreeItem): Promise<ToolchainInstallationTreeItem[]> {
 	const items: ToolchainInstallationTreeItem[] = [];
   
 	// Registered SDKs merged with auto-detected global ones (registered win the
@@ -208,11 +244,11 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
   
   
 
-  getParent?(element: ToolchainInstallationTreeItem): vscode.ProviderResult<ToolchainInstallationTreeItem> {
+  getParent?(element: vscode.TreeItem): vscode.ProviderResult<vscode.TreeItem> {
     return null;
   }
 
-  resolveTreeItem?(item: vscode.TreeItem, element: ToolchainInstallationTreeItem, token: vscode.CancellationToken): vscode.ProviderResult<vscode.TreeItem> {
+  resolveTreeItem?(item: vscode.TreeItem, element: vscode.TreeItem, token: vscode.CancellationToken): vscode.ProviderResult<vscode.TreeItem> {
     throw new Error('Method not implemented.');
   }
 
@@ -221,6 +257,43 @@ export class ToolchainInstallationsDataProvider implements vscode.TreeDataProvid
 	}
 
 }
+
+type ToolchainsViewGroup = 'toolchains' | 'host-tools';
+
+/** One of the two top-level groups. Their context values match no menu entry. */
+class ToolchainsViewGroupItem extends vscode.TreeItem {
+	constructor(public readonly group: ToolchainsViewGroup) {
+	  super(group === 'toolchains' ? 'Toolchains' : 'Host Tools Dependencies', vscode.TreeItemCollapsibleState.Expanded);
+	  this.contextValue = group === 'toolchains' ? 'toolchains-group' : 'host-tools-group';
+	  this.iconPath = new vscode.ThemeIcon(group === 'toolchains' ? 'tools' : 'package');
+	}
+}
+
+/** Stands in for an empty toolchains group. */
+function createAddToolchainItem(): vscode.TreeItem {
+	const item = new vscode.TreeItem('Add Toolchain', vscode.TreeItemCollapsibleState.None);
+	item.iconPath = new vscode.ThemeIcon('add');
+	item.command = { command: 'zephyr-workbench-sdk-explorer.open-wizard', title: 'Add Toolchain' };
+	return item;
+}
+
+function createHostToolsDependencyItems(): vscode.TreeItem[] {
+	const manager = new vscode.TreeItem('Host Tools Manager', vscode.TreeItemCollapsibleState.None);
+	manager.command = { command: 'zephyr-workbench.host-tools-manager', title: 'Host Tools Manager' };
+	if (isZinstallerUpdateNeeded()) {
+	  manager.description = 'update available';
+	  manager.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+	} else {
+	  manager.iconPath = new vscode.ThemeIcon('wrench');
+	}
+
+	const runners = new vscode.TreeItem('Install Runners', vscode.TreeItemCollapsibleState.None);
+	runners.iconPath = new vscode.ThemeIcon('desktop-download');
+	runners.command = { command: 'zephyr-workbench.install-runners', title: 'Install Runners' };
+
+	return [manager, runners];
+}
+
 export class ToolchainInstallationTreeItem extends vscode.TreeItem {
 	constructor(
 	  public readonly installation: ToolchainInstallation,

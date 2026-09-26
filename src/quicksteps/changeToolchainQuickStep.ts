@@ -36,7 +36,7 @@ export async function changeToolchainQuickStep(
 
     if (selection && lacksCToolchain(selection)) {
         vscode.window.showErrorMessage(
-            "This Rust toolchain has no linked C toolchain; right-click it in the Toolchains view to link one."
+            "This Rust toolchain has no linked C toolchain; right-click it in the Toolchains & Host Tools view to link one."
         );
         return undefined;
     }

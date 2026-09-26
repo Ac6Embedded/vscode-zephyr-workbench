@@ -16,6 +16,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 - **Local only**: the server accepts connections from this machine only, with a key that changes every time VS Code starts. One setup serves every project and every open VS Code window.
 - New commands: **Check AI Agent Connection (MCP)** and **Copy MCP Configuration for an Agent**.
 
+### Sidebar
+- Reorganized sidebar: **Get Started**, **Managers**, and toolchains and host tools merged into one view.
+
 ### Other
 - **Verify Host Tools** and the Install Runners panel no longer hang on a missing environment script or virtual environment.
 - The Kconfig Manager's **Add to build config** now works for applications of a west workspace, and an export keeps the lines of earlier exports.

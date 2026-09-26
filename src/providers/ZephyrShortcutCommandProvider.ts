@@ -22,25 +22,19 @@ class MenuItem extends vscode.TreeItem {
   }
 }
 
+// Shown at the top of Get Started while the host tools are missing, since
+// west workspaces, toolchains and builds all need them.
 const installHostToolsMenuItem = new MenuItem(
   'Install Host Tools',
   vscode.TreeItemCollapsibleState.None,
-  'desktop-download',
+  'warning',
   {
     command: 'zephyr-workbench.install-host-tools.open-manager',
     title: 'Install Host Tools',
   }
 );
-
-const advancedInstallHostToolsMenuItem = new MenuItem(
-  'Install Host Tools (Advanced)',
-  vscode.TreeItemCollapsibleState.None,
-  'settings-gear',
-  {
-    command: 'zephyr-workbench.install-host-tools.advanced',
-    title: 'Install Host Tools (Advanced)',
-  }
-);
+installHostToolsMenuItem.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
+installHostToolsMenuItem.tooltip = 'Host tools are not installed yet. West workspaces, toolchains and builds need them.';
 
 const newAppMenuItem = new MenuItem(
   'Add Application',
@@ -126,7 +120,11 @@ const westManagerMenuItem = new MenuItem(
 const aiManagerMenuItem = new MenuItem(
   'AI Manager',
   vscode.TreeItemCollapsibleState.None,
-  'sparkle',
+  // Same colors in both themes.
+  {
+    light: path.join(__filename, '..', '..', 'res', 'icons', 'ai_manager_icon.svg'),
+    dark: path.join(__filename, '..', '..', 'res', 'icons', 'ai_manager_icon.svg'),
+  },
   {
     command: 'zephyr-workbench.ai-manager',
     title: 'AI Manager',
@@ -134,6 +132,46 @@ const aiManagerMenuItem = new MenuItem(
 );
 aiManagerMenuItem.tooltip = 'Connect AI coding agents (Claude Code, Codex, Copilot, Cursor and others) to Zephyr Workbench.';
 
+// Collapsed group at the end of Get Started: links that open in the browser.
+const externalResourcesMenuItem = new MenuItem(
+  'External Resources',
+  vscode.TreeItemCollapsibleState.Collapsed,
+  'link-external'
+);
+
+const workbenchDocsMenuItem = new MenuItem(
+  'Zephyr Workbench Documentation',
+  vscode.TreeItemCollapsibleState.None,
+  {
+    light: path.join(__filename, '..', '..', 'res', 'icons', 'light', 'zephyr_workbench_icon_light.svg'),
+    dark: path.join(__filename, '..', '..', 'res', 'icons', 'dark', 'zephyr_workbench_icon_dark.svg'),
+  },
+  {
+    command: 'zephyr-workbench.open-webpage',
+    title: 'Zephyr Workbench Documentation',
+    arguments: [`${ZEPHYR_DOCS_BASE_URL}/zephyr-workbench`]
+  }
+);
+
+const trainingPartnersMenuItem = new MenuItem(
+  'Zephyr Training Partners',
+  vscode.TreeItemCollapsibleState.None,
+  // Same colors in both themes.
+  {
+    light: path.join(__filename, '..', '..', 'res', 'icons', 'training_icon.svg'),
+    dark: path.join(__filename, '..', '..', 'res', 'icons', 'training_icon.svg'),
+  },
+  {
+    command: 'zephyr-workbench.open-webpage',
+    title: 'Zephyr Training Partners',
+    arguments: ['https://zephyrproject.org/training-partner-program']
+  }
+);
+
+/**
+ * The "Get Started" view: the Add actions, preceded by Install Host Tools
+ * while the host tools are missing, then the External Resources group.
+ */
 export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<MenuItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<MenuItem | undefined> = new vscode.EventEmitter<MenuItem | undefined>();
   readonly onDidChangeTreeData: vscode.Event<MenuItem | undefined> = this._onDidChangeTreeData.event;
@@ -142,22 +180,21 @@ export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<Me
     return element;
   }
 
-  async getChildren(element?: any): Promise<MenuItem[]> {
+  async getChildren(element?: MenuItem): Promise<MenuItem[]> {
     const items: MenuItem[] = [];
 
     if(element === undefined) {
       if(!await checkHostTools()) {
         items.push(installHostToolsMenuItem);
-        items.push(advancedInstallHostToolsMenuItem);
       }
 
       items.push(newAppMenuItem);
       items.push(newWestWorkspaceMenuItem);
       items.push(newSDKMenuItem);
-      items.push(devicetreeManagerMenuItem);
-      items.push(debugManagerMenuItem);
-      items.push(westManagerMenuItem);
-      items.push(aiManagerMenuItem);
+      items.push(externalResourcesMenuItem);
+    } else if (element === externalResourcesMenuItem) {
+      items.push(workbenchDocsMenuItem);
+      items.push(trainingPartnersMenuItem);
     }
     return items;
   }
@@ -165,4 +202,18 @@ export class ZephyrShortcutCommandProvider implements vscode.TreeDataProvider<Me
   refresh(): void {
 		this._onDidChangeTreeData.fire(undefined);
 	}
+}
+
+/** The "Managers" view: Devicetree, Debug, West, then AI. */
+export class ZephyrManagersCommandProvider implements vscode.TreeDataProvider<MenuItem> {
+  getTreeItem(element: MenuItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
+    return element;
+  }
+
+  getChildren(element?: MenuItem): MenuItem[] {
+    if (element !== undefined) {
+      return [];
+    }
+    return [devicetreeManagerMenuItem, debugManagerMenuItem, westManagerMenuItem, aiManagerMenuItem];
+  }
 }

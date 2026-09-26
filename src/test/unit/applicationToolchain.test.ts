@@ -130,7 +130,7 @@ describe('applicationToolchain', () => {
     stub.window.showErrorMessage = async (message: string) => { errors.push(message); };
     answers.push(items => items[5]);
     assert.equal(await changeToolchainQuickStep({} as never, applicationOf(f)), undefined);
-    assert.deepEqual(errors, ['This Rust toolchain has no linked C toolchain; right-click it in the Toolchains view to link one.']);
+    assert.deepEqual(errors, ['This Rust toolchain has no linked C toolchain; right-click it in the Toolchains & Host Tools view to link one.']);
   });
 
   it('tells a change of toolchain from the same one picked again', async () => {

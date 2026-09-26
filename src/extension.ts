@@ -63,10 +63,8 @@ import { pickApplicationQuickStep } from './quicksteps/pickApplicationQuickStep'
 import { pickBuildConfigQuickStep } from './quicksteps/pickBuildConfigQuickStep';
 import { WestWorkspaceApplicationTreeItem, WestWorkspaceDataProvider, WestWorkspaceEnvTreeItem, WestWorkspaceEnvValueTreeItem, WestWorkspaceTreeItem } from './providers/WestWorkspaceDataProvider';
 import { ZephyrApplicationDataProvider, ZephyrApplicationEnvTreeItem, ZephyrApplicationEnvValueTreeItem, ZephyrApplicationTreeItem, ZephyrApplicationWestWorkspaceTreeItem, ZephyrCodeExplorerEntryTreeItem, ZephyrCodeExplorerTreeItem, ZephyrConfigBoardTreeItem, ZephyrConfigDefaultRunnerTreeItem, ZephyrConfigCustomArgsTreeItem, ZephyrConfigEnvTreeItem, ZephyrConfigEnvValueTreeItem, ZephyrConfigTreeItem, ZephyrConfigWestFlagsDTreeItem, ZephyrConfigWestFlagsDValueTreeItem } from './providers/ZephyrApplicationProvider';
-import { ZephyrHostToolsCommandProvider } from './providers/ZephyrHostToolsCommandProvider';
-import { ZephyrOtherResourcesCommandProvider } from './providers/ZephyrOtherResourcesCommandProvider';
 import { ToolchainInstallationsDataProvider, ToolchainInstallationTreeItem } from "./providers/ToolchainInstallationsDataProvider";
-import { ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
+import { ZephyrManagersCommandProvider, ZephyrShortcutCommandProvider } from './providers/ZephyrShortcutCommandProvider';
 import { extractSDK, registerZephyrSDK, registerIARToolchain, unregisterIARToolchain, getMinimalToolchainsForVersion, friendlyToolchainId, isSdkV1OrLater, normalizeIarToolchainRoot } from './utils/zephyr/sdkUtils';
 import { getGlobalSdkSources, refreshGlobalSdkDetection } from './utils/zephyr/globalSdkService';
 import { runSdkSetup, runWestSdkInstall, WestSdkInstallError } from './utils/zephyr/westSdkRunner';
@@ -425,6 +423,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Setup Tree view providers
 	const zephyrShortcutProvider = new ZephyrShortcutCommandProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-shortcuts', zephyrShortcutProvider);
+	vscode.window.registerTreeDataProvider('zephyr-workbench-managers', new ZephyrManagersCommandProvider());
 
 	const toolchainInstallationsProvider = new ToolchainInstallationsDataProvider();
 	vscode.window.registerTreeDataProvider('zephyr-workbench-sdk-explorer', toolchainInstallationsProvider);
@@ -733,12 +732,6 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}
 	};
-
-	const zephyrToolsCommandProvider = new ZephyrHostToolsCommandProvider();
-	vscode.window.registerTreeDataProvider('zephyr-workbench-tools-explorer', zephyrToolsCommandProvider);
-
-	const zephyrResourcesCommandProvider = new ZephyrOtherResourcesCommandProvider();
-	vscode.window.registerTreeDataProvider('zephyr-workbench-other-resources', zephyrResourcesCommandProvider);
 
 	// Initialize DTS-LSP integration: creates contexts on .overlay/.dts opens
 	initDtsIntegration(context);
@@ -2285,7 +2278,6 @@ export function activate(context: vscode.ExtensionContext) {
 
                         toolchainInstallationsProvider.refresh();
                         zephyrShortcutProvider.refresh();
-                        zephyrToolsCommandProvider.refresh();
                         // If Host Tools Manager is open, refresh its content
                         try { HostToolsPanel.currentPanel?.refresh(); } catch {}
                         try { AdvancedHostToolsPanel.currentPanel?.refreshStatus(); } catch {}
@@ -2428,7 +2420,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 							toolchainInstallationsProvider.refresh();
 							zephyrShortcutProvider.refresh();
-							zephyrToolsCommandProvider.refresh();
 							// If Host Tools Manager is open, refresh its content
 							// (the Advanced panel refreshes itself after awaiting this command)
 							try { HostToolsPanel.currentPanel?.refresh(); } catch {}
@@ -4153,7 +4144,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 			if (event.affectsConfiguration(ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY)) {
 				zephyrShortcutProvider.refresh();
-				zephyrToolsCommandProvider.refresh();
+				toolchainInstallationsProvider.refresh();
 			}
 
 			if (event.affectsConfiguration(`${ZEPHYR_WORKBENCH_SETTING_SECTION_KEY}.${ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY}`) ||

@@ -51,7 +51,7 @@ function resolveListed(inventory: ToolchainInventory, target: string): ListedToo
   const live = found.filter(entry => !isMissing(entry));
   if (live.length > 1) {
     throw invalid(`"${logSafe(target, 300)}" is registered as ${live.map(entry => LABEL[entry.family]).join(' and ')}.`,
-      'Ask the user to remove the extra registration from the Toolchains view.', { families: live.map(entry => entry.family) });
+      'Ask the user to remove the extra registration from the Toolchains & Host Tools view.', { families: live.map(entry => entry.family) });
   }
   return live[0] ?? found[0];
 }

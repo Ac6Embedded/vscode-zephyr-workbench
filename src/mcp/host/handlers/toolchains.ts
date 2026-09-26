@@ -61,7 +61,7 @@ async function listInstalled(args: Record<string, unknown>, ctx: Ctx) {
     inventory.missing.length > 0
       ? fullToolHint(ctx, 'remove_or_delete',
         'Remove the registrations listed in missing with remove_or_delete what "toolchain".',
-        'The registrations listed in missing can be removed with remove_or_delete, which only the full toolset offers, or from the Toolchains view of Zephyr Workbench (Refresh).')
+        'The registrations listed in missing can be removed with remove_or_delete, which only the full toolset offers, or from the Toolchains & Host Tools view of Zephyr Workbench (Refresh).')
       : undefined,
   ].filter(Boolean).join(' ');
 
