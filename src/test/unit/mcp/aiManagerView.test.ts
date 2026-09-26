@@ -418,9 +418,10 @@ describe('AI Manager view', () => {
       }
     });
 
-    it('lists both skill collections in a few words, with their authors', () => {
+    it('lists the skill collections in a few words, Ac6 first, with their authors', () => {
       const shown = visible(render(React.createElement(SkillsView)));
       const text = shown.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      assert.match(text, /^[\s\S]*?Zephyr RTOS AI Skills Open by Ac6 Devicetree and Kconfig skills with vendor pages[\s\S]*Zephyr Agent Skills/);
       assert.match(text, /Zephyr Agent Skills[\s\S]*by beriberikix[\s\S]*Skills for building with Zephyr/);
       assert.match(text, /Zephyr AI Skills[\s\S]*by Beningo Embedded Group[\s\S]*Five skills for board support work/);
       assert.doesNotMatch(shown, /zw-chip/, 'no tags on the cards');

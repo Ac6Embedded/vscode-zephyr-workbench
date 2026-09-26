@@ -24,6 +24,7 @@ export const EXTERNAL_LINKS = {
   'zephyr-bindings': 'https://docs.zephyrproject.org/latest/build/dts/api/bindings.html',
   'zephyr-docs': 'https://docs.zephyrproject.org/latest/',
   'zephyr-wiki': 'https://github.com/zephyrproject-rtos/zephyr/wiki',
+  'skills-ac6': 'https://github.com/Ac6Embedded/Zephyr-RTOS-AI-Skills',
   'skills-zephyr-agent-skills': 'https://github.com/beriberikix/zephyr-agent-skills',
   'skills-beningo': 'https://www.beningo.com/zephyr-ai-skills/',
 } as const;
@@ -78,6 +79,33 @@ export interface SkillCollection {
 
 /** Agent skill collections written by others. Zephyr Workbench neither maintains nor checks them. */
 export const THIRD_PARTY_SKILLS: readonly SkillCollection[] = [
+  {
+    link: 'skills-ac6',
+    name: 'Zephyr RTOS AI Skills',
+    author: 'Ac6',
+    summary: 'Devicetree and Kconfig skills with vendor pages (Silicon Labs, STM32, NXP, ESP32, Nordic).',
+    install: [
+      {
+        label: 'For any agent, with the skills CLI, which asks which skills and agents (needs Node.js)',
+        commands: ['npx skills add Ac6Embedded/Zephyr-RTOS-AI-Skills'],
+      },
+      {
+        label: 'As a Claude Code plugin, typed in Claude Code',
+        commands: [
+          '/plugin marketplace add Ac6Embedded/Zephyr-RTOS-AI-Skills',
+          '/plugin install zephyr-skills@zephyr-rtos-ai-skills',
+        ],
+      },
+      {
+        label: 'By hand, for all your projects (Claude Code reads ~/.claude/skills/ instead)',
+        commands: [
+          'git clone https://github.com/Ac6Embedded/Zephyr-RTOS-AI-Skills.git',
+          'mkdir -p ~/.agents/skills',
+          'cp -R Zephyr-RTOS-AI-Skills/skills/* ~/.agents/skills/',
+        ],
+      },
+    ],
+  },
   {
     link: 'skills-zephyr-agent-skills',
     name: 'Zephyr Agent Skills',
