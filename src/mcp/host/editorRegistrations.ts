@@ -100,6 +100,8 @@ export class EditorRegistrations implements vscode.Disposable {
   private readonly changed = new vscode.EventEmitter<void>();
   private readonly disposables: vscode.Disposable[] = [this.changed];
   private cursorRegistered = false;
+  /** GitHub Copilot in VS Code gets the server from this extension, with no file written. */
+  vsCodeRegistered = false;
 
   constructor(private readonly context: RegistrationContext) {}
 
@@ -136,6 +138,7 @@ export class EditorRegistrations implements vscode.Disposable {
           return server;
         },
       }));
+      this.vsCodeRegistered = true;
       this.context.log('registered with the VS Code MCP API for GitHub Copilot.');
     } catch (error) {
       this.context.log(`could not register with the VS Code MCP API: ${error instanceof Error ? error.message : String(error)}`);

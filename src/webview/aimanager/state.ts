@@ -68,6 +68,8 @@ export interface AgentRow {
   exists?: boolean;
   /** VS Code adds the server itself, through its install link, rather than a file written here. */
   via_link?: boolean;
+  /** The agent got the server from this extension directly, with no file: Copilot in VS Code. */
+  automatic?: boolean;
   state: 'configured' | 'outdated' | 'not-configured' | 'foreign' | 'no-file';
   note?: string;
   /** How to sign in to a server that asks for it, with this agent. */
@@ -99,7 +101,7 @@ export interface ZephyrMcpState {
 export interface AiManagerState {
   view: AiManagerView;
   /** The page of the Zephyr Workbench MCP view. */
-  tab: 'agents' | 'servers' | 'tools';
+  tab: 'connections' | 'tools';
   server: ServerState;
   launcher: { command: string; args: string[]; env: Record<string, string> };
   bridge: { path: string; installed: boolean; launcher_path?: string; home: string };

@@ -26,7 +26,7 @@ import { getMcpPaths } from '../mcp/core/paths';
 import { McpController, readSettings } from '../mcp/host/mcpController';
 import { CONFIRM_CATEGORIES } from '../mcp/core/toolSpec';
 
-export type AiManagerTab = 'agents' | 'servers' | 'tools';
+export type AiManagerTab = 'connections' | 'tools';
 export type AiManagerView = 'workbench' | 'zephyr' | 'skills';
 
 /** Which server a Connect or Remove is for. */
@@ -49,6 +49,7 @@ interface InboundMessage {
 }
 
 const VIEWS: readonly AiManagerView[] = ['workbench', 'zephyr', 'skills'];
+const TABS: readonly AiManagerTab[] = ['connections', 'tools'];
 
 /** The Zephyr Project's server, the same entry for every user. */
 const ZEPHYR_TARGET = remoteTarget(ZEPHYR_PROJECT_MCP.name, ZEPHYR_PROJECT_MCP.url);
@@ -96,7 +97,7 @@ export class AiManagerPanel {
   }
 
   static show(
-    extensionUri: vscode.Uri, controller: () => McpController | undefined, tab: AiManagerTab = 'agents',
+    extensionUri: vscode.Uri, controller: () => McpController | undefined, tab: AiManagerTab = 'connections',
     globalStorageUri?: vscode.Uri,
   ): void {
     if (AiManagerPanel.currentPanel) {
@@ -181,7 +182,19 @@ export class AiManagerPanel {
           .map(scope => inspectAgent(agent, scope, launcher, folder))
           .filter(status => status.state !== 'no-file' || status.id === 'vscode-copilot')
           // Open File is offered only for a file that is there to open.
-          .map(status => ({ ...status, exists: !!status.file && fs.existsSync(status.file) }));
+          .map(status => ({ ...status, exists: !!status.file && fs.existsSync(status.file) }))
+          .map(status => {
+            if (status.id !== 'vscode-copilot' || !controller?.registeredWithVsCode) {
+              return status;
+            }
+            // VS Code got the server from this extension, with no file at all: the
+            // agent's general note about that has nothing left to say.
+            const { note, ...rest } = status;
+            const kept = note && note !== agent.note ? { note } : {};
+            return status.state === 'no-file'
+              ? { ...rest, ...kept, automatic: true, source: 'Registered automatically by Zephyr Workbench' }
+              : { ...rest, ...kept };
+          });
       }),
       zephyr: {
         name: ZEPHYR_PROJECT_MCP.name,
@@ -310,7 +323,7 @@ export class AiManagerPanel {
           await this.post();
           return;
         case 'setTab':
-          this.tab = message.tab ?? 'agents';
+          this.tab = TABS.includes(message.tab as AiManagerTab) ? message.tab as AiManagerTab : 'connections';
           await this.post();
           return;
         case 'setView':
@@ -519,7 +532,7 @@ export class AiManagerPanel {
     const uri = vscode.Uri.from({ scheme: vscode.env.uriScheme, path: 'mcp/install', query: JSON.stringify(config) });
     const opened = await vscode.env.openExternal(uri);
     if (!opened) {
-      void vscode.window.showWarningMessage('VS Code did not open its MCP install prompt. Add the server from the Any other MCP client section instead.');
+      void vscode.window.showWarningMessage('VS Code did not open its MCP install prompt. Add the server from the Manual setup section instead.');
     }
   }
 

@@ -9,7 +9,7 @@ import type { AgentRow, AiManagerState, ToolRow } from '../../../webview/aimanag
 import {
   confirmRows, displayPath, groupAgents, jobTitle, rowStatus, scopeAction, serverSummary, signInHint, SPINNER, summarizeAgent,
 } from '../../../webview/aimanager/view';
-import { AgentsTab, ServersTab, SkillsView, StatusHeader, ToolsTab, ZephyrView } from '../../../webview/aimanager/app';
+import { ConnectionsTab, SkillsView, StatusHeader, ToolsTab, WorkbenchView, ZephyrView } from '../../../webview/aimanager/app';
 import { isOpenIn, OpenState, toggledIn } from '../../../webview/aimanager/disclosure';
 
 const row = (over: Partial<AgentRow>): AgentRow => ({
@@ -24,7 +24,7 @@ const tool = (over: Partial<ToolRow>): ToolRow => ({
 function state(over: Partial<AiManagerState> = {}): AiManagerState {
   return {
     view: 'workbench',
-    tab: 'agents',
+    tab: 'connections',
     server: {
       running: true, enabled: 'auto', supported: true, window_id: 'w', port: 50123, toolset: 'core', tool_count: 2,
       tools: [
@@ -106,12 +106,27 @@ describe('AI Manager view', () => {
       assert.equal(summarizeAgent([row({ state: 'configured' }), row({ scope: 'project', state: 'configured' })]).text, 'Connected');
     });
 
-    it('sends a hand-edited file to the file, and says no setup is needed when none is', () => {
+    it('sends a hand-edited file to the file', () => {
       const foreign = summarizeAgent([row({ state: 'foreign' })]);
       assert.equal(foreign.text, 'Edited by hand');
       assert.deepEqual(foreign.action?.message, { command: 'openFile', file: '/home/u/.cursor/mcp.json' });
-      const copilot = summarizeAgent([row({ id: 'vscode-copilot', state: 'no-file', file: undefined }), row({ scope: 'project' })]);
-      assert.deepEqual(copilot, { tone: 'info', text: 'No setup needed' });
+    });
+
+    it('shows Copilot as connected automatically once VS Code got the server, and offers the project file otherwise', () => {
+      const copilot = (over: Partial<AgentRow>) => [
+        row({ id: 'vscode-copilot', state: 'no-file', file: undefined, ...over }),
+        row({ id: 'vscode-copilot', scope: 'project', file: '/p/.vscode/mcp.json' }),
+      ];
+      const automatic = summarizeAgent(copilot({ automatic: true, source: 'Registered by Zephyr Workbench' }));
+      assert.equal(automatic.tone, 'ok');
+      assert.equal(automatic.text, 'Connected automatically');
+      assert.equal(automatic.action, undefined);
+      assert.equal(rowStatus(copilot({ automatic: true })[0]).text, 'Connected');
+      // An older VS Code, or the server turned off: only the project file can connect Copilot.
+      const manual = summarizeAgent(copilot({}));
+      assert.equal(manual.text, 'Not connected');
+      assert.deepEqual(manual.action?.message, { command: 'connect', agentId: 'vscode-copilot', scope: 'project' });
+      assert.equal(rowStatus(copilot({})[0]).text, 'Not available');
     });
 
     it('gives each scope line its own action', () => {
@@ -193,7 +208,7 @@ describe('AI Manager view', () => {
           },
         }),
       }));
-      const claude = markup.slice(markup.indexOf('Claude Code'), markup.indexOf('Other MCP clients'));
+      const claude = markup.slice(markup.indexOf('Claude Code'), markup.indexOf('Manual setup'));
       assert.doesNotMatch(claude, /zw-action primary/);
       assert.doesNotMatch(claude, /To sign in/);
       assert.match(claude, /Your account[\s\S]*Connected[\s\S]*claude\.ai connectors/);
@@ -211,15 +226,15 @@ describe('AI Manager view', () => {
 
   describe('groupAgents', () => {
     it('keeps agents found here, set up, or needing no setup, and tucks the rest away', () => {
-      const { main, other } = groupAgents([
+      const { installed, notInstalled } = groupAgents([
         row({ id: 'a', detected: true }),
         row({ id: 'b', detected: false, state: 'configured' }),
         row({ id: 'c', detected: false, state: 'no-file', file: undefined }),
         row({ id: 'd', detected: false }),
         row({ id: 'd', detected: false, scope: 'project' }),
       ]);
-      assert.deepEqual(main.map(rows => rows[0].id), ['a', 'b', 'c']);
-      assert.deepEqual(other.map(rows => rows.map(r => r.scope)), [['user', 'project']]);
+      assert.deepEqual(installed.map(rows => rows[0].id), ['a', 'b', 'c']);
+      assert.deepEqual(notInstalled.map(rows => rows.map(r => r.scope)), [['user', 'project']]);
     });
   });
 
@@ -241,7 +256,7 @@ describe('AI Manager view', () => {
     it('reads each server state in a few words', () => {
       const server = state().server;
       assert.equal(serverSummary(server).text, 'Server running');
-      assert.equal(serverSummary({ ...server, running: false }).text, 'Server idle, starts when an agent connects');
+      assert.equal(serverSummary({ ...server, running: false }).text, 'Server idle, starts automatically when an agent connects');
       assert.equal(serverSummary({ ...server, running: false, stopped_by_user: true }).text, 'Server stopped');
       assert.equal(serverSummary({ ...server, running: false, enabled: 'off' }).text, 'Server turned off in the settings');
       assert.equal(serverSummary({ ...server, supported: false }).tone, 'error');
@@ -285,7 +300,7 @@ describe('AI Manager view', () => {
 
   describe('rendering', () => {
     it('shows one line per agent with its status and one button, and folds the details away', () => {
-      const markup = render(React.createElement(AgentsTab, { state: state() }));
+      const markup = render(React.createElement(ConnectionsTab, { state: state() }));
       const shown = visible(markup);
       assert.match(shown, /Claude Code/);
       assert.match(shown, /Connected for all projects/);
@@ -294,14 +309,16 @@ describe('AI Manager view', () => {
       assert.doesNotMatch(shown, /\.claude\.json|Open file|Remove/);
       assert.match(markup, /~\/\.claude\.json/);
       assert.match(markup, /aria-expanded="false"/);
-      assert.doesNotMatch(markup, /aria-expanded="true"/);
-      // An agent not found here goes in its own group, folded too.
-      assert.match(shown, /Not found on this machine/);
+      // Only the Installed group starts open; every agent row starts closed.
+      assert.equal((markup.match(/aria-expanded="true"/g) ?? []).length, 1);
+      assert.match(shown, /aria-expanded="true"[^>]*>[\s\S]*?Installed[\s\S]*?zw-count">2</);
+      // An agent not found here goes in its own group, folded.
+      assert.match(shown, /Not installed/);
       assert.doesNotMatch(shown, /Gemini CLI/);
     });
 
     it('offers Open file only for a file that is on disk', () => {
-      const markup = render(React.createElement(AgentsTab, { state: state() }));
+      const markup = render(React.createElement(ConnectionsTab, { state: state() }));
       const claude = markup.slice(markup.indexOf('Claude Code'), markup.indexOf('Cursor'));
       assert.equal((claude.match(/Open file/g) ?? []).length, 1, 'the missing project .mcp.json has none');
     });
@@ -370,17 +387,20 @@ describe('AI Manager view', () => {
       assert.match(shown, /get_status[\s\S]*manage_app/);
     });
 
-    it('leads the Zephyr Project MCP page with its address and short facts, then the agents', () => {
+    it('leads the Zephyr Project MCP page with what it answers and short facts, then the agents', () => {
       const shown = visible(render(React.createElement(ZephyrView, { state: state({ view: 'zephyr' }) })));
-      assert.match(shown, /https:\/\/zephyrproject\.mcp\.kapa\.ai/);
-      assert.match(shown, /Hosted by Kapa\.ai[\s\S]*Questions leave this machine[\s\S]*Sign in on first use/);
+      assert.match(shown, /Answers from Zephyr&#x27;s docs, code and GitHub, with sources\.[\s\S]*>Docs</);
+      // The address is only in the Manual setup snippets, folded.
+      assert.doesNotMatch(shown, /zephyrproject\.mcp\.kapa\.ai|>Copy</);
+      assert.match(shown, /Official Zephyr Project MCP[\s\S]*Questions leave this machine[\s\S]*Sign in on first use/);
+      assert.match(shown, /<button type="button" class="zw-link"[^>]*>Docs</);
       // Its own rows, whose buttons act on the Zephyr Project's server.
       assert.match(shown, /Claude Code[\s\S]*Connected for all projects/);
       assert.match(shown, /GitHub Copilot in VS Code[\s\S]*>Add to VS Code</);
       assert.match(shown, /Cursor[\s\S]*Not set up on this machine/);
-      // The Data sources table is open; the snippets and the fine print are folded.
-      assert.match(shown, /<table class="zw-table">[\s\S]*Source code[\s\S]*Hourly[\s\S]*GitHub pull requests[\s\S]*Every 10 minutes/);
-      assert.match(shown, /Other MCP clients[\s\S]*About the answers/);
+      // The snippets, the data sources and the fine print are folded.
+      assert.match(shown, /Manual setup[\s\S]*Data sources[\s\S]*About the answers/);
+      assert.doesNotMatch(shown, /<table/);
       assert.doesNotMatch(shown, /&quot;url&quot;|mcp-remote|No personally identifiable information/);
     });
 
@@ -407,14 +427,22 @@ describe('AI Manager view', () => {
       assert.doesNotMatch(shown, /claude plugin marketplace add/);
     });
 
-    it('shows recent jobs and folds the manual setup', () => {
-      const base = state({ tab: 'servers' });
-      const shown = visible(render(React.createElement(ServersTab, {
+    it('groups the Connections tab under Agents and Server, with only the installed agents open', () => {
+      const base = state();
+      const markup = render(React.createElement(ConnectionsTab, {
         state: { ...base, server: { ...base.server, jobs: [{ job_id: 'w.build-1', kind: 'build', status: 'failed', app_path: '/w/blinky', config_name: 'primary' }] } },
-      })));
-      assert.match(shown, /Build blinky \(primary\)/);
-      assert.match(shown, /Manual setup/);
-      assert.doesNotMatch(shown, /zw-mcp|bridge\.cjs/);
+      }));
+      const shown = visible(markup);
+      assert.match(shown, />Agents<[\s\S]*Installed[\s\S]*Cursor[\s\S]*Not installed[\s\S]*Manual setup[\s\S]*>Server<[\s\S]*Recent jobs[\s\S]*1[\s\S]*About this server/);
+      assert.doesNotMatch(shown, /Build blinky|zw-mcp|bridge\.cjs|loopback/);
+      assert.match(markup, /zw-mcp[\s\S]*Build blinky \(primary\)[\s\S]*loopback/);
+      assert.match(markup, /own local server: it runs inside VS Code on this machine, not on any\s+external server/);
+    });
+
+    it('has no Server tab any more', () => {
+      const shown = render(React.createElement(WorkbenchView, { state: state() }));
+      const tabs = [...shown.matchAll(/role="tab"[^>]*>([^<]+)</g)].map(match => match[1]);
+      assert.deepEqual(tabs, ['Connections', 'Tools and safety']);
     });
   });
 });

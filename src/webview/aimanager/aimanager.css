@@ -113,6 +113,21 @@
 
 .zw-heading { margin: 1.1rem 0 0.35rem; }
 
+/* A titled group of folds: the agents, the server. */
+
+.zw-group { margin-top: 1.4rem; }
+.zw-group:first-child { margin-top: 0.4rem; }
+
+.zw-group-title {
+  margin: 0 0 0.2rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.zw-group > .zw-section { margin-top: 0.15rem; }
+
 .zw-count {
   margin-left: 0.35rem;
   padding: 0 0.45rem;
@@ -241,12 +256,11 @@
 .zw-check input { margin-top: 0.15rem; }
 .zw-check.unused > span:first-of-type { color: var(--vscode-descriptionForeground); }
 
-.zw-tool-group-name {
+.zw-group-name {
   margin: 0.9rem 0 0.2rem;
   color: var(--vscode-descriptionForeground);
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .zw-tool {
@@ -407,9 +421,22 @@
 
 /* The Zephyr Project MCP page and the skills page. */
 
-.zw-panel { padding: 0.75rem 1rem; }
+.zw-panel { padding: 0.3rem 0.6rem; }
+
+/* Laid out like the server card: each line of text inset as its toggle is, buttons at the card's own padding. */
+.zw-panel > .zw-endpoint,
+.zw-panel > .zw-skill-head { margin: 0; }
+
+.zw-endpoint > .zw-lead,
+.zw-skill-head > .zw-name { padding: 0.45rem 0.3rem; }
+
+.zw-panel > .zw-chips { margin: 0 0 0.45rem 0.3rem; }
+
+.zw-skill > .zw-meta,
+.zw-skill > .zw-lead { padding: 0 0.3rem; }
 
 .zw-lead { margin: 0 0 0.5rem; }
+.zw-endpoint > .zw-lead { margin: 0; }
 
 .zw-endpoint {
   display: flex;

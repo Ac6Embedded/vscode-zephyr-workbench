@@ -200,36 +200,107 @@ function AgentItem({ rows, state, server }: { rows: AgentRow[]; state: AiManager
   );
 }
 
-/** The agents found here, each on one line, and the others folded in a group of their own. */
-function AgentList({ agents, state, server }: { agents: AgentRow[]; state: AiManagerState; server?: ServerKey }) {
-  const { main, other } = groupAgents(agents);
+/** A titled group of folds, such as the agents or the server. */
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="zw-group">
+      <h2 className="zw-group-title">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * The agents found on this machine, open, and the others, folded, one line
+ * each. `children` adds more folds to the group, such as the manual setup.
+ */
+function AgentList({ agents, state, server, children }: {
+  agents: AgentRow[]; state: AiManagerState; server?: ServerKey; children?: React.ReactNode;
+}) {
+  const { installed, notInstalled } = groupAgents(agents);
+  const group = server ?? 'connections';
   return (
     <>
-      <div className="zw-list">
-        {main.map(rows => <AgentItem key={rows[0].id} rows={rows} state={state} server={server} />)}
-      </div>
-      {other.length > 0 && (
+      <Disclosure
+        id={`${group}:installed`}
+        className="zw-section"
+        defaultOpen
+        summary={<span className="zw-section-name">Installed <span className="zw-count">{installed.length}</span></span>}
+      >
+        {installed.length > 0
+          ? <div className="zw-list">{installed.map(rows => <AgentItem key={rows[0].id} rows={rows} state={state} server={server} />)}</div>
+          : <p className="zw-note">No agent was found on this machine.</p>}
+      </Disclosure>
+      {notInstalled.length > 0 && (
         <Disclosure
-          id={`agents:${server ?? 'workbench'}:other`}
+          id={`${group}:not-installed`}
           className="zw-section"
-          summary={<span className="zw-section-name">Not found on this machine <span className="zw-count">{other.length}</span></span>}
+          summary={<span className="zw-section-name">Not installed <span className="zw-count">{notInstalled.length}</span></span>}
         >
-          <p className="zw-note">
-            These agents are not in their usual places. You can still connect one, for example before you install it.
-          </p>
+          <p className="zw-note">You can still connect one, for example before you install it.</p>
           <div className="zw-list">
-            {other.map(rows => <AgentItem key={rows[0].id} rows={rows} state={state} server={server} />)}
+            {notInstalled.map(rows => <AgentItem key={rows[0].id} rows={rows} state={state} server={server} />)}
           </div>
         </Disclosure>
       )}
+      {children}
     </>
   );
 }
 
-export function AgentsTab({ state }: { state: AiManagerState }) {
+/** Who connects to the server: the agents, with the manual setup, then the server's own jobs and what it is. */
+export function ConnectionsTab({ state }: { state: AiManagerState }) {
+  const { launcher, bridge, server } = state;
   return (
     <div>
-      <AgentList agents={state.agents} state={state} />
+      <Group title="Agents">
+        <AgentList agents={state.agents} state={state}>
+          <Disclosure id="connections:manual" className="zw-section" summary={<span className="zw-section-name">Manual setup</span>}>
+            <p className="zw-note">An agent not listed above can use this command as a local (stdio) MCP server.</p>
+            <div className="zw-code zw-mono">{[launcher.command, ...launcher.args].join(' ')}</div>
+            {Object.keys(launcher.env).length > 0 && (
+              <div className="zw-code zw-mono">{Object.entries(launcher.env).map(([k, v]) => `${k}=${v}`).join(' ')}</div>
+            )}
+            <div className="zw-actions">
+              <ActionButton action={{ label: 'Copy configuration for an agent', message: { command: 'copyConfig' } }} />
+            </div>
+            <dl className="zw-facts">
+              <dt>Bridge</dt>
+              <dd className="zw-mono">{bridge.path}{bridge.installed ? '' : ' (not installed yet)'}</dd>
+              {bridge.launcher_path && (
+                <>
+                  <dt>Launcher</dt>
+                  <dd className="zw-mono">{bridge.launcher_path}</dd>
+                </>
+              )}
+            </dl>
+          </Disclosure>
+        </AgentList>
+      </Group>
+
+      <Group title="Server">
+        <Disclosure
+          id="connections:jobs"
+          className="zw-section"
+          summary={(
+            <span className="zw-section-name">
+              Recent jobs{server.jobs.length > 0 && <span className="zw-count">{server.jobs.length}</span>}
+            </span>
+          )}
+        >
+          {server.jobs.length === 0
+            ? <p className="zw-note">No agent job has run in this VS Code window yet.</p>
+            : <div className="zw-list">{server.jobs.map(job => <JobItem key={job.job_id} job={job} />)}</div>}
+        </Disclosure>
+        <Disclosure id="connections:about" className="zw-section" summary={<span className="zw-section-name">About this server</span>}>
+          <p className="zw-note">
+            This is the workbench&apos;s own local server: it runs inside VS Code on this machine, not on any
+            external server. It listens on the loopback interface only, on a port chosen at random, and every
+            request needs a token that is regenerated each time VS Code starts. Neither the port nor the token
+            appears in any configuration file.
+          </p>
+        </Disclosure>
+      </Group>
     </div>
   );
 }
@@ -237,6 +308,15 @@ export function AgentsTab({ state }: { state: AiManagerState }) {
 function LinkButton({ link, label, primary }: { link: ExternalLinkId; label: string; primary?: boolean }) {
   return (
     <ActionButton action={{ label, primary, title: EXTERNAL_LINKS[link], message: { command: 'openLink', link } }} />
+  );
+}
+
+/** A link to a documentation page, styled as the links of the Data sources table. */
+function DocLink({ link, label }: { link: ExternalLinkId; label: string }) {
+  return (
+    <button type="button" className="zw-link" title={EXTERNAL_LINKS[link]} onClick={() => post({ command: 'openLink', link })}>
+      {label}
+    </button>
   );
 }
 
@@ -265,62 +345,61 @@ export function ZephyrView({ state }: { state: AiManagerState }) {
   return (
     <div>
       <div className="zw-card zw-panel">
-        <p className="zw-lead">Answers from Zephyr&apos;s docs, code and GitHub, with sources.</p>
         <div className="zw-endpoint">
-          <span className="zw-mono">{zephyr.url}</span>
-          <span className="zw-actions">
-            <ActionButton action={{ label: 'Copy', title: 'Copy the address', message: { command: 'copy', text: zephyr.url } }} />
-            <LinkButton link="zephyr-mcp-docs" label="Docs" />
-          </span>
+          <span className="zw-lead">Answers from Zephyr&apos;s docs, code and GitHub, with sources.</span>
+          <DocLink link="zephyr-mcp-docs" label="Docs" />
         </div>
         <div className="zw-chips">
-          <Chip icon="cloud" text="Hosted by Kapa.ai" />
+          <Chip icon="verified" text="Official Zephyr Project MCP" />
           <Chip icon="cloud-upload" text="Questions leave this machine" />
           <Chip icon="key" text="Sign in on first use" />
         </div>
       </div>
 
-      <div className="zw-section-name zw-heading">Agents</div>
-      <AgentList agents={zephyr.agents} state={state} server="zephyr" />
+      <Group title="Agents">
+        <AgentList agents={zephyr.agents} state={state} server="zephyr">
+          <Disclosure id="zephyr:manual" className="zw-section" summary={<span className="zw-section-name">Manual setup</span>}>
+            <p className="zw-note">An agent not listed above can use the address directly, over streamable HTTP:</p>
+            <CopyBlock text={zephyrClientConfig(zephyr, 'url')} label="Copy" />
+            <p className="zw-note">Through mcp-remote, for a client that only starts local servers (needs Node.js):</p>
+            <CopyBlock text={zephyrClientConfig(zephyr, 'mcp-remote')} label="Copy" />
+            <div className="zw-actions"><DocLink link="mcp-remote" label="About mcp-remote" /></div>
+          </Disclosure>
+        </AgentList>
+      </Group>
 
-      <Disclosure id="zephyr:generic" className="zw-section" summary={<span className="zw-section-name">Other MCP clients</span>}>
-        <p className="zw-note">Streamable HTTP:</p>
-        <CopyBlock text={zephyrClientConfig(zephyr, 'url')} label="Copy" />
-        <p className="zw-note">Through mcp-remote, for a client that only starts local servers (needs Node.js):</p>
-        <CopyBlock text={zephyrClientConfig(zephyr, 'mcp-remote')} label="Copy" />
-        <div className="zw-actions"><LinkButton link="mcp-remote" label="About mcp-remote" /></div>
-      </Disclosure>
+      <Group title="Server">
+        <Disclosure id="zephyr:sources" className="zw-section" summary={<span className="zw-section-name">Data sources</span>}>
+          <table className="zw-table">
+            <thead>
+              <tr><th>Source</th><th>Details</th><th>Refresh</th></tr>
+            </thead>
+            <tbody>
+              {ZEPHYR_MCP_DATA_SOURCES.map(row => (
+                <tr key={row.source}>
+                  <td>{row.source}</td>
+                  <td>
+                    {row.link ? (
+                      <button type="button" className="zw-link" onClick={() => post({ command: 'openLink', link: row.link })}>
+                        {row.details}
+                      </button>
+                    ) : row.details}
+                  </td>
+                  <td className="zw-nowrap">{row.refresh}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Disclosure>
 
-      <Disclosure id="zephyr:sources" className="zw-section" defaultOpen summary={<span className="zw-section-name">Data sources</span>}>
-        <table className="zw-table">
-          <thead>
-            <tr><th>Source</th><th>Details</th><th>Refresh</th></tr>
-          </thead>
-          <tbody>
-            {ZEPHYR_MCP_DATA_SOURCES.map(row => (
-              <tr key={row.source}>
-                <td>{row.source}</td>
-                <td>
-                  {row.link ? (
-                    <button type="button" className="zw-link" onClick={() => post({ command: 'openLink', link: row.link })}>
-                      {row.details}
-                    </button>
-                  ) : row.details}
-                </td>
-                <td className="zw-nowrap">{row.refresh}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Disclosure>
-
-      <Disclosure id="zephyr:about" className="zw-section" summary={<span className="zw-section-name">About the answers</span>}>
-        <ul className="zw-bullets">
-          <li>Answers are AI-generated and can be wrong: check what matters in the docs.</li>
-          <li>Questions may be collected anonymously to improve the docs. No personally identifiable information is collected.</li>
-        </ul>
-        <div className="zw-actions"><LinkButton link="zephyr-mcp-wiki" label="Kapa.ai on the Zephyr wiki" /></div>
-      </Disclosure>
+        <Disclosure id="zephyr:about" className="zw-section" summary={<span className="zw-section-name">About the answers</span>}>
+          <ul className="zw-bullets">
+            <li>Answers are AI-generated and can be wrong: check what matters in the docs.</li>
+            <li>Questions may be collected anonymously to improve the docs. No personally identifiable information is collected.</li>
+          </ul>
+          <div className="zw-actions"><DocLink link="zephyr-mcp-wiki" label="Kapa.ai on the Zephyr wiki" /></div>
+        </Disclosure>
+      </Group>
     </div>
   );
 }
@@ -364,52 +443,6 @@ function JobItem({ job }: { job: JobRow }) {
       />
       <span className="zw-meta">{job.status}</span>
       <span className="zw-meta">{formatTime(job.started_at)}</span>
-    </div>
-  );
-}
-
-export function ServersTab({ state }: { state: AiManagerState }) {
-  const { launcher, bridge, server } = state;
-  return (
-    <div>
-      <div className="zw-section-name zw-heading">Recent jobs</div>
-      {server.jobs.length === 0
-        ? <p className="zw-note">No agent job has run in this VS Code window yet.</p>
-        : <div className="zw-list">{server.jobs.map(job => <JobItem key={job.job_id} job={job} />)}</div>}
-      <Disclosure id="server:setup" className="zw-section" summary={<span className="zw-section-name">Manual setup</span>}>
-        <p className="zw-note">
-          An agent the Agents tab does not list can use this command as a local (stdio) MCP server.
-        </p>
-        <div className="zw-code zw-mono">{[launcher.command, ...launcher.args].join(' ')}</div>
-        {Object.keys(launcher.env).length > 0 && (
-          <div className="zw-code zw-mono">{Object.entries(launcher.env).map(([k, v]) => `${k}=${v}`).join(' ')}</div>
-        )}
-        <div className="zw-actions">
-          <ActionButton action={{ label: 'Copy configuration for an agent', message: { command: 'copyConfig' } }} />
-        </div>
-        <dl className="zw-facts">
-          <dt>Bridge</dt>
-          <dd className="zw-mono">{bridge.path}{bridge.installed ? '' : ' (not installed yet)'}</dd>
-          {bridge.launcher_path && (
-            <>
-              <dt>Launcher</dt>
-              <dd className="zw-mono">{bridge.launcher_path}</dd>
-            </>
-          )}
-        </dl>
-      </Disclosure>
-      <Disclosure id="server:about" className="zw-section" summary={<span className="zw-section-name">About this server</span>}>
-        <p className="zw-note">
-          This is the workbench&apos;s own server. It listens on the loopback interface only, on a port chosen
-          at random, and every request needs a token that is regenerated each time VS Code starts. Neither the
-          port nor the token appears in any configuration file.
-        </p>
-        <p className="zw-note">
-          Documentation servers answer the questions this server cannot, such as how a Zephyr subsystem is
-          meant to be used. They are not configured here yet. When they are, any entry that sends your
-          questions off this machine will say so on its own row.
-        </p>
-      </Disclosure>
     </div>
   );
 }
@@ -555,7 +588,7 @@ export function ToolsTab({ state }: { state: AiManagerState }) {
         <p className="zw-note">Agents see only the tools that are on, and fewer tools leave room for your other extensions.</p>
         {[...groups.entries()].map(([category, tools]) => (
           <div key={category} className="zw-tool-group">
-            <div className="zw-tool-group-name">{TOOL_GROUP_LABEL[category] ?? category}</div>
+            <div className="zw-group-name">{TOOL_GROUP_LABEL[category] ?? category}</div>
             {tools.map(tool => (
               <ToolItem
                 key={tool.name}
@@ -577,8 +610,7 @@ const VIEWS: [AiManagerView, string][] = [
 ];
 
 const TABS: [AiManagerState['tab'], string][] = [
-  ['agents', 'Agents'],
-  ['servers', 'Server'],
+  ['connections', 'Connections'],
   ['tools', 'Tools and safety'],
 ];
 
@@ -602,8 +634,7 @@ export function WorkbenchView({ state }: { state: AiManagerState }) {
           </button>
         ))}
       </div>
-      {state.tab === 'agents' && <AgentsTab state={state} />}
-      {state.tab === 'servers' && <ServersTab state={state} />}
+      {state.tab === 'connections' && <ConnectionsTab state={state} />}
       {state.tab === 'tools' && <ToolsTab state={state} />}
     </>
   );

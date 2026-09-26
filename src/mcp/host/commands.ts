@@ -21,9 +21,9 @@ export function registerMcpCommands(
     context.subscriptions.push(vscode.commands.registerCommand(id, run));
   };
 
-  register('zephyr-workbench.ai-manager', () => open('agents'));
-  register('zephyr-workbench.mcp.connect', () => open('agents'));
-  register('zephyr-workbench.mcp.showStatus', () => open('servers'));
+  register('zephyr-workbench.ai-manager', () => open('connections'));
+  register('zephyr-workbench.mcp.connect', () => open('connections'));
+  register('zephyr-workbench.mcp.showStatus', () => open('connections'));
   register('zephyr-workbench.mcp.tools', () => open('tools'));
 
   register('zephyr-workbench.mcp.start', async () => {

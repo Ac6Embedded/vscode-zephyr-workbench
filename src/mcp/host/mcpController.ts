@@ -547,9 +547,14 @@ export class McpController implements vscode.Disposable {
       this.statusBar.text = '$(debug-disconnect) MCP';
       this.statusBar.tooltip = this.stoppedByUser
         ? 'The Zephyr Workbench MCP server was stopped. Click to open the AI Manager.'
-        : 'The Zephyr Workbench MCP server starts when an agent connects. Click to open the AI Manager.';
+        : 'The Zephyr Workbench MCP server starts automatically when an agent connects. Click to open the AI Manager.';
     }
     this.statusBar.show();
+  }
+
+  /** Whether VS Code got the server from this extension, so Copilot needs no configuration. */
+  get registeredWithVsCode(): boolean {
+    return this.editors?.vsCodeRegistered ?? false;
   }
 
   /** Data the AI Manager panel renders. */

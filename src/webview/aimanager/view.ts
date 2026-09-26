@@ -42,7 +42,8 @@ export const STATE_LABEL: Record<AgentRow['state'], string> = {
   outdated: 'Needs updating',
   'not-configured': 'Not connected',
   foreign: 'Edited by hand',
-  'no-file': 'No file needed',
+  // Only a scope with nothing to configure that was not configured for the user either.
+  'no-file': 'Not available',
 };
 
 export const STATE_TONE: Record<AgentRow['state'], Tone> = {
@@ -50,8 +51,14 @@ export const STATE_TONE: Record<AgentRow['state'], Tone> = {
   outdated: 'warn',
   'not-configured': 'off',
   foreign: 'warn',
-  'no-file': 'info',
+  'no-file': 'off',
 };
+
+/** What an agent that got the server with no file at all reads as. */
+const AUTOMATIC = { tone: 'ok' as const, text: 'Connected automatically', title: 'Zephyr Workbench registers its server with VS Code, so no file is needed.' };
+
+/** Why a scope with nothing to configure has no server: the editor gives it only on its own terms. */
+const NOT_AVAILABLE_TITLE = 'VS Code gets the server from Zephyr Workbench from version 1.101, while the MCP server is not turned off. Until then, connect this project.';
 
 const SCOPE_LABEL: Record<AgentRow['scope'], string> = {
   user: 'All projects',
@@ -73,6 +80,13 @@ const works = (row: AgentRow) =>
 
 /** One scope's line: its status in a word or two. */
 export function rowStatus(row: AgentRow): { tone: Tone; text: string; icon?: string; title?: string } {
+  if (row.automatic) {
+    // The line says how beside it, in its source.
+    return { ...AUTOMATIC, text: 'Connected' };
+  }
+  if (row.state === 'no-file') {
+    return { tone: STATE_TONE['no-file'], text: STATE_LABEL['no-file'], title: NOT_AVAILABLE_TITLE };
+  }
   if (row.checking && (row.state !== 'configured' || row.unverified)) {
     return { tone: 'info', text: 'Checking', icon: SPINNER };
   }
@@ -129,6 +143,9 @@ export function summarizeAgent(rows: readonly AgentRow[], server?: ServerKey): A
       ...(foreign.file ? { action: { label: 'Open file', message: { command: 'openFile', file: foreign.file } } } : {}),
     };
   }
+  if (rows.some(row => row.automatic)) {
+    return AUTOMATIC;
+  }
   const working = rows.filter(works);
   if (working.length > 0) {
     return { tone: 'ok', text: working.length > 1 ? 'Connected' : `Connected ${SCOPE_TEXT[working[0].scope]}` };
@@ -147,10 +164,9 @@ export function summarizeAgent(rows: readonly AgentRow[], server?: ServerKey): A
   if (rows.some(row => row.checking)) {
     return { tone: 'info', text: 'Checking your account', icon: SPINNER };
   }
-  if (rows.some(row => row.state === 'no-file')) {
-    return { tone: 'info', text: 'No setup needed' };
-  }
-  const target = rows.find(row => row.scope === 'user') ?? rows.find(writable);
+  // A scope with no file to write, such as Copilot's own without VS Code's registration, is no target.
+  const canWrite = (row: AgentRow) => writable(row) && row.state !== 'no-file';
+  const target = rows.find(row => row.scope === 'user' && canWrite(row)) ?? rows.find(canWrite);
   // A remote server can also be added to an agent account, which only an agent that was asked rules out.
   const accountChecked = rows.some(row => row.scope === 'account' && !row.check_error);
   const status = server === 'zephyr' && !accountChecked
@@ -211,18 +227,18 @@ export function scopeAction(row: AgentRow, server?: ServerKey, quiet = false): R
  * setup at all, or added by VS Code itself, which this panel runs in) and the
  * rest, which are tucked away.
  */
-export function groupAgents(agents: readonly AgentRow[]): { main: AgentRow[][]; other: AgentRow[][] } {
+export function groupAgents(agents: readonly AgentRow[]): { installed: AgentRow[][]; notInstalled: AgentRow[][] } {
   const byId = new Map<string, AgentRow[]>();
   for (const agent of agents) {
     byId.set(agent.id, [...(byId.get(agent.id) ?? []), agent]);
   }
-  const main: AgentRow[][] = [];
-  const other: AgentRow[][] = [];
+  const installed: AgentRow[][] = [];
+  const notInstalled: AgentRow[][] = [];
   for (const rows of byId.values()) {
     const relevant = rows.some(row => row.detected || row.via_link || row.state !== 'not-configured');
-    (relevant ? main : other).push(rows);
+    (relevant ? installed : notInstalled).push(rows);
   }
-  return { main, other };
+  return { installed, notInstalled };
 }
 
 /**
@@ -266,7 +282,7 @@ export function serverSummary(server: ServerState): { tone: Tone; text: string }
     return { tone: 'off', text: 'Server stopped' };
   }
   // The default: no socket is open until an agent asks for the server.
-  return { tone: 'off', text: 'Server idle, starts when an agent connects' };
+  return { tone: 'off', text: 'Server idle, starts automatically when an agent connects' };
 }
 
 export function toolsSummary(server: ServerState): string {
