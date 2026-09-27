@@ -854,6 +854,21 @@ function withDebugServerBuildDir(debugServerArgs: string | undefined, buildDirEx
     : `${debugServerArgs} --build-dir ${quotedBuildDir}`;
 }
 
+// Point the OpenOCD `--config` of the generated gdb.cfg at the build
+// configuration's debug folder. Entries written before it lived there carry
+// ${workspaceFolder}/build/.debug/gdb.cfg, which for a West workspace
+// application is under the west workspace, where no gdb.cfg is written.
+function withOpenocdGdbCfg(debugServerArgs: string | undefined, workspaceRelativeBuildDir: string): string | undefined {
+  if (!debugServerArgs) {
+    return debugServerArgs;
+  }
+
+  return debugServerArgs.replace(/--config(?:\s+|=)("[^"]*"|\S+)/g, (match, value: string) =>
+    Openocd.GDB_CFG_PATTERN.test(value.replace(/^"(.*)"$/, '$1'))
+      ? `--config "${Openocd.getGdbCfgLaunchPath(workspaceRelativeBuildDir)}"`
+      : match);
+}
+
 function resolveWorkspaceExpression(value: string | undefined, workspaceFolder: vscode.WorkspaceFolder): string | undefined {
   if (!value || value.trim().length === 0) {
     return undefined;
@@ -1049,10 +1064,10 @@ export function syncLaunchConfigurationProjectPaths(
       config[programKey] = paths.program;
     }
     if (config.type === ZW_DEBUG_TYPE && typeof config.debugServerArgs === 'string') {
-      config.debugServerArgs = withDebugServerBuildDir(
+      config.debugServerArgs = withOpenocdGdbCfg(withDebugServerBuildDir(
         config.debugServerArgs,
         '${workspaceFolder}/' + paths.workspaceRelativeBuildDir,
-      );
+      ), paths.workspaceRelativeBuildDir);
     }
     return;
   }
@@ -1062,10 +1077,10 @@ export function syncLaunchConfigurationProjectPaths(
   // the selected app without storing extension-private keys inside cppdbg.
   config.cwd = paths.cwd;
   config.debugServerPath = paths.debugServerPath;
-  config.debugServerArgs = withDebugServerBuildDir(
+  config.debugServerArgs = withOpenocdGdbCfg(withDebugServerBuildDir(
     config.debugServerArgs,
     '${workspaceFolder}/' + paths.workspaceRelativeBuildDir,
-  );
+  ), paths.workspaceRelativeBuildDir);
 
   if (project.isWestWorkspaceApplication && shouldRefreshWorkspaceApplicationProgram(config.program, project)) {
     config.program = paths.program;
@@ -1083,8 +1098,12 @@ export function syncLaunchConfigurationProjectPaths(
   }
 }
 
-export function createOpenocdCfg(project: ZephyrApplication) {
-  Openocd.createWorkaroundCfg(project.appRootPath);
+// Written next to the west wrapper, in the build configuration's debug folder.
+export function createOpenocdCfg(project: ZephyrApplication, buildConfigName?: string) {
+  const buildConfig = buildConfigName ? project.getBuildConfiguration(buildConfigName) : undefined;
+  if (buildConfig) {
+    Openocd.createWorkaroundCfg(buildConfig.getInternalDebugDir(project));
+  }
 }
 
 // Converts cmsis-pack-manager's (current/total) download ticks into cumulative

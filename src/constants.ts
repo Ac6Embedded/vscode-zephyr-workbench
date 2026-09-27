@@ -1,6 +1,9 @@
 
 export const ZEPHYR_DIRNAME = 'zephyr';
 export const ZEPHYR_APP_FILENAME = 'zephyr.elf';
+// Folder in a build configuration's build directory for the files generated
+// to debug it (west wrapper, OpenOCD gdb.cfg).
+export const ZEPHYR_WORKBENCH_DEBUG_DIRNAME = '.debug';
 
 export const ZEPHYR_WORKBENCH_SETTING_SECTION_KEY = 'zephyr-workbench';
 

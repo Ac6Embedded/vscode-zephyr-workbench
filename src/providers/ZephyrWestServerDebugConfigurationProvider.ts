@@ -92,7 +92,7 @@ export class ZephyrWestServerDebugConfigurationProvider implements vscode.DebugC
     }
 
     if (WestRunner.extractRunner(config.debugServerArgs) === 'openocd') {
-      createOpenocdCfg(project);
+      createOpenocdCfg(project, buildConfigName);
     }
 
     return config;

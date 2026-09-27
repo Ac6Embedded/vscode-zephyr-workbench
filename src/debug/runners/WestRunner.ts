@@ -15,7 +15,8 @@ export enum RunnerType {
 /** A flag/value pair the parser should recognize as runner-generated and strip out. */
 interface AutoTokenPair {
   flag: string;
-  value: string;
+  /** The exact value, or a pattern for a value that depends on the build directory. */
+  value: string | RegExp;
 }
 
 export class WestRunner {
@@ -103,7 +104,7 @@ export class WestRunner {
 
       // Runner-declared extras (e.g. OpenOCD's `--config <file>` lines). Compare
       // unquoted values so quoting differences between save/read don't matter.
-      if (hasNext && extraTokens.some(p => p.flag === tok && WestRunner.unquote(p.value) === WestRunner.unquote(next))) {
+      if (hasNext && extraTokens.some(p => p.flag === tok && WestRunner.matchesAutoValue(p.value, next))) {
         i += 2;
         continue;
       }
@@ -153,6 +154,11 @@ export class WestRunner {
     return unquoteToken(value);
   }
 
+  private static matchesAutoValue(expected: string | RegExp, token: string): boolean {
+    const value = WestRunner.unquote(token);
+    return typeof expected === 'string' ? WestRunner.unquote(expected) === value : expected.test(value);
+  }
+
   async loadInternalArgs() {
   }
 
@@ -171,7 +177,16 @@ export class WestRunner {
     // selected with --domain. Not put in autoArgs: autoArgs also feeds
     // getWestFlashArgs, and `west flash --domain` would stop flashing all domains.
     const domainArg = domain ? ` --domain ${domain}` : '';
-    return `debugserver --build-dir "\${workspaceFolder}/${relativeBuildDir}"${domainArg} ${this.autoArgs} ${this.userArgs}`;
+    return `debugserver --build-dir "\${workspaceFolder}/${relativeBuildDir}"${domainArg} ${this.getDebugAutoArgs(relativeBuildDir)} ${this.userArgs}`;
+  }
+
+  /**
+   * Runner-generated args for `west debugserver`. Runners that pass a file
+   * generated in the build directory override this to add it, so its path is
+   * built from the same directory as --build-dir.
+   */
+  protected getDebugAutoArgs(relativeBuildDir: string): string {
+    return this.autoArgs;
   }
 
   getWestFlashArgs(relativeBuildDir: string): string {

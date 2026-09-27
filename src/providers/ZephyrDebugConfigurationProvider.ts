@@ -34,7 +34,7 @@ export class ZephyrDebugConfigurationProvider implements vscode.DebugConfigurati
         createWestWrapper(appProject, buildConfigName);
         switch(runnerName) {
           case 'openocd': 
-            createOpenocdCfg(appProject);
+            createOpenocdCfg(appProject, buildConfigName);
             break;
           case 'pyocd':
             // Assume target was already installed from "Debug Manager"

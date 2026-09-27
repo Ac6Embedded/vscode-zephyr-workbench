@@ -28,6 +28,7 @@ import {
 } from '../utils/utils';
 import {
   ZEPHYR_BUILD_CONFIG_WEST_FLAGS_D_SETTING_KEY,
+  ZEPHYR_WORKBENCH_DEBUG_DIRNAME,
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
 } from '../constants';
 import { composeWestBuildArgs, expandAndNormalizeWestArgs, normalizeWestFlagDValue } from '../utils/zephyr/westArgUtils';
@@ -116,7 +117,7 @@ export class ZephyrBuildConfig {
   }
 
   get relativeInternalDebugDir(): string {
-    return path.join(this.relativeRootBuildDir, '.debug');
+    return path.join(this.relativeRootBuildDir, ZEPHYR_WORKBENCH_DEBUG_DIRNAME);
   }
 
   /**

@@ -1416,7 +1416,7 @@ export class DebugManagerPanel {
         if (backend === 'cortex-west') {
           switch (runner.name) {
             case 'openocd':
-              createOpenocdCfg(appProject);
+              createOpenocdCfg(appProject, buildConfigName);
               break;
             case 'pyocd':
               // Failed or cancelled target-pack setup: don't write launch.json
@@ -1474,7 +1474,7 @@ export class DebugManagerPanel {
         
         switch(runner?.name) {
           case 'openocd':
-            createOpenocdCfg(appProject);
+            createOpenocdCfg(appProject, buildConfigName);
             break;
           case 'pyocd':
             // Failed or cancelled target-pack setup: don't write launch.json
