@@ -228,8 +228,14 @@ export class ZephyrBuildConfig {
     return undefined;
   }
 
-  private static buildTerminalContext(application: ZephyrApplication, buildConfig: ZephyrBuildConfig) {
-    const { path: shellPath, args: shellArgs } = getResolvedShell();
+  // Exported for the MCP run_command tool, which runs a command in this same
+  // environment, possibly for another shell than the terminal's (`shell`).
+  static buildTerminalContext(
+    application: ZephyrApplication,
+    buildConfig: ZephyrBuildConfig,
+    shell: { path: string; args?: string[] } = getResolvedShell(),
+  ) {
+    const { path: shellPath, args: shellArgs } = shell;
     const shellType = classifyShell(shellPath);
     const zephyrSdk = tryGetZephyrSdkInstallation(application.zephyrSdkPath);
     const westWorkspace = getWestWorkspace(application.westWorkspaceRootPath);

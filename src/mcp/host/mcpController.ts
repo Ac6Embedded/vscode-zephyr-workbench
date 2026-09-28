@@ -22,6 +22,7 @@ import { checkInstall, DoctorCheck } from './doctor';
 import { watchDocumentChecks } from './documentChecks';
 import { FolderChangeScheduler } from './folderChanges';
 import { HANDLERS } from './handlers';
+import { initAgentBreakpoints } from './handlers/debugAppBreakpoints';
 import { HostDeps, WorkbenchView } from './handlers/deps';
 import { startHttpServer, RunningServer } from './httpServer';
 import { RegistryWriter, resolveWindowId } from './registryWriter';
@@ -140,6 +141,8 @@ export class McpController implements vscode.Disposable {
     this.statusBar = vscode.window.createStatusBarItem('zephyr-workbench.mcp', vscode.StatusBarAlignment.Right, 90);
     this.statusBar.command = 'zephyr-workbench.ai-manager';
     this.disposables.push(this.audit, this.registry, this.statusBar, this.stateChanged, this.folders);
+    // debug_app breakpoints an agent set before a reload or an extension host restart are its own again.
+    this.disposables.push(initAgentBreakpoints(context.workspaceState));
   }
 
   get isRunning(): boolean {
@@ -303,6 +306,7 @@ export class McpController implements vscode.Disposable {
     }));
     const current = () => this.settings;
     const deps: HostDeps = {
+      windowId: this.windowId,
       services: this.services,
       jobs: this.jobs,
       get defaultWaitSeconds() { return current().defaultWaitSeconds; },

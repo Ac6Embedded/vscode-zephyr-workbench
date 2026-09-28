@@ -34,7 +34,7 @@ import {
   updateClangdConfigFile,
 } from '../utils/intellisense/clangdConfig';
 import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, getShellExe, getShellSourceCommand, isCygwin, makeConfiguredVariableResolver, normalizePathForShell, resolveConfiguredPath, toPortableWorkspaceFolderPath } from '../utils/execUtils';
-import { expandAndNormalizeWestArgs } from '../utils/zephyr/westArgUtils';
+import { expandAndNormalizeWestArgs, ExpandWestArgsOptions } from '../utils/zephyr/westArgUtils';
 import { findArmGnuToolchainInstallation, getWestWorkspace, msleep, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
 import { normalizeStoredToolchainVariant } from '../utils/toolchainSelection';
@@ -345,8 +345,10 @@ const tasksMap = new Map<string, ZephyrTaskDefinition>([
 ]);
 
 // Subcommands of `west` that don't take --board. We skip auto-injection of --board for these
-// so commands like `west spdx --build-dir ...` aren't passed a redundant flag.
-const WEST_SUBCOMMANDS_WITHOUT_BOARD = new Set(['spdx']);
+// so commands like `west spdx --build-dir ...` aren't passed a redundant flag. `west flash`
+// has no --board either: its parser accepts prefixes, so --board was read as --board-dir,
+// and only worked because west takes the board folder from runners.yaml.
+const WEST_SUBCOMMANDS_WITHOUT_BOARD = new Set(['spdx', 'flash']);
 
 const BUILTIN_TASK_LABELS = new Set(tasksMap.keys());
 
@@ -445,6 +447,11 @@ const settingsWarningSink = new AsyncLocalStorage<string[]>();
  * into `warnings` rather than shown, for everything `work` awaits.
  */
 export function collectSettingsWarnings<T>(warnings: string[], work: () => Promise<T>): Promise<T> {
+  return settingsWarningSink.run(warnings, work);
+}
+
+/** collectSettingsWarnings for synchronous work, such as building a task with buildDirectTask. */
+export function collectSettingsWarningsSync<T>(warnings: string[], work: () => T): T {
   return settingsWarningSink.run(warnings, work);
 }
 
@@ -1241,7 +1248,8 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
         : ZEPHYR_PROJECT_ARM_GNU_TOOLCHAIN_SETTING_KEY;
       const missingPath = getConfiguredWorkbenchPath(missingPathKey, folder ?? project.appWorkspaceFolder) ?? '';
       const label = toolchainVariant === 'iar' ? 'IAR' : 'Arm GNU';
-      vscode.window.showWarningMessage(
+      // Collected rather than shown for a caller with nobody to read it, such as an agent tool.
+      warnAboutSettings(
         `${label} toolchain "${missingPath}" not found; tasks will run with the default Zephyr SDK.`,
       );
     }
@@ -1436,6 +1444,54 @@ export async function resolveFlashRunnerSelection(
 }
 
 /**
+ * The arguments of a direct task after its command, for a build configuration
+ * of `boardIdentifier`: the template's own, then --runner, `extraArgs`,
+ * --board unless the subcommand has none, --build-dir and the flash runner
+ * arguments. Exported for tests.
+ */
+export function directTaskArgs(
+  taskDef: ZephyrTaskDefinition,
+  taskName: string,
+  boardIdentifier: string | undefined,
+  options: BuildDirectTaskOptions,
+  shell: { buildDirVar: string; expand: ExpandWestArgsOptions },
+): string[] {
+  const args: string[] = [];
+  for (const arg of taskDef.args) {
+    if (!arg.startsWith('--build-dir') && !arg.startsWith('--board')) {
+      args.push(arg);
+    }
+  }
+  if (taskName === 'West Flash' && options.flashRunner) {
+    args.push(`--runner ${options.flashRunner}`);
+  }
+  if (options.extraArgs?.length) {
+    args.push(...options.extraArgs.map(arg => expandAndNormalizeWestArgs(arg, shell.expand)));
+  }
+  const subcommand = taskDef.command === 'west' ? taskDef.args[0]?.split(' ')[0] : undefined;
+  const skipBoard = subcommand !== undefined && WEST_SUBCOMMANDS_WITHOUT_BOARD.has(subcommand);
+  if (!skipBoard && boardIdentifier && boardIdentifier.length > 0) {
+    args.push(`--board ${boardIdentifier}`);
+  }
+  // Keep the build directory as a shell env var for direct tasks like flash;
+  // resolve() injects BUILD_DIR from the selected build configuration.
+  // Quoted: the shell-time value may contain spaces, and an unquoted
+  // expansion would word-split (bash ${BUILD_DIR}, cmd %BUILD_DIR%).
+  args.push(`--build-dir "${shell.buildDirVar}"`);
+  if (taskName === 'West Flash' && options.flashRunnerArgs?.trim()) {
+    // Runner args may carry ${workspaceFolder} or Windows paths; expand and
+    // normalize them for the target shell instead of appending verbatim.
+    args.push(expandAndNormalizeWestArgs(options.flashRunnerArgs, shell.expand));
+  }
+  return args;
+}
+
+/** The task template of a direct or workbench task, by its label. Exported for tests. */
+export function taskTemplate(taskName: string): ZephyrTaskDefinition | undefined {
+  return tasksMap.get(taskName);
+}
+
+/**
  * Default entry point for invoking a Zephyr-Workbench operation programmatically
  * (toolbar buttons, context menus, command palette handlers, etc).
  *
@@ -1495,33 +1551,7 @@ export function buildDirectTask(
       shellKind,
       resolveVariable: makeConfiguredVariableResolver(workspaceFolder),
     };
-    const args: string[] = [];
-    for (const arg of taskDef.args) {
-      if (!arg.startsWith('--build-dir') && !arg.startsWith('--board')) {
-        args.push(arg);
-      }
-    }
-    if (taskName === 'West Flash' && options.flashRunner) {
-      args.push(`--runner ${options.flashRunner}`);
-    }
-    if (options.extraArgs?.length) {
-      args.push(...options.extraArgs.map(arg => expandAndNormalizeWestArgs(arg, expandOptions)));
-    }
-    const subcommand = taskDef.command === 'west' ? taskDef.args[0]?.split(' ')[0] : undefined;
-    const skipBoard = subcommand !== undefined && WEST_SUBCOMMANDS_WITHOUT_BOARD.has(subcommand);
-    if (!skipBoard && targetConfig.boardIdentifier && targetConfig.boardIdentifier.length > 0) {
-      args.push(`--board ${targetConfig.boardIdentifier}`);
-    }
-    // Keep the build directory as a shell env var for direct tasks like flash;
-    // resolve() injects BUILD_DIR from the selected build configuration.
-    // Quoted: the shell-time value may contain spaces, and an unquoted
-    // expansion would word-split (bash ${BUILD_DIR}, cmd %BUILD_DIR%).
-    args.push(`--build-dir "${buildDirVar}"`);
-    if (taskName === 'West Flash' && options.flashRunnerArgs?.trim()) {
-      // Runner args may carry ${workspaceFolder} or Windows paths; expand and
-      // normalize them for the target shell instead of appending verbatim.
-      args.push(expandAndNormalizeWestArgs(options.flashRunnerArgs, expandOptions));
-    }
+    const args = directTaskArgs(taskDef, taskName, targetConfig.boardIdentifier, options, { buildDirVar, expand: expandOptions });
 
     definition = { ...taskDef, config: targetConfig.name, args };
     if (typeof options.rawWestArgsOverride === 'string') {

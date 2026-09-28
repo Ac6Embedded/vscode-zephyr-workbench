@@ -10,12 +10,16 @@
 import { z } from 'zod';
 import { ToolMeta } from './toolSpec';
 import { ANALYZE } from './tools/analyze';
+import { CONFIGURE_DEBUG } from './tools/configureDebug';
+import { DEBUG_APP } from './tools/debugApp';
 import { HARDWARE } from './tools/hardware';
 import { MANAGE_APP } from './tools/manageApp';
+import { MANAGE_RUNNERS } from './tools/manageRunners';
 import { MANAGE_TOOLCHAIN } from './tools/manageToolchain';
 import { MANAGE_WEST_WORKSPACE } from './tools/manageWestWorkspace';
 import { OPEN_IN_WORKBENCH } from './tools/openInWorkbench';
 import { REMOVE_OR_DELETE } from './tools/removeOrDelete';
+import { RUN_COMMAND } from './tools/runCommand';
 import { appPath, configName, domain, JOB_RESULT, listEdit, READ_ONLY, toolchainChoice, waitSec } from './tools/shared';
 
 export { JOB_RESULT };
@@ -26,44 +30,46 @@ export const SERVER_TITLE = 'Zephyr Workbench (VS Code host build tooling)';
 /**
  * The server instructions for the tools actually served. Some clients show
  * the instructions and never the descriptions, so a tool this window does not
- * serve (one the user blocked, or one outside the core preset) must never be named as
- * something to call; the equivalent Zephyr Workbench command is named instead.
+ * serve (one the user blocked, or one outside the core preset) must never be
+ * named as something to call: the equivalent Zephyr Workbench command is named
+ * instead, or the line is left out.
+ *
+ * Claude Code shows only the first 2048 characters, so with every tool served
+ * the text stays within that, and the rules that matter most come first: what
+ * this server is, then what to do when the user refuses. The details of each
+ * flow live in the tool descriptions.
  */
 export function serverInstructions(served: ReadonlySet<string> | readonly string[]): string {
   const has = (name: string) => (Array.isArray(served) ? served.includes(name) : (served as ReadonlySet<string>).has(name));
-  const toolOr = (name: string, command: string) => (has(name) ? name : `the Zephyr Workbench command "${command}" (ask the user)`);
+  const all = (...names: string[]) => names.every(has);
+  const toolOr = (name: string, command: string) => (has(name) ? name : `the Workbench command "${command}" (ask the user)`);
   const lines = [
-    'Zephyr Workbench exposes the host build tooling of the Zephyr Workbench VS Code extension.',
-    'This configures and drives the editor, it is not the on-device Zephyr MCP server library (CONFIG_MCP_SERVER).',
-    '',
-    'Model: a west workspace holds Zephyr and its modules. An application (app_path, always absolute) uses one',
-    'west workspace and has one or more named build configurations (config_name), each with a board, an optional',
-    'sysbuild flag, west arguments, CMake -D flags and variables such as EXTRA_CONF_FILE and EXTRA_DTC_OVERLAY_FILE.',
-    'Exactly one configuration is active and is used whenever config_name is omitted.',
-    'Build output lives in <app_path>/build/<config_name>.',
-    '',
-    'Start with get_status, then list_apps. The usual loop is: edit sources, call build_app, read the diagnostics in',
-    'the result, fix, build again, then get_build_info or get_memory_report.',
-    `Starting from nothing: install a Zephyr SDK with ${toolOr('manage_toolchain', 'Add Toolchain')}, create a west workspace with`
-      + ` ${toolOr('manage_west_workspace', 'Add West Workspace')}, pick a sample with search_zephyr_catalog kind sample,`
-      + ` create the application with ${toolOr('manage_app', 'Add Application')}, then build_app.`,
-    'Long actions return a job: when status is "running", call job with action "status" and the job_id until it is not.',
-    'Inline output is a tail only; the full log is at log.path or through job with action "log".',
-    ...(has('hardware')
-      ? ['To see what a board prints, start a capture with hardware action serial_start before flashing or resetting it, then read it with action serial_read (wait_for waits for a line). A capture stays running until serial_stop or its duration_sec, so do not poll it with job status.']
+    'This server drives the Zephyr Workbench VS Code extension on this machine. It is not the on-device Zephyr MCP server library (CONFIG_MCP_SERVER).',
+    'Some actions ask the user in VS Code first: after USER_DENIED do not repeat the call unless the user asks; after CONFIRMATION_TIMEOUT ask the user to answer the dialog, then repeat it.',
+    'Errors carry error.code and error.hint naming the next tool to call. Every path is absolute.',
+    'Model: a west workspace holds Zephyr. An application (app_path) has named build configurations (config_name), each with a board; the active one is used when config_name is omitted. Output: <app_path>/build/<config_name>.',
+    ...(all('get_status', 'list_apps') ? ['Start with get_status, then list_apps.'] : []),
+    ...(has('build_app')
+      ? [`Loop: edit, build_app, read the diagnostics in its result, fix, rebuild.${has('get_diagnostics') ? ' get_diagnostics re-reads errors without rebuilding.' : ''}`]
       : []),
-    'Adding a folder to the VS Code window can restart its extensions: a result with restart_pending means the server',
-    'comes back within seconds, so wait briefly and call get_status; job ids stay valid.',
-    'Never run menuconfig or guiconfig in a shell: they wait for keyboard input. Read Kconfig values with query_kconfig',
-    '(explain true says why a value is what it is), change them with set_kconfig, edit overlay files for devicetree changes, then rebuild.',
-    'Use get_diagnostics to re-read errors without rebuilding, including builds the user started in VS Code.',
-    'Change a board, overlays, conf files or -D flags with configure rather than editing settings.json, and find valid',
-    'boards, shields, snippets and samples with search_zephyr_catalog. When the environment is not ready, check_environment',
-    'says what is missing and which Zephyr Workbench command installs it. Do not install host tools, flash or debug',
-    'tools from your own shell: ask the user to run the command check_environment names.',
-    'Some actions ask the user in VS Code first (get_status lists them under safety): if a call returns USER_DENIED, do not',
-    'repeat it unless the user asks; after CONFIRMATION_TIMEOUT, ask the user to answer the dialog, then repeat the call.',
-    'Every path is absolute. Errors carry error.code and error.hint naming the next tool to call.',
+    `Starting from nothing: ${toolOr('manage_toolchain', 'Add Toolchain')}, then ${toolOr('manage_west_workspace', 'Add West Workspace')},`
+      + `${has('search_zephyr_catalog') ? ' search_zephyr_catalog kind sample,' : ''} then ${toolOr('manage_app', 'Add Application')}.`,
+    ...(has('job')
+      ? ['A result with status "running" is a job: poll job action "status" with its job_id; job action "log" returns the full log.']
+      : []),
+    `Never run menuconfig or guiconfig${all('query_kconfig', 'set_kconfig') ? ': read and change Kconfig with query_kconfig and set_kconfig.' : ', they wait for keyboard input.'}`,
+    ...(has('configure') ? ['Change boards, overlays, conf files and -D flags with configure, not settings.json.'] : []),
+    ...(has('hardware')
+      ? ['Board: start a capture with hardware action serial_start before flashing or resetting, flash with action flash (wait_for waits for a boot line), then read with action serial_read.']
+      : []),
+    ...(all('configure_debug', 'debug_app')
+      ? ['Debug: configure_debug action apply, then debug_app action start, breakpoint, control with wait_for_stop, inspect.']
+      : []),
+    `${has('check_environment') ? 'check_environment says what is missing. ' : ''}Install flash and debug tools with ${toolOr('manage_runners', 'Install Runners')};`
+      + ` for host tools, ask the user to run the command ${has('check_environment') ? 'check_environment names' : 'that installs them'}.`
+      + ' Never install tools from your own shell.',
+    ...(has('run_command') ? ['Run other command lines with run_command, which has the Zephyr environment.'] : []),
+    ...(has('get_status') ? ['After a result with restart_pending, wait a few seconds, then call get_status.'] : []),
   ];
   return lines.join('\n');
 }
@@ -324,17 +330,23 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   {
     name: 'list_runners',
     title: 'List flash and debug runners',
-    summary: 'Lists the flash and debug runners a built board supports, and which one is the default.',
+    summary: 'Lists the flash and debug runners a built board supports, and whether the tools they need are installed.',
     description: [
-      'Lists the flash and debug runners available for a built configuration, read from the runners.yaml the build produced, together with the board default and whatever default runner the workbench has configured.',
-      'Call it when you need to know which runner a board supports; it needs a completed build, because runners.yaml is a build artifact.',
-      'app_path, config_name and domain select the build whose runners.yaml is read.',
-      'Returns the runner names with the configured and board defaults marked, or the full static list with a note when the configuration is not built yet.',
+      'Lists the flash and debug runners available for a built configuration, read from the runners.yaml the build produced, together with the board default and whatever default runner the workbench has configured; with all_tools it lists every flash and debug tool of the workbench runner manifest instead.',
+      'Call it when you need to know which runner a board supports, or before flashing or debugging to check that its tool is installed; install a missing one with manage_runners; the runners of a board need a completed build, because runners.yaml is a build artifact.',
+      'app_path, config_name and domain select the build whose runners.yaml is read, include tools adds the installed state of the tool behind each runner, include pyocd adds the pyOCD packs and the target of the board, and pyocd_target searches the pyOCD targets.',
+      'Returns the runner names with the configured and board defaults marked, or the full static list with a note when the configuration is not built yet; tools carry installed, version, path, default and whether they install here, need administrator rights, a license or a vendor download.',
     ].join(' '),
     inputSchema: z.object({
       app_path: appPath,
       config_name: configName,
       domain,
+      include: z.array(z.enum(['tools', 'pyocd'])).optional().describe(
+        'tools adds, for each runner, whether the host tool it needs is installed, with its version and path; pyocd adds the pyOCD version, whether the pack index exists, the installed packs and whether the pack of the board\'s target is installed.'),
+      all_tools: z.boolean().optional().describe(
+        'List every flash and debug tool of the workbench runner manifest, with its installed state and settings, instead of the runners of a build. Takes no app_path.'),
+      pyocd_target: z.string().optional().describe(
+        'With include pyocd: list the pyOCD targets whose name or vendor contains this text, case-insensitive, at most 50.'),
     }),
     annotations: READ_ONLY,
     category: 'artifact',
@@ -454,9 +466,13 @@ export const TOOL_CATALOG: readonly ToolMeta[] = [
   MANAGE_APP,
   MANAGE_WEST_WORKSPACE,
   MANAGE_TOOLCHAIN,
+  MANAGE_RUNNERS,
   OPEN_IN_WORKBENCH,
   REMOVE_OR_DELETE,
   HARDWARE,
+  CONFIGURE_DEBUG,
+  DEBUG_APP,
+  RUN_COMMAND,
   {
     name: 'job',
     title: 'Job status, log and cancel',

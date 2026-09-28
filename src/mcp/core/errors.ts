@@ -24,6 +24,8 @@ export type McpErrorCode =
   | 'TOOL_DISABLED'
   | 'DEPENDENCY_MISSING'
   | 'JOB_NOT_FOUND'
+  | 'SESSION_NOT_FOUND'
+  | 'TARGET_RUNNING'
   | 'TIMEOUT'
   | 'INTERNAL';
 

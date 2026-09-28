@@ -1,4 +1,5 @@
 import { probeInstalledVersion } from "../../utils/debugTools/debugToolVersionUtils";
+import { quoteIfNeeded } from "../../utils/shellQuoting";
 import { RunnerType, WestRunner } from "./WestRunner";
 
 export class JLink extends WestRunner {
@@ -39,7 +40,8 @@ export class JLink extends WestRunner {
   get autoArgs(): string {
     let cmdArgs = super.autoArgs;
     if(this.serverPath) {
-      cmdArgs += ` --gdbserver ${this.serverPath}`;
+      // One argument, even with a space in the path.
+      cmdArgs += ` --gdbserver ${quoteIfNeeded(this.serverPath)}`;
     }
     return cmdArgs;
   }

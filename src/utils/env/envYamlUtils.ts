@@ -48,6 +48,24 @@ export function setExtraPath(kind: ExtraKind, idx: number, newPath: string): any
   return writeEnv(jsEnv);
 }
 
+/**
+ * Replace the whole list in one write, with forward slashes; an empty list
+ * removes it, as removing its last entry does.
+ */
+export function setExtraPaths(kind: ExtraKind, paths: readonly string[]): any {
+  const jsEnv = readEnv();
+  const cleaned = paths.map(p => normalizePath(p.trim())).filter(p => p.length > 0);
+  if (cleaned.length > 0) {
+    ensurePaths(jsEnv, kind);
+    jsEnv.other[kind].path = cleaned;
+  } else if (jsEnv?.other?.[kind]) {
+    delete jsEnv.other[kind].path;
+    if (Object.keys(jsEnv.other[kind]).length === 0) {delete jsEnv.other[kind];}
+    if (Object.keys(jsEnv.other).length === 0) {delete jsEnv.other;}
+  }
+  return writeEnv(jsEnv);
+}
+
 export function removeExtraPath(kind: ExtraKind, idx: number): any {
   const jsEnv = readEnv();
   const arr = jsEnv?.other?.[kind]?.path;

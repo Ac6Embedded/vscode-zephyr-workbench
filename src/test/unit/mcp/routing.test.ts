@@ -207,6 +207,13 @@ describe('mcp/core/routing', () => {
       assert.equal(routeOfCall(meta, { action: 'create', west_workspace: '/ws' }).machineScope, false);
       assert.equal(routeOfCall(meta, { action: 'update' }).machineScope, false);
     });
+
+    it('lets a machine-wide value depend on the other arguments', () => {
+      const meta = tool({ machineScope: { open: args => args.config_name === undefined } });
+      assert.equal(routeOfCall(meta, { action: 'open' }).machineScope, true);
+      assert.equal(routeOfCall(meta, { action: 'open', config_name: 'debug' }).machineScope, false);
+      assert.equal(routeOfCall(meta, { action: 'open', app_path: '/ws/app' }).machineScope, false);
+    });
   });
 
   it('describes candidates for the ambiguity message', () => {

@@ -24,6 +24,12 @@ export const ZW_DEBUG_TYPE = 'zephyr-workbench';
  */
 export const ZW_SERVER_TOKEN_KEY = '__zwServerToken';
 
+/**
+ * The west runner of the cortex-west backend's cortex-debug session, whose
+ * configuration otherwise no longer names it. Transient like the token.
+ */
+export const ZW_RUNNER_KEY = '__zwRunner';
+
 export const DEFAULT_SERVER_READY_TIMEOUT_MS = 15000;
 
 /**

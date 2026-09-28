@@ -339,6 +339,20 @@ describe('mcp/host/handlers/buildConfigs', () => {
       assert.equal(h.settings.writes, 0);
     });
 
+    // The core preset, the default, does not serve remove_or_delete.
+    it('names remove_or_delete for the old debug entries only when the window serves it', async () => {
+      const h = harness([PRIMARY, DEBUG]);
+      write(path.join(h.app, '.vscode', 'launch.json'), '{"configurations": [{"name": "Zephyr Workbench Debug [debug]"}]}');
+      const served = await configure({ target: 'build_config', action: 'rename', config_name: 'debug', new_name: 'dbg' }, h.ctx('configure')) as Record<string, any>;
+      const servedWarning = served.warnings.find((warning: string) => warning.includes('launch.json'));
+      assert.match(servedWarning, /remove the old ones with remove_or_delete, what "debug_config" and config_name "debug"\.$/);
+      h.deps.servedTools = () => new Set(TOOL_CATALOG.map(tool => tool.name).filter(name => name !== 'remove_or_delete'));
+      write(path.join(h.app, '.vscode', 'launch.json'), '{"configurations": [{"name": "Zephyr Workbench Debug [dbg]"}]}');
+      const unserved = await configure({ target: 'build_config', action: 'rename', config_name: 'dbg', new_name: 'debug' }, h.ctx('configure')) as Record<string, any>;
+      const warning = unserved.warnings.find((text: string) => text.includes('launch.json'));
+      assert.match(warning, /call configure_debug with action "apply" and config_name "debug" to create matching ones, and ask the user to delete the old ones from \.vscode\/launch\.json, or to allow remove_or_delete in the AI Manager\.$/);
+    });
+
     it('renames a configuration and reports the build folder it leaves behind', async () => {
       const h = harness([PRIMARY, DEBUG]);
       write(path.join(h.app, 'build', 'primary', 'CMakeCache.txt'));

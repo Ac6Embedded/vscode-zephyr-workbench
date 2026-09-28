@@ -12,6 +12,7 @@
 import { spawn } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
+import { StringDecoder } from 'string_decoder';
 import * as vscode from 'vscode';
 import { toTerminalText } from '../core/ansi';
 import { getProfileEnv, killProcessTree } from '../../utils/execUtils';
@@ -21,6 +22,23 @@ import { getProfileEnv, killProcessTree } from '../../utils/execUtils';
  * the user started by hand never mistakes an agent's own build for one.
  */
 export const CAPTURED_TASK_MARKER = '__zwMcpCaptured';
+
+/**
+ * Set on the definition of a task whose command line and variables are run
+ * as they are, with no VS Code variable resolved: an agent's own command,
+ * where ${env:PATH} is PowerShell's to expand.
+ */
+export const VERBATIM_COMMAND_MARKER = '__zwVerbatimCommand';
+
+/**
+ * How long a run waits for its output to close once the shell exited. A
+ * process the command left in the background can hold it for as long as it
+ * runs.
+ */
+export const EXIT_GRACE_MS = 2000;
+
+/** How long a cancelled run waits for its process tree to end before it settles anyway. */
+export const CANCEL_GRACE_MS = 5000;
 
 export interface CaptureSink {
   onData(chunk: string): void;
@@ -195,15 +213,18 @@ export function toCapturedTask(resolved: vscode.Task, sink: CaptureSink, options
   const shellOptions = execution.options ?? {};
   const scope = typeof resolved.scope === 'object' ? (resolved.scope as vscode.WorkspaceFolder) : undefined;
   // A ShellExecution gets its variables resolved by VS Code; a raw spawn has
-  // to do it, or `cwd: "${userHome}"` (west init) would not even start.
+  // to do it, or `cwd: "${userHome}"` (west init) would not even start. A
+  // verbatim task keeps its text, as the Zephyr terminal it stands for does.
   const variables: TaskVariableContext = { folder: scope?.uri.fsPath, userHome: os.homedir(), env: process.env };
-  const commandLine = resolveTaskVariables(execution.commandLine, variables);
+  const verbatim = resolved.definition?.[VERBATIM_COMMAND_MARKER] === true;
+  const resolve = (value: string) => (verbatim ? value : resolveTaskVariables(value, variables));
+  const commandLine = resolve(execution.commandLine);
   const cwd = shellOptions.cwd === undefined ? scope?.uri.fsPath : resolveTaskVariables(shellOptions.cwd, variables);
   if (cwd?.includes('${')) {
     throw new Error(`"${resolved.name}" was not started: its working folder "${cwd}" uses a variable that only VS Code's own task runner can resolve.`);
   }
   const taskEnv = Object.fromEntries(Object.entries(shellOptions.env ?? {})
-    .map(([name, value]) => [name, resolveTaskVariables(String(value), variables)]));
+    .map(([name, value]) => [name, resolve(String(value))]));
 
   const writeEmitter = new vscode.EventEmitter<string>();
   const closeEmitter = new vscode.EventEmitter<number>();
@@ -216,14 +237,27 @@ export function toCapturedTask(resolved: vscode.Task, sink: CaptureSink, options
   let markOpened: () => void = () => undefined;
   const opened = new Promise<void>(resolve => { markOpened = resolve; });
 
+  let exitTimer: NodeJS.Timeout | undefined;
+  let cancelTimer: NodeJS.Timeout | undefined;
+
   const finish = (code: number | undefined) => {
     if (closed) {
       return;
     }
     closed = true;
+    clearTimeout(exitTimer);
+    clearTimeout(cancelTimer);
     closeEmitter.fire(code ?? 1);
     settle(cancelled ? undefined : code);
   };
+
+  const note = (message: string) => {
+    writeEmitter.fire(toTerminalText(message));
+    sink.onData(message);
+  };
+
+  /** Stop reading output a process left in the background holds, so the run can end without it. */
+  let release: () => void = () => undefined;
 
   const cancel = () => {
     if (closed) {
@@ -231,7 +265,22 @@ export function toCapturedTask(resolved: vscode.Task, sink: CaptureSink, options
     }
     cancelled = true;
     if (child && !child.killed) {
-      killProcessTree(child);
+      const running = child;
+      killProcessTree(running);
+      // taskkill finds no tree once the shell has exited, and a process may
+      // ignore SIGTERM: the job must end all the same.
+      cancelTimer ??= setTimeout(() => {
+        if (closed) {
+          return;
+        }
+        if (process.platform !== 'win32') {
+          killProcessTree(running, 'SIGKILL');
+        }
+        note(`\nThe command did not end within ${CANCEL_GRACE_MS / 1000} seconds of being stopped. A process it started in the background may still run.\n`);
+        release();
+        finish(undefined);
+      }, CANCEL_GRACE_MS);
+      cancelTimer.unref?.();
       return;
     }
     finish(undefined);
@@ -271,40 +320,63 @@ export function toCapturedTask(resolved: vscode.Task, sink: CaptureSink, options
           stdio: ['ignore', 'pipe', 'pipe'],
         });
       } catch (error) {
-        const message = `Failed to start: ${error instanceof Error ? error.message : String(error)}\n`;
-        writeEmitter.fire(toTerminalText(message));
-        sink.onData(message);
+        note(`Failed to start: ${error instanceof Error ? error.message : String(error)}\n`);
         finish(1);
         return;
       }
+      const running = child;
 
       // 'spawn' rather than spawn() returning: a missing shell or cwd still
       // returns a ChildProcess, which then only emits 'error'.
-      child.on('spawn', () => { spawned = true; });
+      running.on('spawn', () => { spawned = true; });
 
-      const forward = (data: Buffer) => {
-        const text = data.toString();
-        writeEmitter.fire(toTerminalText(text));
-        sink.onData(text);
+      // One decoder per stream, so a character split across two chunks
+      // arrives whole.
+      const decoders = [new StringDecoder('utf8'), new StringDecoder('utf8')];
+      const forward = (text: string) => {
+        if (text) {
+          writeEmitter.fire(toTerminalText(text));
+          sink.onData(text);
+        }
       };
-      child.stdout?.on('data', forward);
-      child.stderr?.on('data', forward);
-      child.on('error', error => {
-        const message = `${error}\n`;
-        writeEmitter.fire(toTerminalText(message));
-        sink.onData(message);
+      running.stdout?.on('data', (data: Buffer) => forward(decoders[0].write(data)));
+      running.stderr?.on('data', (data: Buffer) => forward(decoders[1].write(data)));
+      const flush = () => decoders.forEach(decoder => forward(decoder.end()));
+      release = () => {
+        flush();
+        running.stdout?.destroy();
+        running.stderr?.destroy();
+      };
+      running.on('error', error => {
+        note(`${error}\n`);
         finish(1);
       });
       // A null code means the process died from a signal. Unless we sent it,
       // that is a failure: the OOM killer or a stray `kill` must never turn a
       // half-built tree into a reported success.
-      child.on('close', (code, signal) => {
+      const ended = (code: number | null, signal: NodeJS.Signals | null) => {
         if (code === null && signal && !cancelled) {
-          const message = `\nThe process was killed by ${signal}.\n`;
-          writeEmitter.fire(toTerminalText(message));
-          sink.onData(message);
+          note(`\nThe process was killed by ${signal}.\n`);
         }
         finish(code ?? (cancelled ? undefined : 1));
+      };
+      running.on('close', (code, signal) => {
+        flush();
+        ended(code, signal);
+      });
+      // The output closes only when every process holding it has ended,
+      // which a process started in the background (`start /b`, `cmd &`) may
+      // never do. The shell's own exit decides the run then.
+      running.on('exit', (code, signal) => {
+        exitTimer = setTimeout(() => {
+          if (closed) {
+            return;
+          }
+          release();
+          note('\nThe shell exited, but a process the command started in the background still holds its output. It was not stopped.\n');
+          ended(code, signal);
+        }, EXIT_GRACE_MS);
+        exitTimer.unref?.();
       });
     },
     // The terminal's trash icon lands here, so the user can always stop an agent.

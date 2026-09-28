@@ -10,7 +10,9 @@
 // launched while an agent deletes its build folder waits for the deletion to
 // end, and one started some other way gets a warning, since a deletion cannot
 // be stopped halfway. An agent changing a west workspace (west update, a
-// deletion) is treated the same way for every task that works in it.
+// deletion) is treated the same way for every task that works in it. An agent
+// flash counts as a build: west flash rebuilds the folder first, and holds the
+// board's probe while it writes.
 
 import * as vscode from 'vscode';
 import { ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../../constants';
@@ -42,12 +44,25 @@ export function findExternalRun(appRootPath: string, configName: string): vscode
   return vscode.tasks.taskExecutions.find(execution => taskTouchesConfig(execution.task, appRootPath, configName));
 }
 
-/** An agent build, or an analysis or other task run in a build folder, on this task's configuration. */
-function runningAgentBuildFor(jobs: JobManager, task: vscode.Task) {
+/**
+ * An agent build, an analysis or other task run in a build folder, a flash, or
+ * a build run through run_command (a command job that writes the build folder),
+ * on this task's configuration. A flash counts: west flash rebuilds the folder
+ * first, and a user build or flash meanwhile would fight it for the folder or
+ * the probe.
+ */
+export function runningAgentBuildFor(jobs: JobManager, task: vscode.Task) {
   return jobs.list().find(job =>
-    job.status === 'running' && (job.spec.kind === 'build' || job.spec.kind === 'task')
+    job.status === 'running'
+    && (job.spec.kind === 'build' || job.spec.kind === 'task' || job.spec.kind === 'flash'
+      || (job.spec.kind === 'run' && (job.spec.writes ?? []).includes('build_dir')))
     && job.spec.appPath && job.spec.configName
     && taskTouchesConfig(task, job.spec.appPath, job.spec.configName));
+}
+
+/** How the dialogs name what an agent job is doing to a configuration. */
+function agentWork(job: JobState): { doing: string; noun: string } {
+  return job.spec.kind === 'flash' ? { doing: 'flashing', noun: 'Flash' } : { doing: 'building', noun: 'Build' };
 }
 
 /** A folder a user task works in, as far as west workspaces go. */
@@ -226,10 +241,16 @@ export function guardTaskLaunches(jobs: JobManager): vscode.Disposable {
     if (!running) {
       return true;
     }
-    const stop = 'Stop Agent Build and Run';
+    const work = agentWork(running);
+    const stop = `Stop Agent ${work.noun} and Run`;
     const choice = await vscode.window.showWarningMessage(
-      `An AI agent is building ${running.spec.configName} right now.`,
-      { modal: true, detail: `"${task.name}" uses the same build folder, so running both would break them.` },
+      `An AI agent is ${work.doing} ${running.spec.configName} right now.`,
+      {
+        modal: true,
+        detail: running.spec.kind === 'flash'
+          ? `"${task.name}" uses the same build folder and board, so running both would break them. A flash stopped halfway leaves the board to be flashed again.`
+          : `"${task.name}" uses the same build folder, so running both would break them.`,
+      },
       stop,
     );
     if (choice !== stop) {
@@ -238,7 +259,7 @@ export function guardTaskLaunches(jobs: JobManager): vscode.Disposable {
     jobs.cancel(running.id);
     // jobs.wait returns as soon as the status says cancelled; the build
     // process may still be writing the folder, so wait for it to exit.
-    return waitForJobEnd(running, `Stopping the AI agent build of ${running.spec.configName}`);
+    return waitForJobEnd(running, `Stopping the AI agent ${work.noun.toLowerCase()} of ${running.spec.configName}`);
   });
   return { dispose: () => setTaskLaunchGuard(undefined) };
 }
@@ -274,9 +295,10 @@ export function watchBuildConflicts(jobs: JobManager): vscode.Disposable {
     if (!running) {
       return;
     }
-    const stopAgent = 'Stop Agent Build';
+    const work = agentWork(running);
+    const stopAgent = `Stop Agent ${work.noun}`;
     const choice = await vscode.window.showWarningMessage(
-      `An AI agent is building ${running.spec.configName} right now. "${event.execution.task.name}" uses the same build folder, so the two can break each other.`,
+      `An AI agent is ${work.doing} ${running.spec.configName} right now. "${event.execution.task.name}" uses the same build folder${running.spec.kind === 'flash' ? ' and board' : ''}, so the two can break each other.`,
       stopMine, stopAgent, 'Let Both Run',
     );
     if (choice === stopMine) {

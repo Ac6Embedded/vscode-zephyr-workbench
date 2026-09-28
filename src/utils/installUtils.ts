@@ -8,7 +8,8 @@ import * as sudo from 'sudo-prompt';
 import * as vscode from "vscode";
 import yaml from 'yaml';
 import { ZEPHYR_WORKBENCH_LIST_SDKS_SETTING_KEY, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_PROJECT_WEST_WORKSPACE_SETTING_KEY } from '../constants';
-import { buildShellTask, execShellCommand, execShellCommandCapturingExit, execShellCommandWithEnv, getConfiguredWorkbenchPath, getShellArgs, getShellExe, execCommandWithEnv, killProcessTree, resolveConfiguredPath, toPortableWorkspaceFolderPath } from "./execUtils";
+import { buildEnvSourcedShellTask, buildShellTask, execShellCommand, execShellCommandCapturingExit, executeTaskCollectExitCode, getConfiguredWorkbenchPath, getShellArgs, getShellExe, execCommandWithEnv, killProcessTree, logShellCommand, resolveConfiguredPath, toPortableWorkspaceFolderPath } from "./execUtils";
+import { quoteIfNeeded } from "./shellQuoting";
 import { detectGuiSudoAvailability } from "./environmentUtils";
 import { syncAutoDetectEnv } from "./debugTools/autoDetectSyncUtils";
 import { fileExists, findDefaultEnvScriptPath, getEnvScriptFilename, getInstallDirRealPath, getInternalDirRealPath, getInternalZephyrSdkInstallation, getWestWorkspace } from "./utils";
@@ -922,94 +923,239 @@ export async function installVenv(context: vscode.ExtensionContext, requirements
   }
 }
 
-export async function installHostDebugTools(context: vscode.ExtensionContext, listTools: any[]) {
-  let scriptsDirUri = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'runners');
-  if(scriptsDirUri) {
-    let installScript: string = "";
-    let installCmd: string = "";
-    let installArgs: string = "";
-    let destDir: string = "";
-    let shell: string = "";
+/**
+ * How the paths of an install-debug-tools command are quoted, which depends
+ * on what runs it:
+ *  - 'shell-execution': a VS Code ShellExecution task, whose `powershell
+ *    -Command` round trip strips plain quotes, so Windows paths carry escaped
+ *    quotes (quotePathForPwshCommand) and POSIX paths stay bare, as before.
+ *  - 'argv': a process spawned with the command as one argument (an agent's
+ *    captured task, child_process.exec), where node escapes plain double
+ *    quotes correctly and the escaped form would be double-escaped into garbage.
+ */
+export type DebugToolsCommandQuoting = 'shell-execution' | 'argv';
 
-    destDir = getInstallDirRealPath();
+/**
+ * The install-debug-tools command line for these tool ids, and the shell it
+ * is written for; undefined on a platform the scripts do not support.
+ */
+export function buildDebugToolsInstallCommand(
+  scriptsDir: string,
+  toolIds: readonly string[],
+  options: { platform?: NodeJS.Platform; destDir?: string; quoting?: DebugToolsCommandQuoting } = {},
+): { command: string; shell: string } | undefined {
+  const platform = options.platform ?? process.platform;
+  const destDir = options.destDir ?? getInstallDirRealPath();
+  const argv = options.quoting === 'argv';
+  const posixPath = (value: string) => (argv ? quoteIfNeeded(value) : value);
+  let installCmd: string;
+  let installArgs: string;
+  let shell: string;
+  switch (platform) {
+    case 'linux':
+    case 'darwin': {
+      const script = path.join(scriptsDir, platform === 'linux' ? 'install-debug-tools.sh' : 'install-debug-tools-mac.sh');
+      installCmd = `bash ${posixPath(script)}`;
+      installArgs = ` -D ${posixPath(destDir)}`;
+      shell = 'bash';
+      break;
+    }
+    case 'win32': {
+      const quote = (value: string) => (argv ? `"${value}"` : quotePathForPwshCommand(value));
+      installCmd = `powershell -File ${quote(path.join(scriptsDir, 'install-debug-tools.ps1'))}`;
+      installArgs = ` -D ${quote(destDir)} -Tools `;
+      shell = 'powershell.exe';
+      break;
+    }
+    default:
+      return undefined;
+  }
+  // Comma-separated on Windows (the script splits -Tools), space-separated elsewhere.
+  const toolsArg = toolIds.join(platform === 'win32' ? ',' : ' ');
+  return { command: `${installCmd} ${installArgs} ${toolsArg}`.trim(), shell };
+}
 
-    switch(process.platform) {
-      case 'linux': {
-        installScript = 'install-debug-tools.sh';
-        installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
-        installArgs += ` -D ${destDir}`;
-        shell = 'bash';
-        break;
+/**
+ * What installing debug tools runs. On Linux and macOS the tools that need
+ * root go through an elevated command of their own, without the Zephyr
+ * environment; everything else, and every tool on Windows (whose vendor
+ * installers raise UAC themselves), runs in a shell that sources the Zephyr
+ * environment so pip-based runners install into the managed venv.
+ */
+export interface HostDebugToolsInstallPlan {
+  root?: { command: string; toolIds: string[]; shellOpts: vscode.ShellExecutionOptions };
+  nonRoot?: {
+    command: string;
+    toolIds: string[];
+    shellOpts: vscode.ShellExecutionOptions;
+    /**
+     * The shell the env-sourced task is forced to: PowerShell on Windows, so
+     * a Git Bash or Cygwin default profile cannot mangle the backslash .ps1
+     * and -D paths (the env script is swapped to env.ps1 to match).
+     */
+    executableOverride?: string;
+  };
+}
+
+/** Plan an install of `toolIds`; undefined on a platform the scripts do not support. */
+export function planHostDebugToolsInstall(
+  scriptsDir: string,
+  toolIds: readonly string[],
+  rootToolIds: ReadonlySet<string>,
+  options: { platform?: NodeJS.Platform; destDir?: string; quoting?: DebugToolsCommandQuoting } = {},
+): HostDebugToolsInstallPlan | undefined {
+  const platform = options.platform ?? process.platform;
+  const command = (ids: readonly string[]) => buildDebugToolsInstallCommand(scriptsDir, ids, { ...options, platform });
+  const probe = command(toolIds);
+  if (!probe) {
+    return undefined;
+  }
+  const shellOpts: vscode.ShellExecutionOptions = {
+    cwd: os.homedir(),
+    executable: probe.shell,
+    shellArgs: getShellArgs(probe.shell),
+  };
+  const elevated = platform === 'linux' || platform === 'darwin';
+  const rootIds = elevated ? toolIds.filter(id => rootToolIds.has(id)) : [];
+  const otherIds = toolIds.filter(id => !rootIds.includes(id));
+  return {
+    ...(rootIds.length > 0 ? { root: { command: command(rootIds)!.command, toolIds: rootIds, shellOpts } } : {}),
+    ...(otherIds.length > 0 ? {
+      nonRoot: {
+        command: command(otherIds)!.command,
+        toolIds: otherIds,
+        shellOpts,
+        ...(platform === 'win32' ? { executableOverride: 'powershell.exe' } : {}),
+      },
+    } : {}),
+  };
+}
+
+export async function installHostDebugTools(context: vscode.ExtensionContext, listTools: any[]): Promise<void> {
+  const scriptsDir = vscode.Uri.joinPath(context.extensionUri, 'scripts', 'runners').fsPath;
+  if (process.platform !== 'linux' && process.platform !== 'win32' && process.platform !== 'darwin') {
+    vscode.window.showErrorMessage("Platform not supported !");
+    return;
+  }
+  if (process.platform === 'win32') {
+    const ok = await ensurePowershellExecutionPolicy();
+    if (!ok) { return; }
+  }
+
+  const { rootTools } = splitDebugToolsByPrivilege(context, listTools);
+  const plan = planHostDebugToolsInstall(
+    scriptsDir,
+    listTools.map(tool => tool.tool),
+    new Set(rootTools.map(tool => tool.tool)),
+    { quoting: 'shell-execution' },
+  );
+  if (!plan) {
+    return;
+  }
+
+  if (plan.root) {
+    await runElevatedDebugToolsCommand(plan.root.command, plan.root.shellOpts);
+  }
+  if (plan.nonRoot) {
+    const exitCode = await runDebugToolsInstallTask(plan.nonRoot);
+    // The installer's exit code is read, so a failed install is reported
+    // instead of looking like success.
+    if (typeof exitCode === 'number' && exitCode !== 0) {
+      throw new Error(`Installing the runners failed (exit code ${exitCode}). See the terminal for details.`);
+    }
+  }
+}
+
+/** The env-sourced task that installs the tools of a plan that need no root. */
+export function buildDebugToolsInstallTask(nonRoot: NonNullable<HostDebugToolsInstallPlan['nonRoot']>): vscode.Task {
+  return buildEnvSourcedShellTask('Installing Host debug tools', nonRoot.command, nonRoot.shellOpts, nonRoot.executableOverride);
+}
+
+async function runDebugToolsInstallTask(nonRoot: NonNullable<HostDebugToolsInstallPlan['nonRoot']>): Promise<number | undefined> {
+  const task = buildDebugToolsInstallTask(nonRoot);
+  logShellCommand('Installing Host debug tools', (task.execution as vscode.ShellExecution).commandLine ?? '', nonRoot.shellOpts.cwd);
+  return executeTaskCollectExitCode(task);
+}
+
+/**
+ * What follows an install of debug tools, in the Install Runners panel and
+ * for an agent alike: each installed runner found in the internal tools
+ * folder records its path, and the auto-detect entries of env.yml follow the
+ * manifest. Never throws: the tools are installed by now.
+ */
+export async function refreshRunnersAfterInstall(context: vscode.ExtensionContext, toolIds: readonly string[]): Promise<void> {
+  for (const toolId of toolIds) {
+    try {
+      const runner = getRunner(toolId);
+      if (runner && runner.executable) {
+        const runnerPath = path.join(getInternalDirRealPath(), 'tools', runner.name, runner.binDirPath, runner.executable);
+        if (fileExists(runnerPath)) {
+          runner.serverPath = runnerPath;
+          await runner.updateSettings();
+        }
       }
-      case 'win32': {
-        const ok = await ensurePowershellExecutionPolicy();
-        if (!ok) { return; }
-        installScript = 'install-debug-tools.ps1';
-        // ShellExecution + `powershell -Command` round trip: escaped quotes
-        // (quotePathForPwshCommand) are what survives — plain quotes are
-        // stripped by the outer -Command parse (same pattern as installHostTools).
-        installCmd = `powershell -File ${quotePathForPwshCommand(vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath)}`;
-        installArgs += ` -D ${quotePathForPwshCommand(destDir)}`;
-        shell = 'powershell.exe';
-        installArgs += ' -Tools ';
-        break;
+    } catch {
+      // One runner that cannot be refreshed must not hide the others.
+    }
+  }
+  await syncAutoDetectEnv(context);
+}
+
+/**
+ * An install batch of the Install Runners panel. The runners are refreshed
+ * whatever the outcome, as the agent install does: a pack that fails halfway
+ * has installed the tools before the failing one. Then the panel is told the
+ * batch ended, so it stops waiting and shows what is installed now.
+ */
+export async function runPanelDebugToolsInstall(
+  context: vscode.ExtensionContext,
+  listTools: { tool: string }[],
+  post: (message: Record<string, string>) => unknown,
+  deps = { install: installHostDebugTools, refresh: refreshRunnersAfterInstall, reportError: reportInstallError },
+): Promise<void> {
+  try {
+    await deps.install(context, listTools);
+  } catch (installError) {
+    deps.reportError('Debug tools installation failed', installError);
+  }
+  try {
+    await deps.refresh(context, listTools.map(tool => tool.tool));
+  } catch {
+    // The tools are installed by now; the next activation detects them.
+  }
+  for (const tool of listTools) {
+    post({ command: 'exec-done', tool: `${tool.tool}` });
+  }
+  // The whole install batch has finished (single or pack).
+  post({ command: 'exec-install-finished' });
+}
+
+/**
+ * Run `command` as root through the graphical sudo prompt only, logging its
+ * output through `log`, and resolve with its exit code (0 on success, 1 on
+ * any failure, including a dismissed prompt). No terminal fallback and no
+ * notification: for a caller nobody can type a password into, such as an
+ * agent job, which checks detectGuiSudoAvailability before it starts.
+ */
+export function runElevatedCommandHeadless(command: string, taskName: string, log: (text: string) => void): Promise<number> {
+  log(`${taskName} (graphical elevation). The root output appears once the step completes.\n`);
+  return new Promise<number>(resolve => {
+    sudo.exec(command, { name: 'Zephyr Workbench Installer' }, (error, stdout, stderr) => {
+      for (const [header, content] of [['root stdout', stdout], ['root stderr', stderr]] as const) {
+        const text = typeof content === 'undefined' ? '' : (typeof content === 'string' ? content : content.toString('utf8'));
+        if (text.trim()) {
+          log(`--- ${header} ---\n${text.trim()}\n`);
+        }
       }
-      case 'darwin': {
-        installScript = 'install-debug-tools-mac.sh';
-        installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
-        installArgs += ` -D ${destDir}`;
-        shell = 'bash';
-        break;
-      }
-      default: {
-        vscode.window.showErrorMessage("Platform not supported !");
+      if (error) {
+        log(`${taskName} failed: ${error.message}\n`);
+        resolve(1);
         return;
       }
-    }
-
-    let shellOpts: vscode.ShellExecutionOptions = {
-      cwd: os.homedir(),
-      executable: shell,
-      shellArgs: getShellArgs(shell),
-    };
-
-    // Run install commands for every tools
-    let toolsSeparator = ' ';
-    if(process.platform === 'win32') {
-      toolsSeparator = ',';
-    }
-
-    const buildInstallCommand = (tools: any[]) => {
-      const toolsCmdArg = tools.map(tool => tool.tool).join(toolsSeparator);
-      return `${installCmd} ${installArgs} ${toolsCmdArg}`.trim();
-    };
-
-    const { rootTools, nonRootTools } = splitDebugToolsByPrivilege(context, listTools);
-
-    if ((process.platform === 'linux' || process.platform === 'darwin') && rootTools.length > 0) {
-      await runElevatedDebugToolsCommand(buildInstallCommand(rootTools), shellOpts);
-
-      if (nonRootTools.length > 0) {
-        await execShellCommandWithEnv('Installing Host debug tools', buildInstallCommand(nonRootTools), shellOpts);
-      }
-      return;
-    }
-
-    // Run in a shell session that sources the configured env script
-    // so pip-based runners install into the managed venv and PATH is consistent.
-    // win32 forces PowerShell (the command is a .ps1 invocation with backslash
-    // paths that a Git Bash/Cygwin default profile would mangle); the env
-    // script is auto-swapped to env.ps1 by buildEnvSourcedShellCommand.
-    await execShellCommandWithEnv(
-      'Installing Host debug tools',
-      buildInstallCommand(listTools),
-      shellOpts,
-      process.platform === 'win32' ? 'powershell.exe' : undefined,
-    );
-
-  } else {
-    vscode.window.showErrorMessage("Cannot find installation script");
-  }
+      log(`${taskName} finished.\n`);
+      resolve(0);
+    });
+  });
 }
 
 // Silent variant used for post-host-tools flow: hides terminal/logs and reports only final result.
@@ -1020,51 +1166,22 @@ export async function installHostDebugToolsSilent(context: vscode.ExtensionConte
     return;
   }
 
-  let installScript = '';
-  let installCmd = '';
-  let installArgs = '';
-  let destDir = '';
-
-  destDir = getInstallDirRealPath();
-
-  switch(process.platform) {
-    case 'linux': {
-      installScript = 'install-debug-tools.sh';
-      installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
-      installArgs += ` -D ${destDir}`;
-      break;
-    }
-    case 'win32': {
-      const ok = await ensurePowershellExecutionPolicy();
-      if (!ok) { return; }
-      installScript = 'install-debug-tools.ps1';
-      // child_process.exec path (unlike installHostDebugTools' ShellExecution):
-      // node escapes plain double quotes correctly here, and the escaped-quote
-      // form (quotePathForPwshCommand) would be double-escaped into garbage.
-      installCmd = `powershell -File "${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}"`;
-      installArgs += ` -D "${destDir}"`;
-      installArgs += ' -Tools ';
-      break;
-    }
-    case 'darwin': {
-      installScript = 'install-debug-tools-mac.sh';
-      installCmd = `bash ${vscode.Uri.joinPath(scriptsDirUri, installScript).fsPath}`;
-      installArgs += ` -D ${destDir}`;
-      break;
-    }
-    default: {
-      vscode.window.showErrorMessage("Platform not supported !");
-      return;
-    }
+  if (process.platform !== 'linux' && process.platform !== 'win32' && process.platform !== 'darwin') {
+    vscode.window.showErrorMessage("Platform not supported !");
+    return;
+  }
+  if (process.platform === 'win32') {
+    const ok = await ensurePowershellExecutionPolicy();
+    if (!ok) { return; }
   }
 
-  // Build tools arg list (comma-separated on Windows, space-separated elsewhere)
-  let toolsSeparator = ' ';
-  if(process.platform === 'win32') {
-    toolsSeparator = ',';
+  // child_process.exec path (unlike installHostDebugTools' ShellExecution):
+  // node escapes plain double quotes correctly here.
+  const built = buildDebugToolsInstallCommand(scriptsDirUri.fsPath, listTools.map(tool => tool.tool), { quoting: 'argv' });
+  if (!built) {
+    return;
   }
-  const toolsCmdArg = listTools.map(tool => tool.tool).join(toolsSeparator);
-  const fullCmd = `${installCmd} ${installArgs} ${toolsCmdArg}`.trim();
+  const fullCmd = built.command;
 
   // Run via child_process exec with env sourcing to avoid opening any terminal/log panel.
   // win32 forces PowerShell so a Git Bash/Cygwin default profile cannot mangle

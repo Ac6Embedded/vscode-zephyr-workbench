@@ -20,6 +20,21 @@ export interface ManifestDebugTool extends DebugToolEntry {
    * alias, for example a GDB server shipped inside a larger vendor package.
    */
   runners?: string[];
+  group?: string;
+  website?: string | null;
+  /** The installer needs administrator rights (sudo on Linux and macOS, UAC on Windows). */
+  root?: boolean;
+  /** The panel does not let the user edit its path. */
+  no_edit?: boolean;
+  /** Set for J-Link: its install scripts download from SEGGER and accept the SEGGER terms of use. */
+  ['segger-sources']?: Record<string, string>;
+}
+
+/** A vendor pack of the manifest: a set of tools installed together. */
+export interface ManifestDebugToolPack {
+  pack: string;
+  name?: string;
+  tools?: string[];
 }
 
 /** The env.yml fields the runners panel reads. */
@@ -34,6 +49,74 @@ function tools(manifest: DebugToolsManifest): ManifestDebugTool[] {
 
 function aliases(manifest: DebugToolsManifest): DebugToolAliasEntry[] {
   return manifest.aliases ?? [];
+}
+
+/** The vendor packs of the manifest. */
+export function getDebugToolPacks(manifest: DebugToolsManifest): ManifestDebugToolPack[] {
+  const packs = (manifest as { packs?: unknown }).packs;
+  return Array.isArray(packs)
+    ? packs.filter((pack): pack is ManifestDebugToolPack => !!pack && typeof (pack as ManifestDebugToolPack).pack === 'string')
+    : [];
+}
+
+/**
+ * A tool the workbench only detects: its manifest gives no download for any
+ * OS (STM32CubeProgrammer, STM32CubeCLT, LinkServer, a custom OpenOCD). The
+ * user installs it from its vendor's site.
+ */
+export function isDebugToolDetectOnly(tool: { os?: unknown }): boolean {
+  const os = tool.os as Record<string, unknown> | undefined;
+  return !os || typeof os !== 'object' || Object.values(os).every(value => !value);
+}
+
+/** The terms the installer of a tool accepts on the user's behalf, if any. */
+export function getDebugToolLicense(tool: ManifestDebugTool): { name: string; url?: string } | undefined {
+  if (tool['segger-sources']) {
+    return { name: 'SEGGER J-Link terms of use', ...(tool.website ? { url: tool.website } : {}) };
+  }
+  return undefined;
+}
+
+/** Whether the user may set the path of a tool or alias, as the Install Runners panel allows. */
+export function isDebugToolPathEditable(manifest: DebugToolsManifest, id: string): boolean {
+  if (aliases(manifest).some(alias => alias.alias === id)) {
+    return true;
+  }
+  const tool = tools(manifest).find(t => t.tool === id);
+  // An alias variant has no path of its own: the alias row holds it.
+  return !!tool && !tool.alias && tool.no_edit !== true;
+}
+
+/**
+ * What installing a pack means, as the Install Runners panel does it: the
+ * tools this OS can install are installed, the others with a website are
+ * vendor pages for the user, and the rest are skipped.
+ */
+export function expandDebugToolPack(
+  manifest: DebugToolsManifest,
+  packId: string,
+  platform: NodeJS.Platform = process.platform,
+): { install: ManifestDebugTool[]; vendorPages: ManifestDebugTool[]; skipped: string[] } | undefined {
+  const pack = getDebugToolPacks(manifest).find(p => p.pack === packId);
+  if (!pack) {
+    return undefined;
+  }
+  const install: ManifestDebugTool[] = [];
+  const vendorPages: ManifestDebugTool[] = [];
+  const skipped: string[] = [];
+  for (const id of pack.tools ?? []) {
+    const tool = tools(manifest).find(t => t.tool === id);
+    if (!tool) {
+      skipped.push(id);
+    } else if (isDebugToolCompatible(tool, platform)) {
+      install.push(tool);
+    } else if (tool.website) {
+      vendorPages.push(tool);
+    } else {
+      skipped.push(id);
+    }
+  }
+  return { install, vendorPages, skipped };
 }
 
 /** Whether the panel can install this tool on `platform` (its manifest `os` entry is set). */

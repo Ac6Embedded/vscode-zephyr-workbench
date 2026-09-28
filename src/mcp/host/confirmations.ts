@@ -24,12 +24,30 @@ export interface ConfirmSubject {
   runner?: string;
   folder?: string;
   /**
+   * More lines for the dialog, such as the exact command that will run, so
+   * the user approves what really runs and not only our summary of it.
+   */
+  lines?: readonly string[];
+  /**
    * What an approval for the session covers: the application root, the west
    * workspace root, or a fixed key such as "toolchains" for machine-wide actions.
    */
   scope: string;
   /** How the dialog names the scope, completing "actions on ...". Defaults to "this application". */
   scopeLabel?: string;
+  /**
+   * What Allow for This Session covers, completing "stops asking this agent
+   * before ...", when the grant is narrower than the whole category.
+   */
+  sessionText?: string;
+}
+
+/** The longest line of ConfirmSubject.lines the dialog shows whole; a longer one is cut. */
+export const DIALOG_LINE_CHARS = 2000;
+
+/** Whether the dialog shows a line of ConfirmSubject.lines whole, as it flattens it, rather than cutting it. */
+export function fitsDialogLine(line: string): boolean {
+  return logSafe(line, Number.POSITIVE_INFINITY).length <= DIALOG_LINE_CHARS;
 }
 
 export type AskAnswer = 'allow' | 'session' | undefined;
@@ -39,11 +57,12 @@ export type ConfirmOutcome = 'not-required' | 'not-asked' | 'allowed' | 'allowed
 
 /** How each category reads in "...before <text> actions". */
 const CATEGORY_TEXT: Record<AskCategory, string> = {
-  hardware: 'serial send',
+  hardware: 'flash, debug and serial send',
   delete: 'remove and delete',
   workspace: 'application and west workspace',
   install: 'install',
   settings: 'settings',
+  command: 'command',
   call: 'these',
 };
 
@@ -263,6 +282,7 @@ export class Confirmations {
       subject.configName ? `Configuration: ${subject.configName}${subject.board ? ` (board ${subject.board})` : ''}` : undefined,
       subject.runner ? `Runner: ${subject.runner}` : undefined,
       subject.folder ? `Folder: ${subject.folder}` : undefined,
+      ...(subject.lines ?? []).map(line => logSafe(line, DIALOG_LINE_CHARS)),
       '',
       (always
         ? 'You are always asked before this action, whatever the Permissions of the AI Manager say.'
@@ -270,7 +290,7 @@ export class Confirmations {
         + (offerSession
           ? ` Allow for This Session stops asking this agent before ${category === 'call'
             ? `it uses ${ctx.tool.name}`
-            : `${CATEGORY_TEXT[category]} actions on ${subject.scopeLabel ?? 'this application'}`} until the MCP server restarts.`
+            : subject.sessionText ?? `${CATEGORY_TEXT[category]} actions on ${subject.scopeLabel ?? 'this application'}`} until the MCP server restarts.`
           : ''),
     ].filter((line): line is string => line !== undefined).join('\n');
 

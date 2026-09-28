@@ -7,7 +7,7 @@ import { z } from 'zod';
 export type ToolCategory = 'query' | 'artifact' | 'config' | 'action' | 'editor' | 'job';
 
 /** The kinds of change an action makes, which a tool set to Ask asks about. */
-export const CONFIRM_CATEGORIES = ['hardware', 'delete', 'workspace', 'install', 'settings'] as const;
+export const CONFIRM_CATEGORIES = ['hardware', 'delete', 'workspace', 'install', 'settings', 'command'] as const;
 export type ConfirmCategory = typeof CONFIRM_CATEGORIES[number];
 
 /**
@@ -16,8 +16,11 @@ export type ConfirmCategory = typeof CONFIRM_CATEGORIES[number];
  */
 export type AskCategory = ConfirmCategory | 'call';
 
-/** Asked under the core preset: everything that touches hardware, deletes, or changes the machine. */
-export const CORE_ASK_CATEGORIES: readonly ConfirmCategory[] = ['hardware', 'delete', 'workspace', 'install'];
+/**
+ * Asked under the core preset: everything that touches hardware, deletes,
+ * changes the machine, or runs a command the agent wrote.
+ */
+export const CORE_ASK_CATEGORIES: readonly ConfirmCategory[] = ['hardware', 'delete', 'workspace', 'install', 'command'];
 
 /** What the user lets an agent do with one tool: use it, be asked first, or not see it at all. */
 export const TOOL_PERMISSIONS = ['allow', 'ask', 'block'] as const;
@@ -88,9 +91,10 @@ export interface ToolMeta {
    * Calls that act on the machine rather than on a folder, such as installing
    * a toolchain. When a single VS Code window runs, such a call goes to it even
    * when the agent's folder is unrelated. True for the whole tool, or per value
-   * of its `action` (or `target`, `what`) argument.
+   * of its `action` (or `target`, `what`) argument, where a function decides
+   * from the other arguments.
    */
-  machineScope?: boolean | Readonly<Record<string, boolean>>;
+  machineScope?: boolean | Readonly<Record<string, boolean | ((args: Record<string, unknown>) => boolean)>>;
 }
 
 /** The arguments the bridge routes a call of this tool by. */
@@ -107,7 +111,8 @@ export function isMachineScope(meta: ToolMeta, args: Record<string, unknown>): b
   for (const key of ['action', 'target', 'what']) {
     const value = args[key];
     if (typeof value === 'string' && Object.prototype.hasOwnProperty.call(scope, value)) {
-      return scope[value];
+      const entry = scope[value];
+      return typeof entry === 'function' ? entry(args) : entry;
     }
   }
   return false;

@@ -17,11 +17,12 @@ import { randomUUID } from 'crypto';
 import { SERVER_NAME, SERVER_TITLE, serverInstructions, TOOL_CATALOG } from '../core/catalog';
 import { McpToolError } from '../core/errors';
 import { getMcpPaths } from '../core/paths';
-import { endpointOf, isListening, WINDOW_ID_PATTERN, WindowRecord } from '../core/registry';
+import { endpointOf, isListening, WindowRecord } from '../core/registry';
 import { routeOfCall } from '../core/routing';
 import { FORWARDED_CLIENT_META_KEY, ToolMeta } from '../core/toolSpec';
 import { classifyUpstreamError } from './classify';
 import { BridgeLog } from './log';
+import { jobWindowOf, sessionWindowGone, sessionWindowOf } from './ownerWindow';
 import { orPersistedJob } from './persistedJobs';
 import { ConnectionPool } from './pool';
 import { anySignal, CALL_ID_META_KEY, StreamWatch } from './streamWatch';
@@ -40,16 +41,6 @@ const CALL_MAX_TIMEOUT_MS = 30 * 60_000;
 /** Per window, for a merged read across every window. */
 const FAN_OUT_TIMEOUT_MS = 60_000;
 const CLIENT_INFO_KEY = 'io.modelcontextprotocol/clientInfo';
-
-/** A job id starts with the id of the window that ran it: `<windowId>.<kind>-<suffix>`. */
-function jobWindowOf(args: Record<string, unknown> | undefined): string | undefined {
-  const jobId = args?.job_id;
-  if (typeof jobId !== 'string') {
-    return undefined;
-  }
-  const windowId = jobId.split('.')[0];
-  return jobId.includes('.') && WINDOW_ID_PATTERN.test(windowId) ? windowId : undefined;
-}
 
 function failure(error: McpToolError) {
   return {
@@ -218,7 +209,15 @@ async function main(): Promise<void> {
     const agent = agentOf(server, ctx);
     // A job lives in the window that ran it; no other window can answer for it.
     const jobWindow = jobWindowOf(args);
-    let lockTo = jobWindow;
+    // So does a debug session, which ends with its window.
+    const sessionWindow = jobWindow ? undefined : sessionWindowOf(args);
+    if (sessionWindow) {
+      const gone = sessionWindowGone(liveRecords(options), args);
+      if (gone) {
+        return failure(gone);
+      }
+    }
+    let lockTo = jobWindow ?? sessionWindow;
 
     // Two attempts at most. The second only happens when the first provably
     // did not run the tool, or when the tool is read-only, and it goes back to

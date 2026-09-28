@@ -5,14 +5,17 @@
 import * as fs from 'fs';
 import { readRunnersYamlForProject, findRunnersYamlForBuildDir, readRunnersYamlFile } from '../../../utils/zephyr/runnersYamlUtils';
 import { getDomainBuildDir, readDomainsForBuildDir } from '../../../utils/zephyr/domainsYamlUtils';
-import { getStaticFlashRunnerNames } from '../../../utils/debugTools/debugUtils';
+import { getDebugSessionVenvPath, getStaticFlashRunnerNames } from '../../../utils/debugTools/debugUtils';
+import { findDebugToolIdsForRunner } from '../../../utils/debugTools/debugToolManifestUtils';
 import { BuildReportSection, collectBuildReport } from '../../../utils/zephyr/buildReport';
 import { ZephyrMemoryTreeNode } from '../../../utils/zephyr/memoryTreeParser';
 import { McpToolError } from '../../core/errors';
 import { matcherFor } from '../../core/match';
 import { ToolContext, ToolHandler } from '../../core/toolSpec';
+import { runnerTools } from '../runnerTools';
 import { HostDeps } from './deps';
 import { explainKconfig, minimalKconfig } from './kconfig';
+import { allToolsView, manifestOf, manifestTools, probeRunnerTools, pyocdVenvOwner, pyocdView, runnerEnvData, runnerToolDto } from './runnerToolsView';
 
 type Ctx = ToolContext<HostDeps>;
 
@@ -349,7 +352,61 @@ export const queryDevicetree: ToolHandler<HostDeps> = async (args, ctx: Ctx) => 
   };
 };
 
+const RUNNER_INCLUDES = ['tools', 'pyocd'] as const;
+
+/** include, all_tools and pyocd_target, checked before anything is read. */
+function runnerOptions(args: Record<string, unknown>) {
+  const raw = args.include;
+  if (raw !== undefined && (!Array.isArray(raw) || raw.some(item => !(RUNNER_INCLUDES as readonly unknown[]).includes(item)))) {
+    throw new McpToolError('INVALID_ARGUMENT', `include takes a list of ${RUNNER_INCLUDES.join(' and ')}.`);
+  }
+  const include = new Set((raw as string[] | undefined) ?? []);
+  const allTools = bool(args.all_tools) === true;
+  const search = args.pyocd_target;
+  if (search !== undefined && (typeof search !== 'string' || !/^[\w.+-]{1,64}$/.test(search))) {
+    throw new McpToolError('INVALID_ARGUMENT', 'pyocd_target must be up to 64 letters, digits, dots, dashes, plus signs or underscores.');
+  }
+  if (search !== undefined && !include.has('pyocd')) {
+    throw new McpToolError('INVALID_ARGUMENT', 'pyocd_target searches the pyOCD targets, so it needs include ["pyocd"].');
+  }
+  if (allTools) {
+    const misplaced = ['app_path', 'config_name', 'domain'].filter(key => args[key] !== undefined);
+    if (misplaced.length > 0 || include.has('tools')) {
+      throw new McpToolError('INVALID_ARGUMENT',
+        `all_tools lists every tool of the machine, so it does not take ${[...misplaced, ...(include.has('tools') ? ['include "tools"'] : [])].join(', ')}.`, {
+          hint: 'Call list_runners without all_tools for the runners of one build and the tools they need.',
+        });
+    }
+  }
+  return { include, allTools, search: search as string | undefined };
+}
+
+/** list_runners all_tools: every tool of the manifest, whether or not it runs on this OS. */
+async function listAllRunnerTools(ctx: Ctx, include: Set<string>, search: string | undefined) {
+  const manifest = manifestOf(ctx);
+  const platform = runnerTools.platform();
+  const tools = manifestTools(manifest);
+  // Only a tool this OS can run has a version command worth running.
+  const runnable = [
+    ...(manifest.aliases ?? []).map(alias => alias.alias),
+    ...tools.filter(tool => (tool.os as Record<string, unknown> | undefined)?.[platform === 'win32' ? 'windows' : platform] !== false).map(tool => tool.tool),
+  ];
+  const others = tools.map(tool => tool.tool).filter(id => !runnable.includes(id));
+  const [probed, unprobed] = await Promise.all([probeRunnerTools(ctx, runnable), probeRunnerTools(ctx, others, false)]);
+  return {
+    all_tools: true,
+    ...allToolsView(manifest, runnerEnvData(), [...probed.rows, ...unprobed.rows], platform),
+    ...(include.has('pyocd') ? { pyocd: await pyocdView(ctx, { ...(search !== undefined ? { search } : {}) }) } : {}),
+    ...(probed.probed ? {} : { note: 'The version commands did not run because the Zephyr environment script cannot be sourced: installed comes from the filesystem only, and is null where only a version command could tell.' }),
+    next: 'Install a tool with manage_runners action "install", or record one installed by hand with action "set_path".',
+  };
+}
+
 export const listRunners: ToolHandler<HostDeps> = async (args, ctx: Ctx) => {
+  const { include, allTools, search } = runnerOptions(args);
+  if (allTools) {
+    return listAllRunnerTools(ctx, include, search);
+  }
   const { app, config, buildDir, domain } = await target(ctx, args);
   let parsed = domain ? undefined : readRunnersYamlForProject(app, config);
   if (domain) {
@@ -357,13 +414,50 @@ export const listRunners: ToolHandler<HostDeps> = async (args, ctx: Ctx) => {
     const file = domainDir ? findRunnersYamlForBuildDir(domainDir) : undefined;
     parsed = file ? readRunnersYamlFile(file) : undefined;
   }
+  const pyocd = include.has('pyocd')
+    ? async () => {
+      let boardTarget: string | null = null;
+      try {
+        boardTarget = parsed ? config.getPyOCDTarget(app, domain) ?? null : null;
+      } catch {
+        boardTarget = null;
+      }
+      const venvPath = getDebugSessionVenvPath(app);
+      return pyocdView(ctx, { venvPath, owner: pyocdVenvOwner(app, venvPath), boardTarget, ...(search !== undefined ? { search } : {}) });
+    }
+    : undefined;
   if (!parsed) {
     return {
       built: false,
       configured_runner: config.defaultRunner || undefined,
       runners: getStaticFlashRunnerNames().map(name => ({ name, compatible: false })),
       note: `No runners.yaml in "${buildDir}", so this is the full static list rather than what this board supports. Build first for the real list.`,
+      ...(include.has('tools') ? { tools_note: 'The tools behind the runners are listed for a built configuration only. Call build_app first, or list_runners with all_tools true for every tool.' } : {}),
+      ...(pyocd ? { pyocd: await pyocd() } : {}),
     };
+  }
+  let runners: Array<Record<string, unknown>> = parsed.runners.map(name => ({ name, compatible: true }));
+  let toolsNote: string | undefined;
+  if (include.has('tools')) {
+    const manifest = manifestOf(ctx);
+    const platform = runnerTools.platform();
+    const idsByRunner = new Map(parsed.runners.map(name => [name, findDebugToolIdsForRunner(manifest, name)]));
+    const { rows, probed } = await probeRunnerTools(ctx, [...new Set([...idsByRunner.values()].flat())]);
+    const byId = new Map(rows.map(row => [row.id, row]));
+    runners = parsed.runners.map(name => {
+      const ids = idsByRunner.get(name) ?? [];
+      const tools = ids.map(id => byId.get(id)).filter((row): row is NonNullable<typeof row> => !!row);
+      return {
+        name,
+        compatible: true,
+        ...(ids.length > 0
+          ? { tools: tools.map(row => runnerToolDto(row, manifest, platform)) }
+          : { tools_note: 'The workbench does not manage a tool for this runner.' }),
+      };
+    });
+    if (!probed) {
+      toolsNote = 'The version commands did not run because the Zephyr environment script cannot be sourced: installed comes from the filesystem only, and is null where only a version command could tell.';
+    }
   }
   return {
     built: true,
@@ -372,6 +466,8 @@ export const listRunners: ToolHandler<HostDeps> = async (args, ctx: Ctx) => {
     default_debug_runner: parsed.defaultDebugRunner,
     configured_runner: config.defaultRunner || undefined,
     configured_runner_args: config.customArgs || undefined,
-    runners: parsed.runners.map(name => ({ name, compatible: true })),
+    runners,
+    ...(toolsNote ? { tools_note: toolsNote } : {}),
+    ...(pyocd ? { pyocd: await pyocd() } : {}),
   };
 };

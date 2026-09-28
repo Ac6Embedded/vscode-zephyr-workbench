@@ -268,8 +268,9 @@ export class JobManager {
       if (!shared) {
         continue;
       }
-      // A capture's lock is its serial port, not a folder.
-      const noun = shared === 'lock' && spec.kind === 'serial' ? 'serial port' : RESOURCE_NOUN[shared === 'lock' ? lockedResource(spec) : shared];
+      // A capture's lock is its serial port and a flash's is its probe, not a folder.
+      const lockNoun = spec.kind === 'serial' ? 'serial port' : spec.kind === 'flash' ? 'probe' : undefined;
+      const noun = shared === 'lock' && lockNoun ? lockNoun : RESOURCE_NOUN[shared === 'lock' ? lockedResource(spec) : shared];
       const stopping = holder.status === 'cancelled';
       throw new McpToolError('BUSY',
         stopping

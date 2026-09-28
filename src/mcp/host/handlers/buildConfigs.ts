@@ -40,6 +40,7 @@ import { ConfirmOutcome, ConfirmSubject } from '../confirmations';
 import { updateApp } from './apps';
 import { HostDeps } from './deps';
 import { progressWait, remainingWaitMs } from './progress';
+import { fullToolHint } from './toolchainArgs';
 import { updateWestWorkspace } from './westWorkspaces';
 
 type Ctx = ToolContext<HostDeps>;
@@ -474,7 +475,9 @@ async function renameConfig(args: Record<string, unknown>, ctx: Ctx, app: Zephyr
       warnings.push(`"${oldBuildDir}" keeps its old name, because CMake records absolute paths in it; the next build of "${newName}" configures build/${newName} from scratch.`);
     }
     if (launchEntriesMention(after, oldName)) {
-      warnings.push(`.vscode/launch.json still has debug configurations for "${oldName}" that point at its old build folder. The Debug Manager creates matching ones for "${newName}".`);
+      warnings.push(`.vscode/launch.json still has debug configurations for "${oldName}" that point at its old build folder: call configure_debug with action "apply" and config_name "${newName}" to create matching ones, and ${fullToolHint(ctx, 'remove_or_delete',
+        `remove the old ones with remove_or_delete, what "debug_config" and config_name "${oldName}"`,
+        'ask the user to delete the old ones from .vscode/launch.json, or to allow remove_or_delete in the AI Manager')}.`);
     }
     // A folder an earlier configuration of the new name left behind is built
     // into next, and it may have been configured for another board.
@@ -699,7 +702,7 @@ async function removeConfiguration(ctx: Ctx, app: ZephyrApplication, name: strin
       await sideEffect('IntelliSense or tasks.json', () => syncActiveBuildConfig(after, electedConfig, elected.index), warnings);
     }
     if (launchEntriesMention(after, name)) {
-      warnings.push(`.vscode/launch.json still has debug configurations for "${name}". They stop working and can be removed from the Debug Manager or by hand.`);
+      warnings.push(`.vscode/launch.json still has debug configurations for "${name}". They stop working: remove them with remove_or_delete, what "debug_config" and config_name "${name}".`);
     }
     return getActiveOrDefaultBuildConfig(after)?.name;
   });

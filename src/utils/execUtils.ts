@@ -1784,6 +1784,12 @@ export interface PyOCDExecOptions {
   /** Reveal the pyOCD output channel (default: leave it in the background). */
   show?: boolean;
   /**
+   * Called with each output line also written to the pyOCD output channel,
+   * download ticks excluded, so a caller such as an agent job can keep its
+   * own log.
+   */
+  onLine?: (line: string) => void;
+  /**
    * Run pyocd inside this venv instead of the globally configured one. The env
    * script activates whatever PYTHON_VENV_PATH points at, so an app or west
    * workspace local venv gets its own pyocd (version and presence may differ).
@@ -1860,6 +1866,7 @@ async function execPyOCD(cmd: string, opts: PyOCDExecOptions = {}): Promise<stri
     pyOCDOutput.show(true);
   }
   pyOCDOutput.appendLine(`--- ${cmd} ---`);
+  opts.onLine?.(`--- ${cmd} ---`);
   let full = '';
   let lineBuf = '';
   let lastTick: string | undefined;
@@ -1916,6 +1923,7 @@ async function execPyOCD(cmd: string, opts: PyOCDExecOptions = {}): Promise<stri
         }
       } else if (line.trim()) {
         pyOCDOutput.appendLine(line);
+        opts.onLine?.(line);
         pushTail(line);
       }
     }
@@ -1927,10 +1935,12 @@ async function execPyOCD(cmd: string, opts: PyOCDExecOptions = {}): Promise<stri
     const finishLog = () => {
       if (lineBuf.trim()) {
         pyOCDOutput.appendLine(lineBuf);
+        opts.onLine?.(lineBuf);
         pushTail(lineBuf);
       }
       if (lastTick) {
         pyOCDOutput.appendLine(lastTick);
+        opts.onLine?.(lastTick);
       }
       cancelSub?.dispose();
     };

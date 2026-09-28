@@ -38,6 +38,49 @@ function cleanupRunnerEntry(jsEnv: any, toolId: string): void {
   }
 }
 
+/**
+ * Record the path of a tool or alias in env.yml, with forward slashes. False
+ * when env.yml could not be written.
+ */
+export function saveRunnerPath(toolId: string, newPath: string): boolean {
+  try {
+    const jsEnv = readEnvYamlObject();
+    const runner = ensureRunnerEntry(jsEnv, toolId);
+    runner.path = newPath.replace(/\\/g, '/');
+    writeEnvYamlObject(jsEnv);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Forget everything env.yml records for a tool or alias: its path, version and do_not_use. */
+export function removeRunnerPath(toolId: string): boolean {
+  try {
+    const jsEnv = readEnvYamlObject();
+    const runners = ensureRunners(jsEnv);
+    delete runners[toolId];
+    cleanupRunnerEntry(jsEnv, toolId);
+    writeEnvYamlObject(jsEnv);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether the Zephyr environment leaves a tool off PATH (do_not_use in env.yml). */
+export function saveDoNotUse(toolId: string, doNotUse: boolean): boolean {
+  try {
+    const jsEnv = readEnvYamlObject();
+    const runner = ensureRunnerEntry(jsEnv, toolId);
+    runner.do_not_use = doNotUse;
+    writeEnvYamlObject(jsEnv);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function setDebugToolAliasDefault(options: {
   manifest: any;
   alias: string;

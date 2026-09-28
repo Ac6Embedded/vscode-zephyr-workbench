@@ -8,7 +8,9 @@ import { REMOVE_OR_DELETE_WHATS } from '../../core/tools/removeOrDelete';
 import { ToolContext, ToolHandler } from '../../core/toolSpec';
 import { removeApplication } from './apps';
 import { deleteBuild } from './buildConfigs';
+import { removeDebugConfig } from './configureDebug';
 import { HostDeps } from './deps';
+import { removePyocdPacks } from './manageRunners';
 import { removeToolchain } from './toolchains';
 import { removeWestWorkspaceItem } from './westWorkspaces';
 
@@ -32,6 +34,8 @@ const ROUTES: Readonly<Record<What, {
   west_blobs: { args: ['west_workspace'], run: removeWestWorkspaceItem },
   toolchain: { args: ['path', 'force'], run: removeToolchain },
   toolchain_files: { args: ['path', 'force'], run: removeToolchain },
+  debug_config: { args: ['app_path', 'config_name', 'name'], run: removeDebugConfig },
+  pyocd_packs: { args: [], run: removePyocdPacks },
 };
 
 export const removeOrDelete: ToolHandler<HostDeps> = async (args, ctx: Ctx) => {

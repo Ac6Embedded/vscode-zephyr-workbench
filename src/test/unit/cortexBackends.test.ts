@@ -134,6 +134,8 @@ describe('cortex backends', () => {
       assert.equal(runtime.toolchainPrefix, 'arm-zephyr-eabi');
       assert.deepEqual(runtime.overrideLaunchCommands, ['monitor halt', 'load', 'monitor reset']);
       assert.equal(runtime.__zwServerToken, 'token-1');
+      // The session no longer names its runner otherwise; debug_app reads it back.
+      assert.equal(runtime.__zwRunner, 'jlink');
     });
 
     it('attach transform has no overrides and request attach', () => {

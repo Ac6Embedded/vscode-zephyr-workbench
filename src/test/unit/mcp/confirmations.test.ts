@@ -130,6 +130,24 @@ describe('mcp/host/confirmations', () => {
     assert.equal(await confirmations.require(context(), {}, SUBJECT), 'not-asked');
   });
 
+  it('shows the extra lines of the subject, such as the command that will run', async () => {
+    const details: string[] = [];
+    const confirmations = new Confirmations({
+      permission: () => 'ask',
+      waitMs: () => 200,
+      log: { recordConfirmation: () => undefined },
+      ask: (_message, detail) => {
+        details.push(detail);
+        return Promise.resolve<AskAnswer>('allow');
+      },
+    });
+    const subject = { ...SUBJECT, lines: ['Command: west flash --runner jlink', 'second\nline'] };
+    assert.equal(await confirmations.require(context(), {}, subject), 'allowed');
+    assert.match(details[0], /\nCommand: west flash --runner jlink\n/);
+    // Control characters never reach the dialog.
+    assert.match(details[0], /\nsecond line\n/);
+  });
+
   it('does not ask for a category the user did not choose, but audits it', async () => {
     const { confirmations, asked } = harness([], ['hardware']);
     const ctx = context();

@@ -299,7 +299,7 @@ export const PRESETS: { preset: Preset; label: string; description: string }[] =
   {
     preset: 'core',
     label: 'Core',
-    description: 'Builds and inspects freely. Asks before changing apps, workspaces, toolchains or a board. Blocks deleting.',
+    description: 'Builds and inspects freely. Asks before changing apps, workspaces, toolchains or runners, before touching a board and before running a command. Blocks deleting.',
   },
   {
     preset: 'custom',

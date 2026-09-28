@@ -90,3 +90,100 @@ module.exports.Task = Task;
 module.exports.TaskScope = { Global: 1, Workspace: 2 };
 module.exports.TaskRevealKind = { Always: 1, Silent: 2, Never: 3 };
 module.exports.TaskPanelKind = { Shared: 1, Dedicated: 2, New: 3 };
+
+// The debug API, declared for tests to replace like the task API above.
+const noDispose = () => ({ dispose() {} });
+module.exports.debug = {
+	activeDebugSession: undefined,
+	activeDebugConsole: { append() {}, appendLine() {} },
+	breakpoints: [],
+	startDebugging: async () => false,
+	stopDebugging: async () => undefined,
+	addBreakpoints: () => undefined,
+	removeBreakpoints: () => undefined,
+	registerDebugAdapterTrackerFactory: noDispose,
+	registerDebugConfigurationProvider: noDispose,
+	onDidStartDebugSession: noDispose,
+	onDidTerminateDebugSession: noDispose,
+	onDidChangeActiveDebugSession: noDispose,
+	onDidChangeBreakpoints: noDispose,
+	onDidReceiveDebugSessionCustomEvent: noDispose,
+};
+module.exports.commands = {
+	executeCommand: async () => undefined,
+	registerCommand: noDispose,
+	getCommands: async () => [],
+};
+
+// Just enough of the breakpoint and location value types to build one and
+// read it back.
+class Position {
+	constructor(line, character) {
+		this.line = line;
+		this.character = character;
+	}
+}
+class Range {
+	constructor(startOrLine, endOrCharacter, endLine, endCharacter) {
+		if (typeof startOrLine === 'number') {
+			this.start = new Position(startOrLine, endOrCharacter);
+			this.end = new Position(endLine, endCharacter);
+		} else {
+			this.start = startOrLine;
+			this.end = endOrCharacter;
+		}
+	}
+}
+class Location {
+	constructor(uri, rangeOrPosition) {
+		this.uri = uri;
+		this.range = rangeOrPosition instanceof Position ? new Range(rangeOrPosition, rangeOrPosition) : rangeOrPosition;
+	}
+}
+let breakpointCounter = 0;
+class Breakpoint {
+	constructor(enabled, condition, hitCondition, logMessage) {
+		breakpointCounter += 1;
+		this.id = `stub-bp-${breakpointCounter}`;
+		this.enabled = enabled === undefined ? true : enabled;
+		this.condition = condition;
+		this.hitCondition = hitCondition;
+		this.logMessage = logMessage;
+	}
+}
+class SourceBreakpoint extends Breakpoint {
+	constructor(location, enabled, condition, hitCondition, logMessage) {
+		super(enabled, condition, hitCondition, logMessage);
+		this.location = location;
+	}
+}
+class FunctionBreakpoint extends Breakpoint {
+	constructor(functionName, enabled, condition, hitCondition, logMessage) {
+		super(enabled, condition, hitCondition, logMessage);
+		this.functionName = functionName;
+	}
+}
+class EventEmitter {
+	constructor() {
+		this.listeners = new Set();
+		this.event = listener => {
+			this.listeners.add(listener);
+			return { dispose: () => this.listeners.delete(listener) };
+		};
+	}
+	fire(value) {
+		for (const listener of [...this.listeners]) {
+			listener(value);
+		}
+	}
+	dispose() {
+		this.listeners.clear();
+	}
+}
+module.exports.Position = Position;
+module.exports.Range = Range;
+module.exports.Location = Location;
+module.exports.Breakpoint = Breakpoint;
+module.exports.SourceBreakpoint = SourceBreakpoint;
+module.exports.FunctionBreakpoint = FunctionBreakpoint;
+module.exports.EventEmitter = EventEmitter;

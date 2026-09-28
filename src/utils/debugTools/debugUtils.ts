@@ -2,11 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import * as vscode from 'vscode';
 import yaml from 'yaml';
+import { parse as parseJsonc, ParseError } from 'jsonc-parser';
 import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY } from "../../constants";
 import { Linkserver } from "../../debug/runners/Linkserver";
 import { Openocd } from "../../debug/runners/Openocd";
 import { WestRunner } from "../../debug/runners/WestRunner";
-import { checkPyOCDTarget, classifyShell, concatCommands, dryRunInstallPyOCDPacks, expandEnvVariables, getConfiguredVenvPath, getConfiguredWorkbenchPath, getPyOCDOutputChannel, getShell, getShellExe, getShellSourceCommand, installPyOCDTarget, makeConfiguredVariableResolver, normalizePathForShell, updatePyOCDPack } from '../execUtils';
+import { checkPyOCDTarget, classifyShell, concatCommands, dryRunInstallPyOCDPacks, expandEnvVariables, getConfiguredVenvPath, getConfiguredWorkbenchPath, getPyOCDOutputChannel, getShell, getShellExe, getShellSetEnvCommand, getShellSourceCommand, installPyOCDTarget, makeConfiguredVariableResolver, normalizePathForShell, updatePyOCDPack } from '../execUtils';
 import { ZephyrApplication } from "../../models/ZephyrApplication";
 import { prependRustBinPath } from '../../models/ToolchainInstallations';
 import { findBoardByHierarchicalIdentifier, getSupportedBoards } from '../zephyr/boardDiscovery';
@@ -22,7 +23,7 @@ import { PyOCD } from '../../debug/runners/PyOCD';
 import { Qemu } from '../../debug/runners/Qemu';
 import { ZephyrBoard } from '../../models/ZephyrBoard';
 import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
-import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeOnlyCommand } from '../../commands/WestCommands';
+import { execWestCommandWithEnv, execWestCommandWithEnvAsync, westTmpBuildCmakeOnlyCommand, type WestRunOptions } from '../../commands/WestCommands';
 import { ParsedRunnersYaml, findRunnersYamlForProject, getRunnerPathFromRunnersYaml, readRunnersYamlFile, readRunnersYamlForBuildDir, readRunnersYamlForProject } from '../zephyr/runnersYamlUtils';
 import { readDomainsForBuildDir } from '../zephyr/domainsYamlUtils';
 import { composeWestBuildArgs, expandAndNormalizeWestArgs, hasWestBuildSourceDirArg } from '../zephyr/westArgUtils';
@@ -451,11 +452,18 @@ export function getQemuGdbPort(
   return match?.[1] ?? getDefaultGdbPort('qemu');
 }
 
-async function collectLaunchConfigurationArtifacts(
+/**
+ * What the build tells about debugging it: board, runners, gdb and OpenOCD.
+ * A missing build folder is configured in a temporary folder first, through a
+ * VS Code task, so a caller that must not start one checks the folder first.
+ */
+export async function collectLaunchConfigurationArtifacts(
   project: ZephyrApplication,
   buildConfig: ZephyrBuildConfig,
   westWorkspace: ReturnType<typeof getWestWorkspace>,
   domain?: string,
+  /** Bounds the `west boards` run when the build does not name its board. */
+  westOpts?: WestRunOptions,
 ): Promise<LaunchConfigurationArtifacts> {
   // For sysbuild builds the artifacts live in the selected domain's build dir;
   // otherwise the folder that nests them is the app folder (today's behavior).
@@ -487,7 +495,7 @@ async function collectLaunchConfigurationArtifacts(
     }
 
     if (!targetBoard) {
-      const listBoards = await getSupportedBoards(westWorkspace, project, buildConfig, tmpBuildDir);
+      const listBoards = await getSupportedBoards(westWorkspace, project, buildConfig, tmpBuildDir, westOpts);
       if (boardIdentifier) {
         targetBoard = findBoardByHierarchicalIdentifier(boardIdentifier, listBoards);
       }
@@ -645,21 +653,150 @@ export function getRunner(runnerName: string): WestRunner | undefined {
   }
 }
 
-export function createWestWrapper(project: ZephyrApplication, buildConfigName?: string) {
-  let buildDir; 
-  let buildConfig;
-  if(buildConfigName) {
-    buildConfig = project.getBuildConfiguration(buildConfigName);
-    if(buildConfig) {
-      buildDir = buildConfig.getInternalDebugDir(project);
+/** The shell the west wrapper is written for: cmd.exe on Windows, else the user's. */
+function getWestWrapperShell(): string {
+  return process.platform === 'win32' ? 'cmd.exe' : getShell();
+}
+
+const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * One environment assignment of a generated wrapper, quoted so the value is
+ * taken literally. The POSIX wrappers are bash scripts whatever the user's
+ * shell, and a batch file expands % even inside quotes, so %% keeps one.
+ */
+function wrapperSetEnvLine(shell: string, key: string, value: string): string {
+  switch (shell) {
+    case 'cmd.exe':
+      return `set "${key}=${value.replace(/%/g, '%%')}"`;
+    case 'powershell.exe':
+    case 'pwsh.exe':
+      return getShellSetEnvCommand(shell, key, value);
+    default:
+      return `export ${key}='${value.replace(/'/g, `'\\''`)}'`;
+  }
+}
+
+/**
+ * The west wrapper for `shell`: its file name and its content, which sets
+ * `envVars`, sources the environment script and runs west with the
+ * wrapper's arguments. Undefined for a shell no wrapper is written for.
+ */
+export function buildWestWrapperScript(
+  shell: string,
+  envScript: string,
+  envVars: Record<string, unknown>,
+): { fileName: string; content: string } | undefined {
+  let westCmd: string;
+  switch (shell) {
+    case 'bash':
+    case 'zsh':
+    case 'dash':
+    case 'fish':
+      westCmd = 'west "$@"';
+      break;
+    case 'cmd.exe':
+      westCmd = 'west %*';
+      break;
+    case 'powershell.exe':
+    case 'pwsh.exe':
+      westCmd = 'west $args';
+      break;
+    default:
+      return undefined;
+  }
+
+  let envVarsCommands = '';
+  for (const [key, raw] of Object.entries(envVars)) {
+    // List variables such as EXTRA_CONF_FILE are ;-joined, as builds pass them.
+    const value = Array.isArray(raw) ? raw.join(';') : raw;
+    // A name that is not a plain identifier, or a value on several lines,
+    // cannot be written as one literal assignment.
+    if (value === null || value === undefined || value === '' || !ENV_NAME_PATTERN.test(key) || /[\r\n]/.test(String(value))) {
+      continue;
     }
+    envVarsCommands += `${wrapperSetEnvLine(shell, key, String(value))}\n`;
   }
 
-  if(!buildDir) {
-    return;
-  }
+  const debugServerCommand = concatCommands(shell, getShellSourceCommand(shell, envScript), westCmd);
+  switch (shell) {
+    case 'cmd.exe':
+      return {
+        fileName: 'west_wrapper.bat',
+        content: `@echo off
+REM Wrapper script to run west commands out of Zephyr workbench environment
+REM This script is auto-generated -- do not edit
 
+REM Set environment variables
+${envVarsCommands}
+
+REM Source environment and execute West
+${debugServerCommand}
+`,
+      };
+    case 'powershell.exe':
+    case 'pwsh.exe':
+      return {
+        fileName: 'west_wrapper.ps1',
+        content: `${envVarsCommands}
+
+# Source environment and execute West
+${debugServerCommand}
+`,
+      };
+    default:
+      return {
+        fileName: 'west_wrapper.sh',
+        content: `#!/bin/bash
+# Wrapper script to run west commands out of Zephyr workbench environment
+# This script is auto-generated -- do not edit
+
+# Set environment variables
+${envVarsCommands}
+
+# Source environment and execute West
+${debugServerCommand}
+`,
+      };
+  }
+}
+
+/**
+ * What the west wrapper exports: the Zephyr build system, the toolchain and
+ * the build configuration's variables, and PYTHON_VENV_PATH the way a Zephyr
+ * terminal and the west debug server set it, so the environment script
+ * activates the venv the application uses.
+ */
+export function getWestWrapperEnv(project: ZephyrApplication, buildConfig: ZephyrBuildConfig): Record<string, unknown> {
   const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
+  const envVars: Record<string, unknown> = {
+    ...prependRustBinPath({
+      ...westWorkspace.buildEnv,
+      ...project.getToolchainEnv(),
+    }, project.selectedRustToolchainInstallation?.binPath),
+    ...buildConfig.envVars,
+  };
+  const venvPath = getDebugSessionVenvPath(project);
+  if (venvPath) {
+    envVars.PYTHON_VENV_PATH = venvPath;
+  }
+  return envVars;
+}
+
+/** Where createWestWrapper writes the wrapper of a build configuration, or undefined when it writes none. */
+export function getWestWrapperPath(project: ZephyrApplication, buildConfig: ZephyrBuildConfig): string | undefined {
+  const fileName = getWestWrapperFile(getWestWrapperShell());
+  return fileName === 'west' ? undefined : path.join(buildConfig.getInternalDebugDir(project), fileName);
+}
+
+/** Write the west wrapper of a build configuration, and return its path. Throws when the environment script is not set. */
+export function createWestWrapper(project: ZephyrApplication, buildConfigName?: string): string | undefined {
+  const buildConfig = buildConfigName ? project.getBuildConfiguration(buildConfigName) : undefined;
+  if (!buildConfig) {
+    return undefined;
+  }
+  const buildDir = buildConfig.getInternalDebugDir(project);
+
   let envScript: string | undefined = getConfiguredWorkbenchPath(
     ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
     project.appWorkspaceFolder,
@@ -676,7 +813,7 @@ export function createWestWrapper(project: ZephyrApplication, buildConfigName?: 
   // against a real path instead of the literal "%VSCODE_PORTABLE%\..." string.
   envScript = expandEnvVariables(envScript);
 
-  const shell: string = process.platform === 'win32' ? 'cmd.exe' : getShell();
+  const shell = getWestWrapperShell();
   if (process.platform === 'win32') {
     const batchEnvScript = envScript.replace(/\.(ps1|sh)$/i, '.bat');
     if (fs.existsSync(batchEnvScript)) {
@@ -684,115 +821,16 @@ export function createWestWrapper(project: ZephyrApplication, buildConfigName?: 
     }
   }
 
-  let westCmd = '';
-  switch (shell) {
-    case 'bash':
-    case 'zsh':
-    case 'dash':
-    case 'fish':
-      westCmd = 'west "$@"';
-      break;
-    case 'cmd.exe':
-      westCmd = 'west %*';
-      break;
-    case 'powershell.exe':
-    case 'pwsh.exe':
-      westCmd = 'west $args';
-      break;
-    default:
-      westCmd = 'west "$@"';
-      break;
+  const wrapper = buildWestWrapperScript(shell, envScript, getWestWrapperEnv(project, buildConfig));
+  if (!wrapper) {
+    return undefined;
   }
-
-  let envVars = prependRustBinPath({
-    ...westWorkspace.buildEnv,
-    ...project.getToolchainEnv(),
-  }, project.selectedRustToolchainInstallation?.binPath);
-
-  if(buildConfig) {
-    envVars = { ...envVars, ...buildConfig.envVars };
-    // To uncomment when args VS build args are supported
-    // if(buildConfig.westArgs) {
-    //   westCmd = `${westCmd} ${buildConfig.westArgs}`;
-    // }
-  }
-
-  const cmdEnv = getShellSourceCommand(shell, envScript);
-  const debugServerCommand = concatCommands(shell, cmdEnv, westCmd);
-
-  let envVarsCommands = '';
-  for (const [key, value] of Object.entries(envVars)) {
-    if(key === null || key === undefined || value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) 
-    {
-      continue;
-    }
-    switch (shell) {
-      case 'bash': 
-        envVarsCommands += `export ${key}="${value}"\n`;
-        break;
-      case 'cmd.exe':
-        envVarsCommands += `set ${key}=${value}\n`;
-        break;
-      case 'powershell.exe':
-        envVarsCommands += `$env:${key} = "${value}"\n`;
-        break;
-      default:
-        envVarsCommands += `export ${key}="${value}"\n`;
-        break;
-    }
-  }
-
   if(!fs.existsSync(buildDir)) {
     fs.mkdirSync(buildDir, { recursive: true });
   }
-
-  let wrapperPath = '';
-  let wrapperScript = '';
-  switch (shell) {
-    case 'bash':
-    case 'zsh':
-    case 'dash':
-    case 'fish':
-      wrapperScript = `#!/bin/bash
-# Wrapper script to run west commands out of Zephyr workbench environment
-# This script is auto-generated -- do not edit
-
-# Set environment variables
-${envVarsCommands}
-
-# Source environment and execute West
-${debugServerCommand}
-`;
-      wrapperPath = path.join(buildDir, 'west_wrapper.sh');
-      fs.writeFileSync(wrapperPath, wrapperScript, { mode: 0o755 });
-      break;
-    case 'cmd.exe':
-      wrapperScript = `@echo off
-REM Wrapper script to run west commands out of Zephyr workbench environment
-REM This script is auto-generated -- do not edit
-
-REM Set environment variables
-${envVarsCommands}
-
-REM Source environment and execute West
-${debugServerCommand}
-`;
-      wrapperPath = path.join(buildDir, 'west_wrapper.bat');
-      fs.writeFileSync(wrapperPath, wrapperScript);
-      break;
-    case 'powershell.exe':
-    case 'pwsh.exe':
-      wrapperScript = `${envVarsCommands}
-
-# Source environment and execute West
-${debugServerCommand}
-`;
-      wrapperPath = path.join(buildDir, 'west_wrapper.ps1');
-      fs.writeFileSync(wrapperPath, wrapperScript);
-      break;
-    default:
-      break;
-  }
+  const wrapperPath = path.join(buildDir, wrapper.fileName);
+  fs.writeFileSync(wrapperPath, wrapper.content, wrapper.fileName.endsWith('.sh') ? { mode: 0o755 } : undefined);
+  return wrapperPath;
 }
 
 function getWestWrapperFile(shell: string = getShell()): string {
@@ -1215,11 +1253,18 @@ export async function setupPyOCDTarget(project: ZephyrApplication, buildConfigNa
   }
 }
 
+/** Options of the launch configuration readers and writers. */
+export interface LaunchConfigurationOptions {
+  /** Show no notification: the caller reports the error itself, such as an MCP tool. */
+  silent?: boolean;
+}
+
 export async function createLaunchConfiguration(
   project: ZephyrApplication,
   buildConfigName?: string,
   artifacts?: LaunchConfigurationArtifacts,
   domain?: string,
+  options: LaunchConfigurationOptions = {},
 ): Promise<any> {
   const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
   const toolchainVariant = project.toolchainVariant;
@@ -1245,9 +1290,11 @@ export async function createLaunchConfiguration(
   }
   if(!targetBoard) {
     // Warn the user and throw to prevent pushing an invalid configuration
-    try {
-      vscode.window.showWarningMessage('Zephyr Workbench: Board was not automatically detected.');
-    } catch {}
+    if (!options.silent) {
+      try {
+        vscode.window.showWarningMessage('Zephyr Workbench: Board was not automatically detected.');
+      } catch {}
+    }
     throw new Error('createLaunchConfiguration: target board not found');
   }
 
@@ -1342,6 +1389,7 @@ export async function createLaunchJson(
   buildConfigName?: string,
   artifacts?: LaunchConfigurationArtifacts,
   domain?: string,
+  options: LaunchConfigurationOptions = {},
 ): Promise<any> {
 
   const launchJson : any = {
@@ -1349,28 +1397,62 @@ export async function createLaunchJson(
     configurations: []
   };
 
-  let config = await createLaunchConfiguration(project, buildConfigName, artifacts, domain);
+  let config = await createLaunchConfiguration(project, buildConfigName, artifacts, domain, options);
   launchJson.configurations.push(config);
 
   return launchJson;
+}
+
+/** The launch.json the Debug Manager reads and writes for an application: its workspace folder's. */
+export function getLaunchJsonPath(project: ZephyrApplication): string {
+  return path.join(project.appWorkspaceFolder.uri.fsPath, '.vscode', 'launch.json');
+}
+
+/**
+ * launch.json text as VS Code reads it, comments, trailing commas and a
+ * UTF-8 BOM included. undefined when it is empty or not a JSON object;
+ * `strict` is false when only the tolerant parser could read it, so writing it
+ * back as JSON drops its comments.
+ */
+export function parseLaunchJsonText(text: string): { launchJson: any; strict: boolean } | undefined {
+  // Both parsers refuse the BOM PowerShell 5.1 writes, which VS Code skips.
+  const raw = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+  if (raw.trim().length === 0) {
+    return undefined;
+  }
+  let parsed: unknown;
+  let strict = true;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    const errors: ParseError[] = [];
+    parsed = parseJsonc(raw, errors, { allowTrailingComma: true });
+    if (errors.length > 0) {
+      return undefined;
+    }
+    strict = false;
+  }
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? { launchJson: parsed, strict } : undefined;
 }
 
 export async function readLaunchJson(project: ZephyrApplication): Promise<any | undefined> {
   // launch.json may exist as an empty placeholder (created by VS Code when the
   // user opens the Run/Debug view) or contain malformed JSON. Treat both as
   // "no usable config" so callers can fall back to creating a fresh one,
-  // instead of crashing with "Unexpected end of JSON input".
+  // instead of crashing with "Unexpected end of JSON input". Comments,
+  // trailing commas and a BOM are read as VS Code reads them, so a file
+  // holding them does not count as missing; a caller that writes must still
+  // refuse a file that exists but cannot be read (readLaunchJsonFile tells).
   const raw = await fs.promises.readFile(path.join(project.appWorkspaceFolder.uri.fsPath, '.vscode', 'launch.json'), 'utf8');
-  if (raw.trim().length === 0) {
+  const launchJson = parseLaunchJsonText(raw)?.launchJson;
+  if (!launchJson) {
     return undefined;
   }
-  try {
-    const launchJson = JSON.parse(raw);
-    stripUnsupportedLaunchConfigurationProperties(launchJson);
-    return launchJson;
-  } catch {
-    return undefined;
+  if (!Array.isArray(launchJson.configurations)) {
+    launchJson.configurations = [];
   }
+  stripUnsupportedLaunchConfigurationProperties(launchJson);
+  return launchJson;
 }
 
 function stripUnsupportedLaunchConfigurationProperties(launchJson: any): void {
@@ -1395,7 +1477,7 @@ export function writeLaunchJson(launchJson: any, project: ZephyrApplication) {
   fs.writeFileSync(path.join(launchDir, 'launch.json'), JSON.stringify(launchJson, null, 2));
 }
 
-function isLaunchConfigurationForApplication(project: ZephyrApplication, configuration: any): boolean {
+export function isLaunchConfigurationForApplication(project: ZephyrApplication, configuration: any): boolean {
   if (!configuration || typeof configuration !== 'object' || typeof configuration.name !== 'string') {
     return false;
   }
@@ -1426,7 +1508,10 @@ export async function removeApplicationLaunchConfigurations(project: ZephyrAppli
     return 0;
   }
 
-  const launchJson = await readLaunchJson(project);
+  // This runs as a side effect of a toolchain change, so a file with comments
+  // is left as it is rather than rewritten without them.
+  const parsed = parseLaunchJsonText(await fs.promises.readFile(launchPath, 'utf8'));
+  const launchJson = parsed?.strict ? parsed.launchJson : undefined;
   if (!launchJson || !Array.isArray(launchJson.configurations)) {
     return 0;
   }
@@ -1506,6 +1591,7 @@ export async function findLaunchConfiguration(
   buildConfigName?: string,
   artifacts?: LaunchConfigurationArtifacts,
   domain?: string,
+  options: LaunchConfigurationOptions = {},
 ): Promise<any> {
   const debugConfigName = getDebugLaunchConfigurationName(project, buildConfigName, domain);
 
@@ -1564,7 +1650,7 @@ export async function findLaunchConfiguration(
   // Create and push a new configuration only if valid
   let newCfg: any;
   try {
-    newCfg = await createLaunchConfiguration(project, buildConfigName, artifacts, domain);
+    newCfg = await createLaunchConfiguration(project, buildConfigName, artifacts, domain, options);
   } catch (err) {
     console.error('[DebugManager] findLaunchConfiguration: failed to create configuration', err);
     // Propagate error; do not push invalid entry
@@ -1584,6 +1670,7 @@ export async function getLaunchConfiguration(
   createIfMissing: boolean = false,
   artifacts?: LaunchConfigurationArtifacts,
   domain?: string,
+  options: LaunchConfigurationOptions = {},
 ): Promise<[any, any]> {
   let launchJson: any;
   const launchPath = path.join(project.appWorkspaceFolder.uri.fsPath, '.vscode', 'launch.json');
@@ -1594,16 +1681,16 @@ export async function getLaunchConfiguration(
   // Fall back to a fresh in-memory launch.json when the file is missing,
   // empty, or unparseable — `readLaunchJson` returns undefined in those cases.
   if (!launchJson) {
-    launchJson = await createLaunchJson(project, buildConfigName, artifacts, domain);
+    launchJson = await createLaunchJson(project, buildConfigName, artifacts, domain, options);
     // skip writing to avoid creating launch.json on selection too debug
   }
 
   if (launchJson) {
     let configurationJson;
     if (buildConfigName) {
-      configurationJson = await findLaunchConfiguration(launchJson, project, buildConfigName, artifacts, domain);
+      configurationJson = await findLaunchConfiguration(launchJson, project, buildConfigName, artifacts, domain, options);
     } else {
-      configurationJson = await findLaunchConfiguration(launchJson, project, undefined, artifacts, domain);
+      configurationJson = await findLaunchConfiguration(launchJson, project, undefined, artifacts, domain, options);
     }
     return [launchJson, configurationJson];
   }

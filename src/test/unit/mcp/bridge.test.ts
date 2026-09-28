@@ -285,6 +285,15 @@ describe('mcp/bridge/upstream routing of calls on the machine', () => {
       'a view of an application still needs one');
   });
 
+  it('opens the bare pyOCD Manager in any window, but not the pyOCD Manager of a configuration', async () => {
+    publish('w1', '/ws/one', '2026-09-22T12:00:00.000Z');
+    assert.equal((await call(options(), 'open_in_workbench', { target: 'pyocd_manager' })).record?.windowId, 'w1');
+    assert.equal((await call(options(), 'open_in_workbench', { target: 'pyocd_manager', config_name: 'debug' })).problem?.code,
+      'AMBIGUOUS_WINDOW', 'config_name names the active application of some window');
+    publish('w2', '/ws/two', '2026-09-22T10:00:00.000Z');
+    assert.equal((await call(options(), 'open_in_workbench', { target: 'pyocd_manager' })).record?.windowId, 'w1');
+  });
+
   it('tells the agent to pass the argument the tool routes by, which then picks the window', async () => {
     publish('w1', '/ws/one', '2026-09-22T12:00:00.000Z');
     const single = await call(options(), 'manage_west_workspace', { action: 'update' });

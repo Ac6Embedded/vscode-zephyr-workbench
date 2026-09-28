@@ -10,6 +10,7 @@ import { ZephyrDebugConfigurationProvider } from './providers/ZephyrDebugConfigu
 import { ZephyrWestServerDebugConfigurationProvider } from './providers/ZephyrWestServerDebugConfigurationProvider';
 import { ZephyrCortexNativeDebugConfigurationProvider } from './providers/ZephyrCortexNativeDebugConfigurationProvider';
 import { attachDebugSessionLifecycle, disposeAllManagedServers } from './debug/backends/serverRegistry';
+import { startDebugSessionTracking } from './debug/sessionTracker';
 import { ZW_DEBUG_TYPE } from './debug/backends/types';
 import { ZephyrBuildConfig } from './models/ZephyrBuildConfig';
 import { ArmGnuToolchainInstallation, GlobalZephyrSdkInstallation, normalizeArmGnuTargetTriple, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from './models/ToolchainInstallations';
@@ -32,13 +33,12 @@ import {
 	extractDebugDomainName,
 	getLaunchConfiguration,
 	getDebugLaunchConfigurationName,
-	getRunner,
 	getFlashRunners,
 	getStaticFlashRunnerNames,
 } from './utils/debugTools/debugUtils';
 import { readDomainsForBuildDir } from './utils/zephyr/domainsYamlUtils';
 import { ensureTerminalStickyScrollDisabled, executeTask, TaskLaunchDeclined, getSubstitutedShellName, getTerminalDefaultProfile, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
-import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, download, forceInstallHostTools, HostToolsPythonOptions, installHostDebugTools, installVenv, runInstallHostTools, setDefaultSettings, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
+import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, download, forceInstallHostTools, HostToolsPythonOptions, installVenv, runInstallHostTools, runPanelDebugToolsInstall, setDefaultSettings, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
 import { probeHomebrew } from './utils/hostToolsStatusUtils';
 import { verifyHostTools } from './utils/hostToolsVerify';
 import { generateWestManifest } from './utils/zephyr/manifestUtils';
@@ -76,7 +76,7 @@ import { inferArmGnuToolchainVersion, normalizeArmGnuToolchainRoot, registerArmG
 import { checkRustPrerequisites, findRustup, getManagedRustupRootDir, installManagedRustup, installMsvcBuildTools, MSVC_BUILD_TOOLS_MANUAL_URL, resolveRustupToolchainName } from './utils/zephyr/rustupUtils';
 import { getRustHostTriple, isLlvmPath, llvmRootFromSelection, unregisterRustToolchain, updateRustToolchainLink, updateRustToolchainLlvm } from './utils/zephyr/rustToolchainUtils';
 import { setConfigQuickStep } from './quicksteps/setConfigQuickStep';
-import { addWorkspaceFolder, deleteFolder, fileExists, findConfigTask, getAllZephyrSdkInstallations, getExactWorkspaceFolder, getInternalToolsDirRealPath, getRegisteredArmGnuToolchainInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, msleep, pruneMissingToolchains, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
+import { addWorkspaceFolder, deleteFolder, fileExists, findConfigTask, getAllZephyrSdkInstallations, getExactWorkspaceFolder, getRegisteredArmGnuToolchainInstallations, getWestWorkspace, getWestWorkspaces, getWorkspaceFolder, getZephyrApplication, msleep, pruneMissingToolchains, removeWorkspaceFolder, checkZinstallerVersion } from './utils/utils';
 import { addEnvValue, removeEnvValue, replaceEnvValue, saveEnv } from './utils/env/zephyrEnvUtils';
 import { resolveEffectiveVenv } from './utils/env/venvResolution';
 import { validateVenvDirectory } from './utils/venvValidation';
@@ -398,6 +398,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.debug.registerDebugConfigurationProvider('cortex-debug', new ZephyrCortexNativeDebugConfigurationProvider()),
 	);
 	attachDebugSessionLifecycle(context);
+	startDebugSessionTracking(context);
 
 	// Setup Status bar
 	statusBarBuildItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 101);
@@ -2609,28 +2610,8 @@ export function activate(context: vscode.ExtensionContext) {
 				title: "Download and install debug host tools",
 				cancellable: false,
 			}, async (progress, token) => {
-				try {
-				await installHostDebugTools(context, listTools);
-
-				// Auto detect tools after installation
-				for (let tool of listTools) {
-					let runner = getRunner(tool.tool);
-
-					if (runner && runner.executable) {
-						let runnerPath = path.join(getInternalToolsDirRealPath(), runner.name, runner.binDirPath, runner.executable);
-						if (fileExists(runnerPath)) {
-							runner.serverPath = runnerPath;
-							await runner.updateSettings();
-						}
-					}
-					panel.webview.postMessage({ command: 'exec-done', tool: `${tool.tool}` });
-				}
-
-				// Notify webview that the whole install batch has finished (single or pack)
-				panel.webview.postMessage({ command: 'exec-install-finished' });
-				} catch (installError) {
-					reportInstallError('Debug tools installation failed', installError);
-				}
+				// Auto detect tools after installation, whatever its outcome (shared with the agent install)
+				await runPanelDebugToolsInstall(context, listTools, message => panel.webview.postMessage(message));
 			});
 		})
 	);

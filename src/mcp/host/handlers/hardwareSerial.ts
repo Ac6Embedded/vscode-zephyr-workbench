@@ -46,7 +46,7 @@ function invalid(message: string, hint?: string, details?: Record<string, unknow
   return new McpToolError('INVALID_ARGUMENT', message, { ...(hint ? { hint } : {}), ...(details ? { details } : {}) });
 }
 
-function checkStrings(args: Record<string, unknown>, keys: readonly string[]): void {
+export function checkStrings(args: Record<string, unknown>, keys: readonly string[]): void {
   for (const key of keys) {
     if (args[key] !== undefined && typeof args[key] !== 'string') {
       throw invalid(`${key} must be a string.`);
@@ -54,7 +54,7 @@ function checkStrings(args: Record<string, unknown>, keys: readonly string[]): v
   }
 }
 
-function waitSecOf(args: Record<string, unknown>, fallback: number): number {
+export function waitSecOf(args: Record<string, unknown>, fallback: number): number {
   const value = args.wait_sec;
   if (value === undefined) {
     return fallback;
@@ -252,7 +252,7 @@ async function openError(outcome: Extract<OpenOutcome, { ok: false }>, port: str
   }
 }
 
-function waitForView(pattern: string, result: WaitResult) {
+export function waitForView(pattern: string, result: WaitResult) {
   return {
     pattern,
     matched: !!result.hit,

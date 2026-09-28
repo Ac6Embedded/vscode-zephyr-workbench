@@ -98,7 +98,7 @@
           "type": "string",
           "enum": ["core", "full", "custom"],
           "enumDescriptions": [
-            "Builds and inspects freely. Asks before changing apps, workspaces, toolchains or a board. Blocks deleting.",
+            "Builds and inspects freely. Asks before changing apps, workspaces, toolchains or runners, before touching a board and before running a command. Blocks deleting.",
             "Every tool, and nothing asks first.",
             "Your own choice for each tool, from zephyr-workbench.mcp.toolPermissions."
           ],

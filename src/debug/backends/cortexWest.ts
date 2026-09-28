@@ -1,5 +1,5 @@
 import { assembleCortexDebugBaseConfig, mapGdbModeToRequest } from './cortexCommon';
-import { CortexWestInput, GdbMode, ZW_DEBUG_TYPE, ZW_SERVER_TOKEN_KEY } from './types';
+import { CortexWestInput, GdbMode, ZW_DEBUG_TYPE, ZW_RUNNER_KEY, ZW_SERVER_TOKEN_KEY } from './types';
 
 /**
  * Build the persisted `zephyr-workbench` launch.json entry. Field names reuse
@@ -108,6 +108,9 @@ export function transformToExternalCortexConfig(stored: any, ctx: ExternalTransf
   Object.assign(config, getExternalLaunchOverrides(ctx.runnerName, gdbMode));
   if (ctx.serverToken) {
     config[ZW_SERVER_TOKEN_KEY] = ctx.serverToken;
+  }
+  if (ctx.runnerName) {
+    config[ZW_RUNNER_KEY] = ctx.runnerName;
   }
   return config;
 }

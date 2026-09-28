@@ -325,4 +325,143 @@ describe('mcp/host/taskRunner', () => {
       assert.equal(executed.length, 1);
     });
   });
+
+  describe('runCapturedTask with the shell of this machine', function () {
+    this.timeout(30000);
+    const windows = process.platform === 'win32';
+    const node = process.execPath;
+    let folder: string;
+    let pids: string;
+
+    beforeEach(() => {
+      folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'zw-runner-')));
+      pids = path.join(folder, 'pids');
+      fs.mkdirSync(pids);
+    });
+    afterEach(async () => {
+      // Whatever a test left running in the background, which keeps the folder busy on Windows until it ended.
+      const alive = (pid: number) => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      for (const pid of fs.readdirSync(pids).map(Number)) {
+        try {
+          process.kill(pid);
+        } catch {
+          // Already gone.
+        }
+        for (let i = 0; i < 50 && alive(pid); i++) {
+          await tick(100);
+        }
+      }
+      // Windows lets go of a dead process's working folder a little later.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          fs.rmSync(folder, { recursive: true, force: true });
+          return;
+        } catch (error) {
+          if (attempt >= 30) {
+            throw error;
+          }
+          await tick(200);
+        }
+      }
+    });
+
+    /** A Node program in the test folder, as the shell of this machine runs it. */
+    function program(name: string, source: string): string {
+      const file = path.join(folder, `${name}.js`);
+      fs.writeFileSync(file, source);
+      return `"${node}" "${file}"`;
+    }
+
+    /** A program that outlives the shell and holds its output, as `start /b` or `&` leaves it. */
+    function background(): string {
+      const line = program('server', [
+        `require('fs').writeFileSync(require('path').join(${JSON.stringify(pids)}, String(process.pid)), '');`,
+        'setTimeout(() => undefined, 30000);',
+      ].join('\n'));
+      return windows ? `start /b "" ${line}` : `${line} &`;
+    }
+
+    function task(commandLine: string, definition: Record<string, unknown> = {}): FakeTask {
+      return new FakeTask(
+        { type: 'zephyr-workbench-shell', ...definition },
+        { uri: { fsPath: folder }, name: path.basename(folder), index: 0 },
+        'Command', 'Zephyr Workbench',
+        new (stub.ShellExecution as typeof FakeShellExecution)(commandLine, windows
+          ? { executable: process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe', shellArgs: ['/d', '/c'] }
+          : { executable: '/bin/sh', shellArgs: ['-c'] }),
+      );
+    }
+
+    const within = <T>(promise: Promise<T>, ms: number) => Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => realSetTimeout(() => reject(new Error(`not settled within ${ms} ms`)), ms)),
+    ]);
+
+    it('ends with the shell when a process it left in the background holds the output', async () => {
+      const { EXIT_GRACE_MS } = require('../../../mcp/host/capturedTask');
+      const run = await within(runner.runCapturedTask(task(`${background()} && echo started`) as never, sink, new AbortController().signal), EXIT_GRACE_MS + 5000);
+      assert.deepEqual(run, { exitCode: 0, started: true });
+      assert.match(sink.all, /started/);
+      assert.match(sink.all, /still holds its output/);
+      assert.equal(terminals[0].closedWith, 0);
+    });
+
+    it('settles a cancelled run whose shell has already exited', async () => {
+      const { CANCEL_GRACE_MS } = require('../../../mcp/host/capturedTask');
+      const job = new AbortController();
+      const pending = runner.runCapturedTask(task(background()) as never, sink, job.signal);
+      await tick(500);
+      job.abort();
+      assert.deepEqual(await within(pending, CANCEL_GRACE_MS + 3000), { exitCode: undefined, started: true });
+    });
+
+    it('stops a process that ignores SIGTERM', async function () {
+      if (windows) {
+        this.skip();
+      }
+      const { CANCEL_GRACE_MS } = require('../../../mcp/host/capturedTask');
+      const job = new AbortController();
+      const pending = runner.runCapturedTask(task("trap '' TERM; sleep 30") as never, sink, job.signal);
+      await tick(300);
+      job.abort();
+      assert.deepEqual(await within(pending, CANCEL_GRACE_MS + 3000), { exitCode: undefined, started: true });
+    });
+
+    it('runs a verbatim task\'s command line as it is, and resolves the variables of any other', async () => {
+      const { VERBATIM_COMMAND_MARKER } = require('../../../mcp/host/capturedTask');
+      const saved = process.env.ZW_PROBE;
+      process.env.ZW_PROBE = 'host';
+      try {
+        const line = windows ? 'echo ${env:ZW_PROBE}' : "echo '${env:ZW_PROBE}'";
+        await runner.runCapturedTask(task(line, { [VERBATIM_COMMAND_MARKER]: true }) as never, sink, new AbortController().signal);
+        assert.equal(sink.all.trim(), '${env:ZW_PROBE}', 'the shell expands what it knows, not VS Code');
+        sink.chunks.length = 0;
+        await runner.runCapturedTask(task(line) as never, sink, new AbortController().signal);
+        assert.equal(sink.all.trim(), 'host', 'a workbench task still gets its variables resolved');
+      } finally {
+        if (saved === undefined) {
+          delete process.env.ZW_PROBE;
+        } else {
+          process.env.ZW_PROBE = saved;
+        }
+      }
+    });
+
+    it('decodes a character split across two chunks of output', async () => {
+      const line = program('split', [
+        'process.stdout.write(Buffer.from([0x61, 0xc3]));',
+        'setTimeout(() => process.stdout.write(Buffer.from([0xa9, 0x62])), 300);',
+      ].join('\n'));
+      // cmd /c strips the outer quotes of a line that starts with one.
+      await runner.runCapturedTask(task(windows ? `"${line}"` : line) as never, sink, new AbortController().signal);
+      assert.equal(sink.all, 'a\u00e9b');
+    });
+  });
 });

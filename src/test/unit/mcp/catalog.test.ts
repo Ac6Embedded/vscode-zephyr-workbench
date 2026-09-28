@@ -78,6 +78,22 @@ describe('mcp/core/catalog', () => {
     assert.match(envHint, /check_environment/, 'the ENV_NOT_READY hint should send the agent to the environment check');
   });
 
+  // The core preset, the default, serves no destructive tool: a plain "delete it with X" sends the agent to a tool it lacks.
+  it('names a tool the core preset hides only as a tool of the full toolset', () => {
+    const served = selectTools(TOOL_CATALOG, CORE);
+    const hidden = TOOL_CATALOG.filter(tool => !served.includes(tool)).map(tool => tool.name);
+    assert.ok(hidden.includes('remove_or_delete'));
+    for (const tool of served) {
+      const texts = [tool.description, ...Object.values(tool.inputSchema.shape as Record<string, { description?: string }>)
+        .map(field => field.description ?? '')];
+      for (const text of texts) {
+        for (const name of hidden.filter(name => new RegExp(`\\b${name}\\b`).test(text))) {
+          assert.match(text, /full toolset|AI Manager/, `${tool.name} names ${name} as if the core preset served it`);
+        }
+      }
+    }
+  });
+
   it('names only shipped tools in every error hint in the code', () => {
     const fs = require('fs') as typeof import('fs');
     const path = require('path') as typeof import('path');
@@ -149,22 +165,31 @@ describe('mcp/core/catalog', () => {
     assert.equal(isMachineScope(findTool('build_app')!, {}), false);
   });
 
-  it('lets any window show the open_in_workbench wizards, which take no folder to route by', () => {
+  it('lets any window show the open_in_workbench wizards and Install Runners, which take no folder to route by', () => {
     const open = findTool('open_in_workbench')!;
-    for (const target of ['add_application', 'add_west_workspace', 'add_toolchain']) {
+    for (const target of ['add_application', 'add_west_workspace', 'add_toolchain', 'install_runners', 'pyocd_manager']) {
       assert.equal(isMachineScope(open, { target }), true, target);
     }
-    for (const target of ['file', 'dashboard', 'menuconfig', 'west_manager', 'terminal']) {
+    // The build targets and managers go to the window holding the application.
+    for (const target of [
+      'file', 'dashboard', 'menuconfig', 'west_manager', 'terminal', 'debug_manager',
+      'ram_plot', 'rom_plot', 'puncover', 'west_dashboard',
+    ]) {
       assert.equal(isMachineScope(open, { target }), false, target);
     }
+    // The pyOCD Manager of a configuration too: config_name picks the active application of a window.
+    assert.equal(isMachineScope(open, { target: 'pyocd_manager', config_name: 'debug' }), false);
   });
 
-  it('asks only before a serial send, and lets any window list and open a port', () => {
+  it('asks only before a flash or a serial send, and lets any window list and open a port but not flash', () => {
     const tool = findTool('hardware')!;
     assert.equal(confirmCategoryOf(tool, { action: 'serial_send' }), 'hardware');
+    assert.equal(confirmCategoryOf(tool, { action: 'flash' }), 'hardware');
     for (const action of ['list_ports', 'serial_start', 'serial_read', 'serial_stop']) {
       assert.equal(confirmCategoryOf(tool, { action }), undefined, action);
     }
+    // A flash needs the build of its application, so it goes to the window holding it.
+    assert.equal(isMachineScope(tool, { action: 'flash' }), false);
     assert.equal(isMachineScope(tool, { action: 'list_ports' }), true);
     assert.equal(isMachineScope(tool, { action: 'serial_start' }), true);
     // Any window may answer a read, send or stop: one without the capture
@@ -191,6 +216,70 @@ describe('mcp/core/catalog', () => {
     assert.match(serverInstructions(TOOL_CATALOG.map(t => t.name)), /manage_toolchain/);
   });
 
+  it('never names a tool once it is taken out of the served set', () => {
+    const all = TOOL_CATALOG.map(t => t.name);
+    for (const name of all) {
+      const text = serverInstructions(all.filter(other => other !== name));
+      assert.ok(!new RegExp(`\\b${name}\\b`).test(text), `the instructions still name ${name} without it`);
+    }
+  });
+
+  describe('instructions within what Claude Code shows', () => {
+    // Claude Code cuts the instructions after 2048 characters.
+    const SHOWN = 2048;
+    const all = TOOL_CATALOG.map(t => t.name);
+
+    it('fit with every tool served, with the core preset, and with the longest fallbacks', () => {
+      const core = selectTools(TOOL_CATALOG, CORE).map(t => t.name);
+      // Each tool left out is replaced by the longer name of its Workbench command.
+      const fallbacks = all.filter(name => !['manage_toolchain', 'manage_west_workspace', 'manage_app', 'manage_runners'].includes(name));
+      for (const [label, served] of [['full', all], ['core', core], ['fallbacks', fallbacks]] as const) {
+        const text = serverInstructions(served);
+        assert.ok(text.length <= SHOWN, `the ${label} instructions are ${text.length} characters`);
+      }
+    });
+
+    it('put what this server is and the USER_DENIED rule first', () => {
+      const text = serverInstructions(all);
+      assert.match(text.split('\n')[0], /Zephyr Workbench VS Code extension[\s\S]*not the on-device Zephyr MCP server library/);
+      const denied = text.indexOf('USER_DENIED');
+      assert.ok(denied >= 0 && denied < 400, `USER_DENIED is at character ${denied}`);
+      assert.ok(text.indexOf('CONFIRMATION_TIMEOUT') < SHOWN);
+      assert.ok(text.indexOf('error.hint') < SHOWN);
+    });
+
+    it('describe debugging only when both debug tools are served', () => {
+      assert.match(serverInstructions(all), /configure_debug action apply, then debug_app action start/);
+      for (const name of ['configure_debug', 'debug_app']) {
+        assert.doesNotMatch(serverInstructions(all.filter(other => other !== name)), /Debug:|configure_debug|debug_app/, name);
+      }
+    });
+
+    it('send runner installs to manage_runners, or to the Install Runners command when it is not served', () => {
+      assert.match(serverInstructions(all), /Install flash and debug tools with manage_runners;/);
+      const without = serverInstructions(all.filter(name => name !== 'manage_runners'));
+      assert.match(without, /Install flash and debug tools with the Workbench command "Install Runners" \(ask the user\);/);
+      assert.match(without, /Never install tools from your own shell\./);
+    });
+
+    it('mention run_command only when it is served', () => {
+      assert.match(serverInstructions(all), /Run other command lines with run_command, which has the Zephyr environment\./);
+      assert.doesNotMatch(serverInstructions(all.filter(name => name !== 'run_command')), /run_command|command lines/);
+    });
+
+    it('keep the rules on jobs, Kconfig, configure and restarts', () => {
+      const text = serverInstructions(all);
+      assert.match(text, /job action "status"/);
+      assert.match(text, /job action "log"/);
+      assert.match(text, /Never run menuconfig or guiconfig: read and change Kconfig with query_kconfig and set_kconfig\./);
+      assert.match(text, /with configure, not settings\.json/);
+      assert.match(text, /restart_pending, wait a few seconds, then call get_status\./);
+      assert.match(text, /flash with action flash \(wait_for waits for a boot line\)/);
+      const dashes = [String.fromCharCode(0x2013), String.fromCharCode(0x2014)];
+      assert.ok(!dashes.some(dash => text.includes(dash)), 'no en or em dash');
+    });
+  });
+
   it('keeps build_app closed-world, with the network only where it is needed', () => {
     assert.equal(findTool('build_app')?.annotations.openWorldHint, false);
     for (const name of ['manage_toolchain', 'manage_west_workspace', 'manage_app', 'search_zephyr_catalog', 'list_toolchains']) {
@@ -213,10 +302,11 @@ describe('mcp/core/catalog', () => {
 
   it('stays well inside the client tool budget', () => {
     // VS Code caps a chat request at 128 tools across every extension, and
-    // Cursor is reported to cut off near 40. 22 is this server's cap, and
-    // hardware holds the last slot: flash, run and debug become its actions,
-    // and anything else new joins an existing tool as an action.
-    assert.ok(TOOL_CATALOG.length <= 22, `catalog has ${TOOL_CATALOG.length} tools`);
+    // Cursor is reported to cut off near 40. 26 is this server's cap: the
+    // debugger, the runners and the command line each got a tool of their
+    // own, so the user can set each one's permission apart, and anything else
+    // new joins an existing tool as an action.
+    assert.ok(TOOL_CATALOG.length <= 26, `catalog has ${TOOL_CATALOG.length} tools`);
   });
 
   describe('permissions', () => {
@@ -233,7 +323,10 @@ describe('mcp/core/catalog', () => {
       assert.equal(of('get_status'), 'allow');
       // Settings changes do not ask under core.
       assert.equal(of('configure'), 'allow');
-      for (const name of ['manage_app', 'hardware', 'manage_west_workspace', 'manage_toolchain']) {
+      assert.equal(of('configure_debug'), 'allow');
+      for (const name of [
+        'manage_app', 'hardware', 'manage_west_workspace', 'manage_toolchain', 'manage_runners', 'debug_app', 'run_command',
+      ]) {
         assert.equal(of(name), 'ask', name);
       }
       assert.deepEqual(TOOL_CATALOG.filter(meta => permissionOf(meta, CORE) === 'block').map(meta => meta.name), ['remove_or_delete']);

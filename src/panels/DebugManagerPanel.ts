@@ -2,20 +2,18 @@ import * as vscode from 'vscode';
 import { ZEPHYR_DOCS_BASE_URL } from '../constants';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
-import { autoDetectSvdPath, pyocdLaunchJson, createLaunchConfiguration as createDefaultConfiguration, createOpenocdCfg, createWestWrapper, getDebugLaunchConfigurationName, getDebugManagerLaunchConfiguration, getDebugRunners, getDebugSessionVenvPath, getDefaultDebugRunner, getLaunchConfiguration, getQemuGdbPort, getRunner, getWestDebugArgsForProject, setupPyOCDTarget, writeLaunchJson, LaunchConfigurationArtifacts } from "../utils/debugTools/debugUtils";
+import { autoDetectSvdPath, createLaunchConfiguration as createDefaultConfiguration, getDebugLaunchConfigurationName, getDebugManagerLaunchConfiguration, getDebugRunners, getDebugSessionVenvPath, getDefaultDebugRunner, getQemuGdbPort, getRunner, setupPyOCDTarget, LaunchConfigurationArtifacts } from "../utils/debugTools/debugUtils";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { getZephyrApplication } from '../utils/utils';
 import { WestRunner } from '../debug/runners/WestRunner';
-import { StlinkGdbserver } from '../debug/runners/StlinkGdbserver';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
-import { getSetupCommands } from '../debug/gdbUtils';
 import { checkPyOCDTarget } from '../utils/execUtils';
 import { getOpenocdSelectionInfo } from '../utils/debugTools/debugToolSelectionUtils';
-import { CORTEX_NATIVE_RUNNER_NAMES, DebugBackendId, getDefaultGdbPort, runnerNameToNativeServer } from '../debug/backends/types';
+import { CORTEX_NATIVE_RUNNER_NAMES, DebugBackendId, getDefaultGdbPort } from '../debug/backends/types';
 import { ensureCortexDebugAvailable, installCortexDebug, isCortexDebugInstalled } from '../debug/backends/cortexDebugExtension';
-import { buildCortexWestLaunchConfig } from '../debug/backends/cortexWest';
-import { buildCortexNativeLaunchConfig, detectJlinkDevice } from '../debug/backends/cortexNative';
+import { detectJlinkDevice } from '../debug/backends/cortexNative';
 import { readPanelStateFromConfig } from '../debug/backends/backendState';
+import { applyDebugSetup } from '../debug/debugSetup';
 import { KconfigManagerPanel } from './KconfigManagerPanel';
 import { ParsedDomainsYaml, readDomainsForBuildDir } from '../utils/zephyr/domainsYamlUtils';
 
@@ -1217,281 +1215,42 @@ export class DebugManagerPanel {
       }
     }
 
-    function escapeRegExp(value: string): string {
-      return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
-    function runnerPathArg(debugServerArgs: string, runnerName: string, runnerPath?: string): string {
-      const path = runnerPath?.trim();
-      const runner = runnerName?.trim().toLowerCase();
-      const args = debugServerArgs?.trim() ?? '';
-
-      if (!path || !runner) {
-        return args;
-      }
-
-      // ST-LINK GDB Server is launched indirectly (via west / the CubeCLT bundle)
-      // and does not accept an executable-path flag on the command line. QEMU is
-      // resolved by the Zephyr build and started through the debugserver_qemu
-      // CMake target, which likewise takes no executable-path flag. The path is
-      // only used internally for detection, so we must not inject it into
-      // `debugServerArgs`, which would put an invalid flag in launch.json.
-      if (runner === 'stlink_gdbserver' || runner === 'qemu') {
-        return args;
-      }
-
-      const flag = `--${runner}`;
-      const quotedPath = path.includes(' ') ? `"${path}"` : path;
-      const flagPattern = new RegExp(`(${escapeRegExp(flag)})(?:\\s+|=)(?:"[^"]*"|\\S+)`, 'gi');
-
-      // Replace existing flag value
-      if (flagPattern.test(args)) {
-        return args.replace(flagPattern, `$1 ${quotedPath}`);
-      }
-
-      // Insert after --runner <name> if it matches
-      const runnerPattern = new RegExp(`(--runner(?:\\s+|=)(?:"${runner}"|${runner}))`, 'i');
-      if (runnerPattern.test(args)) {
-        return args.replace(runnerPattern, `$1 ${flag} ${quotedPath}`);
-      }
-
-      // Otherwise append
-      return args ? `${args} ${flag} ${quotedPath}` : `${flag} ${quotedPath}`;
-    }
-    
+    // Apply writes what the form holds through the headless setup the MCP
+    // tool shares; the Debug Manager keeps its own toasts and offers the
+    // Cortex-Debug and pyOCD target installs.
     async function applyHandler(message: any): Promise<boolean> {
       const projectPath = message.project;
       const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;
       const appProject = await getZephyrApplication(projectPath);
       const buildConfig = appProject.getBuildConfiguration(buildConfigName);
-      const programPath = typeof message.programPath === 'string' ? message.programPath.trim() : '';
-      const svdPath = typeof message.svdPath === 'string' ? message.svdPath.trim() : '';
-      const gdbPath = typeof message.gdbPath === 'string' ? message.gdbPath.trim() : '';
-      const gdbAddress = typeof message.gdbAddress === 'string' ? message.gdbAddress.trim() : '';
-      const gdbPort = typeof message.gdbPort === 'string' ? message.gdbPort.trim() : '';
-      const gdbMode = message.gdbMode;
-      const runnerName = message.runner;
-      const runner = getRunner(runnerName);
-      const runnerPath = message.runnerPath;
-      const runnerArgs = message.runnerArgs;
-      const backend: DebugBackendId = message.backend === 'cortex-west' || message.backend === 'cortex-native'
-        ? message.backend
-        : 'cppdbg';
-      const device = typeof message.device === 'string' ? message.device.trim() : '';
-      const deviceInterface: 'swd' | 'jtag' = message.deviceInterface === 'jtag' ? 'jtag' : 'swd';
       const domainName = typeof message.domain === 'string' && message.domain.length > 0 ? message.domain : undefined;
-
-      if (!runner) {
-        vscode.window.showErrorMessage('Debug manager: No debug runner selected!');
-        return false;
+      const result = await applyDebugSetup({
+        project: appProject,
+        buildConfig,
+        domain: domainName,
+        backend: message.backend === 'cortex-west' || message.backend === 'cortex-native' ? message.backend : 'cppdbg',
+        runnerName: message.runner,
+        programPath: typeof message.programPath === 'string' ? message.programPath.trim() : '',
+        svdPath: typeof message.svdPath === 'string' ? message.svdPath.trim() : '',
+        gdbPath: typeof message.gdbPath === 'string' ? message.gdbPath.trim() : '',
+        gdbAddress: typeof message.gdbAddress === 'string' ? message.gdbAddress.trim() : '',
+        gdbPort: typeof message.gdbPort === 'string' ? message.gdbPort.trim() : '',
+        gdbMode: message.gdbMode,
+        runnerPath: message.runnerPath,
+        runnerArgs: message.runnerArgs,
+        device: typeof message.device === 'string' ? message.device.trim() : '',
+        deviceInterface: message.deviceInterface === 'jtag' ? 'jtag' : 'swd',
+        targetArch: currentArtifacts?.targetBoard?.arch,
+      }, {
+        ensureCortexDebug: () => ensureCortexDebugAvailable('apply'),
+        preparePyOCDTarget: () => setupPyOCDTarget(appProject, buildConfigName, domainName),
+      });
+      if (!result.ok && result.message) {
+        vscode.window.showErrorMessage(result.message);
       }
-
-      if (!programPath) {
-        vscode.window.showErrorMessage('Debug manager: Program path is required. Select a program executable before applying or debugging.');
-        return false;
-      }
-
-      // Missing debugger detection is represented as an empty field in the UI.
-      // Block writes here so we never persist a placeholder like CMAKE_GDB-NOTFOUND.
-      if (!gdbPath) {
-        vscode.window.showErrorMessage('Debug manager: GDB path is required. Select a debugger executable before applying or debugging.');
-        return false;
-      }
-
-      // The native backend has no GDB target address/port (cortex-debug manages
-      // the server connection itself) but J-Link requires a device name.
-      if (backend !== 'cortex-native') {
-        if (!gdbAddress) {
-          vscode.window.showErrorMessage('Debug manager: GDB address is required before applying or debugging.');
-          return false;
-        }
-
-        if (!gdbPort) {
-          vscode.window.showErrorMessage('Debug manager: GDB port is required before applying or debugging.');
-          return false;
-        }
-      } else if (runnerName === 'jlink' && !device) {
-        vscode.window.showErrorMessage('Debug manager: Device name is required for J-Link. Enter the SEGGER device name (e.g. STM32F429ZI, EFR32MG24BxxxF1536).');
-        return false;
-      }
-
-      if (backend !== 'cppdbg') {
-        if (!appProject || !buildConfig) {
-          return false;
-        }
-        if (!(await ensureCortexDebugAvailable('apply'))) {
-          return false;
-        }
-
-        const [launchJson, existing] = await getLaunchConfiguration(appProject, buildConfigName, false, undefined, domainName);
-        const existingIndex = launchJson.configurations.indexOf(existing);
-        const configName = typeof existing?.name === 'string' && existing.name.length > 0
-          ? existing.name
-          : getDebugLaunchConfigurationName(appProject, buildConfigName, domainName);
-        const cwd = typeof existing?.cwd === 'string' && existing.cwd.length > 0
-          ? existing.cwd
-          : '${workspaceFolder}';
-
-        // Backends always rebuild the entry from scratch and replace it in
-        // place so no keys of the previous backend survive the switch.
-        let freshConfig: any;
-        if (backend === 'cortex-west') {
-          // The Cortex-Debug client is ARM oriented. QEMU boards for other
-          // architectures (x86, RISC-V, ...) must use the C/C++ (cppdbg)
-          // backend, which is architecture agnostic. Allow it when the arch is
-          // unknown so we never block a valid ARM board on missing metadata.
-          if (runner.name === 'qemu') {
-            const arch = currentArtifacts?.targetBoard?.arch?.toLowerCase();
-            if (arch && arch !== 'arm' && arch !== 'arm64') {
-              vscode.window.showErrorMessage('Debug manager: QEMU debugging with the Cortex-Debug backend is only supported for ARM boards. Use the C/C++ Debug (cppdbg) backend for this board.');
-              return false;
-            }
-          }
-          runner.loadArgs(runnerArgs);
-          runner.serverPath = runnerPath;
-          runner.serverAddress = gdbAddress;
-          runner.serverPort = gdbPort;
-          let debugServerArgs = getWestDebugArgsForProject(runner, appProject, buildConfig, domainName);
-          debugServerArgs = runnerPathArg(debugServerArgs, runner.name, runnerPath);
-          freshConfig = buildCortexWestLaunchConfig({
-            name: configName,
-            cwd,
-            programPath,
-            svdPath,
-            gdbPath,
-            gdbMode,
-            gdbAddress,
-            gdbPort,
-          }, debugServerArgs);
-          if (runner.name === 'qemu') {
-            // `west build -t debugserver_qemu` may recompile before QEMU starts,
-            // so give the server-ready wait extra headroom over the default.
-            freshConfig.serverReadyTimeout = 60000;
-          }
-        } else {
-          const nativeServer = runnerNameToNativeServer(runnerName);
-          if (!nativeServer) {
-            vscode.window.showErrorMessage('Debug manager: select J-Link or ST-LINK GDB Server for the native Cortex-Debug backend.');
-            return false;
-          }
-          let serverPath = typeof runnerPath === 'string' ? runnerPath.trim() : '';
-          let stm32CubeProgrammerDir: string | undefined;
-          if (nativeServer === 'stlink') {
-            const stlinkRunner = new StlinkGdbserver();
-            try {
-              await stlinkRunner.loadInternalArgs();
-            } catch {
-              // CubeCLT probing is best effort; cortex-debug falls back to its settings.
-            }
-            if (!serverPath) {
-              serverPath = stlinkRunner.serverPath ?? '';
-            }
-            stm32CubeProgrammerDir = stlinkRunner.findCubeCltFile('STM32CubeProgrammer', 'bin');
-          }
-          freshConfig = buildCortexNativeLaunchConfig({
-            name: configName,
-            cwd,
-            programPath,
-            svdPath,
-            gdbPath,
-            gdbMode,
-            server: nativeServer,
-            device,
-            interface: deviceInterface,
-            serverPath,
-            serverArgs: runnerArgs,
-            stm32CubeProgrammerDir,
-          });
-        }
-
-        if (existingIndex >= 0) {
-          launchJson.configurations[existingIndex] = freshConfig;
-        } else {
-          launchJson.configurations.push(freshConfig);
-        }
-
-        // The west debug server keeps the same runner-side requirements as the
-        // cppdbg pipeline (generated openocd cfg, pyocd target pack) — only the
-        // west wrapper script is no longer needed.
-        if (backend === 'cortex-west') {
-          switch (runner.name) {
-            case 'openocd':
-              createOpenocdCfg(appProject, buildConfigName);
-              break;
-            case 'pyocd':
-              // Failed or cancelled target-pack setup: don't write launch.json
-              // or let the caller start a session that cannot connect.
-              if (!(await setupPyOCDTarget(appProject, buildConfigName, domainName))) {
-                return false;
-              }
-              break;
-          }
-        }
-
-        writeLaunchJson(launchJson, appProject);
-        return true;
-      }
-
-      if(appProject && buildConfig) {
-        let [launchJson, config] = await getLaunchConfiguration(appProject, buildConfigName, false, undefined, domainName);
-        if (config?.type && config.type !== 'cppdbg') {
-          // Switching back to the cppdbg backend: rebuild the template entry,
-          // then let the historical mutation block below fill the panel fields.
-          const configIndex = launchJson.configurations.indexOf(config);
-          config = await createDefaultConfiguration(appProject, buildConfigName, undefined, domainName);
-          if (configIndex >= 0) {
-            launchJson.configurations[configIndex] = config;
-          } else {
-            launchJson.configurations.push(config);
-          }
-        }
-        config.program = programPath;
-        config.svdPath = svdPath? svdPath:'';
-        config.miDebuggerPath = gdbPath;
-    
-        if(runner) {
-          runner.loadArgs(runnerArgs);
-          runner.serverPath = runnerPath;
-          runner.serverAddress = gdbAddress;
-          runner.serverPort = gdbPort;
-          config.serverStarted = runner.serverStartedPattern;
-          config.debugServerArgs = getWestDebugArgsForProject(runner, appProject, buildConfig, domainName);
-          config.debugServerArgs = runnerPathArg(config.debugServerArgs, runner.name, runnerPath);
-          config.setupCommands = [];
-          for(const arg of getSetupCommands(programPath, runner.serverAddress, runner.serverPort, gdbMode, runner.name)) {
-            config.setupCommands.push(arg);
-          }
-          // pyOCD requires specialized GDB configuration with specific setup commands
-          if (runner.name === 'pyocd' && runner.serverAddress && runner.serverPort) {
-            const configIndex = launchJson.configurations.indexOf(config);
-            config = pyocdLaunchJson(config, runner.serverAddress, runner.serverPort);
-            if (configIndex >= 0) {
-              launchJson.configurations[configIndex] = config;
-            }
-          }
-        }
-        createWestWrapper(appProject, buildConfigName);
-        
-        switch(runner?.name) {
-          case 'openocd':
-            createOpenocdCfg(appProject, buildConfigName);
-            break;
-          case 'pyocd':
-            // Failed or cancelled target-pack setup: don't write launch.json
-            // or let the caller start a session that cannot connect.
-            if (!(await setupPyOCDTarget(appProject, buildConfigName, domainName))) {
-              return false;
-            }
-            break;
-        }
-
-        writeLaunchJson(launchJson, appProject);
-        return true;
-      }
-
-      return false;
+      return result.ok;
     }
-    
+
     async function debugHandler(message: any): Promise<void> {
       const projectPath = message.project;
       const buildConfigName = message.buildConfig.length > 0 ? message.buildConfig : undefined;

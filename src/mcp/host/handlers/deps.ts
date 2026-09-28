@@ -13,6 +13,11 @@ import { HostServices } from '../services';
 export type WorkbenchView = 'apps' | 'westWorkspaces' | 'toolchains' | 'dashboard';
 
 export interface HostDeps {
+  /**
+   * The id of this VS Code window, which starts every handle a call must come
+   * back to this window with, such as a debug_app session_id.
+   */
+  readonly windowId?: string;
   services: HostServices;
   jobs: JobManager;
   // The two settings below are read on every call, so a change applies to the

@@ -246,8 +246,13 @@ export class WestWorkspace {
     return fileExists(westPath);
   }
 
-  private static buildTerminalContext(westWorkspace: WestWorkspace) {
-    const { path: shellPath, args: shellArgs } = getResolvedShell();
+  // Exported for the MCP run_command tool, which runs a command in this same
+  // environment, possibly for another shell than the terminal's (`shell`).
+  static buildTerminalContext(
+    westWorkspace: WestWorkspace,
+    shell: { path: string; args?: string[] } = getResolvedShell(),
+  ) {
+    const { path: shellPath, args: shellArgs } = shell;
     const shellType = classifyShell(shellPath);
     const isWinPosix = process.platform === 'win32' &&
       (shellType === 'bash' || shellType === 'zsh' ||

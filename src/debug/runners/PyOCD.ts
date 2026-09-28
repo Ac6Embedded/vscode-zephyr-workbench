@@ -1,3 +1,4 @@
+import { quoteIfNeeded } from "../../utils/shellQuoting";
 import { RunnerType, WestRunner } from "./WestRunner";
 
 export class PyOCD extends WestRunner {
@@ -16,7 +17,8 @@ export class PyOCD extends WestRunner {
   get autoArgs(): string {
     let cmdArgs = super.autoArgs;
     if(this.serverPath) {
-      cmdArgs += ` --pyocd ${this.serverPath}`;
+      // One argument, even with a space in the path.
+      cmdArgs += ` --pyocd ${quoteIfNeeded(this.serverPath)}`;
     }
     return cmdArgs;
   }

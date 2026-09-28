@@ -21,9 +21,28 @@ interface ManagedServerEntry {
 }
 
 const managedServers = new Map<string, ManagedServerEntry>();
+/** When each server was registered, by token. */
+const registeredAt = new Map<string, number>();
+
+/**
+ * The last output of servers that went away, newest last: when a debug
+ * session fails to start, the provider disposes its server before the caller
+ * can ask why.
+ */
+const endedServers: { appRootPath: string; registeredAt: number; tail?: string }[] = [];
+const ENDED_SERVERS_KEPT = 5;
+
+function rememberEnded(entry: ManagedServerEntry): void {
+  endedServers.push({ appRootPath: entry.appRootPath, registeredAt: registeredAt.get(entry.token) ?? 0, tail: entry.proc.outputTail() });
+  registeredAt.delete(entry.token);
+  if (endedServers.length > ENDED_SERVERS_KEPT) {
+    endedServers.shift();
+  }
+}
 
 export function registerManagedServer(entry: Omit<ManagedServerEntry, 'orphanTimer'>): void {
   const managed: ManagedServerEntry = { ...entry };
+  registeredAt.set(managed.token, Date.now());
   managed.orphanTimer = setTimeout(() => {
     void disposeServerForToken(managed.token);
   }, ORPHAN_SERVER_TIMEOUT_MS);
@@ -37,6 +56,7 @@ export function registerManagedServer(entry: Omit<ManagedServerEntry, 'orphanTim
         clearTimeout(current.orphanTimer);
       }
       managedServers.delete(managed.token);
+      rememberEnded(current);
     }
   });
 }
@@ -56,6 +76,35 @@ export function findManagedServerByAppAndPort(appRootPath: string, port: string)
   return undefined;
 }
 
+/**
+ * The last lines the west debug server of a session printed, by the token of
+ * its cortex-debug session; or, without a token, of the newest server of an
+ * application, for a session that never started. With `since` (a Date.now()
+ * time), only a server registered from then on counts, including one already
+ * gone, so an older server of the application is never taken for it.
+ * Undefined when none is known.
+ */
+export function serverOutputTail(lookup: { token?: string; appRootPath?: string; since?: number }): string | undefined {
+  if (lookup.token) {
+    return managedServers.get(lookup.token)?.proc.outputTail();
+  }
+  if (lookup.appRootPath) {
+    if (lookup.since !== undefined) {
+      const since = lookup.since;
+      const candidates = [
+        ...endedServers.filter(entry => entry.appRootPath === lookup.appRootPath && entry.registeredAt >= since),
+        ...[...managedServers.values()]
+          .filter(entry => entry.appRootPath === lookup.appRootPath && (registeredAt.get(entry.token) ?? 0) >= since)
+          .map(entry => ({ registeredAt: registeredAt.get(entry.token) ?? 0, tail: entry.proc.outputTail() })),
+      ].sort((a, b) => a.registeredAt - b.registeredAt);
+      return candidates.length > 0 ? candidates[candidates.length - 1].tail : undefined;
+    }
+    const entries = [...managedServers.values()].filter(entry => entry.appRootPath === lookup.appRootPath);
+    return entries.length > 0 ? entries[entries.length - 1].proc.outputTail() : undefined;
+  }
+  return undefined;
+}
+
 export async function disposeServerForToken(token: string | undefined): Promise<void> {
   if (!token) {
     return;
@@ -65,6 +114,7 @@ export async function disposeServerForToken(token: string | undefined): Promise<
     return;
   }
   managedServers.delete(token);
+  rememberEnded(entry);
   if (entry.orphanTimer) {
     clearTimeout(entry.orphanTimer);
   }
@@ -74,6 +124,7 @@ export async function disposeServerForToken(token: string | undefined): Promise<
 export async function disposeAllManagedServers(): Promise<void> {
   const entries = Array.from(managedServers.values());
   managedServers.clear();
+  registeredAt.clear();
   await Promise.all(entries.map(entry => {
     if (entry.orphanTimer) {
       clearTimeout(entry.orphanTimer);

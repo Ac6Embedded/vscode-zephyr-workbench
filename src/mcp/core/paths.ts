@@ -37,6 +37,8 @@ export interface McpPaths {
   locksDir: string;
   jobsDir: string;
   logsDir: string;
+  /** Scripts run_command writes that set up a Zephyr environment for an agent's own shell. */
+  envDir: string;
   audit: string;
   windowRecord(windowId: string): string;
   wakeMarker(windowId: string): string;
@@ -66,6 +68,7 @@ export function getMcpPaths(override?: string): McpPaths {
     locksDir: path.join(home, 'locks'),
     jobsDir,
     logsDir: path.join(home, 'logs'),
+    envDir: path.join(home, 'env'),
     audit: path.join(home, 'audit.jsonl'),
     windowRecord: (windowId: string) => path.join(windowsDir, `${windowId}.json`),
     wakeMarker: (windowId: string) => path.join(wakeDir, windowId),

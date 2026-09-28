@@ -372,7 +372,7 @@ describe('AI Manager view', () => {
       const shown = visible(render(React.createElement(PermissionsTab, { state: state({ tab: 'permissions' }) })));
       assert.match(shown, />Full<[\s\S]*>Core<[\s\S]*>Custom</);
       assert.match(shown, /role="radio" aria-checked="true" class="active">Core</);
-      assert.match(shown, /Builds and inspects freely\. Asks before changing apps, workspaces, toolchains or a board\. Blocks deleting\./);
+      assert.match(shown, /Builds and inspects freely\. Asks before changing apps, workspaces, toolchains or runners, before touching a board and before running a command\. Blocks deleting\./);
       assert.match(shown, /1 allowed · 1 ask first · 1 blocked/);
       // Each category is a titled group, like Preset.
       assert.match(shown, /<h2 class="zw-group-title">Status and search<\/h2>[\s\S]*get_status/);

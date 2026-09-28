@@ -1,6 +1,6 @@
 // hardware: one tool for everything that touches a connected board,
 // dispatched on `action` to the module of its family (hardwareSerial.ts for
-// the serial console; flash, run and debug get modules of their own). Each
+// the serial console, hardwareFlash.ts for west flash). Each
 // action accepts only its own arguments, so a misplaced one is refused instead
 // of silently ignored.
 
@@ -9,6 +9,7 @@ import { logSafe } from '../../core/redact';
 import { HARDWARE_ACTIONS, HardwareAction } from '../../core/tools/hardware';
 import { ToolContext, ToolHandler } from '../../core/toolSpec';
 import { HostDeps } from './deps';
+import { flash } from './hardwareFlash';
 import { listSerialPorts, serialRead, serialSend, serialStart, serialStop } from './hardwareSerial';
 
 type Ctx = ToolContext<HostDeps>;
@@ -17,6 +18,10 @@ const ROUTES: Readonly<Record<HardwareAction, {
   args: readonly string[];
   run(args: Record<string, unknown>, ctx: Ctx): Promise<unknown>;
 }>> = {
+  flash: {
+    args: ['app_path', 'config_name', 'runner', 'runner_args', 'domain', 'erase', 'dev_id', 'rebuild', 'dry_run', 'wait_for', 'wait_sec'],
+    run: flash,
+  },
   list_ports: { args: ['app_path', 'config_name'], run: listSerialPorts },
   serial_start: { args: ['app_path', 'config_name', 'port', 'baud_rate', 'duration_sec', 'wait_for', 'wait_sec'], run: serialStart },
   // app_path also picks the window, and that application's capture.

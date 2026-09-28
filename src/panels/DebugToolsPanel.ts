@@ -5,15 +5,20 @@ import yaml from 'yaml';
 import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { DebugToolAliasEntry, DebugToolEntry } from "../utils/debugTools/debugToolVersionUtils";
-import { getConfiguredDebugToolPath, isDebugToolCompatible } from "../utils/debugTools/debugToolManifestUtils";
+import { expandDebugToolPack, getConfiguredDebugToolPath, isDebugToolCompatible } from "../utils/debugTools/debugToolManifestUtils";
 import {
   getDebugToolExecutableName,
   probeDebugToolAliasStatus,
   probeDebugToolStatus,
 } from "../utils/debugTools/debugToolStatusUtils";
-import { getEnvYamlPath, loadEnvYamlState, readEnvYamlObject as readEnvYamlObjectFile, writeEnvYamlObject as writeEnvYamlObjectFile } from "../utils/env/envYamlFileUtils";
+import { getEnvYamlPath, loadEnvYamlState } from "../utils/env/envYamlFileUtils";
 import { setExtraPath as setEnvExtraPath, removeExtraPath as removeEnvExtraPath } from "../utils/env/envYamlUtils";
-import { setDebugToolAliasDefault } from "../utils/debugTools/debugToolEnvUtils";
+import {
+  removeRunnerPath as removeRunnerPathInEnv,
+  saveDoNotUse as saveDoNotUseInEnv,
+  saveRunnerPath as saveRunnerPathInEnv,
+  setDebugToolAliasDefault,
+} from "../utils/debugTools/debugToolEnvUtils";
 
 export class DebugToolsPanel {
 
@@ -615,28 +620,17 @@ export class DebugToolsPanel {
             return;
           case 'install-pack':
             {
-              const selectedPack = this.data.packs.find((pack: { pack: string; }) => pack.pack === message.pack);
-              const tools: any[] = [];
-              const linkOnlyWebsites: string[] = [];
+              // Shared with the agent tools: installable tools install, the
+              // others with a website open their vendor page.
+              const expanded = expandDebugToolPack(this.data, message.pack);
+              if (!expanded) { break; }
 
-              selectedPack.tools.forEach((packTool: string) => {
-                const tool = this.data.debug_tools.find((t: { tool: string; }) => t.tool === packTool);
-                if (!tool) { return; }
-                const compatible = this.isToolCompatible(tool);
-                const hasWebsite = !!tool.website;
-                if (compatible) {
-                  tools.push(tool);
-                } else if (hasWebsite) {
-                  linkOnlyWebsites.push(String(tool.website));
-                }
-              });
-
-              for (const url of linkOnlyWebsites) {
-                try { await vscode.env.openExternal(vscode.Uri.parse(url)); } catch {}
+              for (const tool of expanded.vendorPages) {
+                try { await vscode.env.openExternal(vscode.Uri.parse(String(tool.website))); } catch {}
               }
 
-              if (tools.length > 0) {
-                vscode.commands.executeCommand("zephyr-workbench.run-install-debug-tools", this._panel, tools);
+              if (expanded.install.length > 0) {
+                vscode.commands.executeCommand("zephyr-workbench.run-install-debug-tools", this._panel, expanded.install);
               }
             }
             break;
@@ -813,81 +807,25 @@ export class DebugToolsPanel {
     return getConfiguredDebugToolPath(this.envData, toolId);
   }
 
-  private readEnvYamlObject(): any {
-    return readEnvYamlObjectFile();
-  }
-
-  private writeEnvYamlObject(jsEnv: any): void {
-    writeEnvYamlObjectFile(jsEnv);
-    this.reloadEnvYaml();
-  }
-
-  private ensureRunners(jsEnv: any): Record<string, any> {
-    if (!jsEnv.runners || typeof jsEnv.runners !== 'object' || Array.isArray(jsEnv.runners)) {
-      jsEnv.runners = {};
-    }
-    return jsEnv.runners;
-  }
-
-  private ensureRunnerEntry(jsEnv: any, toolId: string): Record<string, any> {
-    const runners = this.ensureRunners(jsEnv);
-    if (!runners[toolId] || typeof runners[toolId] !== 'object' || Array.isArray(runners[toolId])) {
-      runners[toolId] = {};
-    }
-    return runners[toolId];
-  }
-
-  private cleanupRunnerEntry(jsEnv: any, toolId: string): void {
-    const runners = jsEnv?.runners;
-    if (!runners || typeof runners !== 'object' || Array.isArray(runners)) {
-      return;
-    }
-
-    const entry = runners[toolId];
-    if (entry && typeof entry === 'object' && !Array.isArray(entry) && Object.keys(entry).length === 0) {
-      delete runners[toolId];
-    }
-
-    if (Object.keys(runners).length === 0) {
-      delete jsEnv.runners;
-    }
-  }
-
+  // The env.yml writers are shared with the agent tools (debugToolEnvUtils);
+  // the panel only reloads what it shows after a successful write.
   private async saveRunnerPath(toolId: string, newPath: string): Promise<boolean> {
-    try {
-      const jsEnv = this.readEnvYamlObject();
-      const runner = this.ensureRunnerEntry(jsEnv, toolId);
-      runner.path = newPath.replace(/\\/g, '/');
-      this.writeEnvYamlObject(jsEnv);
-      return true;
-    } catch (e) {
-      return false;
-    }
+    return this.reloadAfter(saveRunnerPathInEnv(toolId, newPath));
   }
 
   private async removeRunnerPath(toolId: string): Promise<boolean> {
-    try {
-      const jsEnv = this.readEnvYamlObject();
-      const runners = this.ensureRunners(jsEnv);
-      delete runners[toolId];
-      this.cleanupRunnerEntry(jsEnv, toolId);
-      this.writeEnvYamlObject(jsEnv);
-      return true;
-    } catch {
-      return false;
-    }
+    return this.reloadAfter(removeRunnerPathInEnv(toolId));
   }
 
   private async saveDoNotUse(toolId: string, doNotUse: boolean): Promise<boolean> {
-    try {
-      const jsEnv = this.readEnvYamlObject();
-      const runner = this.ensureRunnerEntry(jsEnv, toolId);
-      runner.do_not_use = doNotUse;
-      this.writeEnvYamlObject(jsEnv);
-      return true;
-    } catch {
-      return false;
+    return this.reloadAfter(saveDoNotUseInEnv(toolId, doNotUse));
+  }
+
+  private reloadAfter(saved: boolean): boolean {
+    if (saved) {
+      this.reloadEnvYaml();
     }
+    return saved;
   }
   
   private reloadEnvYaml(): void {

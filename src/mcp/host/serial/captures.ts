@@ -403,6 +403,11 @@ export class SerialCaptures {
   list(): SerialCapture[] {
     return [...this.entries];
   }
+
+  /** The captures holding a port right now, each with its job. */
+  running(): SerialCapture[] {
+    return [...this.entries].filter(capture => !capture.ended && capture.jobId !== undefined);
+  }
 }
 
 export const serialCaptures = new SerialCaptures();

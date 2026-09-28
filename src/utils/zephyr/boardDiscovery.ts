@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import * as vscode from 'vscode';
 
-import { getWestBoards, westTmpBuildCmakeOnlyCommand, type WestBoardInfo } from '../../commands/WestCommands';
+import { getWestBoards, westTmpBuildCmakeOnlyCommand, type WestBoardInfo, type WestRunOptions } from '../../commands/WestCommands';
 import { ZephyrBoard } from '../../models/ZephyrBoard';
 import { ZephyrApplication } from '../../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
@@ -50,9 +50,10 @@ export async function getSupportedBoards(
   resource?: ZephyrApplication | string,
   buildConfig?: ZephyrBuildConfig,
   generatedBuildDir?: string,
+  westOpts: WestRunOptions = {},
 ): Promise<ZephyrBoard[]> {
   const boardRoots = await collectBoardRoots(westWorkspace, resource, buildConfig, generatedBuildDir);
-  const westBoards = await getWestBoards(westWorkspace, boardRoots);
+  const westBoards = await getWestBoards(westWorkspace, boardRoots, westOpts);
   return westBoards.flatMap(expandWestBoardInfo);
 }
 
