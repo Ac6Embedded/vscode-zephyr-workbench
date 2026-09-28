@@ -455,36 +455,41 @@ describe('AI Manager view', () => {
       assert.deepEqual(tabs, ['Connections', 'Permissions', 'Examples']);
     });
 
-    it('lists the example requests by task, each with a Copy button and the tools it uses', () => {
+    it('lists the example requests under a short title per task, each with a copy icon, and nothing else', () => {
       const shown = visible(render(React.createElement(ExamplesTab, { state: state({ tab: 'examples' }) })));
       for (const group of EXAMPLE_GROUPS) {
         assert.ok(shown.includes(`>${group.title}<`), group.title);
       }
       const examples = EXAMPLE_GROUPS.flatMap(group => group.examples);
-      assert.equal((shown.match(/>Copy</g) ?? []).length, examples.length);
-      assert.match(shown, /Flash the board and show me the boot log\.[\s\S]*Uses[\s\S]*>hardware</);
+      assert.equal((shown.match(/codicon-copy/g) ?? []).length, examples.length);
+      assert.match(shown, /<span class="zw-example-prompt">Flash the board and show me the boot log\.<\/span><button/);
+      assert.doesNotMatch(shown, /Uses|zw-mono|zw-example-title/, 'no tool names and no title per example');
+      assert.doesNotMatch(shown, /blocked/, 'nothing is blocked in this state');
     });
 
-    it('points out an example whose tools the user blocked', () => {
+    it('dims an example whose tool the user blocked, and says which in its tooltip', () => {
       const debug = EXAMPLE_GROUPS.flatMap(group => group.examples).find(example => example.tools.includes('debug_app'))!;
       const base = state({ tab: 'examples' });
       const tools = [...base.server.tools, tool({ name: 'debug_app', permission: 'block' })];
       assert.deepEqual(blockedTools(debug, tools), ['debug_app']);
       assert.deepEqual(blockedTools(debug, base.server.tools), [], 'a tool the list does not know is not called blocked');
       const shown = visible(render(React.createElement(ExamplesTab, { state: { ...base, server: { ...base.server, tools } } })));
-      assert.match(shown, /debug_app is blocked in Permissions, so the agent cannot do this\./);
+      assert.match(shown, /class="zw-example blocked" title="debug_app is blocked in Permissions"/);
     });
   });
 
   describe('examples', () => {
-    it('name only tools the server has, in plain text', () => {
+    it('have a short title per task, and need only tools the server has', () => {
       const names = new Set(TOOL_CATALOG.map(meta => meta.name));
-      for (const example of EXAMPLE_GROUPS.flatMap(group => group.examples)) {
-        assert.ok(example.tools.length > 0, example.prompt);
-        for (const name of example.tools) {
-          assert.ok(names.has(name), `"${example.prompt}" names ${name}, which is not a tool`);
+      for (const group of EXAMPLE_GROUPS) {
+        assert.ok(group.title.length <= 12, `${group.title} is a long category title`);
+        for (const example of group.examples) {
+          assert.ok(example.tools.length > 0, example.prompt);
+          for (const name of example.tools) {
+            assert.ok(names.has(name), `"${example.prompt}" needs ${name}, which is not a tool`);
+          }
+          assert.doesNotMatch(example.prompt, new RegExp(`[${String.fromCharCode(0x2013, 0x2014)}]`), 'no en or em dash');
         }
-        assert.doesNotMatch(example.prompt, /[–—]/, 'no en or em dash');
       }
     });
   });

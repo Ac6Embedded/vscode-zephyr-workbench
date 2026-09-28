@@ -592,19 +592,13 @@
 
 .zw-intro { margin: 0 0 0.6rem; }
 
-/* Examples: one request per row, its Copy button on the right. */
+/* Examples: one request per row, and a copy icon. */
 
 .zw-example {
-  padding: 0.45rem 0.3rem;
-  border-top: 1px solid var(--vscode-panel-border);
-}
-
-.zw-example:first-of-type { border-top: none; }
-
-.zw-example-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.75rem;
+  padding: 0.35rem 0.3rem;
 }
 
 .zw-example-prompt {
@@ -612,9 +606,24 @@
   min-width: 0;
 }
 
-.zw-example-head > .zw-action { flex-shrink: 0; }
+/* A request whose tool is blocked in Permissions; the row's tooltip says which. */
+.zw-example.blocked { opacity: 0.5; }
 
-.zw-example-blocked { color: var(--vscode-editorWarning-foreground); }
+.zw-ai button.zw-copy-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 0.2rem;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+
+.zw-ai button.zw-copy-icon:hover {
+  color: var(--vscode-foreground);
+  background: var(--vscode-toolbar-hoverBackground);
+}
 
 .zw-warning {
   border-left: 3px solid var(--vscode-editorWarning-foreground);

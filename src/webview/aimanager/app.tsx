@@ -573,41 +573,31 @@ export function PermissionsTab({ state }: { state: AiManagerState }) {
   );
 }
 
-/** One request to try: the words to give the agent, and the tools it will use. */
+/** One request to try: the words to give the agent, and a copy button. */
 function ExampleRow({ example, tools }: { example: Example; tools: ToolRow[] }) {
   const blocked = blockedTools(example, tools);
+  const note = blocked.length > 0 ? `${blocked.join(', ')} ${blocked.length > 1 ? 'are' : 'is'} blocked in Permissions` : undefined;
   return (
-    <div className="zw-example">
-      <div className="zw-example-head">
-        <span className="zw-example-prompt">{example.prompt}</span>
-        <ActionButton action={{ label: 'Copy', title: 'Copy this request, to paste it in your agent', message: { command: 'copy', text: example.prompt } }} />
-      </div>
-      <div className="zw-meta">
-        Uses {example.tools.map((name, index) => (
-          <React.Fragment key={name}>
-            {index > 0 && ', '}
-            <span className="zw-mono">{name}</span>
-          </React.Fragment>
-        ))}
-      </div>
-      {blocked.length > 0 && (
-        <p className="zw-note zw-example-blocked">
-          <span className="codicon codicon-circle-slash" aria-hidden="true" />
-          {` ${blocked.join(', ')} ${blocked.length > 1 ? 'are' : 'is'} blocked in Permissions, so the agent cannot do this.`}
-        </p>
-      )}
+    <div className={`zw-example${note ? ' blocked' : ''}`} title={note}>
+      <span className="zw-example-prompt">{example.prompt}</span>
+      <button
+        type="button"
+        className="zw-copy-icon"
+        title="Copy"
+        aria-label={`Copy: ${example.prompt}`}
+        onClick={() => post({ command: 'copy', text: example.prompt })}
+      >
+        <span className="codicon codicon-copy" aria-hidden="true" />
+      </button>
     </div>
   );
 }
 
-/** Requests to try, by task, each with the tools it uses. */
+/** Requests to try, by task. */
 export function ExamplesTab({ state }: { state: AiManagerState }) {
   return (
     <div>
-      <p className="zw-note zw-intro">
-        Ask your agent in your own words, it picks the tools. These are requests the Zephyr Workbench MCP can handle.
-        Depending on Permissions, you are asked in VS Code before the agent flashes, debugs, installs or runs a command.
-      </p>
+      <p className="zw-note zw-intro">Copy a request into your agent, or ask in your own words.</p>
       {EXAMPLE_GROUPS.map(group => (
         <Group key={group.title} title={group.title}>
           {group.examples.map(example => <ExampleRow key={example.prompt} example={example} tools={state.server.tools} />)}
