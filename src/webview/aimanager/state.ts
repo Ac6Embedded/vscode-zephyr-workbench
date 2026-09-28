@@ -104,7 +104,7 @@ export interface ZephyrMcpState {
 export interface AiManagerState {
   view: AiManagerView;
   /** The page of the Zephyr Workbench MCP view. */
-  tab: 'connections' | 'permissions';
+  tab: 'connections' | 'permissions' | 'examples';
   server: ServerState;
   launcher: { command: string; args: string[]; env: Record<string, string> };
   bridge: { path: string; installed: boolean; launcher_path?: string; home: string };

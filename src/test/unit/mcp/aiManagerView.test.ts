@@ -6,10 +6,14 @@ import { strict as assert } from 'assert';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { AgentRow, AiManagerState, ToolRow } from '../../../webview/aimanager/state';
+import { TOOL_CATALOG } from '../../../mcp/core/catalog';
 import {
-  displayPath, groupAgents, jobTitle, rowStatus, scopeAction, serverSummary, signInHint, SPINNER, summarizeAgent,
+  blockedTools, displayPath, EXAMPLE_GROUPS, groupAgents, jobTitle, rowStatus, scopeAction, serverSummary, signInHint, SPINNER,
+  summarizeAgent,
 } from '../../../webview/aimanager/view';
-import { ConnectionsTab, PermissionsTab, SkillsView, StatusHeader, WorkbenchView, ZephyrView } from '../../../webview/aimanager/app';
+import {
+  ConnectionsTab, ExamplesTab, PermissionsTab, SkillsView, StatusHeader, WorkbenchView, ZephyrView,
+} from '../../../webview/aimanager/app';
 import { isOpenIn, OpenState, toggledIn } from '../../../webview/aimanager/disclosure';
 
 const row = (over: Partial<AgentRow>): AgentRow => ({
@@ -445,10 +449,43 @@ describe('AI Manager view', () => {
       assert.match(markup, /own local server: it runs inside VS Code on this machine, not on any\s+external server/);
     });
 
-    it('has no Server tab any more', () => {
+    it('has no Server tab any more, and Examples next to Permissions', () => {
       const shown = render(React.createElement(WorkbenchView, { state: state() }));
       const tabs = [...shown.matchAll(/role="tab"[^>]*>([^<]+)</g)].map(match => match[1]);
-      assert.deepEqual(tabs, ['Connections', 'Permissions']);
+      assert.deepEqual(tabs, ['Connections', 'Permissions', 'Examples']);
+    });
+
+    it('lists the example requests by task, each with a Copy button and the tools it uses', () => {
+      const shown = visible(render(React.createElement(ExamplesTab, { state: state({ tab: 'examples' }) })));
+      for (const group of EXAMPLE_GROUPS) {
+        assert.ok(shown.includes(`>${group.title}<`), group.title);
+      }
+      const examples = EXAMPLE_GROUPS.flatMap(group => group.examples);
+      assert.equal((shown.match(/>Copy</g) ?? []).length, examples.length);
+      assert.match(shown, /Flash the board and show me the boot log\.[\s\S]*Uses[\s\S]*>hardware</);
+    });
+
+    it('points out an example whose tools the user blocked', () => {
+      const debug = EXAMPLE_GROUPS.flatMap(group => group.examples).find(example => example.tools.includes('debug_app'))!;
+      const base = state({ tab: 'examples' });
+      const tools = [...base.server.tools, tool({ name: 'debug_app', permission: 'block' })];
+      assert.deepEqual(blockedTools(debug, tools), ['debug_app']);
+      assert.deepEqual(blockedTools(debug, base.server.tools), [], 'a tool the list does not know is not called blocked');
+      const shown = visible(render(React.createElement(ExamplesTab, { state: { ...base, server: { ...base.server, tools } } })));
+      assert.match(shown, /debug_app is blocked in Permissions, so the agent cannot do this\./);
+    });
+  });
+
+  describe('examples', () => {
+    it('name only tools the server has, in plain text', () => {
+      const names = new Set(TOOL_CATALOG.map(meta => meta.name));
+      for (const example of EXAMPLE_GROUPS.flatMap(group => group.examples)) {
+        assert.ok(example.tools.length > 0, example.prompt);
+        for (const name of example.tools) {
+          assert.ok(names.has(name), `"${example.prompt}" names ${name}, which is not a tool`);
+        }
+        assert.doesNotMatch(example.prompt, /[–—]/, 'no en or em dash');
+      }
     });
   });
 });

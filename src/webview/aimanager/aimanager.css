@@ -592,6 +592,30 @@
 
 .zw-intro { margin: 0 0 0.6rem; }
 
+/* Examples: one request per row, its Copy button on the right. */
+
+.zw-example {
+  padding: 0.45rem 0.3rem;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.zw-example:first-of-type { border-top: none; }
+
+.zw-example-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.zw-example-prompt {
+  flex: 1;
+  min-width: 0;
+}
+
+.zw-example-head > .zw-action { flex-shrink: 0; }
+
+.zw-example-blocked { color: var(--vscode-editorWarning-foreground); }
+
 .zw-warning {
   border-left: 3px solid var(--vscode-editorWarning-foreground);
   padding: 0.5rem 0.75rem;

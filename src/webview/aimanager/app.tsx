@@ -10,7 +10,8 @@ import {
 import { Disclosure, DisclosureProvider } from './disclosure';
 import { AgentRow, AiManagerState, AiManagerView, ConnectionTest, JobRow, post, ToolRow } from './state';
 import {
-  displayPath, formatTime, groupAgents, JOB_TONE, jobTitle, PERMISSION_CHOICES, permissionCounts, PRESETS,
+  blockedTools, displayPath, Example, EXAMPLE_GROUPS, formatTime, groupAgents, JOB_TONE, jobTitle, PERMISSION_CHOICES,
+  permissionCounts, PRESETS,
   RowAction, rowStatus, scopeAction, scopeLabel, ServerKey, serverSummary, signInHint, SPINNER, summarizeAgent, Tone,
   TOOL_GROUP_LABEL, toolsSummary, zephyrClientConfig,
 } from './view';
@@ -572,6 +573,50 @@ export function PermissionsTab({ state }: { state: AiManagerState }) {
   );
 }
 
+/** One request to try: the words to give the agent, and the tools it will use. */
+function ExampleRow({ example, tools }: { example: Example; tools: ToolRow[] }) {
+  const blocked = blockedTools(example, tools);
+  return (
+    <div className="zw-example">
+      <div className="zw-example-head">
+        <span className="zw-example-prompt">{example.prompt}</span>
+        <ActionButton action={{ label: 'Copy', title: 'Copy this request, to paste it in your agent', message: { command: 'copy', text: example.prompt } }} />
+      </div>
+      <div className="zw-meta">
+        Uses {example.tools.map((name, index) => (
+          <React.Fragment key={name}>
+            {index > 0 && ', '}
+            <span className="zw-mono">{name}</span>
+          </React.Fragment>
+        ))}
+      </div>
+      {blocked.length > 0 && (
+        <p className="zw-note zw-example-blocked">
+          <span className="codicon codicon-circle-slash" aria-hidden="true" />
+          {` ${blocked.join(', ')} ${blocked.length > 1 ? 'are' : 'is'} blocked in Permissions, so the agent cannot do this.`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Requests to try, by task, each with the tools it uses. */
+export function ExamplesTab({ state }: { state: AiManagerState }) {
+  return (
+    <div>
+      <p className="zw-note zw-intro">
+        Ask your agent in your own words, it picks the tools. These are requests the Zephyr Workbench MCP can handle.
+        Depending on Permissions, you are asked in VS Code before the agent flashes, debugs, installs or runs a command.
+      </p>
+      {EXAMPLE_GROUPS.map(group => (
+        <Group key={group.title} title={group.title}>
+          {group.examples.map(example => <ExampleRow key={example.prompt} example={example} tools={state.server.tools} />)}
+        </Group>
+      ))}
+    </div>
+  );
+}
+
 const VIEWS: [AiManagerView, string][] = [
   ['workbench', 'Zephyr Workbench MCP'],
   ['zephyr', 'Zephyr Project MCP'],
@@ -581,9 +626,10 @@ const VIEWS: [AiManagerView, string][] = [
 const TABS: [AiManagerState['tab'], string][] = [
   ['connections', 'Connections'],
   ['permissions', 'Permissions'],
+  ['examples', 'Examples'],
 ];
 
-/** The Zephyr Workbench MCP page: the server card, then its three tabs. */
+/** The Zephyr Workbench MCP page: the server card, then its tabs. */
 export function WorkbenchView({ state }: { state: AiManagerState }) {
   return (
     <>
@@ -605,6 +651,7 @@ export function WorkbenchView({ state }: { state: AiManagerState }) {
       </div>
       {state.tab === 'connections' && <ConnectionsTab state={state} />}
       {state.tab === 'permissions' && <PermissionsTab state={state} />}
+      {state.tab === 'examples' && <ExamplesTab state={state} />}
     </>
   );
 }

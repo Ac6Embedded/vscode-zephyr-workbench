@@ -396,3 +396,67 @@ export function zephyrClientConfig(zephyr: Pick<ZephyrMcpState, 'name' | 'url'>,
     : { command: 'npx', args: ['-y', 'mcp-remote', zephyr.url] };
   return JSON.stringify({ mcpServers: { [zephyr.name]: entry } }, null, 2);
 }
+
+/** A request to try with an agent, and the tools it leads the agent to call. */
+export interface Example {
+  prompt: string;
+  tools: readonly string[];
+}
+
+/**
+ * What the Examples tab shows, by task. The agent picks the tools itself; the
+ * list only says which ones a request needs, so a blocked one can be pointed out.
+ */
+export const EXAMPLE_GROUPS: { title: string; examples: Example[] }[] = [
+  {
+    title: 'Get started',
+    examples: [
+      { prompt: 'Is my Zephyr setup ready? List my applications, west workspaces and toolchains.', tools: ['get_status', 'check_environment'] },
+      { prompt: 'Create a west workspace for Zephyr v4.2.0 with only the STM32 modules.', tools: ['search_zephyr_catalog', 'manage_west_workspace'] },
+      { prompt: 'Create the blinky sample for nucleo_f429zi in this workspace and build it.', tools: ['search_zephyr_catalog', 'manage_app', 'build_app'] },
+      { prompt: 'Install the Zephyr SDK version this workspace recommends.', tools: ['list_toolchains', 'manage_toolchain'] },
+    ],
+  },
+  {
+    title: 'Build and configure',
+    examples: [
+      { prompt: 'Build my application and fix the errors.', tools: ['build_app', 'get_diagnostics'] },
+      { prompt: 'Why is CONFIG_BT disabled in my build? Enable it and rebuild.', tools: ['query_kconfig', 'set_kconfig', 'build_app'] },
+      { prompt: 'Add a build configuration for nrf5340dk/nrf5340/cpuapp with sysbuild, then build both configurations.', tools: ['configure', 'build_app'] },
+      { prompt: 'Which pins does uart0 use in the final devicetree, and which file sets them?', tools: ['query_devicetree'] },
+      { prompt: 'What uses the most flash in my firmware?', tools: ['get_memory_report'] },
+    ],
+  },
+  {
+    title: 'Flash and serial console',
+    examples: [
+      { prompt: 'Flash the board and show me the boot log.', tools: ['hardware'] },
+      { prompt: 'Send "kernel threads" to the Zephyr shell and tell me which thread is closest to overflowing its stack.', tools: ['hardware'] },
+      { prompt: 'Which runners does my board support, and are their tools installed? Install what is missing.', tools: ['list_runners', 'manage_runners'] },
+    ],
+  },
+  {
+    title: 'Debug',
+    examples: [
+      { prompt: 'Set up debugging for my board with J-Link and the C/C++ debugger.', tools: ['configure_debug'] },
+      { prompt: 'Start debugging, stop in main, step over the next lines and show me the local variables.', tools: ['debug_app'] },
+      { prompt: 'My board crashes at boot. Debug it and tell me which fault it hit and where.', tools: ['debug_app'] },
+      { prompt: 'Stop in k_sem_take only when count is above 3, and show me the backtrace when it does.', tools: ['debug_app'] },
+    ],
+  },
+  {
+    title: 'Analyze and more',
+    examples: [
+      { prompt: 'Run DT Doctor on my build and explain what it finds.', tools: ['analyze'] },
+      { prompt: 'Generate the SPDX SBOM of my application.', tools: ['analyze'] },
+      { prompt: 'Run scripts/gen_keys.py in the Zephyr environment of my application.', tools: ['run_command'] },
+      { prompt: 'Open the RAM plot of my build.', tools: ['open_in_workbench'] },
+    ],
+  },
+];
+
+/** The tools of an example the user blocked in Permissions, so the agent cannot call them. */
+export function blockedTools(example: Example, tools: readonly ToolRow[]): string[] {
+  const permissions = new Map(tools.map(tool => [tool.name, tool.permission]));
+  return example.tools.filter(name => permissions.get(name) === 'block');
+}
