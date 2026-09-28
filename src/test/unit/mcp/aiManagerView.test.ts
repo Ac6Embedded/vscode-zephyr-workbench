@@ -46,7 +46,7 @@ function state(over: Partial<AiManagerState> = {}): AiManagerState {
       row({ id: 'claude-code', label: 'Claude Code', file: '/home/u/.claude.json', state: 'configured', exists: true }),
       row({ id: 'claude-code', label: 'Claude Code', scope: 'project', file: '/work/zephyrproject/.mcp.json', exists: false }),
       row({ id: 'cursor', label: 'Cursor' }),
-      row({ id: 'gemini-cli', label: 'Gemini CLI', detected: false, file: '/home/u/.gemini/settings.json' }),
+      row({ id: 'antigravity', label: 'Antigravity', detected: false, file: '/home/u/.gemini/config/mcp_config.json' }),
     ],
     zephyr: {
       name: 'zephyr-docs',
@@ -310,7 +310,7 @@ describe('AI Manager view', () => {
       assert.match(shown, /aria-expanded="true"[^>]*>[\s\S]*?Installed[\s\S]*?zw-count">2</);
       // An agent not found here goes in its own group, folded.
       assert.match(shown, /Not installed/);
-      assert.doesNotMatch(shown, /Gemini CLI/);
+      assert.doesNotMatch(shown, /Antigravity/);
     });
 
     it('offers Open file only for a file that is on disk', () => {

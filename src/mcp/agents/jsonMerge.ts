@@ -1,6 +1,6 @@
 // Edits an agent's JSON config without destroying it.
 //
-// These files are JSONC in practice: VS Code's mcp.json, Cursor's and Gemini's
+// These files are JSONC in practice: VS Code's mcp.json, Cursor's and Antigravity's
 // settings all tolerate comments, and users write them. A parse-and-rewrite
 // would silently drop those comments, so every edit goes through jsonc-parser,
 // which returns minimal text edits instead.

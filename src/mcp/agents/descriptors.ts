@@ -2,12 +2,12 @@
 // entry takes, and how to place it. Adding an agent is adding a descriptor.
 //
 // Four config shapes cover every client, which is most of this feature:
-//   mcpServers  Claude Code, Cursor, Gemini CLI, Copilot CLI
+//   mcpServers  Claude Code, Cursor, Antigravity, Copilot CLI
 //   servers     VS Code
 //   mcp         opencode
 //   [mcp_servers.<name>]  Codex, in TOML
-// Two traps are easy to miss: Gemini needs `httpUrl` rather than `url` for a
-// remote server, and opencode takes `command` as an ARRAY.
+// Two traps are easy to miss: Antigravity needs `serverUrl` rather than `url`
+// for a remote server, and opencode takes `command` as an ARRAY.
 
 import * as os from 'os';
 import * as path from 'path';
@@ -17,7 +17,7 @@ import { LauncherSpec } from './launcher';
 
 export type AgentId =
   | 'claude-code' | 'codex' | 'vscode-copilot' | 'cursor'
-  | 'gemini-cli' | 'opencode' | 'copilot-cli';
+  | 'antigravity' | 'opencode' | 'copilot-cli';
 
 export type AgentScope = 'user' | 'project';
 
@@ -37,7 +37,7 @@ export interface AgentDescriptor {
   /**
    * How this agent's project file names the user's home folder in a command,
    * so one committed file works for every developer. Each is documented by
-   * the agent: `${HOME}` (Claude Code, Copilot CLI, Gemini CLI), `${userHome}`
+   * the agent: `${HOME}` (Claude Code, Copilot CLI), `${userHome}`
    * (VS Code, Cursor), `{env:HOME}` (opencode). Codex expands nothing.
    */
   homeVariable?: string;
@@ -155,27 +155,29 @@ export const AGENTS: readonly AgentDescriptor[] = [
     detect: () => [inHome('.cursor'), '/Applications/Cursor.app'],
   },
   {
-    id: 'gemini-cli',
-    label: 'Gemini CLI',
+    // Google's successor of Gemini CLI. It kept Gemini's home folder, ~/.gemini,
+    // and reads MCP servers from one file there, which its CLI and IDE share.
+    id: 'antigravity',
+    label: 'Antigravity',
     format: 'json',
-    homeVariable: '${HOME}',
     containerPath: ['mcpServers'],
-    file: (scope, folder) => (scope === 'project' && folder
-      ? path.join(folder, '.gemini', 'settings.json')
-      : inHome('.gemini', 'settings.json')),
+    // User scope only: Antigravity documents .agents/mcp_config.json for a
+    // project, but its CLI is reported to ignore project MCP servers.
+    file: scope => (scope === 'user' ? inHome('.gemini', 'config', 'mcp_config.json') : undefined),
     entry: launcher => ({
       command: launcher.command,
       args: launcher.args,
       ...(Object.keys(launcher.env).length ? { env: launcher.env } : {}),
-      // Gemini's timeout covers a whole tool call, so it must clear a full build.
-      timeout: TOOL_TIMEOUT_MS,
-      trust: false,
     }),
-    // `httpUrl` is streamable HTTP in every version. Newer versions also take
-    // `url` with `type: "http"`, but older ones read a bare `url` as SSE.
-    remoteEntry: url => ({ httpUrl: url }),
-    signIn: name => `To sign in, run /mcp auth ${name} in Gemini CLI.`,
-    detect: () => [inHome('.gemini')],
+    remoteEntry: url => ({ serverUrl: url }),
+    signIn: name => `Type /mcp in Antigravity CLI to see whether it reached ${name}. Antigravity does not follow the MCP sign-in flow yet, so a server that asks for one may not connect.`,
+    note: 'The Antigravity CLI and IDE share this file. Antigravity generates its own copies from it, so do not edit those.',
+    detect: () => [
+      inHome('.gemini', 'config', 'mcp_config.json'),
+      inHome('.gemini', 'antigravity-cli'),
+      inHome('.gemini', 'antigravity-ide'),
+      inHome('.antigravitycli'),
+    ],
   },
   {
     id: 'opencode',

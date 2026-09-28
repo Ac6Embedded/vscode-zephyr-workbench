@@ -41,7 +41,7 @@ describe('mcp/agents writers', () => {
   it('covers every agent the first release promises', () => {
     const ids = AGENTS.map(a => a.id).sort();
     assert.deepEqual(ids, [
-      'claude-code', 'codex', 'copilot-cli', 'cursor', 'gemini-cli', 'opencode', 'vscode-copilot',
+      'antigravity', 'claude-code', 'codex', 'copilot-cli', 'cursor', 'opencode', 'vscode-copilot',
     ]);
   });
 
@@ -81,13 +81,30 @@ describe('mcp/agents writers', () => {
     });
   });
 
-  describe('Gemini CLI', () => {
-    it('writes a timeout big enough for a real build and does not auto-trust', async () => {
+  describe('Antigravity', () => {
+    const antigravity = () => findAgent('antigravity')!;
+
+    it('writes the MCP file its CLI and IDE share in ~/.gemini/config, and no project file', () => {
+      assert.equal(antigravity().file('user'), path.join(os.homedir(), '.gemini', 'config', 'mcp_config.json'));
+      assert.equal(antigravity().file('project', tmpProject()), undefined);
+    });
+
+    it('writes a plain stdio entry under mcpServers, and reads it back as configured', async () => {
       const folder = tmpProject();
-      const { file, text } = await writeInto('gemini-cli', folder);
-      const parsed = parseJsonc<{ mcpServers: Record<string, { timeout: number; trust: boolean }> }>(text, file);
-      assert.ok(parsed.mcpServers['zephyr-workbench'].timeout >= 600_000);
-      assert.equal(parsed.mcpServers['zephyr-workbench'].trust, false);
+      const file = path.join(folder, '.gemini', 'config', 'mcp_config.json');
+      const patched = { ...antigravity(), file: () => file };
+      applyWrite(await planWrite(patched, 'user', WIN_LAUNCHER, undefined, OPTIONS));
+      const parsed = parseJsonc<{ mcpServers: Record<string, unknown> }>(fs.readFileSync(file, 'utf8'), file);
+      assert.deepEqual(parsed.mcpServers['zephyr-workbench'], {
+        command: WIN_LAUNCHER.command, args: WIN_LAUNCHER.args, env: WIN_LAUNCHER.env,
+      });
+      assert.equal(inspectAgent(patched, 'user', WIN_LAUNCHER).state, 'configured');
+    });
+
+    it('is found by its own files in ~/.gemini, not by the folder a Gemini CLI install leaves', () => {
+      const found = antigravity().detect();
+      assert.ok(found.includes(path.join(os.homedir(), '.gemini', 'antigravity-cli')));
+      assert.ok(!found.includes(path.join(os.homedir(), '.gemini')));
     });
   });
 
@@ -547,7 +564,6 @@ describe('mcp/agents writers', () => {
       const expected: Record<string, string> = {
         'claude-code': '${HOME}/.zephyr-workbench/mcp/zw-mcp',
         'copilot-cli': '${HOME}/.zephyr-workbench/mcp/zw-mcp',
-        'gemini-cli': '${HOME}/.zephyr-workbench/mcp/zw-mcp',
         'vscode-copilot': '${userHome}/.zephyr-workbench/mcp/zw-mcp',
         cursor: '${userHome}/.zephyr-workbench/mcp/zw-mcp',
         opencode: '{env:HOME}/.zephyr-workbench/mcp/zw-mcp',

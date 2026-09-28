@@ -34,7 +34,7 @@ The extension is available on the [VS Code Marketplace](https://marketplace.visu
 * Inspect builds in the Zephyr Dashboard: application summary, sys-init data and RAM/ROM usage with ELF size breakdown
 * [Run static code analysis](https://z-workbench.com/docs/category/static-code-analysis) with ECLAIR (MISRA, BARR-C, AUTOSAR) and diagnose devicetree errors with DT Doctor
 * [Generate SPDX 2.3 and SPDX 3.0 SBOM documents](https://z-workbench.com/docs/tutorials/spdx), verify them with SBOM Total and export PDF, DOCX or Markdown reports
-* Let AI coding agents (Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Gemini CLI, opencode) build your applications and read build results, set up in one click from the [AI Manager](#ai-agents-mcp)
+* Let AI coding agents (Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Antigravity, opencode) build your applications and read build results, set up in one click from the [AI Manager](#ai-agents-mcp)
 * IntelliSense with the C/C++ extension or clangd
 * Supported on Windows, Linux and macOS, including [VS Code Portable mode](https://z-workbench.com/docs/documentation/vscode-zephyr-workbench-portable)
 

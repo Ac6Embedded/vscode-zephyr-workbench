@@ -4,6 +4,12 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [Unreleased]
+
+### AI Manager
+- Antigravity replaces Gemini CLI in the list of agents.
+- A simpler Examples tab.
+
 ## [4.3.1]
 
 ### AI Manager

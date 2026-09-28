@@ -34,8 +34,8 @@ describe('mcp/agents remote servers', () => {
       codex: { url: URL },
       'vscode-copilot': { type: 'http', url: URL },
       cursor: { url: URL },
-      // Older Gemini versions read a bare `url` as the SSE transport.
-      'gemini-cli': { httpUrl: URL },
+      // Antigravity takes neither url nor httpUrl.
+      antigravity: { serverUrl: URL },
       opencode: { type: 'remote', url: URL, enabled: true },
       // Copilot CLI's reference requires `tools` in its own file.
       'copilot-cli': { type: 'http', url: URL, tools: ['*'] },
@@ -62,7 +62,7 @@ describe('mcp/agents remote servers', () => {
   });
 
   it('writes the Zephyr Project entry beside the workbench one, and removes it alone', async () => {
-    for (const id of ['claude-code', 'cursor', 'gemini-cli', 'opencode', 'vscode-copilot']) {
+    for (const id of ['claude-code', 'cursor', 'opencode', 'vscode-copilot']) {
       const agent = findAgent(id)!;
       const folder = tmpProject();
       applyWrite(await planWrite(agent, 'project', LAUNCHER, folder, OPTIONS), folder);
@@ -211,7 +211,7 @@ url = "${URL}"
   });
 
   it('gives a snippet in each agent\'s own shape', () => {
-    assert.deepEqual(JSON.parse(entrySnippet(findAgent('gemini-cli')!, ZEPHYR)!), { mcpServers: { 'zephyr-docs': { httpUrl: URL } } });
+    assert.deepEqual(JSON.parse(entrySnippet(findAgent('antigravity')!, ZEPHYR)!), { mcpServers: { 'zephyr-docs': { serverUrl: URL } } });
     assert.deepEqual(JSON.parse(entrySnippet(findAgent('opencode')!, ZEPHYR)!), { mcp: { 'zephyr-docs': { type: 'remote', url: URL, enabled: true } } });
     assert.equal(entrySnippet(findAgent('codex')!, ZEPHYR), `[mcp_servers.zephyr-docs]\nurl = "${URL}"\n`);
   });
