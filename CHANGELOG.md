@@ -4,6 +4,24 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [4.3.1]
+
+### AI Manager
+- Agents flash the board, set up and run debug sessions (breakpoints, stepping, variables, registers, memory and Cortex-M fault decoding), install and configure the flash and debug runners and pyOCD packs, and run commands in the Zephyr environment of an application or west workspace.
+- Agents can open the Debug Manager, Install Runners, the pyOCD Manager, the RAM and ROM plots, Puncover and the West Dashboard for you.
+- New Examples tab next to Permissions, with requests to try.
+- Confirmation dialogs show the exact command that will run. The Core preset also asks before flashing, debugging, installing runners and running a command.
+
+### Debug Manager
+- A custom J-Link path no longer adds the `--jlink` option west refuses, and paths with spaces are quoted.
+- A launch.json with comments is read instead of being replaced.
+- Cortex-Debug with J-Link shows the Zephyr threads when the build has `CONFIG_DEBUG_THREAD_INFO`.
+- The debug west wrapper uses the Python environment of the application.
+
+### Other
+- Flash no longer passes `--board` to `west flash`.
+- Install Runners reports a failed install, and still records the runners that did install.
+
 ## [4.3.0]
 
 ### AI Manager (new)
