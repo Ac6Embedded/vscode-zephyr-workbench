@@ -1173,9 +1173,8 @@ for /f "usebackq delims=" %%L in (``python "%PY_FILE%" --shell=cmd``) do (
 )
 
 REM Keep the active venv Python ahead of host-tools Python after env.py updates PATH. Required for Sysbuild
-if exist "%VENV_BIN%\python.exe" (
-    set "PATH=%VENV_BIN%;%PATH%"
-)
+REM Keep this if on one line. Inside a ( ) block, a PATH entry like Program Files (x86) can end the block early and stop the script.
+if exist "%VENV_BIN%\python.exe" set "PATH=%VENV_BIN%;%PATH%"
 "@ | Out-File -FilePath "$InstallDirectory\env.bat" -Encoding ASCII
 
 #bash script
