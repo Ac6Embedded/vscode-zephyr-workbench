@@ -4,6 +4,25 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [4.3.3]
+
+### Applications
+- Samples and tests that modules list in their `zephyr/module.yml` can be used as templates: MCUboot, the Rust module tests, and the samples, applications and tests of the nRF Connect SDK. So can those of a manifest repository, such as the app and tests of an example-application workspace.
+- Zephyr 4.5: each image of a multi-image test and samples nested in another sample are listed, and test folders that cannot be built are no longer offered.
+- Typing in the template field opens the list again after a pick.
+
+### Boards
+- Each board target shows its own name, not the name of another target in the same board folder.
+- The board picker of an application also lists the boards its build adds: `BOARD_ROOT` in its CMakeLists.txt or build arguments, the board roots of `EXTRA_ZEPHYR_MODULES`, and those an earlier build recorded.
+- When west cannot list boards because its Python environment lacks a module, the message names the module and the environment, with a button to recreate a dedicated or global venv.
+
+### AI Manager
+- Agents find the same samples and tests, with their titles on Zephyr 4.5.
+
+### Other
+- Debugging on Windows no longer fails with exit code 255 when PATH holds a folder with parentheses, such as Program Files (x86). Install the host tools again to get the fixed environment script.
+- Updated npm dependencies.
+
 ## [4.3.2]
 
 ### AI Manager
