@@ -2,13 +2,12 @@ import fs from 'fs';
 import os from 'os';
 import path from "path";
 import * as vscode from "vscode";
-import yaml from 'yaml';
 import { WestWorkspace } from "../models/WestWorkspace";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { ZephyrBoard } from "../models/ZephyrBoard";
 import { ArmGnuToolchainInstallation, normalizeArmGnuTargetTriple, RustToolchainInstallation, ZephyrSdkInstallation, IarToolchainInstallation } from "../models/ToolchainInstallations";
 import { getCachedGlobalSdks } from "./zephyr/globalSdkService";
-import { ZephyrAppTemplateKind, ZephyrSample } from "../models/ZephyrSample";
+import { ZephyrSample } from "../models/ZephyrSample";
 import { getEnvVarFormat, getOutputChannel, getShell } from "./execUtils";
 import { checkHostTools, checkEnvFile } from "./installUtils";
 import {
@@ -25,19 +24,14 @@ import { readInstalledZinstallerVersion, versionAtLeast } from './env/zinstaller
 import {
   findContainingWorkspaceApplicationEntry,
   getEffectiveWorkspaceApplicationEntry,
-  isPathWithin as isPathWithinWorkspaceApplication,
+  isPathWithin,
   readWorkspaceApplicationEntries,
   resolveWorkspaceApplicationPath,
 } from './zephyr/workspaceApplications';
 import { APP_TEMPLATE_METADATA_FILES } from './zephyr/appTemplateMetadata';
+import { AppTemplate, findAppTemplates, isAppTemplateFolder } from './zephyr/catalogFiles';
 
 let zephyrTasksFetchPromise: Promise<vscode.Task[]> | undefined;
-const APP_TEMPLATE_DISCOVERY_BATCH_SIZE = 64;
-
-interface AppTemplateDiscoveryTask {
-  directory: vscode.Uri;
-  relativePath: string;
-}
 
 export async function readDirectoryEntries(directory: vscode.Uri): Promise<[string, vscode.FileType][]> {
   try {
@@ -390,54 +384,19 @@ export function copySampleSync(sampleDir: string, destDir: string): string {
 }
 
 export async function getSample(filePath: string): Promise<ZephyrSample> {
-  const sampleFolderUri = vscode.Uri.file(filePath);
-  const name = path.basename(filePath);
-  try {
-    const kind = await findAppTemplateKind(sampleFolderUri);
-    if (!kind) {
-      throw new Error('Missing app template metadata');
-    }
-    return new ZephyrSample(name, sampleFolderUri, kind);
-  } catch (error) {
+  if (!await isAppTemplateFolder(filePath)) {
     throw new Error('Cannot parse the sample or test folder');
   }
-
+  return new ZephyrSample(path.basename(filePath), vscode.Uri.file(filePath));
 }
 
-export async function getListSamples(westWorkspace: WestWorkspace): Promise<ZephyrSample[]> {
-  let samplesList: ZephyrSample[] = [];
-  if (westWorkspace) {
-    // zephyr-lang-rust ships its own samples; when the optional module is
-    // present in the workspace, list them too (parseAppTemplates silently
-    // returns when the directory does not exist).
-    const rustModuleSamplesUri = vscode.Uri.joinPath(westWorkspace.rustModuleUri, 'samples');
-
-    await Promise.all([
-      parseAppTemplates(westWorkspace.samplesDirUri, samplesList, '', 'sample'),
-      parseAppTemplates(westWorkspace.testsDirUri, samplesList, '', 'test'),
-      parseAppTemplates(rustModuleSamplesUri, samplesList, '', 'sample'),
-      // Parse only from Workspace directory
-      parseWorkspaceAppTemplates(westWorkspace.rootUri, samplesList),
-    ]);
-  }
-  return new Promise((resolve) => {
-    resolve(samplesList);
+/** The samples and tests of a west workspace an application can start from, see findAppTemplates. */
+export function getAppTemplates(westWorkspace: WestWorkspace): Promise<AppTemplate[]> {
+  return findAppTemplates({
+    root: westWorkspace.rootUri.fsPath,
+    zephyrBase: westWorkspace.kernelUri.fsPath,
+    manifestDir: path.join(westWorkspace.rootUri.fsPath, westWorkspace.manifestPath),
   });
-}
-
-function isPathWithin(parentPath: string, childPath: string): boolean {
-  const normalizedParentPath = path.normalize(parentPath);
-  const normalizedChildPath = path.normalize(childPath);
-
-  const comparableParentPath = process.platform === 'win32'
-    ? normalizedParentPath.toLowerCase()
-    : normalizedParentPath;
-  const comparableChildPath = process.platform === 'win32'
-    ? normalizedChildPath.toLowerCase()
-    : normalizedChildPath;
-
-  return comparableChildPath === comparableParentPath
-    || comparableChildPath.startsWith(`${comparableParentPath}${path.sep}`);
 }
 
 function toDisplayPath(pathValue: string): string {
@@ -459,144 +418,6 @@ export function getAppTemplateDisplayPath(
   }
 
   return toDisplayPath(path.normalize(templatePath));
-}
-
-async function findAppTemplateKind(directory: vscode.Uri, contextualKind?: ZephyrAppTemplateKind): Promise<ZephyrAppTemplateKind | undefined> {
-  try {
-    const files = await readDirectoryEntries(directory);
-    return resolveAppTemplateKind(directory, files, contextualKind);
-  } catch (error) {
-    return undefined;
-  }
-}
-
-async function resolveAppTemplateKind(
-  directory: vscode.Uri,
-  files: [string, vscode.FileType][],
-  contextualKind?: ZephyrAppTemplateKind
-): Promise<ZephyrAppTemplateKind | undefined> {
-  const fileNames = new Set(
-    files
-      .filter(([, type]) => (type & vscode.FileType.Directory) !== vscode.FileType.Directory)
-      .map(([name]) => name)
-  );
-
-  for (const [metadataFile, kind] of Object.entries(APP_TEMPLATE_METADATA_FILES)) {
-    if (!fileNames.has(metadataFile)) {
-      continue;
-    }
-    if (kind !== 'contextual') {
-      return kind;
-    }
-    return contextualKind
-      ?? inferContextualAppTemplateKind(directory.fsPath)
-      ?? await readContextualAppTemplateKind(vscode.Uri.joinPath(directory, metadataFile))
-      ?? 'test';
-  }
-  return undefined;
-}
-
-function inferContextualAppTemplateKind(directoryPath: string): ZephyrAppTemplateKind | undefined {
-  const segments = path.normalize(directoryPath).split(/[\\/]+/);
-  if (segments.includes('samples')) {
-    return 'sample';
-  }
-  if (segments.includes('tests')) {
-    return 'test';
-  }
-  return undefined;
-}
-
-async function readContextualAppTemplateKind(metadataPath: vscode.Uri): Promise<ZephyrAppTemplateKind | undefined> {
-  try {
-    const metadata = await vscode.workspace.fs.readFile(metadataPath);
-    const parsed = yaml.parse(new TextDecoder().decode(metadata));
-    if (
-      parsed
-      && typeof parsed === 'object'
-      && !Array.isArray(parsed)
-      && Object.prototype.hasOwnProperty.call(parsed, 'sample')
-    ) {
-      return 'sample';
-    }
-  } catch (error) {
-  }
-  return undefined;
-}
-
-function pushUniqueAppTemplate(projectList: ZephyrSample[], name: string, directory: vscode.Uri, kind: ZephyrAppTemplateKind) {
-  if (projectList.some(project => project.rootDir.fsPath === directory.fsPath)) {
-    return;
-  }
-  projectList.push(new ZephyrSample(name, directory, kind));
-}
-
-export async function parseAppTemplates(directory: vscode.Uri, projectList: ZephyrSample[], relativePath = '', contextualKind?: ZephyrAppTemplateKind): Promise<void> {
-  let queue: AppTemplateDiscoveryTask[];
-  try {
-    const files = await readDirectoryEntries(directory);
-    queue = files
-      .filter(([, type]) => (type & vscode.FileType.Directory) === vscode.FileType.Directory)
-      .map(([name]) => ({
-        directory: vscode.Uri.joinPath(directory, name),
-        relativePath: path.join(relativePath, name),
-      }));
-  } catch (error) {
-    return;
-  }
-
-  while (queue.length > 0) {
-    const batch = queue.splice(0, APP_TEMPLATE_DISCOVERY_BATCH_SIZE);
-    const discovered = await Promise.all(
-      batch.map(task => readAppTemplateDiscoveryDirectory(task, projectList, contextualKind))
-    );
-    for (const childTasks of discovered) {
-      queue.push(...childTasks);
-    }
-  }
-}
-
-async function readAppTemplateDiscoveryDirectory(
-  task: AppTemplateDiscoveryTask,
-  projectList: ZephyrSample[],
-  contextualKind?: ZephyrAppTemplateKind
-): Promise<AppTemplateDiscoveryTask[]> {
-  try {
-    const files = await readDirectoryEntries(task.directory);
-    const kind = await resolveAppTemplateKind(task.directory, files, contextualKind);
-    if (kind) {
-      pushUniqueAppTemplate(projectList, path.basename(task.directory.fsPath), task.directory, kind);
-      return [];
-    }
-
-    return files
-      .filter(([, type]) => (type & vscode.FileType.Directory) === vscode.FileType.Directory)
-      .map(([name]) => ({
-        directory: vscode.Uri.joinPath(task.directory, name),
-        relativePath: path.join(task.relativePath, name),
-      }));
-  } catch (error) {
-    return [];
-  }
-}
-
-export async function parseWorkspaceAppTemplates(directory: vscode.Uri, projectList: ZephyrSample[], relativePath = ''): Promise<void> {
-  try {
-    const files = await readDirectoryEntries(directory);
-    const directories = files.filter(([, type]) => (type & vscode.FileType.Directory) === vscode.FileType.Directory);
-
-    for (let index = 0; index < directories.length; index += APP_TEMPLATE_DISCOVERY_BATCH_SIZE) {
-      const batch = directories.slice(index, index + APP_TEMPLATE_DISCOVERY_BATCH_SIZE);
-      await Promise.all(batch.map(async ([name]) => {
-        const filePath = vscode.Uri.joinPath(directory, name);
-        const kind = await findAppTemplateKind(filePath);
-        if (kind) {
-          pushUniqueAppTemplate(projectList, name, filePath, kind);
-        }
-      }));
-    }
-  } catch (error) {
-  }
 }
 
 export async function getListApplications(appsPath: string | undefined): Promise<ZephyrApplication[]> {
@@ -720,7 +541,7 @@ export async function getZephyrApplication(projectPath: string): Promise<ZephyrA
   const applications = await ZephyrApplication.getApplications(workspaceFolders);
 
   const containingApplications = applications
-    .filter(application => isPathWithinWorkspaceApplication(application.appRootPath, resourcePath))
+    .filter(application => isPathWithin(application.appRootPath, resourcePath))
     .sort((a, b) => b.appRootPath.length - a.appRootPath.length);
   if (containingApplications.length > 0) {
     return containingApplications[0];

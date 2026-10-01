@@ -22,7 +22,7 @@ import {
 import { WestWorkspace } from '../../models/WestWorkspace';
 import { ZephyrApplication } from '../../models/ZephyrApplication';
 import { getConfiguredWorkbenchPath, getGitBranches, getGitTags } from '../../utils/execUtils';
-import { getAppTemplateDisplayPath, getListSamples } from '../../utils/utils';
+import { getAppTemplateDisplayPath, getAppTemplates } from '../../utils/utils';
 import { collectBoardRoots, selectableBoardIdentifiers } from '../../utils/zephyr/boardDiscovery';
 import { findSnippets, readBoardYmlMetadata } from '../../utils/zephyr/catalogFiles';
 import { getUpstreamProjectNames, loadTemplateConfig } from '../../utils/zephyr/manifestUtils';
@@ -374,19 +374,15 @@ export class CatalogSources {
   }
 
   private async loadSamples(workspace: WestWorkspace): Promise<SampleEntry[]> {
-    const kernel = workspace.kernelUri.fsPath;
     const rustModule = workspace.rustModuleUri.fsPath;
-    return (await getListSamples(workspace))
-      .map((sample): SampleEntry => {
-        const samplePath = sample.rootDir.fsPath;
-        return {
-          name: sample.name,
-          kind: sample.kind,
-          path: samplePath,
-          display_path: getAppTemplateDisplayPath(samplePath, workspace),
-          source: isInside(samplePath, rustModule) ? 'rust_module' : isInside(samplePath, kernel) ? 'zephyr' : 'workspace',
-        };
-      })
+    return (await getAppTemplates(workspace))
+      .map((template): SampleEntry => ({
+        name: template.name,
+        kind: template.kind,
+        path: template.dir,
+        display_path: getAppTemplateDisplayPath(template.dir, workspace),
+        source: isInside(template.dir, rustModule) ? 'rust_module' : template.origin,
+      }))
       .sort((a, b) => a.display_path.localeCompare(b.display_path));
   }
 }

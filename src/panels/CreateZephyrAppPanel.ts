@@ -5,13 +5,14 @@ import { WestWorkspace } from "../models/WestWorkspace";
 import { WestWorkspaceTreeItem } from "../providers/WestWorkspaceDataProvider";
 import { getOutputChannel } from "../utils/execUtils";
 import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
-import { describeZephyrApplicationDetectionFailure, fileExists, findRustToolchainInstallation, getAllZephyrSdkInstallations, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredRustToolchainInstallations, getListSamples, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, isGlobalSdkSettingValue, tryGetZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
+import { describeZephyrApplicationDetectionFailure, fileExists, findRustToolchainInstallation, getAllZephyrSdkInstallations, getAppTemplateDisplayPath, getArmGnuToolchainInstallationByPath, getBase64, getBoard, getRegisteredArmGnuToolchainInstallations, getRegisteredIarToolchainInstallations, getRegisteredRustToolchainInstallations, getAppTemplates, getIarToolchainInstallationByPath, getSample, getWestWorkspace, getWestWorkspaces, getZephyrSdkInstallation, isGlobalSdkSettingValue, tryGetZephyrSdkInstallation, validateProjectLocation } from "../utils/utils";
 import { refreshGlobalSdkDetection, resolveDefaultGlobalSdk, resolveGlobalSdkForZephyr } from "../utils/zephyr/globalSdkService";
 import { ZEPHYR_PROJECT_SDK_GLOBAL_VALUE } from "../constants";
 import { ZEPHYR_DOCS_BASE_URL } from "../constants";
 import { getNonce } from "../utilities/getNonce";
 import { getUri } from "../utilities/getUri";
-import { isPathWithin as isPathWithinWorkspaceApplication } from "../utils/zephyr/workspaceApplications";
+import { isPathWithin } from "../utils/zephyr/workspaceApplications";
+import type { AppTemplate } from "../utils/zephyr/catalogFiles";
 import { checkSdkCompatibility, formatSdkCompatMessage } from "../utils/zephyr/sdkCompatUtils";
 import { describeIntelliSenseAvailability, pickDefaultIntelliSenseProvider } from "../utils/intellisense/providerAvailability";
 import { findCreateParameterError, getRequestedToolchainVariant, hasPathSpace, toRequestedVariantFor, workspaceApplicationParentPath } from "../utils/zephyr/applicationCreation";
@@ -819,29 +820,16 @@ async function buildSamplesDiscoveryState(westWorkspace: WestWorkspace): Promise
     'The workspace samples folder could not be found. This workspace may not have been imported correctly. Try running west update or reimporting the workspace.'
   );
 
-  const appTemplates = await getListSamples(westWorkspace);
+  const appTemplates = await getAppTemplates(westWorkspace);
   const helloWorldPath = path.join('samples', 'hello_world');
-  const sortTemplates = (a: typeof appTemplates[number], b: typeof appTemplates[number]) => {
-    if (a.rootDir.fsPath.endsWith(helloWorldPath)) {
-      return -99;
-    }
-    if (b.rootDir.fsPath.endsWith(helloWorldPath)) {
-      return 99;
-    }
-    if (a.name < b.name) {
-      return -1;
-    }
-    if (a.name > b.name) {
-      return 1;
-    }
-    return 0;
-  };
+  const isHelloWorld = (template: AppTemplate) => template.dir.endsWith(helloWorldPath);
+  const sortTemplates = (a: AppTemplate, b: AppTemplate) =>
+    Number(isHelloWorld(b)) - Number(isHelloWorld(a)) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 
   // Templates coming from the zephyr-lang-rust module get their own section
   // on top so Rust users find them immediately.
   const rustModuleRoot = westWorkspace.rustModuleUri.fsPath;
-  const isRustTemplate = (template: typeof appTemplates[number]) =>
-    isPathWithinWorkspaceApplication(rustModuleRoot, template.rootDir.fsPath);
+  const isRustTemplate = (template: AppTemplate) => isPathWithin(rustModuleRoot, template.dir);
 
   const rustSamples = appTemplates
     .filter(template => template.kind === 'sample' && isRustTemplate(template))
@@ -853,27 +841,11 @@ async function buildSamplesDiscoveryState(westWorkspace: WestWorkspace): Promise
     .filter(template => template.kind === 'test')
     .sort(sortTemplates);
 
-  let html = '';
-  if (rustSamples.length > 0) {
-    html += '<div class="dropdown-header">RUST SAMPLES</div>';
-    for (const sample of rustSamples) {
-      html += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${getAppTemplateDisplayPath(sample.rootDir.fsPath, westWorkspace)}</span></div>`;
-    }
-  }
-
-  if (samples.length > 0) {
-    html += '<div class="dropdown-header">SAMPLES</div>';
-    for (const sample of samples) {
-      html += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${getAppTemplateDisplayPath(sample.rootDir.fsPath, westWorkspace)}</span></div>`;
-    }
-  }
-
-  if (tests.length > 0) {
-    html += '<div class="dropdown-header">TESTS</div>';
-    for (const sample of tests) {
-      html += `<div class="dropdown-item" data-value="${sample.rootDir.fsPath}" data-label="${sample.name}">${sample.name}<span class="description">${getAppTemplateDisplayPath(sample.rootDir.fsPath, westWorkspace)}</span></div>`;
-    }
-  }
+  const section = (header: string, templates: AppTemplate[]) => (templates.length === 0 ? '' : [
+    `<div class="dropdown-header">${header}</div>`,
+    ...templates.map(template => `<div class="dropdown-item" data-value="${template.dir}" data-label="${template.name}">${template.name}<span class="description">${getAppTemplateDisplayPath(template.dir, westWorkspace)}</span></div>`),
+  ].join(''));
+  const html = section('RUST SAMPLES', rustSamples) + section('SAMPLES', samples) + section('TESTS', tests);
 
   return {
     html,

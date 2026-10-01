@@ -6,7 +6,7 @@
 // repository URL or revision is checked against a strict shape before the
 // server sees it.
 
-import { readSampleYamlMetadata } from '../../../utils/zephyr/catalogFiles';
+import { readSampleMetadata } from '../../../utils/zephyr/catalogFiles';
 import { ZEPHYR_LANG_RUST_PROJECT_NAME } from '../../../utils/zephyr/manifestUtils';
 import {
   CATALOG_KINDS, CatalogEntry, CatalogKind, filterCatalog, isListedKind, ListedKind, pageEntries, ProjectEntry, RevisionEntry,
@@ -112,14 +112,14 @@ function waitForListing(ctx: Ctx, pending: Promise<CatalogResult>, kind: ListedK
 /** Sample title and description, read only for the entries being returned. */
 async function withSampleMetadata(entries: SampleEntry[]): Promise<SampleEntry[]> {
   // New objects: the listing entries are shared with the cache.
-  return Promise.all(entries.map(async entry => ({ ...entry, ...await readSampleYamlMetadata(entry.path) })));
+  return Promise.all(entries.map(async entry => ({ ...entry, ...await readSampleMetadata(entry.path) })));
 }
 
 function coverageNote(kind: CatalogKind): string | undefined {
   switch (kind) {
     case 'sample':
     case 'test':
-      return 'Samples and tests are looked for under the samples and tests folders of Zephyr, the Rust module samples and the top-level folders of the west workspace; those inside other modules are not listed.';
+      return 'Samples and tests are looked for under the samples and tests folders of Zephyr, the samples and tests folders each module lists in its zephyr/module.yml, the manifest repository and the top-level folders of the west workspace; a folder needs a CMakeLists.txt next to its sample.yaml, testcase.yaml or tests.yaml.';
     case 'snippet':
       return 'Snippets are looked for under the snippets folder of Zephyr, of each SNIPPET_ROOT setting and of the application; snippet roots declared by other modules are not listed.';
     default:

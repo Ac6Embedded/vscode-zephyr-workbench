@@ -54,7 +54,7 @@ export interface SampleEntry {
   kind: 'sample' | 'test';
   path: string;
   display_path: string;
-  source: 'zephyr' | 'rust_module' | 'workspace';
+  source: 'zephyr' | 'rust_module' | 'module' | 'workspace';
   title?: string;
   description?: string;
 }

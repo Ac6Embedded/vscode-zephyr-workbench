@@ -210,10 +210,6 @@ export class WestWorkspace {
     return vscode.Uri.joinPath(this.kernelUri, 'samples');
   }
 
-  get testsDirUri(): vscode.Uri {
-    return vscode.Uri.joinPath(this.kernelUri, 'tests');
-  }
-
   get buildEnv(): { [key: string]: string; } {
     let baseEnv: { [key: string]: string } = {
       ZEPHYR_BASE: this.kernelUri.fsPath,

@@ -16,7 +16,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { APP_TEMPLATE_METADATA_FILES } from '../../utils/zephyr/appTemplateMetadata';
+import { findAppTemplateMetadataFile } from '../../utils/zephyr/appTemplateMetadata';
 import { isInside, normalizeForCompare } from './argSafety';
 import { McpToolError } from './errors';
 
@@ -65,8 +65,7 @@ function realOrSelf(target: string): string {
 /** The sample or test metadata file at the root of `dir`, which an application made from a template never has. */
 function templateMetadataIn(dir: string): string | undefined {
   try {
-    const names = fs.readdirSync(dir);
-    return Object.keys(APP_TEMPLATE_METADATA_FILES).find(name => names.includes(name));
+    return findAppTemplateMetadataFile(fs.readdirSync(dir));
   } catch {
     return undefined;
   }

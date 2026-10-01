@@ -167,7 +167,7 @@ describe('mcp/host/handlers/catalogSearch', () => {
       const { run } = harness(result([sample('blinky', 'sample')], { source: 'filesystem' }));
       const out = await run({ kind: 'sample', pattern: 'lvgl' });
       assert.equal(out.total_matches, 0);
-      assert.match(String(out.note), /other modules are not listed/);
+      assert.match(String(out.note), /each module lists in its zephyr\/module\.yml/);
     });
   });
 

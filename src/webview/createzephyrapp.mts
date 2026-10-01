@@ -258,6 +258,11 @@ function main() {
   });
 
   sampleInput.addEventListener('keyup', () => {
+    // Editing reopens the list, as for the board: picking a template closes it
+    // while keeping focus.
+    if (samplesDropdown) {
+      samplesDropdown.style.display = 'block';
+    }
     filterFunction(sampleInput, samplesDropdown);
   });
 
