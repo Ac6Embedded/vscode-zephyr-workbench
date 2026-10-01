@@ -4,6 +4,7 @@ import { getSupportedBoards } from "../utils/zephyr/boardDiscovery";
 import { getWestWorkspace } from "../utils/utils";
 import { getOutputChannel } from "../utils/execUtils";
 import { ZephyrBoard } from "../models/ZephyrBoard";
+import { describeMissingPythonModule, MissingPythonModuleNotice, showMissingPythonModule } from "../utils/zephyr/missingPythonModule";
 
 interface BoardQuickPickItem extends QuickPickItem {
   /** Marks the trailing "Enter custom board..." escape hatch. */
@@ -45,6 +46,7 @@ export async function changeBoardQuickStep(context: ExtensionContext, project: Z
 
   let boards: ZephyrBoard[] = [];
   let discoveryFailed = false;
+  let missingModule: MissingPythonModuleNotice | undefined;
 
   if (westWorkspace) {
     try {
@@ -70,6 +72,11 @@ export async function changeBoardQuickStep(context: ExtensionContext, project: Z
       getOutputChannel().appendLine(
         `[Zephyr Workbench] Board discovery failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`
       );
+      missingModule = describeMissingPythonModule(error, westWorkspace);
+      if (missingModule) {
+        // Not awaited: the picker still opens, so a custom board can be entered meanwhile.
+        void showMissingPythonModule(missingModule);
+      }
     }
   }
 
@@ -88,9 +95,11 @@ export async function changeBoardQuickStep(context: ExtensionContext, project: Z
 
   const placeHolder = boards.length > 0
     ? 'Select a target board'
-    : discoveryFailed
-      ? 'Board discovery failed. Enter a custom board.'
-      : 'No boards found. Enter a custom board.';
+    : missingModule
+      ? `Boards could not be listed: the Python module '${missingModule.module}' is missing. Enter a custom board.`
+      : discoveryFailed
+        ? 'Board discovery failed. Enter a custom board.'
+        : 'No boards found. Enter a custom board.';
 
   const result = await vscode.window.showQuickPick(items, {
     title: 'Change Board',

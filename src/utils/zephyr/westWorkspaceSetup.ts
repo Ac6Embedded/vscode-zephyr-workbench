@@ -10,9 +10,10 @@ import * as ts from 'typescript';
 import * as vscode from 'vscode';
 import { ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../../constants';
 import { WestWorkspace } from '../../models/WestWorkspace';
+import { resolveEffectiveVenv } from '../env/venvResolution';
 import { getConfiguredVenvPath } from '../execUtils';
 import { createWorkspaceVenv, VenvRunner } from '../installUtils';
-import { createWorkspaceFolderReference, fileExists, getWorkspaceFolder, isWorkspaceFolder } from '../utils';
+import { createWorkspaceFolderReference, fileExists, getInternalDirRealPath, getWorkspaceFolder, isWorkspaceFolder } from '../utils';
 
 /** Where the wizard gets a new workspace from. 'local' imports an existing one. */
 export type WorkspaceSourceType = 'remote' | 'local' | 'manifest' | 'template';
@@ -303,4 +304,31 @@ export function describeWorkspaceVenv(westWorkspace: WestWorkspace): { path?: st
   }
   const global = venvPath ?? getConfiguredVenvPath();
   return global ? { path: global, source: 'global' } : { source: 'global' };
+}
+
+export type WestCommandVenvKind = 'dedicated' | 'global' | 'custom';
+
+/**
+ * The venv the west commands of a west workspace run in, as
+ * execWestCommandWithEnv picks it (the workspace's venv.path setting, else
+ * the global venv the env script activates), and how it can be rebuilt: the
+ * workspace's own `<root>/.venv` by recreating the dedicated venv, the global
+ * venv of the host tools by reinstalling it, and any other venv not by the
+ * workbench, which did not create it.
+ */
+export function westCommandVenv(westWorkspace: WestWorkspace): { kind: WestCommandVenvKind; path?: string } {
+  const venv = resolveEffectiveVenv(undefined, westWorkspace.rootUri, { followEnvScript: true });
+  const isAt = (dir: string) => !!venv.path && sameFolder(venv.path, dir);
+  if (isAt(managedWorkspaceVenvDir(westWorkspace.rootUri.fsPath))) {
+    return { kind: 'dedicated', path: venv.path };
+  }
+  if (!venv.path || isAt(path.join(getInternalDirRealPath(), '.venv'))) {
+    return venv.path ? { kind: 'global', path: venv.path } : { kind: 'global' };
+  }
+  return { kind: 'custom', path: venv.path };
+}
+
+function sameFolder(a: string, b: string): boolean {
+  const [left, right] = [path.resolve(a), path.resolve(b)];
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
 }

@@ -3,6 +3,29 @@ import fs from "fs";
 import yaml from 'yaml';
 import path from "path";
 
+/**
+ * The twister identifier that describes a board target, among the ones a
+ * board folder declares in its `<board>.yaml` files. Twister identifiers carry
+ * no revision. A board with a single SoC can be named `board` or `board/soc`,
+ * and its folder may declare either spelling. Another target's file is never
+ * returned: its name and arch would be wrong for this one.
+ */
+export function matchTwisterIdentifier(target: string, identifiers: ReadonlySet<string>): string | undefined {
+  const withoutRevision = target.replace(/^([^@/]+)@[^/]*/, '$1');
+  if (identifiers.has(withoutRevision)) {
+    return withoutRevision;
+  }
+  const [board, ...qualifiers] = withoutRevision.split('/');
+  if (qualifiers.length === 1) {
+    return identifiers.has(board) ? board : undefined;
+  }
+  if (qualifiers.length === 0) {
+    const spelledOut = [...identifiers].filter(identifier => identifier.startsWith(`${board}/`) && identifier.split('/').length === 2);
+    return spelledOut.length === 1 ? spelledOut[0] : undefined;
+  }
+  return undefined;
+}
+
 export class ZephyrBoard {
   identifier!: string;
   name!: string;
@@ -45,17 +68,19 @@ export class ZephyrBoard {
     }
 
     try {
-      const boardFile = fs.readFileSync(this.yamlFileUri.fsPath, 'utf8');
-      const data = yaml.parse(boardFile);
-      this.identifier = data.identifier;
-      this.name = data.name;
-      this.vendor = data.vendor;
-      this.type = data.type;
-      this.arch = data.arch;
-      this.supported = data.supported;
+      this.applyDefinition(yaml.parse(fs.readFileSync(this.yamlFileUri.fsPath, 'utf8')));
     } catch {
       // Keep partial data when the board definition file cannot be read.
     }
+  }
+
+  private applyDefinition(data: any) {
+    this.identifier = data.identifier;
+    this.name = data.name;
+    this.vendor = data.vendor;
+    this.type = data.type;
+    this.arch = data.arch;
+    this.supported = data.supported;
   }
 
   private parseBoardTerm() {
@@ -99,6 +124,33 @@ export class ZephyrBoard {
       board.parseBoardTerm();
     } catch {
       // Keep the raw identifier; west validates it when the build runs.
+    }
+    return board;
+  }
+
+  /**
+   * A board target of a folder board discovery already read, so nothing is
+   * read again: `definition` is the twister file of exactly this target, when
+   * the folder has one, and `name` the label to show.
+   */
+  public static fromDiscovery(
+    rootPath: string,
+    identifier: string,
+    name: string,
+    definition?: { file: string; data: Record<string, unknown> },
+  ): ZephyrBoard {
+    const board = Object.assign(Object.create(ZephyrBoard.prototype) as ZephyrBoard, {
+      rootPath,
+      yamlFileUri: definition ? vscode.Uri.file(definition.file) : undefined,
+    });
+    if (definition) {
+      board.applyDefinition(definition.data);
+    }
+    Object.assign(board, { identifier, name });
+    try {
+      board.parseBoardTerm();
+    } catch {
+      // Keep the raw identifier, as the constructor does.
     }
     return board;
   }
@@ -223,34 +275,36 @@ export class ZephyrBoard {
     }
   }
 
+  /**
+   * The twister file of the target, or without a target the folder's first
+   * one. A target the folder has no file for gets none rather than another
+   * target's, whose name and arch would be wrong.
+   */
   private findBoardYamlUri(identifierOverride?: string): vscode.Uri | undefined {
     try {
       const files = fs.readdirSync(this.rootPath, { withFileTypes: true })
         .filter(entry => entry.isFile() && entry.name.endsWith('.yaml'))
-        .map(entry => vscode.Uri.file(path.join(this.rootPath, entry.name)));
+        .map(entry => entry.name)
+        .sort()
+        .map(name => vscode.Uri.file(path.join(this.rootPath, name)));
 
-      if (files.length === 0) {
-        return undefined;
+      if (files.length === 0 || !identifierOverride) {
+        return files[0];
       }
 
-      const preferredIdentifier = identifierOverride
-        ? identifierOverride.replace(/^([^@\/]+).*/, '$1')
-        : undefined;
-
-      if (preferredIdentifier) {
-        for (const file of files) {
-          try {
-            const data = yaml.parse(fs.readFileSync(file.fsPath, 'utf8'));
-            if (data?.identifier === preferredIdentifier) {
-              return file;
-            }
-          } catch {
-            // Ignore malformed candidate files and keep scanning.
+      const byIdentifier = new Map<string, vscode.Uri>();
+      for (const file of files) {
+        try {
+          const identifier = yaml.parse(fs.readFileSync(file.fsPath, 'utf8'))?.identifier;
+          if (typeof identifier === 'string' && !byIdentifier.has(identifier)) {
+            byIdentifier.set(identifier, file);
           }
+        } catch {
+          // Ignore malformed candidate files and keep scanning.
         }
       }
-
-      return files[0];
+      const match = matchTwisterIdentifier(identifierOverride, new Set(byIdentifier.keys()));
+      return match ? byIdentifier.get(match) : undefined;
     } catch {
       return undefined;
     }

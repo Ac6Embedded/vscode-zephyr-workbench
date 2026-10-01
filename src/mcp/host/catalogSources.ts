@@ -23,7 +23,7 @@ import { WestWorkspace } from '../../models/WestWorkspace';
 import { ZephyrApplication } from '../../models/ZephyrApplication';
 import { getConfiguredWorkbenchPath, getGitBranches, getGitTags } from '../../utils/execUtils';
 import { getAppTemplateDisplayPath, getListSamples } from '../../utils/utils';
-import { collectBoardRootsReadOnly, selectableBoardIdentifiers } from '../../utils/zephyr/boardDiscovery';
+import { collectBoardRoots, selectableBoardIdentifiers } from '../../utils/zephyr/boardDiscovery';
 import { findSnippets, readBoardYmlMetadata } from '../../utils/zephyr/catalogFiles';
 import { getUpstreamProjectNames, loadTemplateConfig } from '../../utils/zephyr/manifestUtils';
 import { resolveBaseModules } from '../../utils/zephyr/templateData';
@@ -204,10 +204,9 @@ export class CatalogSources {
     // application adds them to SNIPPET_ROOT itself.
     let optInRoots: string[] = [];
     if (kind === 'board' || kind === 'shield') {
-      // Every configuration with a build contributes its BOARD_ROOT; one that
-      // was never configured contributes nothing rather than being configured.
+      // Every configuration contributes the board roots its build would add.
       const configs = app && app.buildConfigs.length > 0 ? app.buildConfigs : [undefined];
-      const { safe, skipped: unsafe } = shellSafeRoots(unique(configs.flatMap(config => collectBoardRootsReadOnly(workspace, app, config))));
+      const { safe, skipped: unsafe } = shellSafeRoots(unique(configs.flatMap(config => collectBoardRoots(workspace, app, config))));
       roots = safe;
       skipped = unsafe;
     } else if (kind === 'snippet') {

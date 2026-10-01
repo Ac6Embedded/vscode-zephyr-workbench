@@ -9,15 +9,15 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
-  execWestCommandWithEnv, getSnippetRoots, getSupportedSnippets, getWestBoards, getWestShields, parseWestShieldList,
+  execWestCommandWithEnv, getSnippetRoots, getSupportedSnippets, getWestBoards, getWestShields, parseWestBoardList, parseWestShieldList,
   WestBoardInfo, WestCommandError,
 } from '../../commands/WestCommands';
 import { WestWorkspace } from '../../models/WestWorkspace';
 import { ZephyrApplication } from '../../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../../models/ZephyrBuildConfig';
-import { collectBoardRootsReadOnly, selectableBoardIdentifiers } from '../../utils/zephyr/boardDiscovery';
+import { collectBoardRoots, selectableBoardIdentifiers } from '../../utils/zephyr/boardDiscovery';
 import { zephyrSearchesAppSnippets } from '../../utils/zephyr/catalogFiles';
-import { isWestMissing } from '../../utils/zephyr/westFailures';
+import { isWestMissing, missingPythonModule } from '../../utils/zephyr/westFailures';
 import { BoardEntry, ShieldEntry, SnippetEntry } from '../../mcp/core/catalogSearch';
 import { McpToolError, toToolError } from '../../mcp/core/errors';
 import { CatalogSources, shellSafeRoots } from '../../mcp/host/catalogSources';
@@ -67,6 +67,22 @@ describe('parseWestShieldList', () => {
       'rk055hdmipi4m',
     ].join('\n'), '{name}');
     assert.deepEqual(shields.map(s => s.name), ['x_nucleo_iks01a3', 'rk055hdmipi4m']);
+  });
+});
+
+describe('parseWestBoardList', () => {
+  it('reads revisions separated by commas, as Zephyr 4.4 prints them, or by spaces, as 4.2 and 4.3 do', () => {
+    const boards = parseWestBoardList([
+      'nrf9160dk|/z/boards/nordic/nrf9160dk|nrf9160,nrf9160/ns,nrf52840|0.14.0|0.7.0,0.14.0',
+      'nrf9161dk|/z/boards/nordic/nrf9161dk|nrf9161,nrf9161/ns|0.9.0|0.7.0 0.9.0',
+      'qemu_x86|/z/boards/qemu/x86|atom|None|None',
+    ].join('\n'));
+    assert.deepEqual(boards.map(board => [board.name, board.revisions]), [
+      ['nrf9160dk', ['0.7.0', '0.14.0']],
+      ['nrf9161dk', ['0.7.0', '0.9.0']],
+      ['qemu_x86', []],
+    ]);
+    assert.deepEqual(selectableBoardIdentifiers(boards[1]).slice(0, 3), ['nrf9161dk/nrf9161', 'nrf9161dk@0.7.0/nrf9161', 'nrf9161dk@0.9.0/nrf9161']);
   });
 });
 
@@ -239,10 +255,11 @@ describe('snippet discovery for a workspace', () => {
   });
 });
 
-describe('collectBoardRootsReadOnly', () => {
+describe('collectBoardRoots for the agent tools', () => {
   let tmp: string;
   const workspace = {
     rootUri: { fsPath: '/ws' },
+    kernelUri: { fsPath: '/ws/zephyr' },
     envVars: { BOARD_ROOT: ['/ws/extra-boards'] },
   } as unknown as WestWorkspace;
 
@@ -256,31 +273,35 @@ describe('collectBoardRootsReadOnly', () => {
 
   function configBuiltIn(buildDir: string): ZephyrBuildConfig {
     return {
+      westArgs: '',
+      westFlagsD: [],
+      envVars: {},
       getBuildArtifactPath: (_app: unknown, ...segments: string[]) => {
         const candidate = path.join(buildDir, ...segments);
         return fs.existsSync(candidate) ? candidate : undefined;
       },
-      getBuildDir: () => buildDir,
     } as unknown as ZephyrBuildConfig;
   }
 
   it('is the workspace root plus its BOARD_ROOT setting without an application', () => {
-    assert.deepEqual(collectBoardRootsReadOnly(workspace), ['/ws', '/ws/extra-boards']);
+    assert.deepEqual(collectBoardRoots(workspace), ['/ws', '/ws/extra-boards']);
   });
 
   it('adds the BOARD_ROOT an existing build recorded', () => {
     const buildDir = path.join(tmp, 'app', 'build', 'primary');
+    const moduleRoot = path.join(tmp, 'modules', 'acme');
     fs.mkdirSync(buildDir, { recursive: true });
-    fs.writeFileSync(path.join(buildDir, 'zephyr_settings.txt'), '# generated\n"BOARD_ROOT":"/modules/acme"\n');
+    fs.mkdirSync(path.join(moduleRoot, 'boards'), { recursive: true });
+    fs.writeFileSync(path.join(buildDir, 'zephyr_settings.txt'), `# generated\n"BOARD_ROOT":"${moduleRoot.replace(/\\/g, '/')}"\n`);
     const app = { appRootPath: path.join(tmp, 'app') } as ZephyrApplication;
-    assert.deepEqual(collectBoardRootsReadOnly(workspace, app, configBuiltIn(buildDir)), ['/ws', '/ws/extra-boards', '/modules/acme']);
+    assert.deepEqual(collectBoardRoots(workspace, app, configBuiltIn(buildDir)), ['/ws', '/ws/extra-boards', moduleRoot.replace(/\\/g, '/')]);
   });
 
   it('never configures a build that does not exist yet', () => {
     const appRoot = path.join(tmp, 'app');
     fs.mkdirSync(appRoot);
     const app = { appRootPath: appRoot } as ZephyrApplication;
-    const roots = collectBoardRootsReadOnly(workspace, app, configBuiltIn(path.join(appRoot, 'build', 'primary')));
+    const roots = collectBoardRoots(workspace, app, configBuiltIn(path.join(appRoot, 'build', 'primary')));
     assert.deepEqual(roots, ['/ws', '/ws/extra-boards']);
     assert.deepEqual(fs.readdirSync(appRoot), [], 'nothing is written into the application, not even .tmp');
   });
@@ -339,6 +360,7 @@ describe('west listings with a fake west', function () {
       // west is Python and starts children of its own; the sleep stands in for them.
       `  sleep) sleep 30 & echo "$!" > "${callsFile}.child"; wait ;;`,
       '  unknown) echo "west: unknown command \\"$1\\"" >&2; exit 1 ;;',
+      '  nomodule) echo "ModuleNotFoundError: No module named \'jsonschema\'" >&2; exit 1 ;;',
       '  *)',
       '    case "$3" in',
       '      *revisions*) echo "KeyError: \'revisions\'" >&2; exit 1 ;;',
@@ -491,6 +513,16 @@ describe('west listings with a fake west', function () {
   it('parses west shields with vendor and full name', async () => {
     const shields = await getWestShields(workspace);
     assert.deepEqual(shields, [{ name: 'x_shield', dir: '/z/boards/shields/x_shield', vendor: 'acme', fullName: 'X Shield' }]);
+  });
+
+  it('stops probing formats when the venv of west lacks a Python module', async () => {
+    process.env.FAKE_WEST_MODE = 'nomodule';
+    await assert.rejects(getWestBoards(workspace), (error: unknown) => {
+      assert.ok(error instanceof WestCommandError);
+      assert.equal(missingPythonModule(error.stderr), 'jsonschema');
+      return true;
+    });
+    assert.equal(calls().length, 1, 'every format would fail the same way');
   });
 
   it('stops probing formats when west does not know the command', async () => {

@@ -15,9 +15,10 @@ import { isPathWithin as isPathWithinWorkspaceApplication } from "../utils/zephy
 import { checkSdkCompatibility, formatSdkCompatMessage } from "../utils/zephyr/sdkCompatUtils";
 import { describeIntelliSenseAvailability, pickDefaultIntelliSenseProvider } from "../utils/intellisense/providerAvailability";
 import { findCreateParameterError, getRequestedToolchainVariant, hasPathSpace, toRequestedVariantFor, workspaceApplicationParentPath } from "../utils/zephyr/applicationCreation";
+import { describeMissingPythonModule, MissingPythonModuleNotice } from "../utils/zephyr/missingPythonModule";
 
 type CreateAppDiscoveryTarget = 'board' | 'sample';
-type CreateAppDiscoveryIssueCode = 'invalid-workspace' | 'missing-workspace-content' | 'env-script' | 'invalid-venv' | 'generic';
+type CreateAppDiscoveryIssueCode = 'invalid-workspace' | 'missing-workspace-content' | 'env-script' | 'invalid-venv' | 'python-module' | 'generic';
 
 interface CreateAppDiscoveryState {
   html: string;
@@ -30,11 +31,13 @@ interface CreateAppDiscoveryIssue {
   userMessage: string;
   logMessage: string;
   settingsKey?: string;
+  repair?: MissingPythonModuleNotice['repair'];
 }
 
 interface CreateAppPanelErrorOptions {
   settingsKey?: string;
   workspaceToUpdate?: WestWorkspace;
+  repair?: MissingPythonModuleNotice['repair'];
 }
 
 export class CreateZephyrAppPanel {
@@ -535,7 +538,7 @@ async function updateForm(
     if (boardsResult.status === 'fulfilled') {
       postDiscoveryState(webview, requestId, 'board', 'ready', boardsResult.value);
     } else {
-      const issue = normalizeDiscoveryIssue('board', boardsResult.reason);
+      const issue = normalizeDiscoveryIssue('board', boardsResult.reason, westWorkspace);
       issues.push(issue);
       postDiscoveryState(webview, requestId, 'board', 'error', { message: issue.userMessage });
       logCreateAppPanelError('Failed to load boards', issue.logMessage);
@@ -898,9 +901,20 @@ function isActiveDiscoveryRequest(requestId: number, getCurrentRequestId: () => 
   return requestId === getCurrentRequestId();
 }
 
-function normalizeDiscoveryIssue(target: CreateAppDiscoveryTarget, error: unknown): CreateAppDiscoveryIssue {
+function normalizeDiscoveryIssue(target: CreateAppDiscoveryTarget, error: unknown, westWorkspace?: WestWorkspace): CreateAppDiscoveryIssue {
   const details = getErrorDetails(error);
   const normalized = details.toLowerCase();
+
+  const missingModule = westWorkspace ? describeMissingPythonModule(error, westWorkspace) : undefined;
+  if (missingModule) {
+    return {
+      code: 'python-module',
+      target,
+      userMessage: missingModule.message,
+      logMessage: details,
+      repair: missingModule.repair,
+    };
+  }
 
   if (
     normalized.includes('not a valid west workspace')
@@ -1020,6 +1034,7 @@ async function showDiscoveryIssues(
     workspaceToUpdate: issues.some(issue => issue.code === 'missing-workspace-content')
       ? workspaceToUpdate
       : undefined,
+    repair: issues.find(issue => issue.repair)?.repair,
   });
 }
 
@@ -1073,6 +1088,9 @@ async function showCreateAppPanelError(message: string, options: CreateAppPanelE
   const updateWorkspaceItem = 'Update Workspace';
   const actions: string[] = [];
 
+  if (options.repair) {
+    actions.push(options.repair.title);
+  }
   if (options.workspaceToUpdate) {
     actions.push(updateWorkspaceItem);
   }
@@ -1083,7 +1101,9 @@ async function showCreateAppPanelError(message: string, options: CreateAppPanelE
 
   const choice = await vscode.window.showErrorMessage(message, ...actions);
 
-  if (choice === updateWorkspaceItem && options.workspaceToUpdate) {
+  if (options.repair && choice === options.repair.title) {
+    await options.repair.run();
+  } else if (choice === updateWorkspaceItem && options.workspaceToUpdate) {
     await updateWorkspaceFromCreateAppPanel(options.workspaceToUpdate);
   } else if (choice === openSettingsItem && options.settingsKey) {
     await vscode.commands.executeCommand('workbench.action.openSettings', options.settingsKey);

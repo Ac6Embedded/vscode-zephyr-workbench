@@ -10,7 +10,7 @@ import { ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY, ZEPHYR_WORKBENCH_SETTI
 import { buildEnvSourcedShellTask, concatCommands, executeTask, executeTaskCollectExitCode, TaskLaunchDeclined, execShellCommandWithEnv, getConfiguredVenvPath, getConfiguredWorkbenchPath, getOutputChannel, getShellNullRedirect, getShellSourceCommand, getShellExe, classifyShell, getShellArgs, makeConfiguredVariableResolver, normalizePathForShell, execShellTaskWithEnvAndWait, isCygwin, killProcessTree, normalizeEnvVarsForShell, RawEnvVars, spawnCommandWithEnv } from '../utils/execUtils';
 import { fileExists, getWestWorkspace, normalizePath, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { findSnippets, zephyrSearchesAppSnippets } from '../utils/zephyr/catalogFiles';
-import { isUnknownWestCommand, isWestMissing } from '../utils/zephyr/westFailures';
+import { isUnknownWestCommand, isWestMissing, missingPythonModule } from '../utils/zephyr/westFailures';
 import { composeWestBuildArgs, expandAndNormalizeWestArgs, hasWestBuildSourceDirArg } from '../utils/zephyr/westArgUtils';
 import { ZEPHYR_LANG_RUST_PROJECT_NAME } from '../utils/zephyr/manifestUtils';
 import { mergeOpenocdBuildFlag } from '../utils/debugTools/debugToolSelectionUtils';
@@ -487,7 +487,7 @@ export async function westTmpBuildCmakeOnlyCommand(
   westWorkspace : WestWorkspace,
   buildConfig?  : ZephyrBuildConfig
 ): Promise<string | undefined> {
-  // Build into a disposable .tmp tree so discovery can inspect generated
+  // Build into a disposable .tmp tree so the debug setup can inspect generated
   // CMake metadata without mutating the user's main build directory.
   if (!buildConfig?.boardIdentifier || !zephyrProject.appRootPath) {
     return undefined;
@@ -768,7 +768,7 @@ export interface WestBoardInfo {
   revisions: string[];
 }
 
-function parseWestBoardList(stdout: string): WestBoardInfo[] {
+export function parseWestBoardList(stdout: string): WestBoardInfo[] {
   return stdout
     .split(/\r?\n/)
     .map(line => line.trim())
@@ -783,8 +783,9 @@ function parseWestBoardList(stdout: string): WestBoardInfo[] {
         dir,
         qualifiers: qualifiersCsv.length > 0 ? qualifiersCsv.split(',').filter(entry => entry.length > 0) : [],
         revisionDefault: revisionDefault && revisionDefault !== 'None' ? revisionDefault : undefined,
+        // Zephyr 4.2 and 4.3 separate revisions with spaces, 4.4 with commas.
         revisions: revisionsRaw && revisionsRaw !== 'None'
-          ? revisionsRaw.split(',').map(entry => entry.trim()).filter(entry => entry.length > 0)
+          ? revisionsRaw.split(/[,\s]+/).filter(entry => entry.length > 0)
           : [],
       };
     })
@@ -959,9 +960,9 @@ function runWestCapture(
 /**
  * Run a west listing with the richest --format the workspace understands,
  * trying the format that worked last time first. A timeout, a cancel, a
- * command this west does not have, a west that cannot start, or an
- * environment error fails the same way for every format, so those end the
- * probing at once instead of repeating it.
+ * command this west does not have, a west that cannot start, a Python module
+ * its venv lacks, or an environment error fails the same way for every
+ * format, so those end the probing at once instead of repeating it.
  */
 async function runWithFormatProbe<T>(
   parent: ZephyrApplication | WestWorkspace,
@@ -998,7 +999,7 @@ async function runWithFormatProbe<T>(
       return result;
     } catch (error) {
       if (!(error instanceof WestCommandError) || error.stopped
-        || isUnknownWestCommand(error.stderr) || isWestMissing(error.stderr)) {
+        || isUnknownWestCommand(error.stderr) || isWestMissing(error.stderr) || missingPythonModule(error.stderr)) {
         throw error;
       }
       if (!hasError) {

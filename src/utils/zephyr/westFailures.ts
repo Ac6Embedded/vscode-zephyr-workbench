@@ -23,3 +23,16 @@ export function isWestMissing(stderr: string): boolean {
   return /west: (?:command )?not found|command not found: west|unknown command: west\b|'west' is not recognized|No module named ['"]?west/i
     .test(stderr);
 }
+
+/**
+ * The Python module west could not import, read from the traceback of the
+ * failed run: "ModuleNotFoundError: No module named 'jsonschema'" gives
+ * `jsonschema`, and a submodule gives its top-level module. Zephyr's scripts
+ * import new modules over time (jsonschema since Zephyr 4.3), so a venv set
+ * up for an older Zephyr fails this way once its workspace moves to a newer
+ * one. A missing west is isWestMissing's case, not this one.
+ */
+export function missingPythonModule(stderr: string): string | undefined {
+  const module = /No module named ['"]?([A-Za-z_][\w.]*)/.exec(stderr)?.[1].split('.')[0];
+  return module && module !== 'west' ? module : undefined;
+}

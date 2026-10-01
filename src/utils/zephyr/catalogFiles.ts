@@ -1,8 +1,10 @@
 // Read-only readers for the files that describe what a west workspace offers:
-// snippet.yml, board.yml and sample.yaml, plus Zephyr's snippets.cmake for
-// where snippets are searched. They never run west and never write,
-// and they are kept free of any `vscode` import so they are unit tested
-// directly and can run while no terminal or task is available.
+// snippet.yml, board.yml, a board's twister files and sample.yaml, plus
+// Zephyr's snippets.cmake for where snippets are searched, and the files that
+// add board roots: a module's zephyr/module.yml, an application's
+// CMakeLists.txt and a build's zephyr_settings.txt. They never run west and
+// never write, and they are kept free of any `vscode` import so they are unit
+// tested directly and can run while no terminal or task is available.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -149,6 +151,124 @@ export async function readBoardYmlMetadata(boardDir: string, boardName: string):
     ...(vendor ? { vendor } : {}),
     ...(fullName ? { full_name: fullName } : {}),
   };
+}
+
+export interface TwisterBoardFile {
+  /** The `<board>.yaml` file. */
+  file: string;
+  /** Its content: identifier, name, arch, vendor, supported features... */
+  data: Record<string, unknown>;
+}
+
+/**
+ * The twister files of a board folder, the `<board>.yaml` files describing
+ * each target the board is tested on, by the identifier each one declares
+ * (`mps2/an385`, or the bare board name for a single target). Files are read
+ * in name order and the first one wins a duplicate identifier; a file that
+ * cannot be read or declares no identifier is left out.
+ */
+export async function readTwisterBoardFiles(boardDir: string): Promise<Map<string, TwisterBoardFile>> {
+  let names: string[] = [];
+  try {
+    names = (await fs.promises.readdir(boardDir, { withFileTypes: true }))
+      .filter(entry => entry.isFile() && entry.name.endsWith('.yaml'))
+      .map(entry => entry.name)
+      .sort();
+  } catch {
+    // A folder that cannot be listed has no twister files.
+  }
+  const parsed = await Promise.all(names.map(async name => {
+    const file = path.join(boardDir, name);
+    return { file, data: asRecord(await readYaml(file)) };
+  }));
+  const byIdentifier = new Map<string, TwisterBoardFile>();
+  for (const { file, data } of parsed) {
+    const identifier = nonEmptyString(data?.identifier);
+    if (data && identifier && !byIdentifier.has(identifier)) {
+      byIdentifier.set(identifier, { file, data });
+    }
+  }
+  return byIdentifier;
+}
+
+/**
+ * The board root a Zephyr module declares with `build: settings: board_root`
+ * in its zephyr/module.yml, or module.yaml, which Zephyr reads when the first
+ * is missing. The setting is relative to the module folder.
+ */
+export function readModuleBoardRoot(moduleDir: string): string | undefined {
+  for (const name of ['module.yml', 'module.yaml']) {
+    let data: unknown;
+    try {
+      data = yaml.parse(fs.readFileSync(path.join(moduleDir, 'zephyr', name), 'utf8'));
+    } catch {
+      continue;
+    }
+    const boardRoot = nonEmptyString(asRecord(asRecord(asRecord(data)?.build)?.settings)?.board_root);
+    return boardRoot ? path.resolve(moduleDir, boardRoot) : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The paths an application's CMakeLists.txt gives a list variable with
+ * `set(<name> ...)` or `list(APPEND|PREPEND <name> ...)`, as Zephyr documents
+ * for BOARD_ROOT and EXTRA_ZEPHYR_MODULES before find_package(Zephyr).
+ * `${VAR}` and `$ENV{VAR}` are replaced from `variables` (keyed `VAR` and
+ * `ENV{VAR}`). A value still using another variable, or a relative one, which
+ * Zephyr rejects there, is left out rather than guessed.
+ */
+export function readCMakeListsPaths(appRoot: string, name: string, variables: Record<string, string>): string[] {
+  let text: string;
+  try {
+    text = fs.readFileSync(path.join(appRoot, 'CMakeLists.txt'), 'utf8');
+  } catch {
+    return [];
+  }
+  const withoutComments = text.replace(/#.*$/gm, '');
+  // Command names are case-insensitive in CMake, variable names and keywords are not.
+  const command = new RegExp(`\\b([Ss][Ee][Tt]|[Ll][Ii][Ss][Tt])\\s*\\(\\s*((?:APPEND|PREPEND)\\s+)?${name}\\s([^)]*)\\)`, 'g');
+  const found: string[] = [];
+  for (const match of withoutComments.matchAll(command)) {
+    if (match[1].toLowerCase() === 'list' && !match[2]) {
+      continue;
+    }
+    for (const argument of match[3].match(/"[^"]*"|[^\s"]+/g) ?? []) {
+      if (argument === 'CACHE' || argument === 'PARENT_SCOPE') {
+        break;
+      }
+      const value = argument.replace(/^"|"$/g, '')
+        .replace(/\$(ENV)?\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (whole, env, variable) => variables[env ? `ENV{${variable}}` : variable] ?? whole);
+      for (const entry of value.split(';')) {
+        if (entry.length > 0 && !entry.includes('$') && path.isAbsolute(entry)) {
+          found.push(path.normalize(entry));
+        }
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * Every value a build recorded for a key in its zephyr_settings.txt, which
+ * holds one `"KEY":"value"` line per setting a Zephyr module declares, so a
+ * key such as BOARD_ROOT appears once per module that has one.
+ */
+export function readZephyrSettingsValues(settingsFile: string, key: string): string[] {
+  let text: string;
+  try {
+    text = fs.readFileSync(settingsFile, 'utf8');
+  } catch {
+    return [];
+  }
+  const values: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const match = line.match(/^"([^"]+)":"([^"]+)"$/);
+    if (match && match[1] === key) {
+      values.push(match[2]);
+    }
+  }
+  return values;
 }
 
 export interface SampleYamlMetadata {
