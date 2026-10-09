@@ -37,7 +37,7 @@ import {
 	getStaticFlashRunnerNames,
 } from './utils/debugTools/debugUtils';
 import { readDomainsForBuildDir } from './utils/zephyr/domainsYamlUtils';
-import { ensureTerminalStickyScrollDisabled, executeTask, TaskLaunchDeclined, getSubstitutedShellName, getTerminalDefaultProfile, normalizeSlashesIfPath, resolveConfiguredPath } from './utils/execUtils';
+import { ensureTerminalStickyScrollDisabled, executeTask, TaskLaunchDeclined, getSubstitutedShellName, getTerminalDefaultProfile, normalizeSlashesIfPath, resolveConfiguredPath, setCommandPromptLimitState } from './utils/execUtils';
 import { checkEnvFile, checkHostTools, cleanupDownloadDir, createLocalVenv, download, forceInstallHostTools, HostToolsPythonOptions, installVenv, runInstallHostTools, runPanelDebugToolsInstall, setDefaultSettings, installOpenOcdRunnerSilently, reportInstallError } from './utils/installUtils';
 import { probeHomebrew } from './utils/hostToolsStatusUtils';
 import { verifyHostTools } from './utils/hostToolsVerify';
@@ -383,6 +383,9 @@ export function activate(context: vscode.ExtensionContext) {
 	// explicitly set it) — it overlays the env banner on open and corrupts TUIs
 	// like menuconfig. Fire-and-forget; takes effect once for this workspace.
 	void ensureTerminalStickyScrollDisabled();
+
+	// Lets the Command Prompt line limit warning (execUtils) remember "Don't show again".
+	setCommandPromptLimitState(context.globalState);
 
 	// Warn once if the user's shell is tcsh/csh — it's not Bourne/POSIX-compatible, so
 	// getResolvedShell() falls back to bash and this explains that. Fire-and-forget.

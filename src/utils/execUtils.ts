@@ -4,6 +4,7 @@ import * as path from 'path';
 import { compareVersions, fileExists, resolveEnvScriptForShell } from './utils';
 import { isPosixShellKind, quoteIfNeeded, quoteLiteralForShell } from './shellQuoting';
 import {
+  ZEPHYR_DOCS_BASE_URL,
   ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIPT_SETTING_KEY,
   ZEPHYR_WORKBENCH_SETTING_SECTION_KEY,
   ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY
@@ -25,13 +26,122 @@ export function concatCommands(shell: string, ...cmds: string[]): string {
     case 'zsh':
     case 'dash':
     case 'fish':
-    case 'cmd.exe':
       return cmds.join(' && ');
+    case 'cmd.exe': {
+      const line = cmds.join(' && ');
+      checkCommandPromptLimits(line);
+      return line;
+    }
     case 'powershell.exe':
     case 'pwsh.exe':
       return cmds.join(' ; ');
     default:
       return cmds.join(' ; ');
+  }
+}
+
+/* Command Prompt line limit */
+
+// cmd.exe refuses a line longer than this, counted after %NAME% expansion, so
+// also every `set "PATH=<dir>;%PATH%"` line the env script runs. The figure
+// CMake uses on Windows (cmSystemTools::CalculateCommandLineLengthLimit).
+export const CMD_LINE_LIMIT = 8191;
+
+// Roughly what the generated env.bat prepends to PATH on a full Host Tools
+// install (about 20 tool folders). A fixed estimate, like CMake's fixed
+// reserve for the environment block.
+export const ENV_SCRIPT_PATH_RESERVE = 1200;
+
+const COMMAND_PROMPT_LIMIT_DOCS_URL = `${ZEPHYR_DOCS_BASE_URL}/known-issues#command-too-long-in-command-prompt`;
+// One key for both warnings: the advice is the same.
+const COMMAND_PROMPT_LIMIT_DISMISSED_KEY = 'zephyr-workbench.commandPromptLimitWarningDismissed';
+
+type CommandPromptLimitKind = 'line' | 'path';
+
+let commandPromptLimitState: vscode.Memento | undefined;
+const commandPromptLimitLogged = new Set<CommandPromptLimitKind>();
+const commandPromptLimitShown = new Set<CommandPromptLimitKind>();
+
+/**
+ * The length of `line` as cmd.exe measures it: %NAME% references expanded
+ * from this process's environment, unknown ones kept as written.
+ */
+export function commandPromptLineLength(line: string, env: NodeJS.ProcessEnv = process.env): number {
+  return line.replace(/%([^%\s]+)%/g, (ref, name: string) => env[name] ?? ref).length;
+}
+
+/** True when `line` runs in cmd.exe and is longer than cmd.exe accepts. */
+export function isOverCommandPromptLimit(shell: string, line: string): boolean {
+  return shell === 'cmd.exe' && commandPromptLineLength(line) > CMD_LINE_LIMIT;
+}
+
+/**
+ * Lets the Command Prompt limit warning remember "Don't show again", and starts
+ * a new session of it: each warning pops up at most once per session. Until
+ * this is called, the warnings are only logged.
+ */
+export function setCommandPromptLimitState(state: vscode.Memento | undefined): void {
+  commandPromptLimitState = state;
+  commandPromptLimitLogged.clear();
+  commandPromptLimitShown.clear();
+}
+
+/**
+ * Warn, never block, when cmd.exe is likely to refuse what we run: the line is
+ * over its limit, or PATH is so long that the env script's PATH lines will be.
+ * Plain length comparisons, so they hold whatever language cmd speaks.
+ */
+function checkCommandPromptLimits(line: string): void {
+  const lineLength = commandPromptLineLength(line);
+  if (lineLength > CMD_LINE_LIMIT) {
+    warnCommandPromptLimit('line', lineLength, line);
+  }
+  const pathLength = (process.env.PATH ?? '').length;
+  if (pathLength + ENV_SCRIPT_PATH_RESERVE > CMD_LINE_LIMIT) {
+    warnCommandPromptLimit('path', pathLength);
+  }
+}
+
+function warnCommandPromptLimit(kind: CommandPromptLimitKind, length: number, line = ''): void {
+  try {
+    // Every long line is logged, as its start names the command; PATH is the
+    // same every time, so it is logged once.
+    if (kind === 'line' || !commandPromptLimitLogged.has(kind)) {
+      commandPromptLimitLogged.add(kind);
+      getOutputChannel().appendLine(kind === 'line'
+        ? `[warning] A command is ${length} characters long, over the ${CMD_LINE_LIMIT} characters Command Prompt accepts: ${line.slice(0, 120)}...`
+        : `[warning] PATH is ${length} characters long: Command Prompt cannot add the Zephyr tools to it within its ${CMD_LINE_LIMIT}-character limit.`);
+    }
+
+    if (!commandPromptLimitState || commandPromptLimitShown.has(kind)
+      || commandPromptLimitState.get<boolean>(COMMAND_PROMPT_LIMIT_DISMISSED_KEY)) {
+      return;
+    }
+    commandPromptLimitShown.add(kind);
+
+    const message = kind === 'line'
+      ? `Workbench for Zephyr: a command is ${length} characters long, more than the ${CMD_LINE_LIMIT} characters `
+      + 'Command Prompt (cmd.exe) accepts, so it may fail. Set your VS Code default terminal profile to '
+      + 'PowerShell or Git Bash to avoid this.'
+      : `Workbench for Zephyr: your PATH is ${length} characters long. Command Prompt (cmd.exe) cannot add the `
+      + `Zephyr tools to it without going past its ${CMD_LINE_LIMIT}-character limit, so some tools may not be `
+      + 'found. Set your VS Code default terminal profile to PowerShell or Git Bash to avoid this.';
+    const learnMore = 'Learn More';
+    const openSettings = 'Open Settings';
+    const dontShowAgain = "Don't show again";
+    void Promise.resolve(vscode.window.showWarningMessage(message, learnMore, openSettings, dontShowAgain))
+      .then(async choice => {
+        if (choice === learnMore) {
+          await vscode.env.openExternal(vscode.Uri.parse(COMMAND_PROMPT_LIMIT_DOCS_URL));
+        } else if (choice === openSettings) {
+          await vscode.commands.executeCommand('workbench.action.openSettings', 'terminal.integrated.defaultProfile');
+        } else if (choice === dontShowAgain) {
+          await commandPromptLimitState?.update(COMMAND_PROMPT_LIMIT_DISMISSED_KEY, true);
+        }
+      })
+      .catch(() => undefined);
+  } catch {
+    // A warning must never break the command it is about.
   }
 }
 
@@ -790,9 +900,9 @@ export function buildStartupSetupShellArgs(
 ): string[] | undefined {
   if (shellKind === 'cmd.exe') {
     // /k = run command then stay open in interactive mode. @echo off suppresses cmd's
-    // default per-line echoing of the setup commands.
-    const setupChain = setupCommands.join(' && ');
-    return ['/k', setupChain ? `@echo off && ${setupChain}` : '@echo off'];
+    // default per-line echoing of the setup commands. Joined by concatCommands, so
+    // the Command Prompt line limit check covers terminals too.
+    return ['/k', concatCommands(shellKind, '@echo off', ...setupCommands)];
   }
 
   if (shellKind === 'powershell.exe' || shellKind === 'pwsh.exe') {

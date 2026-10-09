@@ -4,15 +4,20 @@ import * as vscode from 'vscode';
 // The module's vscode import resolves to the stub under src/test/unit/stubs
 // (NODE_PATH), like the other unit tests. Only pure exports are exercised.
 import {
+  CMD_LINE_LIMIT,
+  ENV_SCRIPT_PATH_RESERVE,
   buildStartupSetupShellArgs,
   buildTerminalEnvCommands,
   classifyShell,
+  commandPromptLineLength,
+  concatCommands,
   createSetupTerminal,
   getResolvedShell,
   getShellSourceCommand,
   getSubstitutedShellName,
   isCshFamily,
   isCygwin,
+  isOverCommandPromptLimit,
   isUnsupportedCshShell,
   isUnsupportedPosixShell,
   makeConfiguredVariableResolver,
@@ -20,6 +25,7 @@ import {
   normalizeEnvValueForShell,
   normalizeEnvVarsForShell,
   normalizePathForShell,
+  setCommandPromptLimitState,
 } from '../../utils/execUtils';
 
 describe('normalizePathForShell', () => {
@@ -399,5 +405,105 @@ describe('makeConfiguredVariableResolver', () => {
   it('resolves an unset env:... name to the empty string', () => {
     const resolve = makeConfiguredVariableResolver(undefined);
     assert.equal(resolve('env:ZW_TEST_RESOLVER_UNSET'), '');
+  });
+});
+
+describe('Command Prompt line limit warning', () => {
+  const window = vscode.window as any;
+  const originalShowWarningMessage = window.showWarningMessage;
+  const originalPath = process.env.PATH;
+  const dismissedKey = 'zephyr-workbench.commandPromptLimitWarningDismissed';
+  let shown: string[];
+  let stored: Map<string, unknown>;
+  let answer: string | undefined;
+
+  const memento = () => ({
+    get: (key: string) => stored.get(key),
+    update: async (key: string, value: unknown) => { stored.set(key, value); },
+    keys: () => [...stored.keys()],
+  }) as unknown as vscode.Memento;
+
+  // A cmd.exe line of exactly `length` characters.
+  const prefix = 'call env.bat && ';
+  const cmdLineOf = (length: number) => concatCommands('cmd.exe', 'call env.bat', 'x'.repeat(length - prefix.length));
+
+  beforeEach(() => {
+    shown = [];
+    stored = new Map();
+    answer = undefined;
+    process.env.PATH = '/usr/bin';
+    window.showWarningMessage = (message: string) => {
+      shown.push(message);
+      return Promise.resolve(answer);
+    };
+    setCommandPromptLimitState(memento());
+  });
+  afterEach(() => {
+    window.showWarningMessage = originalShowWarningMessage;
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+    setCommandPromptLimitState(undefined);
+  });
+
+  it('accepts a line at the limit and warns once past it, returning the line unchanged', () => {
+    assert.equal(cmdLineOf(CMD_LINE_LIMIT).length, CMD_LINE_LIMIT);
+    assert.deepEqual(shown, []);
+    assert.equal(cmdLineOf(CMD_LINE_LIMIT + 1), `${prefix}${'x'.repeat(CMD_LINE_LIMIT + 1 - prefix.length)}`);
+    cmdLineOf(CMD_LINE_LIMIT + 50);
+    assert.equal(shown.length, 1);
+    assert.match(shown[0], /a command is 8192 characters long/);
+  });
+
+  it('measures %NAME% references the way cmd.exe expands them', () => {
+    process.env.ZW_TEST_LONG_VALUE = 'y'.repeat(CMD_LINE_LIMIT);
+    try {
+      assert.equal(commandPromptLineLength('a %ZW_TEST_LONG_VALUE% b'), CMD_LINE_LIMIT + 4);
+      assert.equal(commandPromptLineLength('a %ZW_TEST_UNSET_VALUE% b'), 'a %ZW_TEST_UNSET_VALUE% b'.length);
+      assert.equal(isOverCommandPromptLimit('cmd.exe', 'west %ZW_TEST_LONG_VALUE%'), true);
+      assert.equal(isOverCommandPromptLimit('powershell.exe', 'west %ZW_TEST_LONG_VALUE%'), false);
+    } finally {
+      delete process.env.ZW_TEST_LONG_VALUE;
+    }
+  });
+
+  it('warns once when PATH leaves the env script no room', () => {
+    process.env.PATH = 'p'.repeat(CMD_LINE_LIMIT - ENV_SCRIPT_PATH_RESERVE);
+    concatCommands('cmd.exe', 'call env.bat', 'west build');
+    assert.deepEqual(shown, []);
+    process.env.PATH += 'p';
+    concatCommands('cmd.exe', 'call env.bat', 'west build');
+    concatCommands('cmd.exe', 'call env.bat', 'west flash');
+    assert.equal(shown.length, 1);
+    assert.match(shown[0], /your PATH is 6992 characters long/);
+  });
+
+  it('covers the cmd.exe terminal startup line', () => {
+    buildStartupSetupShellArgs('cmd.exe', ['x'.repeat(CMD_LINE_LIMIT)]);
+    assert.equal(shown.length, 1);
+  });
+
+  it('never warns for other shells', () => {
+    process.env.PATH = 'p'.repeat(CMD_LINE_LIMIT);
+    for (const kind of ['bash', 'zsh', 'powershell.exe', 'pwsh.exe']) {
+      concatCommands(kind, 'x'.repeat(CMD_LINE_LIMIT + 1));
+    }
+    buildStartupSetupShellArgs('pwsh.exe', ['x'.repeat(CMD_LINE_LIMIT + 1)]);
+    assert.deepEqual(shown, []);
+  });
+
+  it("stays silent after Don't show again, and only logs before activation", async () => {
+    answer = "Don't show again";
+    cmdLineOf(CMD_LINE_LIMIT + 1);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(stored.get(dismissedKey), true);
+    // A new session with the same storage, then no storage at all.
+    setCommandPromptLimitState(memento());
+    cmdLineOf(CMD_LINE_LIMIT + 1);
+    setCommandPromptLimitState(undefined);
+    cmdLineOf(CMD_LINE_LIMIT + 1);
+    assert.equal(shown.length, 1);
   });
 });

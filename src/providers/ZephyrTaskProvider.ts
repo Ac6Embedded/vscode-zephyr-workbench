@@ -33,7 +33,7 @@ import {
   restartClangdServer,
   updateClangdConfigFile,
 } from '../utils/intellisense/clangdConfig';
-import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, getShellExe, getShellSourceCommand, isCygwin, makeConfiguredVariableResolver, normalizePathForShell, resolveConfiguredPath, toPortableWorkspaceFolderPath } from '../utils/execUtils';
+import { concatCommands, getConfiguredVenvPath, getConfiguredWorkbenchPath, getEnvVarFormat, getShell, getShellArgs, getShellExe, getShellSourceCommand, isCygwin, isOverCommandPromptLimit, makeConfiguredVariableResolver, normalizePathForShell, resolveConfiguredPath, toPortableWorkspaceFolderPath } from '../utils/execUtils';
 import { expandAndNormalizeWestArgs, ExpandWestArgsOptions } from '../utils/zephyr/westArgUtils';
 import { findArmGnuToolchainInstallation, getWestWorkspace, msleep, tryGetZephyrSdkInstallation } from '../utils/utils';
 import { getStaticFlashRunnerNames } from '../utils/debugTools/debugUtils';
@@ -1306,7 +1306,15 @@ export class ZephyrTaskProvider implements vscode.TaskProvider {
       }
     }
 
-    const shellExecution = new vscode.ShellExecution(concatCommands(shellKind, envSourceCmd, fullCommand), options);
+    const commandLine = concatCommands(shellKind, envSourceCmd, fullCommand);
+    // Command Prompt refuses a line over its limit before anything runs, so this
+    // configure never happens: leave its state unsaved, or the next build (from
+    // PowerShell, say, as the warning advises) would skip reconfiguring.
+    if (isOverCommandPromptLimit(shellKind, commandLine)) {
+      delete (_task.definition as Record<string, unknown>).__westBuildStatePath;
+      delete (_task.definition as Record<string, unknown>).__westBuildState;
+    }
+    const shellExecution = new vscode.ShellExecution(commandLine, options);
     const resolvedTask = new vscode.Task(
       _task.definition,
       _task.scope as vscode.WorkspaceFolder,
