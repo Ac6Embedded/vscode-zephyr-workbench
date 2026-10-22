@@ -148,6 +148,7 @@ export class KconfigManagerPanel {
     'kconfig/getChanges': () => this._requireClient().call('get_changes'),
     'kconfig/getInfo': (p) => this._requireClient().call('info', { id: p.id }),
     'kconfig/save': (p) => this._save(p),
+    'kconfig/close': () => this._panel.dispose(),
     'kconfig/loadConfig': (p) => this._loadConfig(p),
     'kconfig/getDriftCount': () => this._getDriftCount(),
     'kconfig/persistPrjConf': (p) => this._startDriftExport(p),

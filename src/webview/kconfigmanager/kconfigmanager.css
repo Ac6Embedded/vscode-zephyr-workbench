@@ -18,7 +18,25 @@
   --kc-link: var(--vscode-textLink-foreground, #3794ff);
   --kc-mono: var(--vscode-editor-font-family, "SF Mono", Menlo, Consolas, monospace);
   --kc-row-h: 24px;
+  /* Form controls. The theme's own input/checkbox borders are around 1.5:1 against the
+     editor in the default themes, too faint for a dense tree, so the edge is mixed from
+     the foreground (3:1 or more in light and dark). High-contrast themes keep their
+     contrastBorder. */
+  --kc-ctrl-bg: var(--vscode-input-background, var(--kc-surface));
+  --kc-ctrl-fg: var(--vscode-input-foreground, var(--kc-fg));
+  --kc-ctrl-border: var(--vscode-contrastBorder, color-mix(in srgb, var(--kc-fg) 60%, var(--kc-bg)));
+  --kc-ctrl-on-bg: var(--vscode-button-background, var(--kc-accent));
+  --kc-ctrl-on-fg: var(--vscode-button-foreground, #fff);
+  /* String/int/hex fields share this minimum width in display and edit mode, so a click
+     does not shift the row. ch resolves against each field's monospace font. */
+  --kc-field-min-w: calc(16ch + 30px);
+  --kc-row-sep: color-mix(in srgb, var(--kc-fg) 12%, var(--kc-bg));
 }
+
+/* Native controls (export dialog checkboxes) follow the VS Code theme, not the OS. */
+body.vscode-dark, body.vscode-high-contrast { color-scheme: dark; }
+body.vscode-light, body.vscode-high-contrast-light { color-scheme: light; }
+input[type="checkbox"] { accent-color: var(--kc-ctrl-on-bg); }
 
 * { box-sizing: border-box; }
 
@@ -48,10 +66,14 @@ body {
 /* ---- buttons / toggles ---- */
 .kc-btn {
   font: inherit; color: var(--kc-fg);
-  background: var(--kc-surface); border: 1px solid var(--kc-border); border-radius: 6px;
+  background: var(--kc-surface); border: 1px solid var(--kc-ctrl-border); border-radius: 6px;
   padding: 3px 9px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
 }
 .kc-btn:hover { background: var(--kc-hover); }
+.kc-btn:focus-visible { outline: 1px solid var(--kc-accent); outline-offset: 2px; }
+.kc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.kc-btn.kc-btn-primary { background: var(--kc-ctrl-on-bg); color: var(--kc-ctrl-on-fg); border-color: transparent; font-weight: 600; }
+.kc-btn.kc-btn-primary:hover { background: var(--vscode-button-hoverBackground, var(--kc-ctrl-on-bg)); }
 .kc-btn.kc-toggle { text-transform: lowercase; }
 .kc-btn.kc-toggle.on { background: var(--kc-accent); color: #fff; border-color: transparent; }
 
@@ -73,8 +95,9 @@ body {
   color: var(--kc-warn); border-bottom: 1px solid var(--kc-border);
   background: color-mix(in srgb, var(--kc-warn) 10%, var(--kc-bg));
 }
-.kc-search { display: flex; align-items: center; gap: 6px; background: var(--kc-surface); border: 1px solid var(--kc-border); border-radius: 6px; padding: 3px 8px; }
-.kc-search input { background: transparent; border: none; outline: none; color: var(--kc-fg); font: inherit; width: 200px; }
+.kc-search { display: flex; align-items: center; gap: 6px; background: var(--kc-ctrl-bg); border: 1px solid var(--kc-ctrl-border); border-radius: 6px; padding: 3px 8px; }
+.kc-search:focus-within { border-color: var(--kc-accent); }
+.kc-search input { background: transparent; border: none; outline: none; color: var(--kc-ctrl-fg); font: inherit; width: 200px; }
 .kc-search .codicon { color: var(--kc-muted); }
 .kc-changes-pill { color: var(--kc-warn); }
 .kc-changes-pill.on { background: var(--kc-hover); }
@@ -119,6 +142,7 @@ body {
 .kc-row {
   position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 6px;
   padding: 0 10px; white-space: nowrap; cursor: default;
+  border-bottom: 1px solid var(--kc-row-sep);
 }
 .kc-row:hover { background: var(--kc-hover); }
 .kc-row.sel { background: var(--kc-sel); color: var(--kc-sel-fg); }
@@ -135,9 +159,11 @@ body {
 
 /* ---- value controls ---- */
 .kc-ctrl { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; }
-.kc-check { border: 1px solid var(--kc-border); border-radius: 4px; width: 20px; cursor: pointer; background: var(--vscode-checkbox-background, var(--kc-surface)); }
-.kc-check.tri2 { color: var(--kc-accent); border-color: var(--kc-accent); }
-.kc-check.tri1 { color: var(--kc-warn); border-color: var(--kc-warn); }
+.kc-check { border: 1px solid var(--kc-ctrl-border); border-radius: 4px; width: 20px; cursor: pointer; background: var(--vscode-checkbox-background, var(--kc-ctrl-bg)); }
+.kc-check:not(.locked):hover { border-color: var(--kc-accent); }
+/* y is a filled box so enabled options stand out when scanning the tree. */
+.kc-check.tri2 { color: var(--kc-ctrl-on-fg); background: var(--kc-ctrl-on-bg); border-color: var(--kc-ctrl-on-bg); }
+.kc-check.tri1 { color: var(--kc-warn); border-color: var(--kc-warn); background: color-mix(in srgb, var(--kc-warn) 18%, var(--kc-ctrl-bg)); }
 .kc-check.locked { opacity: 0.7; cursor: not-allowed; }
 .kc-mglyph { font-size: 11px; font-weight: 700; line-height: 1; }
 /* Radio: always an outlined ring so it clearly reads as clickable; the selected
@@ -146,8 +172,8 @@ body {
 .kc-radio-ring {
   display: inline-flex; align-items: center; justify-content: center;
   width: 14px; height: 14px; border-radius: 50%;
-  border: 1px solid var(--vscode-checkbox-border, var(--kc-muted));
-  background: var(--vscode-checkbox-background, transparent);
+  border: 1px solid var(--kc-ctrl-border);
+  background: var(--vscode-checkbox-background, var(--kc-ctrl-bg));
   box-sizing: border-box;
 }
 .kc-radio:hover .kc-radio-ring { border-color: var(--kc-accent); }
@@ -156,12 +182,29 @@ body {
   content: ''; width: 7px; height: 7px; border-radius: 50%;
   background: var(--kc-accent);
 }
-.kc-value { font-family: var(--kc-mono); background: var(--kc-surface); border: 1px solid var(--kc-border); border-radius: 4px; padding: 0 6px; cursor: text; color: var(--kc-fg); }
+.kc-value {
+  justify-content: space-between; gap: 6px; height: 20px;
+  min-width: var(--kc-field-min-w); max-width: 360px;
+  font-family: var(--kc-mono); background: var(--kc-ctrl-bg); border: 1px solid var(--kc-ctrl-border); border-radius: 4px;
+  padding: 0 4px 0 6px; cursor: text; color: var(--kc-ctrl-fg);
+}
+.kc-value:hover { border-color: var(--kc-accent); }
+.kc-value-text { overflow: hidden; text-overflow: ellipsis; }
+.kc-value-text.empty { color: var(--vscode-input-placeholderForeground, var(--kc-muted)); font-style: italic; }
+.kc-value .codicon-edit { flex: none; font-size: 12px; color: var(--kc-muted); }
+.kc-value:hover .codicon-edit { color: var(--kc-accent); }
 .kc-ctrl-none { min-width: 20px; }
+/* The selection background can be close to the control colors; outline with its foreground. */
+.kc-row.sel .kc-check, .kc-row.sel .kc-radio-ring, .kc-row.sel .kc-value { border-color: var(--kc-sel-fg); }
 
 /* ---- inline editor ---- */
 .kc-editor { position: relative; }
-.kc-editor input { font-family: var(--kc-mono); background: var(--vscode-input-background, var(--kc-surface)); color: var(--vscode-input-foreground, var(--kc-fg)); border: 1px solid var(--kc-accent); border-radius: 4px; padding: 0 4px; min-width: 90px; }
+.kc-editor input {
+  font-family: var(--kc-mono); font-size: inherit; height: 20px;
+  min-width: var(--kc-field-min-w); max-width: 360px;
+  background: var(--kc-ctrl-bg); color: var(--kc-ctrl-fg); border: 1px solid var(--kc-accent); border-radius: 4px;
+  padding: 0 6px; outline: none;
+}
 .kc-editor input.invalid { border-color: var(--vscode-inputValidation-errorBorder, var(--kc-error)); }
 .kc-hint { font-size: 11px; color: var(--kc-muted); margin-left: 6px; }
 .kc-err { position: absolute; top: 100%; left: 0; font-size: 11px; color: var(--kc-error); white-space: nowrap; z-index: 5; background: var(--kc-bg); padding: 1px 4px; }
@@ -221,9 +264,26 @@ body {
 .kc-drift-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--kc-border); }
 .kc-drift-summary { font-size: 12px; color: var(--kc-muted); }
 .kc-drift-actions { display: inline-flex; gap: 8px; }
-.kc-drift-write { background: var(--kc-accent); color: #fff; border-color: transparent; }
-.kc-drift-write:disabled { opacity: 0.5; cursor: not-allowed; }
 .kc-banner-dismiss { margin-left: 10px; padding: 0 5px; }
+
+/* ---- modal dialog (Save), styled after VS Code's own dialogs ---- */
+.kc-jump-overlay.kc-dialog-overlay { align-items: center; padding: 16px; }
+.kc-dialog {
+  width: min(480px, 100%); padding: 20px 20px 16px;
+  color: var(--vscode-editorWidget-foreground, var(--kc-fg));
+  background: var(--vscode-editorWidget-background, var(--kc-surface-2));
+  border: 1px solid var(--vscode-editorWidget-border, var(--kc-border)); border-radius: 6px;
+  box-shadow: 0 4px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+}
+.kc-dialog-main { display: flex; gap: 14px; align-items: flex-start; }
+.kc-dialog-main .kc-dialog-icon { flex: none; font-size: 24px; color: var(--kc-accent); }
+.kc-dialog-text { min-width: 0; padding-top: 2px; }
+.kc-dialog-message { font-size: 14px; font-weight: 600; line-height: 1.4; }
+.kc-dialog-detail { margin-top: 4px; color: var(--kc-muted); line-height: 1.4; }
+.kc-dialog-link { padding: 0; }
+.kc-dialog-error { margin-top: 8px; font-size: 12px; color: var(--kc-error); white-space: pre-wrap; }
+.kc-dialog-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.kc-dialog-buttons .kc-btn { min-width: 80px; justify-content: center; padding: 4px 14px; border-radius: 4px; }
 
 /* ---- jump-to overlay ---- */
 .kc-jump-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; z-index: 100; }

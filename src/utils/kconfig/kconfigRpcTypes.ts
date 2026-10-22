@@ -346,6 +346,8 @@ export type KconfigRpcMethods = {
     params: { kind: 'config' | 'as' | 'minimal'; path?: string };
     result: { ok: boolean; path?: string; message?: string; canceled?: boolean; dirty: boolean };
   };
+  /** Closes the panel (Save and exit). */
+  'kconfig/close': { params: undefined; result: void };
   'kconfig/loadConfig': {
     params: { path?: string; replace?: boolean };
     result: { ok: boolean; canceled?: boolean; message?: string } & Partial<KcDeltaSet> & { needsSave?: boolean };

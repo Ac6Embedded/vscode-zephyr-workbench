@@ -18,6 +18,7 @@ interface DriftOverlayState {
 
 const ROW_H = 24;
 const OVERSCAN = 8;
+const IS_MAC = typeof navigator !== 'undefined' && /Macintosh/.test(navigator.userAgent);
 
 type Phase = 'starting' | 'configuring' | 'ready' | 'error' | 'crashed';
 
@@ -57,6 +58,7 @@ export function App() {
   const [selected, setSelected] = useState<NodeId | null>(null);
   const [info, setInfo] = useState<KcNodeInfo | undefined>();
   const [jumpOpen, setJumpOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
   const [infoWidth, setInfoWidth] = useState(persisted.current.infoWidth);
   const [changes, setChanges] = useState<KcChange[]>([]);
   const [changesOpen, setChangesOpen] = useState(false);
@@ -301,6 +303,17 @@ export function App() {
     if (res.message) { setPhaseMsg(res.message); }
     if (typeof res.dirty === 'boolean') { setDirty(res.dirty); }
   }, []);
+  // Save dialog: returns an error message to show in the dialog, which stays open.
+  const saveFromDialog = useCallback(async (exit: boolean): Promise<string | undefined> => {
+    try {
+      await save('config');
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    setSaveOpen(false);
+    if (exit) { void rpc.call('kconfig/close'); }
+    return undefined;
+  }, [save]);
   const open = useCallback(async () => {
     const res = await rpc.call('kconfig/loadConfig', {});
     if (res.canceled) { return; }
@@ -330,6 +343,9 @@ export function App() {
   // --- keyboard ------------------------------------------------------------
   const onTreeKey = useCallback((e: React.KeyboardEvent) => {
     if (!store) { return; }
+    // Keys typed in a text field (filter, value editor, jump box) bubble up to here and
+    // must not act as tree shortcuts (`s` would save, `y` would set the selected option).
+    if ((e.target as HTMLElement).closest?.('input, textarea')) { return; }
     const idx = rows.findIndex((r) => r.id === selected);
     const move = (delta: number) => {
       const ni = Math.max(0, Math.min(rows.length - 1, (idx < 0 ? 0 : idx) + delta));
@@ -353,7 +369,7 @@ export function App() {
       case '/': setJumpOpen(true); e.preventDefault(); break;
       case 'A': setShowAll((v) => !v); break;
       case 'C': setShowName((v) => !v); break;
-      case 's': if (!e.ctrlKey && !e.metaKey) { void save('config'); } break;
+      case 's': if (!e.ctrlKey && !e.metaKey) { setSaveOpen(true); } break;
       case 'S': void save('as'); break;
       case 'd': void save('minimal'); break;
       case 'o': void open(); break;
@@ -405,7 +421,7 @@ export function App() {
         onToggleShowName={() => setShowName((v) => !v)}
         onToggleChanges={() => setChangesOpen((v) => !v)}
         onJump={() => setJumpOpen(true)}
-        onSave={() => save('config')} onSaveAs={() => save('as')} onSaveMin={() => save('minimal')} onOpen={open}
+        onSave={() => setSaveOpen(true)} onSaveAs={() => save('as')} onSaveMin={() => save('minimal')} onOpen={open}
         onUndo={undo} onRedo={redo}
         onPersistPrj={() => startExport('prj')} onPersistFragment={() => startExport('fragment')}
         onBuild={() => rpc.call('kconfig/buildNow')}
@@ -465,6 +481,10 @@ export function App() {
           onJump={(id) => { setDrift(undefined); revealAndSelect(id); }}
           onWrite={writeExport} />
       )}
+      {saveOpen && (
+        <SaveDialog onCancel={() => setSaveOpen(false)} onSave={saveFromDialog}
+          onExport={() => { setSaveOpen(false); void startExport('prj'); }} />
+      )}
       {tipEl}
     </div>
   );
@@ -522,7 +542,7 @@ function Toolbar(p: {
             {p.changeCount} changed <span className={`codicon ${p.changesOpen ? 'codicon-chevron-up' : 'codicon-chevron-down'}`} />
           </button>
         )}
-        <button className="kc-btn" data-tip="Save to the build's .config (shortcut: S). The next build applies it." onClick={p.onSave}>Save</button>
+        <button className="kc-btn" data-tip="Save to the build's .config, optionally closing the panel (shortcut: S). The next build applies it." onClick={p.onSave}>Save…</button>
         <button className="kc-btn" data-tip="Save a copy of the full configuration to another file (shortcut: Shift+S)" onClick={p.onSaveAs}>Save As…</button>
         <button className="kc-btn" data-tip="Save a minimal defconfig: only options that differ from their defaults (shortcut: D)" onClick={p.onSaveMin}>Save minimal…</button>
         <button className="kc-btn" data-tip="Load a configuration file, replacing the current values (shortcut: O)" onClick={p.onOpen}>Open…</button>
@@ -658,12 +678,78 @@ function DriftOverlay({ state, dirty, onCancel, onJump, onWrite }: {
           </span>
           <span className="kc-drift-actions">
             <button className="kc-btn" onClick={onCancel}>Cancel</button>
-            <button className="kc-btn kc-drift-write" disabled={selected.length === 0}
+            <button className="kc-btn kc-btn-primary" disabled={selected.length === 0}
               onClick={() => onWrite(driftExportEdits(selected))}>
               Write to {fileLabel}
             </button>
           </span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Save dialog: save to the build's .config, optionally closing the panel afterwards.
+ * Save and exit is the default action (focused, so Enter runs it).
+ */
+function SaveDialog({ onCancel, onSave, onExport }: {
+  onCancel: () => void;
+  /** Leaves the dialog for the "To prj.conf" export. */
+  onExport: () => void;
+  /** Resolves to an error message to show, or undefined once saved. */
+  onSave: (exit: boolean) => Promise<string | undefined>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  const primaryRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    // Hand focus back on close so the tree keyboard shortcuts keep working.
+    const previous = document.activeElement as HTMLElement | null;
+    primaryRef.current?.focus();
+    return () => previous?.focus();
+  }, []);
+
+  const submit = async (exit: boolean) => {
+    if (busy) { return; }
+    setBusy(true);
+    setError(undefined);
+    const err = await onSave(exit);
+    // On success the dialog is already closed.
+    if (err) { setError(err); setBusy(false); }
+  };
+
+  // Same button order as VS Code's own dialogs: default action first, on the right on macOS.
+  const buttons = [
+    <button key="exit" ref={primaryRef} className="kc-btn kc-btn-primary" disabled={busy}
+      onClick={() => void submit(true)}>Save and exit</button>,
+    <button key="save" className="kc-btn" disabled={busy} onClick={() => void submit(false)}>Save</button>,
+    <button key="cancel" className="kc-btn" onClick={onCancel}>Cancel</button>,
+  ];
+  if (IS_MAC) { buttons.reverse(); }
+
+  return (
+    <div className="kc-jump-overlay kc-dialog-overlay" onClick={onCancel}>
+      <div className="kc-dialog" role="dialog" aria-modal="true"
+        aria-labelledby="kc-save-title" aria-describedby="kc-save-detail"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          // Keep keys away from the tree shortcuts behind the dialog.
+          e.stopPropagation();
+          if (e.key === 'Escape') { onCancel(); }
+        }}>
+        <div className="kc-dialog-main">
+          <span className="kc-dialog-icon codicon codicon-save" />
+          <div className="kc-dialog-text">
+            <div id="kc-save-title" className="kc-dialog-message">Save the configuration?</div>
+            <div id="kc-save-detail" className="kc-dialog-detail">
+              <div>Saved values are temporary: a pristine build discards them.</div>
+              <div>To keep them, <button className="kc-link kc-dialog-link" onClick={onExport}>export to prj.conf</button>.</div>
+            </div>
+            {error && <div className="kc-dialog-error">{error}</div>}
+          </div>
+        </div>
+        <div className="kc-dialog-buttons">{buttons}</div>
       </div>
     </div>
   );
@@ -855,8 +941,13 @@ function ValueControl({ node, onCycle, onDirectSet, onSetValue }: {
   if (editing) {
     return <InlineEditor node={node} onCommit={(v) => { setEditing(false); onSetValue(v); }} onCancel={() => setEditing(false)} />;
   }
-  return <span className="kc-ctrl kc-value" onClick={() => setEditing(true)} data-tip="Click to edit">
-    {node.strValue === '' ? '""' : node.strValue}
+  // Styled as a text field (edit icon, minimum width) so it reads as a place to type.
+  // Long values are cut with an ellipsis, so the tooltip carries them in full.
+  const value = node.strValue;
+  return <span className="kc-ctrl kc-value" onClick={() => setEditing(true)}
+    data-tip={value.length > 40 ? `${value} (click to edit)` : 'Click to edit'}>
+    <span className={`kc-value-text ${value === '' ? 'empty' : ''}`}>{value === '' ? 'empty' : value}</span>
+    <span className="codicon codicon-edit" />
   </span>;
 }
 
@@ -867,7 +958,7 @@ function InlineEditor({ node, onCommit, onCancel }: { node: KcNode; onCommit: (v
   const err = validate(node, val);
   return (
     <span className="kc-ctrl kc-editor" onClick={(e) => e.stopPropagation()}>
-      <input ref={ref} className={err ? 'invalid' : ''} value={val} onChange={(e) => setVal(e.target.value)}
+      <input ref={ref} className={err ? 'invalid' : ''} value={val} size={val.length + 1} onChange={(e) => setVal(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { if (!err) { onCommit(val); } e.stopPropagation(); }
           else if (e.key === 'Escape') { onCancel(); e.stopPropagation(); }
