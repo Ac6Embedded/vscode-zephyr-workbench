@@ -1634,7 +1634,7 @@
           "when": "view == zephyr-workbench-app-explorer && (viewItem == zephyr-application || viewItem =~ /^zephyr-build-config/)"
         },
         {
-          "command": "zephyr-workbench-app-explorer.guiconfig-app",
+          "command": "zephyr-workbench-app-explorer.kconfig-manager-app",
           "group": "inline@6",
           "when": "view == zephyr-workbench-app-explorer && (viewItem == zephyr-application || viewItem =~ /^zephyr-build-config/)"
         },
