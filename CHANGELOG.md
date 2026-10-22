@@ -4,6 +4,15 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [4.3.4]
+
+### Terminal
+- When Command Prompt is the default terminal, a command over its 8191 character limit, or a PATH too long to add the Zephyr tools to, shows a warning with a link to the Known Issues page on switching to PowerShell or Git Bash. A build whose command was too long reconfigures on the next build.
+
+### Other
+- Updated ModusToolbox Programming Tools to 2.0.0.2521.
+- Updated npm dependencies.
+
 ## [4.3.3]
 
 ### Applications
