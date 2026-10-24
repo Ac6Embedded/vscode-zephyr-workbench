@@ -4,6 +4,8 @@ import os from 'os';
 import path from 'path';
 
 import {
+  commandFromScript,
+  commandScriptOf,
   parseNinjaMenuconfigCommand,
   readMenuconfigCommandFromNinja,
   tokenizeCommand,
@@ -17,6 +19,25 @@ import {
 } from '../../../utils/kconfig/kconfigEnvExtractor';
 
 const FIXTURE_DIR = path.join(__dirname, '..', 'fixtures', 'kconfig');
+
+// The script CMake's Ninja generator writes when it moves the Windows fixture's command
+// out of build.ninja: one command per line, the `cd` first, each with its error handling.
+function windowsCommandScript(): string {
+  const ninja = fs.readFileSync(path.join(FIXTURE_DIR, 'menuconfig-command-windows.ninja.txt'), 'utf8');
+  const inner = unwrapCmdExeWrapper(readMenuconfigCommandFromNinja(ninja)!);
+  const cut = inner.indexOf(' && ');
+  return [
+    '@echo off',
+    `${inner.slice(0, cut)} || (set FAIL_LINE=2& goto :ABORT)`,
+    `${inner.slice(cut + 4)} || (set FAIL_LINE=3& goto :ABORT)`,
+    'goto :EOF',
+    '',
+    ':ABORT',
+    'set ERROR_CODE=%ERRORLEVEL%',
+    'echo Batch file failed at line %FAIL_LINE% with errorcode %ERRORLEVEL%',
+    'exit /b %ERROR_CODE%',
+  ].join('\r\n');
+}
 
 describe('kconfigEnvExtractor', () => {
   describe('tokenizeCommand', () => {
@@ -49,6 +70,37 @@ describe('kconfigEnvExtractor', () => {
     it('leaves a POSIX command untouched', () => {
       const cmd = 'cd /w && /usr/bin/cmake -E env A=1 /py /s.py /Kconfig';
       assert.equal(unwrapCmdExeWrapper(cmd), cmd);
+    });
+  });
+
+  describe('commands CMake moved to a script', () => {
+    it('recognizes the script build.ninja runs instead of a long command', () => {
+      assert.equal(commandScriptOf('CMakeFiles\\menuconfig-5f29641.bat ae00a91610793ba9'), 'CMakeFiles\\menuconfig-5f29641.bat');
+      assert.equal(commandScriptOf('/bin/sh CMakeFiles/menuconfig-5f29641.sh ae00a91610793ba9'), 'CMakeFiles/menuconfig-5f29641.sh');
+    });
+    it('leaves an inline command alone', () => {
+      assert.equal(commandScriptOf('C:\\WINDOWS\\system32\\cmd.exe /C "cd /D C:\\b && C:\\cmake.exe -E env A=1 C:\\py.exe s.py C:\\Kconfig"'), undefined);
+      assert.equal(commandScriptOf('cd /w && /usr/bin/cmake -E env A=1 /py /s.py /Kconfig'), undefined);
+    });
+
+    it('reads the command back from the Windows script layout', () => {
+      const cmd = commandFromScript(windowsCommandScript());
+      assert.ok(cmd && !cmd.includes('FAIL_LINE') && !cmd.includes('\r'));
+      const p = parseNinjaMenuconfigCommand(cmd!);
+      assert.ok(p, 'should parse');
+      assert.equal(p!.cwd, 'C:\\w\\build\\primary\\zephyr\\kconfig');
+      assert.equal(p!.env.BOARD, 'nucleo_h563zi');
+      assert.ok(p!.env.ZEPHYR_CMSIS_6_KCONFIG?.endsWith('/Kconfig'));
+      assert.ok(p!.python.endsWith('/Scripts/python.exe'), `unexpected python: ${p!.python}`);
+      assert.ok(p!.kconfigRoot.endsWith('/Kconfig'));
+    });
+
+    it('reads the command back from a POSIX script', () => {
+      const cmd = commandFromScript('set -e\n\ncd /w/build/zephyr/kconfig\n/usr/bin/cmake -E env srctree=/z CONFIG_=CONFIG_ KCONFIG_CONFIG=/w/.config /py /z/scripts/kconfig/menuconfig.py /z/Kconfig\n');
+      const p = parseNinjaMenuconfigCommand(cmd!);
+      assert.ok(p);
+      assert.equal(p!.cwd, '/w/build/zephyr/kconfig');
+      assert.equal(p!.env.srctree, '/z');
     });
   });
 
@@ -370,6 +422,55 @@ describe('kconfigEnvExtractor', () => {
       if (isExtractError(spec)) { return; }
       assert.equal(spec.source, 'fallback');
       assert.ok(spec.fallbackReason && spec.fallbackReason.length > 0);
+      assert.equal(spec.fallbackCode, 'no-menuconfig-rule', 'a configure would write the same build.ninja');
+    });
+
+    it('says when build.ninja is missing, the one case a configure fixes', () => {
+      const build = path.join(tmp, 'build', 'primary');
+      fs.mkdirSync(build, { recursive: true });
+      fs.writeFileSync(path.join(build, 'CMakeCache.txt'), 'ZEPHYR_BASE:PATH=/z\n');
+      const spec = extractKconfigLaunchSpec(build, 'hello_world');
+      assert.ok(!isExtractError(spec));
+      if (isExtractError(spec)) { return; }
+      assert.equal(spec.fallbackCode, 'no-build-ninja');
+    });
+
+    const scriptBuild = (withScript: boolean) => {
+      // A deep build folder or many modules: CMake moved the command to a script.
+      const build = path.join(tmp, 'build', 'primary');
+      fs.mkdirSync(path.join(build, 'CMakeFiles'), { recursive: true });
+      fs.writeFileSync(path.join(build, 'build.ninja'), [
+        'build CMakeFiles/menuconfig | ${cmake_ninja_workdir}CMakeFiles/menuconfig: CUSTOM_COMMAND',
+        '  COMMAND = CMakeFiles\\menuconfig-5f29641.bat ae00a91610793ba9',
+        '  pool = console',
+      ].join('\r\n'));
+      if (withScript) {
+        fs.writeFileSync(path.join(build, 'CMakeFiles', 'menuconfig-5f29641.bat'), windowsCommandScript());
+      }
+      fs.writeFileSync(path.join(build, 'CMakeCache.txt'), 'ZEPHYR_BASE:PATH=/z\n');
+      return build;
+    };
+
+    it('follows the script build.ninja runs when CMake moved a long command there', () => {
+      // Regression: this used to fall back to the CMake cache, which has no
+      // ZEPHYR_<MODULE>_KCONFIG variables, so the Kconfig tree failed to load.
+      const spec = extractKconfigLaunchSpec(scriptBuild(true), 'hello_world');
+      assert.ok(!isExtractError(spec));
+      if (isExtractError(spec)) { return; }
+      assert.equal(spec.source, 'ninja');
+      assert.equal(spec.fallbackReason, undefined);
+      assert.ok(spec.env.ZEPHYR_CMSIS_6_KCONFIG?.endsWith('/Kconfig'));
+      assert.equal(spec.cwd, 'C:\\w\\build\\primary\\zephyr\\kconfig');
+      assert.ok(spec.configPath.endsWith('/zephyr/.config'));
+    });
+
+    it('names the script when it cannot be read', () => {
+      const spec = extractKconfigLaunchSpec(scriptBuild(false), 'hello_world');
+      assert.ok(!isExtractError(spec));
+      if (isExtractError(spec)) { return; }
+      assert.equal(spec.source, 'fallback');
+      assert.match(spec.fallbackReason ?? '', /menuconfig-5f29641\.bat/);
+      assert.equal(spec.fallbackCode, 'parse-failed');
     });
   });
 });

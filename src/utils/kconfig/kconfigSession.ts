@@ -98,7 +98,9 @@ export async function startKconfigServer(o: StartKconfigServerOptions): Promise<
         `The Kconfig environment had to be reconstructed from the CMake cache because ` +
         `build.ninja could not be used${why}. That reconstruction cannot supply the ` +
         `per-module Kconfig paths, which is the likely cause of the error above. ` +
-        `Re-run the CMake configure stage, then Retry.`,
+        (spec.fallbackCode === 'no-build-ninja'
+          ? 'Re-run the CMake configure stage, then Retry.'
+          : 'Re-running the CMake configure stage writes the same build.ninja, so it does not help: please report this, with that file.'),
         'fallback-env-failed',
       );
     }

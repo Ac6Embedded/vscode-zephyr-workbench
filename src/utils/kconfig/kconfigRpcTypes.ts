@@ -332,6 +332,8 @@ export interface KcTarget {
   envSource: 'ninja' | 'fallback';
   /** Why build.ninja was not usable. Only set when `envSource` is 'fallback'. */
   envSourceDetail?: string;
+  /** With `envSource` 'fallback': build.ninja was missing, which a CMake configure fixes. */
+  envSourceNinjaMissing?: boolean;
 }
 
 /** Methods the webview calls on the extension host (see KconfigManagerPanel). */

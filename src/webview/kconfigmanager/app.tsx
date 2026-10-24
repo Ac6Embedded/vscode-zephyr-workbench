@@ -443,8 +443,10 @@ export function App() {
           Kconfig environment reconstructed from the CMake cache
           {target.envSourceDetail ? ` (${target.envSourceDetail})` : ' (build.ninja was not usable)'}.
           Per-module Kconfig files are missing from this reconstruction, so parts of the tree
-          may be absent and saving could drop their symbols. Re-run the CMake configure stage
-          for exact fidelity.
+          may be absent and saving could drop their symbols.
+          {target.envSourceNinjaMissing
+            ? ' Re-run the CMake configure stage for exact fidelity.'
+            : ' Re-running the CMake configure stage writes the same build.ninja, so it does not help: please report this, with that file.'}
         </div>
       )}
       {changesOpen && (

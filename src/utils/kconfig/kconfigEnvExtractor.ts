@@ -3,10 +3,11 @@
 //
 // The authoritative source is the `menuconfig` custom-command in the build's
 // `build.ninja`: it embeds the full `cmake -E env KEY=VAL ... python .../menuconfig.py
-// .../Kconfig` invocation verbatim. We parse that command back into an environment map,
-// the interpreter, the Kconfig root file, and the working directory. When build.ninja is
-// missing or unparseable we fall back to reconstructing the env from CMakeCache.txt plus
-// the materialized module-dir env file and Zephyr's deterministic path layout.
+// .../Kconfig` invocation verbatim, or runs a script that holds it when the command is
+// too long. We parse that command back into an environment map, the interpreter, the
+// Kconfig root file, and the working directory. When build.ninja is missing or
+// unparseable we fall back to reconstructing the env from CMakeCache.txt plus the
+// materialized module-dir env file and Zephyr's deterministic path layout.
 //
 // This module is intentionally free of any `vscode` dependency (fs/path/os only) so the
 // parser can be unit-tested in isolation.
@@ -41,6 +42,11 @@ export interface KconfigLaunchSpec {
    * the user.
    */
   fallbackReason?: string;
+  /**
+   * The failure behind `fallbackReason`. Only 'no-build-ninja' is fixed by a CMake
+   * configure: any other one comes back with the build.ninja the configure writes again.
+   */
+  fallbackCode?: KconfigLaunchErrorCode;
   /** The build directory actually used (handles the sysbuild app-name nesting). */
   buildDir: string;
 }
@@ -208,6 +214,39 @@ export function unwrapCmdExeWrapper(command: string): string {
   return m ? m[1] : command;
 }
 
+// A custom command longer than half the OS command line limit is written to a script by
+// CMake's Ninja generator, and build.ninja only runs that script, with a hash of it as an
+// unused argument:
+//
+//   COMMAND = CMakeFiles\menuconfig-5f29641.bat ae00a91610793ba9        (Windows)
+//   COMMAND = /bin/sh CMakeFiles/menuconfig-5f29641.sh ae00a91610793ba9  (elsewhere)
+//
+// On Windows the limit is the 8191 characters of cmd.exe, which a deep build folder or a
+// workspace with many modules is enough to exceed. Elsewhere it is far higher.
+
+/** The script a build.ninja command only runs, as written there (relative to the build directory). */
+export function commandScriptOf(command: string): string | undefined {
+  const tokens = tokenizeCommand(command);
+  if (tokens[0] === '/bin/sh') { tokens.shift(); }
+  return tokens.length === 2 && /\.(?:bat|sh)$/i.test(tokens[0]) ? tokens[0] : undefined;
+}
+
+/**
+ * The command a CMake command script runs, joined as build.ninja would hold it. CMake
+ * writes one command per line, the `cd` first; on Windows each line ends with its error
+ * handling, and the error handler itself follows `goto :EOF`.
+ */
+export function commandFromScript(script: string): string | undefined {
+  const commands: string[] = [];
+  for (const raw of script.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line === 'goto :EOF') { break; }
+    if (!line || line === '@echo off' || line === 'set -e') { continue; }
+    commands.push(line.replace(/\s*\|\|\s*\(set FAIL_LINE=\d+& goto :ABORT\)$/, ''));
+  }
+  return commands.length > 0 ? commands.join(' && ') : undefined;
+}
+
 // Shell-like tokenizer: splits on unquoted whitespace, honors '...' and "..." spans,
 // and strips the quote characters so `KEY="a b"` -> `KEY=a b` and `SHIELD_AS_LIST=''`
 // -> `SHIELD_AS_LIST=`. No variable expansion or backslash processing (kconfig.cmake
@@ -316,13 +355,28 @@ export function extractFromNinja(buildDir: string, appName?: string): KconfigLau
   } catch (e) {
     return { error: `Could not read build.ninja: ${String(e)}`, code: 'no-build-ninja' };
   }
-  const command = readMenuconfigCommandFromNinja(ninjaText);
+  let command = readMenuconfigCommandFromNinja(ninjaText);
   if (!command) {
     return { error: 'No menuconfig/guiconfig custom command in build.ninja', code: 'no-menuconfig-rule' };
   }
+  const script = commandScriptOf(command);
+  if (script) {
+    const scriptPath = path.isAbsolute(script) ? script : path.join(inner, ...script.split(/[\\/]+/));
+    try {
+      command = commandFromScript(fs.readFileSync(scriptPath, 'utf8'));
+    } catch (e) {
+      return { error: `Could not read ${scriptPath}, which build.ninja runs for menuconfig: ${String(e)}`, code: 'parse-failed' };
+    }
+    if (!command) {
+      return { error: `${scriptPath}, which build.ninja runs for menuconfig, holds no command`, code: 'parse-failed' };
+    }
+  }
   const parsed = parseNinjaMenuconfigCommand(command);
   if (!parsed) {
-    return { error: 'Could not parse the menuconfig command from build.ninja', code: 'parse-failed' };
+    return {
+      error: `Could not parse the menuconfig command from ${script ? `${script} (run by build.ninja)` : 'build.ninja'}`,
+      code: 'parse-failed',
+    };
   }
   for (const key of REQUIRED_ENV_KEYS) {
     if (!(key in parsed.env)) {
@@ -434,7 +488,7 @@ export function extractKconfigLaunchSpec(buildDir: string, appName?: string): Kc
   const primary = extractFromNinja(buildDir, appName);
   if (!isExtractError(primary)) { return primary; }
   const fallback = extractFromFallback(buildDir, appName);
-  if (!isExtractError(fallback)) { return { ...fallback, fallbackReason: primary.error }; }
+  if (!isExtractError(fallback)) { return { ...fallback, fallbackReason: primary.error, fallbackCode: primary.code }; }
   // Prefer the primary error message (more actionable) unless it was just "no ninja".
   return primary.code === 'no-build-ninja' ? fallback : primary;
 }

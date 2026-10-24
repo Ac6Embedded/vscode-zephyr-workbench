@@ -388,6 +388,7 @@ export class KconfigManagerPanel {
       configPath: this._spec?.configPath ?? '',
       envSource: this._spec?.source ?? 'ninja',
       envSourceDetail: this._spec?.fallbackReason,
+      envSourceNinjaMissing: this._spec?.fallbackCode === 'no-build-ninja',
     };
   }
 
