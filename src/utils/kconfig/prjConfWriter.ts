@@ -198,6 +198,28 @@ export function readPrjConfManagedRegion(prjConfPath: string): string[] {
 }
 
 /**
+ * The managed region of an export target as get_drift takes it: its lines, and the text
+ * of the file without the region, which get_drift merges in place of the file to tell
+ * what the other lines assign, and so which managed lines the build no longer needs.
+ */
+export function managedRegionForDrift(prjConfPath: string): { path: string; lines: string[]; outside: string } {
+  let existing = '';
+  try {
+    existing = fs.readFileSync(prjConfPath, 'utf8');
+  } catch {
+    // Missing: no region and nothing around it.
+  }
+  const lines = existing.split(/\r?\n/);
+  const begin = lines.findIndex((l) => isMarker(l, BEGIN));
+  const end = begin >= 0 ? lines.findIndex((l, i) => i > begin && isMarker(l, END)) : -1;
+  return {
+    path: prjConfPath,
+    lines: planPrjConfUpsert(existing, []).regionLines,
+    outside: end > begin ? [...lines.slice(0, begin), ...lines.slice(end + 1)].join('\n') : existing,
+  };
+}
+
+/**
  * The file a write of `filePath` lands in: the end of its symbolic links, even when that
  * file does not exist yet, as a plain write would follow them.
  */

@@ -624,7 +624,9 @@ describe('set_kconfig with persist_temporary', () => {
     assert.deepEqual(result.temporary_values[0], { symbol: 'CONFIG_LOG', value: 'y', configuration_files_give: 'n', line: 'CONFIG_LOG=y' });
     // get_drift was asked with the build's fragments and the target's managed region.
     const asked = w.client.calls.find(call => call.method === 'get_drift')!;
-    assert.deepEqual(asked.params, { fragments: [w.board, w.prj, generated], managed: { path: w.prj, lines: [] } });
+    assert.deepEqual(asked.params, {
+      fragments: [w.board, w.prj, generated], managed: { path: w.prj, lines: [], outside: 'CONFIG_GPIO=y\n' },
+    });
     const check = w.client.calls.find(call => call.method === 'check_merge')!;
     assert.deepEqual(check.params.names, ['LOG', 'BANNER']);
   });
@@ -649,6 +651,7 @@ describe('set_kconfig with persist_temporary', () => {
     assert.equal(fs.readFileSync(w.prj, 'utf8'), `CONFIG_GPIO=y\n\n${BEGIN}\nCONFIG_BANNER="x"\n${END}\n`);
     const asked = w.client.calls.find(call => call.method === 'get_drift')!;
     assert.deepEqual(asked.params.managed.lines, ['CONFIG_LOG=y', 'CONFIG_BANNER="x"']);
+    assert.equal(asked.params.managed.outside, 'CONFIG_GPIO=y\n\n');
   });
 
   it('writes nothing when a later fragment overrides a temporary value, and says which', async () => {

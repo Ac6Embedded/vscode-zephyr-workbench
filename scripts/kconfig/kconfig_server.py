@@ -911,6 +911,19 @@ def m_get_drift(params):
     if not existing:
         return {"ok": False, "error": "None of the configuration fragments exist on disk"}
 
+    managed = params.get("managed") or {}
+    region = {}  # symbol name -> value its managed line assigns
+    for line in managed.get("lines") or []:
+        name, value = _managed_value(line)
+        if name:
+            region[name] = value
+    # The export target's text outside its managed region, merged in place of the target,
+    # tells what the other lines of the configuration files assign, so a managed line the
+    # build no longer needs can be removed.
+    target = managed.get("path") or ""
+    outside = managed.get("outside")
+    split = isinstance(outside, str) and bool(target) and any(_same_file(f, target) for f in existing)
+
     kconf = SESSION.kconf
     pre = snapshot_dynamic()
 
@@ -932,14 +945,24 @@ def m_get_drift(params):
     os.close(fd)
     kconf.write_config(tmp_path)
     baseline = {}
+    assigned = {}  # symbol name -> value the other lines assign (user value)
+    picked = {}    # choice -> the member the other lines select
+    outside_path = None
     try:
-        kconf.unset_values()
-        kconf.load_config(existing[0], replace=True)
-        for frag in existing[1:]:
-            kconf.load_config(frag, replace=False)
-
+        _merge(kconf, existing)
         for sym in kconf.unique_defined_syms:
             baseline[sym.name] = sym.str_value
+        if split:
+            fd, outside_path = tempfile.mkstemp(prefix="kconfig-outside-", suffix=".conf")
+            with os.fdopen(fd, "w", encoding="utf-8") as out:
+                out.write(outside)
+            _merge(kconf, [outside_path if _same_file(f, target) else f for f in existing])
+        for sym in kconf.unique_defined_syms:
+            if sym.user_value is not None:
+                assigned[sym.name] = sym.user_value
+        for choice in kconf.unique_choices:
+            if choice.user_selection is not None:
+                picked[choice] = choice.user_selection
     finally:
         # The restore MUST run even when a fragment fails to load half-way, or the live
         # state would silently remain the fragment merge (and a later save would write
@@ -957,10 +980,12 @@ def m_get_drift(params):
                 if sel_sym is not None:
                     sel_sym.set_value(2)
         finally:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+            for path in (tmp_path, outside_path):
+                try:
+                    if path:
+                        os.unlink(path)
+                except OSError:
+                    pass
 
     # The restore must be exact; anything else means the state was disturbed and the
     # export must not proceed. The delta lets the webview resync in that case.
@@ -981,30 +1006,40 @@ def m_get_drift(params):
         base = baseline.get(sym.name)
         if cur == base:
             continue
+        # A managed line that no longer gives the value is updated or removed by
+        # _managed_drift.
+        if sym.name in region and region[sym.name] != cur:
+            continue
         # Fragments may only assign symbols that have a prompt (kconfig.py errors on
         # promptless assignments).
         if not any(n.prompt for n in sym.nodes):
             continue
-        # The remaining skips mirror kconfiglib's write_min_config (savedefconfig)
-        # exactly: unchangeable symbols, values matching their default in the current
-        # context (drops cascaded dependents), and default choice selections.
+        # The remaining skips follow kconfiglib's write_min_config (savedefconfig):
+        # unchangeable symbols, values matching their default in the current context
+        # (drops cascaded dependents), and default choice selections. Except that
+        # savedefconfig output is merged on the defaults alone, and the export on the
+        # configuration files: a value they assign comes back at the next build unless a
+        # line overrides it. So a default value is kept when another line assigns the
+        # symbol, and a choice member is left out only when the files select it anyway.
+        # Choice members set to n stay out (their default is always n): the line of the
+        # member now selected moves the choice.
         if not sym.choice and sym.visibility <= expr_value(sym.rev_dep):
             continue
         try:
-            if cur == sym._str_default():
+            if cur == sym._str_default() and (sym.choice is not None or sym.name not in assigned):
                 continue
         except Exception:
             pass  # private API moved: keep the symbol (over-pinning is safe)
         try:
             if (sym.choice is not None
                     and not sym.choice.is_optional
-                    and sym.choice._selection_from_defaults() is sym
+                    and _selected_by_files(sym.choice, picked) is sym
                     and sym.orig_type is BOOL
                     and sym.tri_value == 2):
                 continue
         except Exception:
             pass
-        cfg_line = sym.config_string.rstrip("\n")
+        cfg_line = _fragment_line(sym)
         if not cfg_line:
             continue
         drift.append({
@@ -1015,12 +1050,53 @@ def m_get_drift(params):
             "targetId": SESSION.first_node_id.get(sym.name),
         })
 
-    managed = params.get("managed")
     if managed:
-        drift.extend(_managed_drift(kconf, managed, existing, baseline, {d["name"] for d in drift}))
+        drift.extend(_managed_drift(kconf, managed, existing, baseline, assigned, picked,
+                                    {d["name"] for d in drift}))
 
     drift.sort(key=lambda d: d["name"])
     return {"ok": True, "drift": drift, "missingFragments": missing}
+
+
+def _merge(kconf, fragments):
+    # Merge the fragments exactly like scripts/kconfig/kconfig.py does.
+    kconf.unset_values()
+    kconf.load_config(fragments[0], replace=True)
+    for frag in fragments[1:]:
+        kconf.load_config(frag, replace=False)
+
+
+def _selected_by_files(choice, picked):
+    # The member the build selects with no managed line for the choice: the one the other
+    # lines select while it is visible, else the default one.
+    sel = picked.get(choice)
+    if sel is not None and sel.visibility:
+        return sel
+    return choice._selection_from_defaults()
+
+
+def _given_without_line(sym, cur, assigned, picked):
+    # Whether the build gives the symbol its current value with no managed line for it:
+    # from what the other lines assign, else from its defaults, in the current state.
+    if sym.choice is not None:
+        # A member set to n needs no line: the member now selected moves the choice.
+        return cur == "n" or _selected_by_files(sym.choice, picked) is sym
+    value = assigned.get(sym.name)
+    if value is None:
+        return cur == sym._str_default()
+    if sym.orig_type in (BOOL, TRISTATE):
+        value = TRI_TO_STR[min(value, sym.visibility)]
+    return value == cur
+
+
+def _fragment_line(sym):
+    # The line a configuration file needs to give the symbol its current value: the
+    # .config line, but with n written CONFIG_FOO=n as set_kconfig writes it. kconfiglib
+    # reads "# CONFIG_FOO is not set" as n too, but people read it as a comment.
+    line = sym.config_string.rstrip("\n")
+    if line.startswith("#"):
+        return "{}{}=n".format(sym.kconfig.config_prefix, sym.name)
+    return line
 
 
 def _managed_value(line):
@@ -1045,14 +1121,13 @@ def _same_file(a, b):
         return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
 
 
-def _managed_drift(kconf, managed, fragments, baseline, listed):
+def _managed_drift(kconf, managed, fragments, baseline, assigned, picked, listed):
     # The export target's managed region pins values from earlier exports (and from
-    # set_kconfig). The drift above follows savedefconfig, so it leaves out a symbol set
-    # back to its default, or one that can no longer be assigned; the export then kept
-    # the old pinned line and the next build brought the old value back. Here each
-    # pinned symbol whose line no longer gives the current value is reported: with the
-    # line that gives it, or for removal when a configuration file cannot assign it any
-    # more (the line would only make every build warn).
+    # set_kconfig). Each pinned symbol whose line no longer gives the current value is
+    # reported here, not by the drift above: for removal when the build gives the
+    # current value without the line, or when a configuration file cannot assign the
+    # symbol any more (the line would only make every build warn), else with the line
+    # that gives the current value.
     #
     # Values are compared, not line text. With the target in the fragment list, the
     # baseline already includes its region, and one a later fragment overrides already
@@ -1074,18 +1149,23 @@ def _managed_drift(kconf, managed, fragments, baseline, listed):
         listed.add(name)
         assignable = (any(n.prompt for n in sym.nodes)
                       and (sym.choice is not None or sym.visibility > expr_value(sym.rev_dep)))
-        cfg_line = sym.config_string.rstrip("\n")
-        update = assignable and bool(cfg_line)
-        out.append({
+        try:
+            redundant = assignable and _given_without_line(sym, cur, assigned, picked)
+        except Exception:
+            redundant = False  # private API moved: keep the line (over-pinning is safe)
+        cfg_line = _fragment_line(sym)
+        update = assignable and bool(cfg_line) and not redundant
+        entry = {
             "name": name,
             "baseline": value,
             "current": cur,
-            # An explicit value rather than dropping the line: a fragment merged before
-            # the target may assign the symbol too, and would win again without it.
             "configString": cfg_line if update else "",
             "managedLine": "update" if update else "remove",
             "targetId": SESSION.first_node_id.get(name),
-        })
+        }
+        if redundant:
+            entry["redundant"] = True
+        out.append(entry)
     return out
 
 

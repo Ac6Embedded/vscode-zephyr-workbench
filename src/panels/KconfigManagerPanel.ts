@@ -16,7 +16,7 @@ import type {
   KcDriftEntry,
 } from '../utils/kconfig/kconfigRpcTypes';
 import type { KcExtensionMessage, KcWebviewMessage, RpcRequestMessage } from '../utils/kconfig/kconfigEvent';
-import { readPrjConfManagedRegion, upsertPrjConfManagedRegion } from '../utils/kconfig/prjConfWriter';
+import { managedRegionForDrift, upsertPrjConfManagedRegion } from '../utils/kconfig/prjConfWriter';
 import { offeredRemovals } from '../utils/kconfig/driftExport';
 import {
   checkFragmentStaleness,
@@ -568,10 +568,14 @@ export class KconfigManagerPanel {
     const actions: string[] = [openAction];
     const needsRegistration = pending.target === 'fragment' && !this._isInExtraConfFiles(pending.targetPath);
     if (needsRegistration) { actions.push('Add to build config'); }
-    void vscode.window
-      .showInformationMessage(removals.length
+    let message = `Wrote ${result.written} option(s) to ${fileLabel}.`;
+    if (removals.length) {
+      message = result.written
         ? `Wrote ${result.written} option(s) to ${fileLabel} and removed ${removals.length} managed line(s) that no longer apply.`
-        : `Wrote ${result.written} option(s) to ${fileLabel}.`, ...actions)
+        : `Removed ${removals.length} managed line(s) that no longer apply from ${fileLabel}.`;
+    }
+    void vscode.window
+      .showInformationMessage(message, ...actions)
       .then((choice) => {
         if (choice === openAction) {
           void vscode.window.showTextDocument(vscode.Uri.file(pending.targetPath));
@@ -584,11 +588,11 @@ export class KconfigManagerPanel {
   }
 
   /**
-   * The managed region of an export target, for get_drift: a value set back to its
-   * default is not drift, yet the region may still pin the old one.
+   * The managed region of an export target, for get_drift: a managed line that no longer
+   * gives the current value is updated, or removed when the build no longer needs it.
    */
-  private _managedRegionOf(targetPath: string): { path: string; lines: string[] } {
-    return { path: targetPath, lines: readPrjConfManagedRegion(targetPath) };
+  private _managedRegionOf(targetPath: string): { path: string; lines: string[]; outside: string } {
+    return managedRegionForDrift(targetPath);
   }
 
   private _isInExtraConfFiles(file: string): boolean {

@@ -25,7 +25,7 @@ import { preflight } from '../../../utils/kconfig/kconfigEnvExtractor';
 import type { KcCheckMergeResult, KcDriftEntry, KcExplainResult, KcFindResult } from '../../../utils/kconfig/kconfigRpcTypes';
 import { resolveKconfigFile } from '../../../utils/kconfig/kconfigSession';
 import type { PoolClient, PooledSession } from '../../../utils/kconfig/kconfigSessionPool';
-import { planPrjConfUpsert, readPrjConfManagedRegion, symbolOf, upsertPrjConfManagedRegion } from '../../../utils/kconfig/prjConfWriter';
+import { managedRegionForDrift, planPrjConfUpsert, symbolOf, upsertPrjConfManagedRegion } from '../../../utils/kconfig/prjConfWriter';
 import { getDomainBuildDir, readDomainsForBuildDir } from '../../../utils/zephyr/domainsYamlUtils';
 import { readZephyrKconfigReport } from '../../../utils/zephyr/kconfigReportParser';
 import { assertEnvListElement, assertInside, assertSafeShellFragment, isInside, normalizeForCompare } from '../../core/argSafety';
@@ -576,7 +576,7 @@ async function temporaryValues(
   client: PoolClient, fragments: KconfigFragmentInfo, target: SetTarget, explicit: ReadonlySet<string>,
 ): Promise<KcDriftEntry[]> {
   const res = await client.call<{ ok: boolean; error?: string; drift?: KcDriftEntry[] }>('get_drift', {
-    fragments: fragments.files, managed: { path: target.path, lines: readPrjConfManagedRegion(target.path) },
+    fragments: fragments.files, managed: managedRegionForDrift(target.path),
   });
   if (!res.ok) {
     throw new McpToolError('INTERNAL', `The temporary values could not be computed, so nothing was written: ${res.error ?? 'unknown error'}`);

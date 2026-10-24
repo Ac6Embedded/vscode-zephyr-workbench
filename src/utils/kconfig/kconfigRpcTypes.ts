@@ -133,10 +133,13 @@ export interface KcDriftEntry {
   /**
    * Set on a symbol the export target's managed region already assigns, whose line no
    * longer gives the current value: 'update' replaces the line with configString,
-   * 'remove' drops it, because a configuration file can no longer assign the symbol.
+   * 'remove' drops it, because the build gives the current value without it
+   * (`redundant`), or because a configuration file can no longer assign the symbol.
    * `baseline` is then the value the line assigns.
    */
   managedLine?: 'update' | 'remove';
+  /** With managedLine 'remove': the build gives the current value without the line. */
+  redundant?: boolean;
 }
 
 // -- Server method payloads (raw JSON-RPC over stdio) -----------------------

@@ -20,7 +20,7 @@ import type { KconfigLaunchSpec } from '../../../utils/kconfig/kconfigEnvExtract
 import type { KcCheckMergeResult, KcExplainResult, KcExplainSymbol, KcFindResult } from '../../../utils/kconfig/kconfigRpcTypes';
 import { KconfigServerClient } from '../../../utils/kconfig/kconfigServerClient';
 import { KconfigSessionPool } from '../../../utils/kconfig/kconfigSessionPool';
-import { BEGIN, END, readPrjConfManagedRegion, upsertPrjConfManagedRegion } from '../../../utils/kconfig/prjConfWriter';
+import { BEGIN, END, managedRegionForDrift, readPrjConfManagedRegion, upsertPrjConfManagedRegion } from '../../../utils/kconfig/prjConfWriter';
 import { driftExportEdits } from '../../../utils/kconfig/driftExport';
 import type { KcDriftEntry } from '../../../utils/kconfig/kconfigRpcTypes';
 
@@ -282,28 +282,30 @@ describe('kconfig_server.py agent methods (integration)', function () {
 
     const drift = async (fragments: string[], withRegion: boolean) => {
       const res = await client.call<{ ok: boolean; drift: KcDriftEntry[] }>('get_drift', {
-        fragments, ...(withRegion ? { managed: { path: target, lines: readPrjConfManagedRegion(target) } } : {}),
+        fragments, ...(withRegion ? { managed: managedRegionForDrift(target) } : {}),
       });
       assert.ok(res.ok);
       return res.drift;
     };
     const byName = (entries: KcDriftEntry[]) => Object.fromEntries(entries.map(entry => [entry.name, entry]));
 
-    it('rewrites a pinned value set back to its default, and drops a pinned line that no longer applies', async () => {
+    it('removes a pinned line the build no longer needs, and one that no longer applies', async () => {
       const plain = byName(await drift([board, target], false));
-      assert.equal(plain.LOG, undefined, 'savedefconfig leaves out a value equal to its default');
-      assert.equal(plain.LOG_LEVEL, undefined, 'and a symbol that cannot be set');
+      assert.deepEqual([plain.LOG?.configString, plain.LOG?.baseline, plain.LOG?.current], ['CONFIG_LOG=n', 'y', 'n'],
+        'without the region, the target line is any other line that assigns y');
+      assert.equal(plain.LOG_LEVEL, undefined, 'a symbol that cannot be set is left out');
 
       const entries = await drift([board, target], true);
       const by = byName(entries);
-      assert.deepEqual([by.LOG.managedLine, by.LOG.configString, by.LOG.baseline, by.LOG.current], ['update', '# CONFIG_LOG is not set', 'y', 'n']);
-      assert.deepEqual([by.LOG_LEVEL.managedLine, by.LOG_LEVEL.configString], ['remove', '']);
+      assert.deepEqual([by.LOG.managedLine, by.LOG.redundant, by.LOG.configString, by.LOG.baseline, by.LOG.current],
+        ['remove', true, '', 'y', 'n'], 'nothing else assigns LOG, and its default is n');
+      assert.deepEqual([by.LOG_LEVEL.managedLine, by.LOG_LEVEL.redundant, by.LOG_LEVEL.configString], ['remove', undefined, '']);
       assert.equal(by.GPIO, undefined, 'a pinned line that still gives the current value stays');
 
       // Written the way the export writes, the next merge keeps the user's n.
       const edits = driftExportEdits(entries);
       upsertPrjConfManagedRegion(target, edits.lines, edits.remove.map(name => `CONFIG_${name}`));
-      assert.deepEqual(readPrjConfManagedRegion(target), ['# CONFIG_LOG is not set', 'CONFIG_GPIO=y']);
+      assert.deepEqual(readPrjConfManagedRegion(target), ['CONFIG_GPIO=y']);
       const merged = await rawClient();
       try {
         await merged.call('load_config', { path: board, replace: true });
@@ -324,8 +326,114 @@ describe('kconfig_server.py agent methods (integration)', function () {
 
     it('compares with the pinned value itself when the target is not merged by the build', async () => {
       const by = byName(await drift([board], true));
-      assert.equal(by.LOG.managedLine, 'update');
-      assert.equal(by.LOG_LEVEL.managedLine, 'remove');
+      assert.deepEqual([by.LOG.managedLine, by.LOG.redundant], ['remove', true]);
+      assert.deepEqual([by.LOG_LEVEL.managedLine, by.LOG_LEVEL.redundant], ['remove', undefined]);
+    });
+  });
+
+  describe('get_drift with the lines of an earlier export', () => {
+    let client: KconfigServerClient;
+    let defconfig: string;
+    let target: string;
+
+    before(async () => {
+      defconfig = path.join(root, 'earlier', 'test_defconfig');
+      target = path.join(root, 'earlier', 'prj.conf');
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(defconfig, 'CONFIG_GPIO=y\nCONFIG_LOG=y\nCONFIG_BANNER="board"\nCONFIG_FP_B=y\n');
+      // An earlier export enabled SELECTOR, raised LOG_LEVEL, turned GPIO off, picked FP_A
+      // and changed BANNER.
+      fs.writeFileSync(target, `${BEGIN}\nCONFIG_SELECTOR=y\nCONFIG_LOG_LEVEL=4\nCONFIG_GPIO=n\nCONFIG_FP_A=y\nCONFIG_BANNER="x"\n${END}\n`);
+      // A build merged from [defconfig, target], then the user undid all of it, except
+      // BANNER, set back to its Kconfig default rather than to the board's value.
+      client = await rawClient();
+      await client.call('load_config', { path: defconfig, replace: true });
+      await client.call('load_config', { path: target, replace: false });
+      const names = ['SELECTOR', 'LOG_LEVEL', 'GPIO', 'FP_B', 'BANNER'];
+      const found = await client.call<KcFindResult>('find', { names });
+      for (const [name, value] of [['SELECTOR', 'n'], ['LOG_LEVEL', '3'], ['GPIO', 'y'], ['FP_B', 'y'], ['BANNER', 'hello']]) {
+        await client.call('set_value', { id: found.found[name].nodeIds[0], value });
+      }
+    });
+    after(async () => { await client?.dispose(); });
+
+    it('removes the managed lines the build no longer needs, and rewrites the others', async () => {
+      const res = await client.call<{ ok: boolean; drift: KcDriftEntry[] }>('get_drift', {
+        fragments: [defconfig, target], managed: managedRegionForDrift(target),
+      });
+      assert.ok(res.ok);
+      // FP_B and FORCED get their values from the board and from SELECTOR: no line.
+      assert.deepEqual(res.drift.map(entry => [entry.name, entry.managedLine, entry.redundant, entry.configString]), [
+        ['BANNER', 'update', undefined, 'CONFIG_BANNER="hello"'],
+        ['FP_A', 'remove', true, ''],
+        ['GPIO', 'remove', true, ''],
+        ['LOG_LEVEL', 'remove', true, ''],
+        ['SELECTOR', 'remove', true, ''],
+      ]);
+
+      const edits = driftExportEdits(res.drift);
+      upsertPrjConfManagedRegion(target, edits.lines, edits.remove.map(name => `CONFIG_${name}`));
+      assert.deepEqual(readPrjConfManagedRegion(target), ['CONFIG_BANNER="hello"']);
+      const merged = await rawClient();
+      try {
+        await merged.call('load_config', { path: defconfig, replace: true });
+        await merged.call('load_config', { path: target, replace: false });
+        const names = ['SELECTOR', 'FORCED', 'LOG_LEVEL', 'GPIO', 'FP_A', 'FP_B', 'BANNER'];
+        const found = await merged.call<KcFindResult>('find', { names });
+        assert.deepEqual(names.map(name => found.found[name].value), ['n', 'n', '3', 'y', 'n', 'y', 'hello']);
+      } finally {
+        await merged.dispose();
+      }
+    });
+  });
+
+  describe('get_drift with values set back to their default', () => {
+    let client: KconfigServerClient;
+    let defconfig: string;
+    let target: string;
+
+    before(async () => {
+      defconfig = path.join(root, 'defaults', 'test_defconfig');
+      target = path.join(root, 'defaults', 'prj.conf');
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(defconfig, 'CONFIG_GPIO=y\nCONFIG_LOG=y\nCONFIG_LOG_LEVEL=4\nCONFIG_BANNER="board"\nCONFIG_FP_B=y\n');
+      fs.writeFileSync(target, 'CONFIG_SELECTOR=y\n');
+      // A build merged from [defconfig, target], then the user set each of these back to
+      // its default, outside the managed region of the target.
+      client = await rawClient();
+      await client.call('load_config', { path: defconfig, replace: true });
+      await client.call('load_config', { path: target, replace: false });
+      const found = await client.call<KcFindResult>('find', { names: ['GPIO', 'LOG', 'SELECTOR', 'BANNER', 'FP_A'] });
+      for (const [name, value] of [['GPIO', 'n'], ['LOG', 'n'], ['SELECTOR', 'n'], ['BANNER', 'hello'], ['FP_A', 'y']]) {
+        await client.call('set_value', { id: found.found[name].nodeIds[0], value });
+      }
+    });
+    after(async () => { await client?.dispose(); });
+
+    it('writes the ones a configuration file assigns, and none of their dependents', async () => {
+      const res = await client.call<{ ok: boolean; drift: KcDriftEntry[] }>('get_drift', { fragments: [defconfig, target] });
+      assert.ok(res.ok);
+      // LOG_LEVEL and LOG_BACKEND follow LOG, FORCED follows SELECTOR, FP_B follows the choice.
+      assert.deepEqual(res.drift.map(entry => [entry.name, entry.configString]), [
+        ['BANNER', 'CONFIG_BANNER="hello"'],
+        ['FP_A', 'CONFIG_FP_A=y'],
+        ['GPIO', 'CONFIG_GPIO=n'],
+        ['LOG', 'CONFIG_LOG=n'],
+        ['SELECTOR', 'CONFIG_SELECTOR=n'],
+      ]);
+
+      // Written the way the export writes, the next merge keeps every value.
+      upsertPrjConfManagedRegion(target, driftExportEdits(res.drift).lines);
+      const merged = await rawClient();
+      try {
+        await merged.call('load_config', { path: defconfig, replace: true });
+        await merged.call('load_config', { path: target, replace: false });
+        const names = ['GPIO', 'LOG', 'LOG_LEVEL', 'SELECTOR', 'FORCED', 'BANNER', 'FP_A', 'FP_B'];
+        const found = await merged.call<KcFindResult>('find', { names });
+        assert.deepEqual(names.map(name => found.found[name].value), ['n', 'n', '', 'n', 'n', 'hello', 'y', 'n']);
+      } finally {
+        await merged.dispose();
+      }
     });
   });
 

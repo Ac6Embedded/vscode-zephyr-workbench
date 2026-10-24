@@ -648,13 +648,15 @@ function DriftOverlay({ state, dirty, onCancel, onJump, onWrite }: {
               <span className="kc-change-vals">
                 <span className="kc-change-old">{e.baseline ?? '(unset)'}</span>
                 <span className="codicon codicon-arrow-right" />
-                <span className="kc-change-new">{e.managedLine === 'remove' ? '(line removed)' : e.current}</span>
+                <span className="kc-change-new">{e.managedLine === 'remove' && !e.redundant ? '(line removed)' : e.current}</span>
               </span>
               {e.managedLine && (
                 <span className={`kc-drift-managed codicon codicon-${e.managedLine === 'remove' ? 'trash' : 'edit'}`}
-                  data-tip={e.managedLine === 'remove'
-                    ? `${fileLabel} pins the old value in its managed region, and this option can no longer be set from a configuration file: its managed line is removed`
-                    : `${fileLabel} pins the old value in its managed region: its managed line is updated`} />
+                  data-tip={e.managedLine === 'update'
+                    ? `${fileLabel} pins the old value in its managed region: its managed line is updated`
+                    : e.redundant
+                      ? `${fileLabel} pins the old value in its managed region, and the build gives this value without it: its managed line is removed`
+                      : `${fileLabel} pins the old value in its managed region, and this option can no longer be set from a configuration file: its managed line is removed`} />
               )}
               {e.overriddenBy && (
                 <span className="kc-drift-override codicon codicon-warning"

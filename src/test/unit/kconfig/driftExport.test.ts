@@ -14,10 +14,10 @@ describe('driftExport', () => {
   it('writes new and updated lines, and removes the managed lines that no longer apply', () => {
     const edits = driftExportEdits([
       entry('GPIO', 'CONFIG_GPIO=y'),
-      entry('LOG', '# CONFIG_LOG is not set', 'update'),
+      entry('LOG', 'CONFIG_LOG=n', 'update'),
       entry('LOG_EXTRA', '', 'remove'),
     ]);
-    assert.deepEqual(edits, { lines: ['CONFIG_GPIO=y', '# CONFIG_LOG is not set'], remove: ['LOG_EXTRA'] });
+    assert.deepEqual(edits, { lines: ['CONFIG_GPIO=y', 'CONFIG_LOG=n'], remove: ['LOG_EXTRA'] });
   });
 
   it('only removes what the export offered', () => {
@@ -34,11 +34,11 @@ describe('driftExport', () => {
       fs.writeFileSync(prj, `${BEGIN}\nCONFIG_LOG=y\nCONFIG_LOG_EXTRA=y\n${END}\n`);
       const edits = driftExportEdits([
         entry('GPIO', 'CONFIG_GPIO=y'),
-        entry('LOG', '# CONFIG_LOG is not set', 'update'),
+        entry('LOG', 'CONFIG_LOG=n', 'update'),
         entry('LOG_EXTRA', '', 'remove'),
       ]);
       upsertPrjConfManagedRegion(prj, edits.lines, offeredRemovals(edits.remove, ['LOG_EXTRA']));
-      assert.deepEqual(readPrjConfManagedRegion(prj), ['# CONFIG_LOG is not set', 'CONFIG_GPIO=y']);
+      assert.deepEqual(readPrjConfManagedRegion(prj), ['CONFIG_LOG=n', 'CONFIG_GPIO=y']);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
