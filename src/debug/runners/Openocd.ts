@@ -30,25 +30,19 @@ export class Openocd extends WestRunner {
     return process.platform === 'win32' ? 'openocd.exe' : 'openocd';
   }
 
-  /**
-   * Automatically builds command-line arguments.
-   * You can adjust default config file arguments here as needed.
-   */
-  get autoArgs(): string {
-    let cmdArgs = super.autoArgs;
-    cmdArgs += ' --config openocd.cfg';
-    return cmdArgs;
-  }
-
   /** Adds the gdb.cfg generated in the build configuration's debug folder. */
   protected override getDebugAutoArgs(relativeBuildDir: string): string {
-    return `${this.autoArgs} --config "${Openocd.getGdbCfgLaunchPath(relativeBuildDir)}"`;
+    return `${super.autoArgs} --config "${Openocd.getGdbCfgLaunchPath(relativeBuildDir)}"`;
   }
 
   /**
-   * Tell the base parser about the two `--config` lines we add, so they are
-   * stripped on read instead of being mistaken for user-provided args. The
-   * gdb.cfg one is matched by pattern, as its folder depends on the build.
+   * Tell the base parser about the `--config` lines we add (or used to add), so
+   * they are stripped on read instead of being mistaken for user-provided args.
+   * The gdb.cfg one is matched by pattern, as its folder depends on the build.
+   *
+   * `openocd.cfg` is no longer emitted: it overrode the board's own config from
+   * runners.yaml (board_runner_args). It stays listed so launch.json files
+   * written by older versions are cleaned up instead of keeping it as a user arg.
    */
   protected getExtraAutoTokens() {
     return [

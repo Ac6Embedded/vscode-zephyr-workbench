@@ -144,7 +144,7 @@ describe('debug setup: the Debug Manager Apply without its panel', () => {
       assert.equal(entry.miDebuggerPath, f.gdb);
       assert.equal(entry.debugServerPath, `\${workspaceFolder}/build/primary/.debug/${wrapperName}`);
       assert.equal(entry.debugServerArgs,
-        'debugserver --build-dir "${workspaceFolder}/build/primary" --runner openocd --gdb-port 3333 --config openocd.cfg --config "${workspaceFolder}/build/primary/.debug/gdb.cfg"');
+        'debugserver --build-dir "${workspaceFolder}/build/primary" --runner openocd --gdb-port 3333 --config "${workspaceFolder}/build/primary/.debug/gdb.cfg"');
       assert.equal(entry.serverStarted, 'halted due to debug-request, current mode: Thread');
       assert.ok(entry.setupCommands.some((c: { text: string }) => c.text === '-target-select remote localhost:3333'));
       assert.ok(entry.setupCommands.some((c: { text: string }) => c.text === '-target-download'));
@@ -181,7 +181,7 @@ describe('debug setup: the Debug Manager Apply without its panel', () => {
       f = makeDebugFixture();
       const openocd = await applyDebugSetup(input(f, f.app(), { runnerPath: '/opt/open ocd/bin/openocd' }), hooks());
       assert.ok(openocd.ok);
-      assert.match(openocd.plan.entry.debugServerArgs, /--runner openocd --openocd "\/opt\/open ocd\/bin\/openocd" --gdb-port 3333 --config openocd\.cfg --config "[^"]+gdb\.cfg"$/);
+      assert.match(openocd.plan.entry.debugServerArgs, /--runner openocd --openocd "\/opt\/open ocd\/bin\/openocd" --gdb-port 3333 --config "[^"]+gdb\.cfg"$/);
       const pyocd = await applyDebugSetup(input(f, f.app(), { runnerName: 'pyocd', runnerPath: '/opt/py ocd/pyocd' }), hooks());
       assert.ok(pyocd.ok);
       assert.match(pyocd.plan.entry.debugServerArgs, /--runner pyocd --gdb-port 3333 --pyocd "\/opt\/py ocd\/pyocd"$/);

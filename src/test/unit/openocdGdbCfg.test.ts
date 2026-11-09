@@ -77,7 +77,7 @@ describe('OpenOCD gdb.cfg', () => {
     const args = openocdArgs(app);
     createOpenocdCfg(app, 'primary');
 
-    assert.ok(args.includes('--config openocd.cfg --config "${workspaceFolder}/build/primary/.debug/gdb.cfg"'), args);
+    assert.ok(args.includes('--config "${workspaceFolder}/build/primary/.debug/gdb.cfg"'), args);
     assert.ok(fs.existsSync(gdbCfgArg(args, app.appRootPath)!));
   });
 
@@ -112,6 +112,13 @@ describe('OpenOCD gdb.cfg', () => {
       runner.loadArgs(`${stored} --config board-extra.cfg`);
       assert.equal(runner.userArgs, '--config board-extra.cfg', stored);
     }
+  });
+
+  it('does not force --config openocd.cfg, so the board config from runners.yaml is used', () => {
+    const { app } = workspaceApplication();
+    assert.ok(!openocdArgs(app).includes('openocd.cfg'), openocdArgs(app));
+    assert.ok(!new Openocd().autoArgs.includes('--config'));
+    assert.ok(!new Openocd().getWestFlashArgs('primary').includes('openocd.cfg'));
   });
 
   it('leaves other runners without a gdb.cfg', () => {
