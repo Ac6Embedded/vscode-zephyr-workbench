@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import { WestWorkspace } from "../models/WestWorkspace";
 import { ZephyrApplication } from "../models/ZephyrApplication";
+import { ZephyrBuildConfig } from "../models/ZephyrBuildConfig";
 import { saveApplicationConfigSetting } from '../utils/zephyr/applicationSettings';
+import { collectBoardRoots } from '../utils/zephyr/boardDiscovery';
 import { getWestWorkspace } from "../utils/utils";
 import { getSupportedShields, getSupportedSnippets } from '../commands/WestCommands';
 
@@ -22,7 +24,10 @@ export async function changeEnvVarQuickStep(
     if (project) {
       const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
       if (westWorkspace) {
-        const shields = await getSupportedShields(westWorkspace);
+        // The roots a board search uses, so an out-of-tree shield under
+        // <BOARD_ROOT>/boards/shields is listed like the boards of that root.
+        const buildConfig = context instanceof ZephyrBuildConfig ? context : undefined;
+        const shields = await getSupportedShields(westWorkspace, collectBoardRoots(westWorkspace, project, buildConfig));
         if (shields.length > 0) {
           const shieldItems: vscode.QuickPickItem[] = shields.map(shieldName => ({
             label: shieldName
