@@ -3,5 +3,6 @@
         "out": true
     },
     "js/ts.tsc.autoDetect": "off",
-    "cmake.configureOnOpen": false
+    "cmake.configureOnOpen": false,
+    "terminal.integrated.stickyScroll.enabled": false
 }

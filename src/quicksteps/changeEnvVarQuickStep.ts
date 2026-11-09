@@ -4,6 +4,7 @@ import { ZephyrApplication } from "../models/ZephyrApplication";
 import { saveApplicationConfigSetting } from '../utils/zephyr/applicationSettings';
 import { getWestWorkspace } from "../utils/utils";
 import { getSupportedShields, getSupportedSnippets } from '../commands/WestCommands';
+import { collectBoardRoots } from '../utils/zephyr/boardDiscovery';
 
 export async function changeEnvVarQuickStep(
   context: WestWorkspace | ZephyrApplication | any,
@@ -22,7 +23,8 @@ export async function changeEnvVarQuickStep(
     if (project) {
       const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
       if (westWorkspace) {
-        const shields = await getSupportedShields(westWorkspace);
+        const boardRoots = collectBoardRoots(westWorkspace, project);
+        const shields = await getSupportedShields(westWorkspace, boardRoots);
         if (shields.length > 0) {
           const shieldItems: vscode.QuickPickItem[] = shields.map(shieldName => ({
             label: shieldName
