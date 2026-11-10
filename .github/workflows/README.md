@@ -17,17 +17,18 @@ via *Run workflow*):
 
 ## installer.yml (Installer)
 
-Checks the Linux host tools installer (`scripts/hosttools`). Two jobs:
+Checks the Linux host tools installer (`scripts/hosttools`). It runs once a
+week, on Friday at 18:00 UTC, and on demand (*Run workflow*), never on a push
+or a pull request. Two jobs:
 
-- `quick`: runs on every push and pull request to `main` and `pre-release`
-  that touches `scripts/hosttools/**` or this workflow. No installs: syntax
-  check, ShellCheck (errors only), `--help`, and the installer's own
-  self-tests (platform detection, step engine, `env.yml` merge).
+- `quick`: no installs: syntax check, ShellCheck (errors only), `--help`, and
+  the installer's own self-tests (platform detection, step engine, `env.yml`
+  merge).
 - `distros`: runs the real installer, as root and without sudo, in containers
-  of Ubuntu 22.04, 24.04 and 26.04, Debian 12 and 13, Fedora, Arch and Rocky 9 and 10 on x86_64,
-  and of Ubuntu 24.04, Debian 12 and Fedora on arm64, then runs the installed
-  cmake, ninja, Python and west. It downloads a few hundred MB per run, so it
-  runs only every Monday and on demand (*Run workflow*).
+  of Ubuntu 22.04, 24.04 and 26.04, Debian 12 and 13, Fedora, Arch and Rocky 9
+  and 10 on x86_64, and of Ubuntu 24.04, Debian 12 and Fedora on arm64, then
+  runs the installed cmake, ninja, Python and west. It downloads a few hundred
+  MB per run.
 
 macOS and Windows are not covered yet.
 

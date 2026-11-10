@@ -1,25 +1,18 @@
 # Host tools installer (scripts/hosttools): checks the Linux installer.
 #
-# Two tiers:
-#   - quick: no installs, a few seconds. Runs on every push and pull request
-#     that touches the installer.
+# Runs once a week, on Friday evening, and on demand (Run workflow). Never on
+# a push or a pull request. Two jobs:
+#   - quick: no installs, a few seconds.
 #   - distros: runs the real installer in containers of the supported Linux
-#     distributions, on x86_64 and arm64. It downloads a few hundred MB, so it
-#     runs weekly and on demand (Run workflow), not on every pull request.
+#     distributions, on x86_64 and arm64. It downloads a few hundred MB.
 #
 # macOS and Windows are not covered yet.
 
 name: Installer
 
 on:
-  push:
-    branches: [main, pre-release]
-    paths: ['scripts/hosttools/**', '.github/workflows/installer.yml']
-  pull_request:
-    branches: [main, pre-release]
-    paths: ['scripts/hosttools/**', '.github/workflows/installer.yml']
   schedule:
-    - cron: '17 4 * * 1'
+    - cron: '0 18 * * 5'
   workflow_dispatch:
 
 permissions:
@@ -58,8 +51,6 @@ jobs:
         run: scripts/hosttools/install.sh --selftest-env-merge "$RUNNER_TEMP/zi-env"
 
   distros:
-    # Only weekly and on demand: see the header.
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: quick
     name: ${{ matrix.image }} (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
