@@ -92,7 +92,7 @@ export interface AgentRow {
 }
 
 /** The three pages of the AI Manager. */
-export type AiManagerView = 'workbench' | 'zephyr' | 'skills';
+export type AiManagerView = 'workbench' | 'zephyr' | 'third-party';
 
 /** The Zephyr Project's MCP server, and where each agent stands with it. */
 export interface ZephyrMcpState {

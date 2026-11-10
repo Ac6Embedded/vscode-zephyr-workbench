@@ -28,7 +28,7 @@ import { TOOL_CATALOG } from '../mcp/core/catalog';
 import { PERMISSION_PRESETS, PermissionPreset, permissionOf, TOOL_PERMISSIONS, ToolPermission } from '../mcp/core/toolSpec';
 
 export type AiManagerTab = 'connections' | 'permissions' | 'examples';
-export type AiManagerView = 'workbench' | 'zephyr' | 'skills';
+export type AiManagerView = 'workbench' | 'zephyr' | 'third-party';
 
 /** Which server a Connect or Remove is for. */
 type ServerKind = 'workbench' | 'zephyr';
@@ -49,7 +49,7 @@ interface InboundMessage {
   text?: string;
 }
 
-const VIEWS: readonly AiManagerView[] = ['workbench', 'zephyr', 'skills'];
+const VIEWS: readonly AiManagerView[] = ['workbench', 'zephyr', 'third-party'];
 const TABS: readonly AiManagerTab[] = ['connections', 'permissions', 'examples'];
 
 /** The Zephyr Project's server, the same entry for every user. */
