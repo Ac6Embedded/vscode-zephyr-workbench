@@ -22,6 +22,7 @@ reinstall_venv_bool=false
 create_venv_bool=false
 engine_selftest_bool=false
 selftest_env_merge_bool=false
+selftest_platform_bool=false
 # Optional custom venv path
 VENV_PATH=""
 INSTALL_DIR=""
@@ -179,6 +180,13 @@ while [[ "$#" -gt 0 ]]; do
     --selftest-env-merge)
       # Dev-only: run only the env.yml merge against installDir and exit.
       selftest_env_merge_bool=true
+      root_packages=false
+      non_root_packages=false
+      check_installed_bool=false
+      ;;
+    --selftest-platform)
+      # Dev-only: check the host platform detection helpers and exit.
+      selftest_platform_bool=true
       root_packages=false
       non_root_packages=false
       check_installed_bool=false
@@ -1544,6 +1552,26 @@ resilient_batch_install() {
     return 0
 }
 
+# Maps an os-release ID and ID_LIKE to the family of package manager that
+# installs the system packages: debian, fedora, arch or clear-linux, else
+# "unknown". The distribution's own ID wins, then its ID_LIKE ancestors in
+# order, so derivatives (Linux Mint, Rocky Linux, Manjaro, ...) share the
+# packages of the family they come from.
+# distro_family <ID> <ID_LIKE>
+distro_family() {
+    local candidate
+    # Unquoted on purpose: ID_LIKE is a space separated list.
+    for candidate in $1 $2; do
+        case "$candidate" in
+        ubuntu|debian) echo "debian"; return 0 ;;
+        fedora|rhel|centos) echo "fedora"; return 0 ;;
+        arch) echo "arch"; return 0 ;;
+        clear-linux-os) echo "clear-linux"; return 0 ;;
+        esac
+    done
+    echo "unknown"
+}
+
 apt_install() {
     sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends "$@"
 }
@@ -1566,16 +1594,21 @@ step_system() {
         pr_minimum_packages_note
         return 0
     fi
+    ID="" ID_LIKE="" PRETTY_NAME=""
     . /etc/os-release
-    case "$ID" in
-    ubuntu)
-        echo "This is Ubuntu."
-        if [ "$(lsb_release -rs 2>/dev/null | awk -F. '{print $1$2}')" -ge 2004 ] 2>/dev/null; then
-            echo "Ubuntu version is equal to or higher than 20.04"
-        else
-            pr_warn "Ubuntu versions lower than 20.04 are not officially supported."
-            pr_minimum_packages_note
-            echo "Attempting install anyway..."
+    local family
+    family=$(distro_family "$ID" "$ID_LIKE")
+    echo "Detected ${PRETTY_NAME:-$ID} (package family: $family)."
+    case "$family" in
+    debian)
+        if [[ "$ID" == "ubuntu" ]]; then
+            if [ "$(lsb_release -rs 2>/dev/null | awk -F. '{print $1$2}')" -ge 2004 ] 2>/dev/null; then
+                echo "Ubuntu version is equal to or higher than 20.04"
+            else
+                pr_warn "Ubuntu versions lower than 20.04 are not officially supported."
+                pr_minimum_packages_note
+                echo "Attempting install anyway..."
+            fi
         fi
         sudo DEBIAN_FRONTEND=noninteractive apt-get update \
             || step_warn "apt-get update failed (exit $?); package lists may be stale"
@@ -1587,7 +1620,6 @@ step_system() {
             || return 1
         ;;
     fedora)
-        echo "This is Fedora."
         sudo dnf upgrade -y || step_warn "dnf upgrade failed (exit $?); continuing"
         sudo dnf group install -y "Development Tools" "C Development Tools and Libraries" \
             || step_warn "dnf group install failed (exit $?); continuing"
@@ -1596,15 +1628,13 @@ step_system() {
             xz file python3-devel SDL2-devel \
             || return 1
         ;;
-    clear-linux-os)
-        echo "This is Clear Linux."
+    clear-linux)
         sudo swupd update || step_warn "swupd update failed (exit $?); continuing"
         resilient_batch_install swupd_install \
             c-basic dev-utils dfu-util dtc os-core-dev python-basic python3-basic python3-tcl \
             || return 1
         ;;
     arch)
-        echo "This is Arch Linux."
         sudo pacman -Syu --noconfirm || step_warn "pacman -Syu failed (exit $?); continuing"
         resilient_batch_install pacman_install \
             git cmake ninja gperf ccache dfu-util dtc wget python-pip python-setuptools \
@@ -1842,6 +1872,52 @@ fi
 # ----------------------------------------------------------------------------
 # Dev-only selftests (no downloads, no package installs)
 # ----------------------------------------------------------------------------
+
+if [[ $selftest_platform_bool == true ]]; then
+    selftest_failures=0
+    # selftest_expect <description> <expected> <actual>
+    selftest_expect() {
+        if [[ "$2" == "$3" ]]; then
+            echo "ok   $1 -> $3"
+        else
+            echo "FAIL $1: expected '$2', got '$3'"
+            selftest_failures=$((selftest_failures+1))
+        fi
+    }
+
+    # <ID> <ID_LIKE> <expected family>, as the distributions ship them in /etc/os-release
+    while IFS='|' read -r st_id st_id_like st_expected; do
+        selftest_expect "distro_family '$st_id' '$st_id_like'" "$st_expected" "$(distro_family "$st_id" "$st_id_like")"
+    done <<'EOF'
+ubuntu|debian|debian
+debian||debian
+linuxmint|ubuntu debian|debian
+pop|ubuntu debian|debian
+elementary|ubuntu|debian
+zorin|ubuntu debian|debian
+kali|debian|debian
+fedora||fedora
+rhel|fedora|fedora
+centos|rhel fedora|fedora
+rocky|rhel centos fedora|fedora
+almalinux|rhel centos fedora|fedora
+amzn|fedora|fedora
+arch||arch
+manjaro|arch|arch
+endeavouros|arch|arch
+clear-linux-os||clear-linux
+opensuse-tumbleweed|opensuse suse|unknown
+alpine||unknown
+||unknown
+EOF
+
+    if [[ $selftest_failures -gt 0 ]]; then
+        echo "$selftest_failures platform selftest(s) failed"
+        exit 1
+    fi
+    echo "All platform selftests passed"
+    exit 0
+fi
 
 if [[ $engine_selftest_bool == true ]]; then
     selftest_ok() { echo "ok body ran"; }
