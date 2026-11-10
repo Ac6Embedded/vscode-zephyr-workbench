@@ -9,7 +9,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
-  execWestCommandWithEnv, getSnippetRoots, getSupportedSnippets, getWestBoards, getWestShields, parseWestBoardList, parseWestShieldList,
+  execWestCommandWithEnv, getSnippetRoots, getSupportedShields, getSupportedSnippets, getWestBoards, getWestShields, parseWestBoardList, parseWestShieldList,
   WestBoardInfo, WestCommandError,
 } from '../../commands/WestCommands';
 import { WestWorkspace } from '../../models/WestWorkspace';
@@ -513,6 +513,14 @@ describe('west listings with a fake west', function () {
   it('parses west shields with vendor and full name', async () => {
     const shields = await getWestShields(workspace);
     assert.deepEqual(shields, [{ name: 'x_shield', dir: '/z/boards/shields/x_shield', vendor: 'acme', fullName: 'X Shield' }]);
+  });
+
+  it('lists the shields of the board roots it is given, and passes west nothing without any', async () => {
+    assert.deepEqual(await getSupportedShields(workspace, ['/extra/root', '/other/root']), ['x_shield']);
+    assert.match(calls()[0], /--board-root \/extra\/root --board-root \/other\/root/);
+
+    await getSupportedShields(workspace);
+    assert.ok(!calls()[1].includes('--board-root'), calls()[1]);
   });
 
   it('stops probing formats when the venv of west lacks a Python module', async () => {
