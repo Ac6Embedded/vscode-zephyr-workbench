@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { WestWorkspace } from "../models/WestWorkspace";
 import { ZephyrApplication } from "../models/ZephyrApplication";
+import { ZephyrBuildConfig } from "../models/ZephyrBuildConfig";
 import { saveApplicationConfigSetting } from '../utils/zephyr/applicationSettings';
 import { getWestWorkspace } from "../utils/utils";
 import { getSupportedShields, getSupportedSnippets } from '../commands/WestCommands';
@@ -23,7 +24,9 @@ export async function changeEnvVarQuickStep(
     if (project) {
       const westWorkspace = getWestWorkspace(project.westWorkspaceRootPath);
       if (westWorkspace) {
-        const boardRoots = collectBoardRoots(westWorkspace, project);
+        // Opened from a build configuration, its own board roots count too.
+        const buildConfig = context instanceof ZephyrBuildConfig ? context : undefined;
+        const boardRoots = collectBoardRoots(westWorkspace, project, buildConfig);
         const shields = await getSupportedShields(westWorkspace, boardRoots);
         if (shields.length > 0) {
           const shieldItems: vscode.QuickPickItem[] = shields.map(shieldName => ({
