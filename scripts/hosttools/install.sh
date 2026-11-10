@@ -514,14 +514,14 @@ print_step_summary() {
 # ----------------------------------------------------------------------------
 # tools.yml field reader: line scan, no yq needed (POSIX awk so the same code
 # works with BSD awk on macOS).
-# get_yaml_os_field <tool> <field>
+# get_yaml_os_field <tool> <field> [os key, default $SELECTED_OS]
 # ----------------------------------------------------------------------------
 get_yaml_os_field() {
-    awk -v tool="$1" -v os="$SELECTED_OS" -v field="$2" -v sq=\' '
+    awk -v tool="$1" -v os="${3:-$SELECTED_OS}" -v field="$2" -v sq=\' '
         $0 ~ ("^- tool: " tool "$")                        { ft=1; fo=0; next }
         ft && /^- tool: /                                  { exit }
         ft && $0 ~ ("^[ ]+" os ":[ \t]*$")                 { fo=1; next }
-        ft && fo && /^[ ]+(windows|linux|darwin):[ \t]*$/  { fo=0; next }
+        ft && fo && /^[ ]+[A-Za-z0-9_]+:[ \t]*$/           { fo=0; next }
         ft && fo && $0 ~ ("^[ ]+" field ": ") {
             line=$0
             sub("^[ ]+" field ": *", "", line)
@@ -531,6 +531,35 @@ get_yaml_os_field() {
             exit
         }
     ' "$YAML_FILE"
+}
+
+# ----------------------------------------------------------------------------
+# Host architecture. The prebuilt tools (cmake, ninja, yq, portable python)
+# are per architecture: tools.yml keeps the x86_64 ones under `linux` and any
+# other architecture under `linux_<arch>` (linux_aarch64, ...), so a missing
+# entry means upstream ships nothing for this host.
+# normalize_arch <uname -m>: x86_64 and aarch64 get their canonical names,
+# anything else is returned as reported.
+# ----------------------------------------------------------------------------
+normalize_arch() {
+    case "$1" in
+    x86_64|amd64) echo "x86_64" ;;
+    aarch64|arm64) echo "aarch64" ;;
+    *) echo "$1" ;;
+    esac
+}
+
+HOST_ARCH=$(normalize_arch "$(uname -m)")
+if [[ "$HOST_ARCH" == "x86_64" ]]; then
+    DOWNLOAD_OS_KEY="$SELECTED_OS"
+else
+    DOWNLOAD_OS_KEY="${SELECTED_OS}_${HOST_ARCH}"
+fi
+
+# get_yaml_download_field <tool> <field>: source/sha256 of the prebuilt tool
+# for this host architecture. Versions stay shared, read with get_yaml_os_field.
+get_yaml_download_field() {
+    get_yaml_os_field "$1" "$2" "$DOWNLOAD_OS_KEY"
 }
 
 # ----------------------------------------------------------------------------
@@ -1617,10 +1646,13 @@ step_system() {
         fi
         sudo DEBIAN_FRONTEND=noninteractive apt-get update \
             || step_warn "apt-get update failed (exit $?); package lists may be stale"
+        # The 32-bit multilib packages only exist on x86.
+        local multilib_packages=()
+        [[ "$HOST_ARCH" == "x86_64" ]] && multilib_packages=(gcc-multilib g++-multilib)
         resilient_batch_install apt_install \
             git cmake ninja-build gperf ccache dfu-util device-tree-compiler wget \
             python3-dev python3-venv python3-pip python3-setuptools python3-tk python3-wheel \
-            xz-utils file make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1 unzip \
+            xz-utils file make gcc "${multilib_packages[@]}" libsdl2-dev libmagic1 unzip \
             libhidapi-hidraw0 libhidapi-libusb0 \
             || return 1
         ;;
@@ -1658,10 +1690,10 @@ step_yq() {
     pr_title "YQ"
     local YQ_FILENAME="yq"
     local yq_source yq_sha
-    yq_source=$(get_yaml_os_field yq source)
-    yq_sha=$(get_yaml_os_field yq sha256)
+    yq_source=$(get_yaml_download_field yq source)
+    yq_sha=$(get_yaml_download_field yq sha256)
     if [[ -z "$yq_source" || -z "$yq_sha" ]]; then
-        step_error "yq source/sha256 not found in tools.yml"
+        step_error "No prebuilt yq for $HOST_ARCH in tools.yml"
         return 1
     fi
 
@@ -1684,10 +1716,10 @@ step_python() {
         pr_title "Python (Portable AppImage)"
         # Download portable Python AppImage as defined in tools.yml
         local PY_APPIMAGE_URL PY_APPIMAGE_SHA
-        PY_APPIMAGE_URL=$(get_yaml_os_field python_portable source)
-        PY_APPIMAGE_SHA=$(get_yaml_os_field python_portable sha256)
+        PY_APPIMAGE_URL=$(get_yaml_download_field python_portable source)
+        PY_APPIMAGE_SHA=$(get_yaml_download_field python_portable sha256)
         if [[ -z "$PY_APPIMAGE_URL" || -z "$PY_APPIMAGE_SHA" ]]; then
-            step_error "python_portable source/sha256 not found in tools.yml"
+            step_error "No portable Python for $HOST_ARCH in tools.yml; install Python >= ${PYTHON_MIN_VERSION} with your package manager, or use --python-exe-path"
             return 1
         fi
         local PY_APPIMAGE_NAME="$(basename "$PY_APPIMAGE_URL")"
@@ -1749,10 +1781,10 @@ step_ninja() {
     pr_title "Ninja"
     local NINJA_ARCHIVE_NAME="ninja-linux.zip"
     local ninja_source ninja_sha
-    ninja_source=$(get_yaml_os_field ninja source)
-    ninja_sha=$(get_yaml_os_field ninja sha256)
+    ninja_source=$(get_yaml_download_field ninja source)
+    ninja_sha=$(get_yaml_download_field ninja sha256)
     if [[ -z "$ninja_source" || -z "$ninja_sha" ]]; then
-        step_error "ninja source/sha256 not found in tools.yml"
+        step_error "No prebuilt ninja for $HOST_ARCH in tools.yml; install ninja with your package manager"
         return 1
     fi
     download_and_check_hash "$ninja_source" "$ninja_sha" "$NINJA_ARCHIVE_NAME" \
@@ -1767,10 +1799,10 @@ step_cmake() {
     pr_title "CMake"
     local CMAKE_ARCHIVE_NAME="${CMAKE_FOLDER_NAME}.tar.gz"
     local cmake_source cmake_sha
-    cmake_source=$(get_yaml_os_field cmake source)
-    cmake_sha=$(get_yaml_os_field cmake sha256)
+    cmake_source=$(get_yaml_download_field cmake source)
+    cmake_sha=$(get_yaml_download_field cmake sha256)
     if [[ -z "$cmake_source" || -z "$cmake_sha" ]]; then
-        step_error "cmake source/sha256 not found in tools.yml"
+        step_error "No prebuilt cmake for $HOST_ARCH in tools.yml; install cmake with your package manager"
         return 1
     fi
     download_and_check_hash "$cmake_source" "$cmake_sha" "$CMAKE_ARCHIVE_NAME" \
@@ -1916,6 +1948,34 @@ alpine||unknown
 ||unknown
 EOF
 
+    # <uname -m> <expected architecture>
+    while IFS='|' read -r st_uname st_expected; do
+        selftest_expect "normalize_arch '$st_uname'" "$st_expected" "$(normalize_arch "$st_uname")"
+    done <<'EOF'
+x86_64|x86_64
+amd64|x86_64
+aarch64|aarch64
+arm64|aarch64
+armv7l|armv7l
+riscv64|riscv64
+i686|i686
+EOF
+
+    # tools.yml: <tool> <field> <os key> <expected value, empty when there is none>
+    while IFS='|' read -r st_tool st_field st_os st_expected; do
+        selftest_expect "tools.yml $st_tool $st_field ($st_os)" "$st_expected" "$(get_yaml_os_field "$st_tool" "$st_field" "$st_os")"
+    done <<'EOF'
+cmake|source|linux|https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
+cmake|source|linux_aarch64|https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
+cmake|version|linux_aarch64|
+cmake|source|linux_riscv64|
+ninja|source|linux_aarch64|https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux-aarch64.zip
+yq|source|linux_aarch64|https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_linux_arm64
+python_portable|source|linux_aarch64|
+cmake|version|linux|4.1.2
+gperf|version|linux|
+EOF
+
     if [[ $selftest_failures -gt 0 ]]; then
         echo "$selftest_failures platform selftest(s) failed"
         exit 1
@@ -1965,7 +2025,7 @@ if [[ $selftest_env_merge_bool == true ]]; then
     [[ "$PYTHON_MODE_EFFECTIVE" == "auto" ]] && PYTHON_MODE_EFFECTIVE="system"
     CMAKE_VERSION=$(get_yaml_os_field cmake version)
     NINJA_VERSION=$(get_yaml_os_field ninja version)
-    CMAKE_FOLDER_NAME="cmake-${CMAKE_VERSION:-4.1.2}-linux-x86_64"
+    CMAKE_FOLDER_NAME="cmake-${CMAKE_VERSION:-4.1.2}-linux-${HOST_ARCH}"
     write_env_yaml
     merge_status=$?
     rm -rf "$TMP_DIR"
@@ -2059,7 +2119,11 @@ if [[ $non_root_packages == true ]]; then
     PYTHON_MODE_EFFECTIVE="$PYTHON_MODE"
     if [[ "$PYTHON_MODE" == "auto" ]]; then
         check_python_version_requirement || true
-        if [[ "$PYTHON_TOO_OLD" == true ]]; then
+        if [[ "$PYTHON_TOO_OLD" == true && -z "$(get_yaml_download_field python_portable source)" ]]; then
+            pr_warn "System Python is older than ${PYTHON_MIN_VERSION} or missing, and there is no portable Python for ${HOST_ARCH}."
+            pr_warn "Install Python >= ${PYTHON_MIN_VERSION} with your package manager, or use --python-exe-path."
+            PYTHON_MODE_EFFECTIVE="system"
+        elif [[ "$PYTHON_TOO_OLD" == true ]]; then
             pr_warn "System Python is older than ${PYTHON_MIN_VERSION} or missing."
             pr_warn "Applying workaround: installing portable Python via AppImage."
             pr_warn "More info: https://python-appimage.readthedocs.io"
@@ -2090,7 +2154,7 @@ if [[ $non_root_packages == true ]]; then
         pr_warn "cmake version missing from tools.yml; assuming 4.1.2"
         CMAKE_VERSION="4.1.2"
     fi
-    CMAKE_FOLDER_NAME="cmake-${CMAKE_VERSION}-linux-x86_64"
+    CMAKE_FOLDER_NAME="cmake-${CMAKE_VERSION}-linux-${HOST_ARCH}"
 
     # Download sources are read straight from tools.yml (awk line scan), so
     # no step depends on the yq binary: it is installed as a managed tool for
