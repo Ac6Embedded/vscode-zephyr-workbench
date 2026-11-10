@@ -1594,7 +1594,7 @@ step_system() {
         pr_minimum_packages_note
         return 0
     fi
-    ID="" ID_LIKE="" PRETTY_NAME=""
+    ID="" ID_LIKE="" PRETTY_NAME="" VERSION_ID=""
     . /etc/os-release
     local family
     family=$(distro_family "$ID" "$ID_LIKE")
@@ -1602,7 +1602,12 @@ step_system() {
     case "$family" in
     debian)
         if [[ "$ID" == "ubuntu" ]]; then
-            if [ "$(lsb_release -rs 2>/dev/null | awk -F. '{print $1$2}')" -ge 2004 ] 2>/dev/null; then
+            # VERSION_ID (22.04) comes with os-release; lsb_release does not
+            # exist on minimal installs and containers.
+            local ubuntu_release="${VERSION_ID//./}"
+            if [[ ! "$ubuntu_release" =~ ^[0-9]+$ ]]; then
+                pr_warn "Cannot read the Ubuntu version; assuming it is supported."
+            elif (( 10#$ubuntu_release >= 2004 )); then
                 echo "Ubuntu version is equal to or higher than 20.04"
             else
                 pr_warn "Ubuntu versions lower than 20.04 are not officially supported."
