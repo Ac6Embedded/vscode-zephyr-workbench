@@ -24,7 +24,7 @@ Checks the Linux host tools installer (`scripts/hosttools`). Two jobs:
   check, ShellCheck (errors only), `--help`, and the installer's own
   self-tests (platform detection, step engine, `env.yml` merge).
 - `distros`: runs the real installer, as root and without sudo, in containers
-  of Ubuntu 22.04 and 24.04, Debian 12, Fedora, Arch and Rocky 9 on x86_64,
+  of Ubuntu 22.04, 24.04 and 26.04, Debian 12 and 13, Fedora, Arch and Rocky 9 and 10 on x86_64,
   and of Ubuntu 24.04, Debian 12 and Fedora on arm64, then runs the installed
   cmake, ninja, Python and west. It downloads a few hundred MB per run, so it
   runs only every Monday and on demand (*Run workflow*).

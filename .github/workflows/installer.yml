@@ -71,10 +71,13 @@ jobs:
           # The portable Python is only published for x86_64, so arm64 uses the system one.
           - { image: 'ubuntu:22.04',      arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
           - { image: 'ubuntu:24.04',      arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
+          - { image: 'ubuntu:26.04',      arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
           - { image: 'debian:12',         arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
+          - { image: 'debian:13',         arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
           - { image: 'fedora:latest',     arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
           - { image: 'archlinux:latest',  arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
           - { image: 'rockylinux:9',      arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
+          - { image: 'rockylinux:10',      arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
           - { image: 'ubuntu:24.04',      arch: aarch64, runner: ubuntu-24.04-arm, args: '--use-system-python --tools system,cmake,ninja,venv' }
           - { image: 'debian:12',         arch: aarch64, runner: ubuntu-24.04-arm, args: '--use-system-python --tools system,cmake,ninja,venv' }
           - { image: 'fedora:latest',     arch: aarch64, runner: ubuntu-24.04-arm, args: '--use-system-python --tools system,cmake,ninja,venv' }
