@@ -1139,12 +1139,14 @@ export async function getWestShields(
 /**
  * Executes the "west shields" command and returns an array of shield names.
  * @param parent The ZephyrApplication or WestWorkspace instance.
+ * @param boardRoots Optional board roots to pass to the west shields command.
  * @returns A promise that resolves with the list of supported shield names.
  */
 export async function getSupportedShields(
   parent: ZephyrApplication | WestWorkspace,
+  boardRoots?: string[],
 ): Promise<string[]> {
-  const shields = await getWestShields(parent);
+  const shields = await getWestShields(parent, boardRoots);
   return [...new Set(shields.map(shield => shield.name))];
 }
 
