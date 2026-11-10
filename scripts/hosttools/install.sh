@@ -1729,6 +1729,23 @@ step_yq() {
     return 0
 }
 
+# The Python AppImage mounts itself through FUSE, which containers and recent
+# distributions (Ubuntu without libfuse2) do not provide. Unpacking needs no
+# FUSE: the shims then point at the unpacked AppRun, which finds its own folder
+# and sets up Tcl/Tk and the SSL certificates.
+# unpack_python_appimage <python dir holding python.AppImage>
+unpack_python_appimage() {
+    local python_dir="$1"
+    rm -rf "$python_dir/squashfs-root" "$python_dir/app"
+    if ! (cd "$python_dir" && ./python.AppImage --appimage-extract >/dev/null 2>&1) \
+        || ! mv "$python_dir/squashfs-root" "$python_dir/app"; then
+        rm -rf "$python_dir/squashfs-root" "$python_dir/app"
+        return 1
+    fi
+    ln -sf "app/AppRun" "$python_dir/python"
+    ln -sf "app/AppRun" "$python_dir/python3"
+}
+
 step_python() {
     case "$PYTHON_MODE_EFFECTIVE" in
     portable)
@@ -1759,7 +1776,11 @@ step_python() {
         export PATH="$TOOLS_DIR/python:$PATH"
         debug "PATH with portable: $PATH"
         if ! "$TOOLS_DIR/python/python3" --version >/dev/null 2>&1; then
-            step_warn "Portable Python installed but does not run here (missing FUSE?); the venv step may fall back to another python"
+            echo "The portable Python AppImage does not run here (FUSE is missing); unpacking it instead."
+            unpack_python_appimage "$TOOLS_DIR/python"
+            if ! "$TOOLS_DIR/python/python3" --version >/dev/null 2>&1; then
+                step_warn "Portable Python installed but does not run here; the venv step may fall back to another python"
+            fi
         fi
         ;;
     custom)
