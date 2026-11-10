@@ -1601,20 +1601,34 @@ distro_family() {
     echo "unknown"
 }
 
+# System packages are installed as root: directly when this already runs as
+# root (containers, CI), else through sudo.
+can_run_as_root() {
+    [[ $EUID -eq 0 ]] || command -v sudo >/dev/null 2>&1
+}
+
+run_as_root() {
+    if [[ $EUID -eq 0 ]]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
 apt_install() {
-    sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends "$@"
+    run_as_root env DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends "$@"
 }
 
 dnf_install() {
-    sudo dnf install -y "$@"
+    run_as_root dnf install -y "$@"
 }
 
 swupd_install() {
-    sudo swupd bundle-add "$@"
+    run_as_root swupd bundle-add "$@"
 }
 
 pacman_install() {
-    sudo pacman -S --noconfirm "$@"
+    run_as_root pacman -S --noconfirm "$@"
 }
 
 step_system() {
@@ -1628,6 +1642,11 @@ step_system() {
     local family
     family=$(distro_family "$ID" "$ID_LIKE")
     echo "Detected ${PRETTY_NAME:-$ID} (package family: $family)."
+    if [[ "$family" != "unknown" ]] && ! can_run_as_root; then
+        step_error "Installing system packages needs root: run as root or install sudo."
+        pr_minimum_packages_note
+        return 1
+    fi
     case "$family" in
     debian)
         if [[ "$ID" == "ubuntu" ]]; then
@@ -1644,7 +1663,7 @@ step_system() {
                 echo "Attempting install anyway..."
             fi
         fi
-        sudo DEBIAN_FRONTEND=noninteractive apt-get update \
+        run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update \
             || step_warn "apt-get update failed (exit $?); package lists may be stale"
         # The 32-bit multilib packages only exist on x86.
         local multilib_packages=()
@@ -1657,8 +1676,8 @@ step_system() {
             || return 1
         ;;
     fedora)
-        sudo dnf upgrade -y || step_warn "dnf upgrade failed (exit $?); continuing"
-        sudo dnf group install -y "Development Tools" "C Development Tools and Libraries" \
+        run_as_root dnf upgrade -y || step_warn "dnf upgrade failed (exit $?); continuing"
+        run_as_root dnf group install -y "Development Tools" "C Development Tools and Libraries" \
             || step_warn "dnf group install failed (exit $?); continuing"
         resilient_batch_install dnf_install \
             cmake ninja-build gperf dfu-util dtc wget which python3-pip python3-tkinter \
@@ -1666,13 +1685,13 @@ step_system() {
             || return 1
         ;;
     clear-linux)
-        sudo swupd update || step_warn "swupd update failed (exit $?); continuing"
+        run_as_root swupd update || step_warn "swupd update failed (exit $?); continuing"
         resilient_batch_install swupd_install \
             c-basic dev-utils dfu-util dtc os-core-dev python-basic python3-basic python3-tcl \
             || return 1
         ;;
     arch)
-        sudo pacman -Syu --noconfirm || step_warn "pacman -Syu failed (exit $?); continuing"
+        run_as_root pacman -Syu --noconfirm || step_warn "pacman -Syu failed (exit $?); continuing"
         resilient_batch_install pacman_install \
             git cmake ninja gperf ccache dfu-util dtc wget python-pip python-setuptools \
             python-wheel tk xz file make \
