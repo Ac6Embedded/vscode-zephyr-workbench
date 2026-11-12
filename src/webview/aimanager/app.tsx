@@ -1,11 +1,11 @@
 // AI Manager UI. Three pages: the Zephyr Workbench MCP server (its agents, the
 // server itself and the tools agents may call), the Zephyr Project's own MCP
-// server, and third-party agent skills. Each shows the essentials in one line
+// server, and third-party MCP servers and agent skills. Each shows the essentials in one line
 // per item; paths, per-scope actions and explanations open on demand.
 
 import React, { useEffect, useId, useState } from 'react';
 import {
-  EXTERNAL_LINKS, ExternalLinkId, THIRD_PARTY_SKILLS, ZEPHYR_MCP_DATA_SOURCES,
+  EXTERNAL_LINKS, ExternalLinkId, SetupMethod, THIRD_PARTY_MCP, THIRD_PARTY_SKILLS, ZEPHYR_MCP_DATA_SOURCES,
 } from '../../mcp/core/externalResources';
 import { Disclosure, DisclosureProvider } from './disclosure';
 import { AgentRow, AiManagerState, AiManagerView, ConnectionTest, JobRow, post, ToolRow } from './state';
@@ -405,30 +405,49 @@ export function ZephyrView({ state }: { state: AiManagerState }) {
   );
 }
 
-export function SkillsView() {
+/** A card of the Third party page: the name, a link to the page, one line, and the setup behind a chevron. */
+function ThirdPartyCard({ id, name, author, summary, link, setup, setupTitle }: {
+  id: string; name: string; author?: string; summary: string; link?: ExternalLinkId;
+  setup?: SetupMethod[]; setupTitle: string;
+}) {
+  return (
+    <div className="zw-card zw-panel zw-skill">
+      <div className="zw-skill-head">
+        <span className="zw-name">{name}</span>
+        {link && <LinkButton link={link} label="Open" primary />}
+      </div>
+      {author && <div className="zw-meta">by {author}</div>}
+      <p className="zw-lead zw-spaced">{summary}</p>
+      {setup && (
+        <Disclosure id={id} summary={<span className="zw-section-name">{setupTitle}</span>}>
+          {setup.map(method => (
+            <div key={method.label}>
+              <p className="zw-note">{method.label}:</p>
+              <CopyBlock text={method.commands.join('\n')} label="Copy" />
+            </div>
+          ))}
+        </Disclosure>
+      )}
+    </div>
+  );
+}
+
+export function ThirdPartyView() {
   return (
     <div>
-      <p className="zw-note zw-intro">Written by others. Read a skill before you rely on it.</p>
-      {THIRD_PARTY_SKILLS.map(skill => (
-        <div key={skill.link} className="zw-card zw-panel zw-skill">
-          <div className="zw-skill-head">
-            <span className="zw-name">{skill.name}</span>
-            <LinkButton link={skill.link} label="Open" primary />
-          </div>
-          <div className="zw-meta">by {skill.author}</div>
-          <p className="zw-lead zw-spaced">{skill.summary}</p>
-          {skill.install && (
-            <Disclosure id={`skill:${skill.link}`} summary={<span className="zw-section-name">How to install</span>}>
-              {skill.install.map(method => (
-                <div key={method.label}>
-                  <p className="zw-note">{method.label}:</p>
-                  <CopyBlock text={method.commands.join('\n')} label="Copy" />
-                </div>
-              ))}
-            </Disclosure>
-          )}
-        </div>
-      ))}
+      <p className="zw-note zw-intro">Written by others. Check them before you rely on them.</p>
+      <Group title="MCP">
+        {THIRD_PARTY_MCP.map(mcp => (
+          <ThirdPartyCard key={mcp.name} id={`mcp:${mcp.name}`} name={mcp.name} summary={mcp.summary} link={mcp.link}
+            setup={mcp.connect} setupTitle="How to connect" />
+        ))}
+      </Group>
+      <Group title="Skills">
+        {THIRD_PARTY_SKILLS.map(skill => (
+          <ThirdPartyCard key={skill.link} id={`skill:${skill.link}`} name={skill.name} author={skill.author} summary={skill.summary}
+            link={skill.link} setup={skill.install} setupTitle="How to install" />
+        ))}
+      </Group>
     </div>
   );
 }
@@ -610,7 +629,7 @@ export function ExamplesTab({ state }: { state: AiManagerState }) {
 const VIEWS: [AiManagerView, string][] = [
   ['workbench', 'Zephyr Workbench MCP'],
   ['zephyr', 'Zephyr Project MCP'],
-  ['skills', 'Third-party skills'],
+  ['third-party', 'Third party'],
 ];
 
 const TABS: [AiManagerState['tab'], string][] = [
@@ -687,7 +706,7 @@ export function App() {
         </div>
         {state.view === 'workbench' && <WorkbenchView state={state} />}
         {state.view === 'zephyr' && <ZephyrView state={state} />}
-        {state.view === 'skills' && <SkillsView />}
+        {state.view === 'third-party' && <ThirdPartyView />}
       </div>
     </DisclosureProvider>
   );

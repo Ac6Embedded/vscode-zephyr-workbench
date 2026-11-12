@@ -12,9 +12,10 @@ import {
   summarizeAgent,
 } from '../../../webview/aimanager/view';
 import {
-  ConnectionsTab, ExamplesTab, PermissionsTab, SkillsView, StatusHeader, WorkbenchView, ZephyrView,
+  ConnectionsTab, ExamplesTab, PermissionsTab, StatusHeader, ThirdPartyView, WorkbenchView, ZephyrView,
 } from '../../../webview/aimanager/app';
 import { isOpenIn, OpenState, toggledIn } from '../../../webview/aimanager/disclosure';
+import { EXTERNAL_LINKS, THIRD_PARTY_MCP } from '../../../mcp/core/externalResources';
 
 const row = (over: Partial<AgentRow>): AgentRow => ({
   id: 'cursor', label: 'Cursor', detected: true, scope: 'user', file: '/home/u/.cursor/mcp.json',
@@ -422,19 +423,51 @@ describe('AI Manager view', () => {
       }
     });
 
-    it('lists the skill collections in a few words, Ac6 first, with their authors', () => {
-      const shown = visible(render(React.createElement(SkillsView)));
+    it('lists the skill collections under Skills, Ac6 first, with their authors', () => {
+      const shown = visible(render(React.createElement(ThirdPartyView)));
       const text = shown.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-      assert.match(text, /^[\s\S]*?Zephyr RTOS AI Skills Open by Ac6 Devicetree and Kconfig skills with vendor pages[\s\S]*Zephyr Agent Skills/);
+      assert.match(text, />?\s*Skills\s[\s\S]*Zephyr RTOS AI Skills Open by Ac6 Devicetree and Kconfig skills with vendor pages[\s\S]*Zephyr Agent Skills/);
       assert.match(text, /Zephyr Agent Skills[\s\S]*by beriberikix[\s\S]*Skills for building with Zephyr/);
       assert.match(text, /Zephyr AI Skills[\s\S]*by Beningo Embedded Group[\s\S]*Five skills for board support work/);
       assert.doesNotMatch(shown, /zw-chip/, 'no tags on the cards');
-      assert.match(text, /Written by others\. Read a skill before you rely on it\./);
+      assert.match(text, /Written by others\. Check them before you rely on them\./);
       // Open leads to each page; the address is not spelled out on the page.
       assert.doesNotMatch(text, /github\.com|beningo\.com/);
       assert.match(shown, />Open</);
       // Install commands wait behind their chevron.
       assert.doesNotMatch(shown, /claude plugin marketplace add/);
+    });
+
+    it('lists the vendor MCP servers under MCP, Silicon Labs first, before the skills', () => {
+      const shown = visible(render(React.createElement(ThirdPartyView)));
+      const text = shown.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      const order = ['Silicon Labs', 'STMicroelectronics', 'Renesas', 'Infineon', 'Nordic Semiconductor', 'Espressif', 'Microchip', 'NXP', 'Analog Devices'];
+      assert.deepStrictEqual(THIRD_PARTY_MCP.map(mcp => mcp.name), order);
+      let at = text.indexOf('MCP ');
+      assert.ok(at >= 0, 'an MCP section');
+      for (const name of order) {
+        const next = text.indexOf(name, at);
+        assert.ok(next >= at, `${name} comes in order`);
+        at = next;
+      }
+      assert.ok(text.indexOf('Analog Devices') < text.indexOf('Zephyr RTOS AI Skills'), 'MCP before Skills');
+      // The connection steps wait behind their chevron.
+      assert.doesNotMatch(shown, /claude mcp add|pip install/);
+    });
+
+    it('gives every vendor MCP something to open or to connect with, and its commands carry its own address', () => {
+      for (const mcp of THIRD_PARTY_MCP) {
+        assert.ok(mcp.link || mcp.connect, `${mcp.name} has a page or an address`);
+        if (mcp.link) {
+          assert.ok(mcp.link in EXTERNAL_LINKS, `${mcp.name} links to a listed page`);
+        }
+        for (const method of mcp.connect ?? []) {
+          assert.ok(method.commands.length > 0 && method.label, `${mcp.name} has a labelled recipe`);
+        }
+      }
+      const silabs = THIRD_PARTY_MCP[0].connect!.flatMap(method => method.commands).join('\n');
+      assert.match(silabs, /claude mcp add --transport http silicon-labs-docs https:\/\/silabs\.mcp\.kapa\.ai/);
+      assert.match(silabs, /"url": "https:\/\/silabs\.mcp\.kapa\.ai"/);
     });
 
     it('groups the Connections tab under Agents and Server, with only the installed agents open', () => {
