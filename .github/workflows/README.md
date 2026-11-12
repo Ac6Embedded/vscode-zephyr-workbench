@@ -15,6 +15,23 @@ via *Run workflow*):
 5. `vsce package`, then uploads the VSIX as a downloadable artifact
    (7-day retention) so every run yields an installable build.
 
+## installer.yml (Installer)
+
+Checks the Linux host tools installer (`scripts/hosttools`). It runs once a
+week, on Friday at 18:00 UTC, and on demand (*Run workflow*), never on a push
+or a pull request. Two jobs:
+
+- `quick`: no installs: syntax check, ShellCheck (errors only), `--help`, and
+  the installer's own self-tests (platform detection, step engine, `env.yml`
+  merge).
+- `distros`: runs the real installer, as root and without sudo, in containers
+  of Ubuntu 22.04, 24.04 and 26.04, Debian 12 and 13, Fedora, Arch and Rocky 9
+  and 10 on x86_64, and of Ubuntu 24.04, Debian 12 and Fedora on arm64, then
+  runs the installed cmake, ninja, Python and west. It downloads a few hundred
+  MB per run.
+
+macOS and Windows are not covered yet.
+
 ## release.yml (Release)
 
 Runs when a version tag `vX.Y.Z` is pushed. The tag must match the `version`

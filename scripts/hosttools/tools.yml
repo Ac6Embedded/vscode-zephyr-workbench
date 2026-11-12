@@ -2,6 +2,9 @@
 # for the version that gets installed. The install scripts read it to build
 # archive/folder names and the Advanced Host Tools panel shows it as the
 # available version, so keep it in sync with the source URL.
+# `linux` holds the x86_64 downloads. Another host architecture has its own
+# `linux_<arch>` entry (source and sha256 only: the version stays the one of
+# `linux`); a tool without one has no prebuilt download for that architecture.
 other_content:
 - tool: yq
   os:
@@ -13,6 +16,9 @@ other_content:
       source: https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_linux_amd64
       sha256: cfbbb9ba72c9402ef4ab9d8f843439693dfb380927921740e51706d90869c7e1
       version: 4.43.1
+    linux_aarch64:
+      source: https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_linux_arm64
+      sha256: a8186efb079673293289f8c31ee252b0d533c7bb8b1ada6a778ddd5ec0f325b6
     darwin:
       source: https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_darwin_amd64
       sha256: fdc42b132ac460037f4f0f48caea82138772c651d91cfbb735210075ddfdbaed
@@ -62,6 +68,9 @@ zephyr_content:
       source: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
       sha256: 773cc679c3a7395413bd096523f8e5d6c39f8718af4e12eb4e4195f72f35e4ab
       version: 4.1.2
+    linux_aarch64:
+      source: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
+      sha256: 0634996f918b3bab11f45522899c81c987b09c9a64d15f6a0d2bb51c42099534
     windows:
       source: https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-x86_64.zip
       sha256: 82730741149681597510a4bc7095da1460b472dac24eaf9c23ad7440f47753ab
@@ -75,6 +84,9 @@ zephyr_content:
       source: https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux.zip
       sha256: 0830252db77884957a1a4b87b05a1e2d9b5f658b8367f82999a941884cbe0238
       version: 1.13.1
+    linux_aarch64:
+      source: https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux-aarch64.zip
+      sha256: 740f1b9f9d8ae68438240a6a2f3f7a27fc8b1946d2024a6a6b25857ee877987b
     windows:
       source: https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-win.zip
       sha256: 26a40fa8595694dec2fad4911e62d29e10525d2133c9a4230b66397774ae25bf

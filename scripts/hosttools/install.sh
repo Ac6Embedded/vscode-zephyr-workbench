@@ -22,6 +22,7 @@ reinstall_venv_bool=false
 create_venv_bool=false
 engine_selftest_bool=false
 selftest_env_merge_bool=false
+selftest_platform_bool=false
 # Optional custom venv path
 VENV_PATH=""
 INSTALL_DIR=""
@@ -179,6 +180,13 @@ while [[ "$#" -gt 0 ]]; do
     --selftest-env-merge)
       # Dev-only: run only the env.yml merge against installDir and exit.
       selftest_env_merge_bool=true
+      root_packages=false
+      non_root_packages=false
+      check_installed_bool=false
+      ;;
+    --selftest-platform)
+      # Dev-only: check the host platform detection helpers and exit.
+      selftest_platform_bool=true
       root_packages=false
       non_root_packages=false
       check_installed_bool=false
@@ -506,14 +514,14 @@ print_step_summary() {
 # ----------------------------------------------------------------------------
 # tools.yml field reader: line scan, no yq needed (POSIX awk so the same code
 # works with BSD awk on macOS).
-# get_yaml_os_field <tool> <field>
+# get_yaml_os_field <tool> <field> [os key, default $SELECTED_OS]
 # ----------------------------------------------------------------------------
 get_yaml_os_field() {
-    awk -v tool="$1" -v os="$SELECTED_OS" -v field="$2" -v sq=\' '
+    awk -v tool="$1" -v os="${3:-$SELECTED_OS}" -v field="$2" -v sq=\' '
         $0 ~ ("^- tool: " tool "$")                        { ft=1; fo=0; next }
         ft && /^- tool: /                                  { exit }
         ft && $0 ~ ("^[ ]+" os ":[ \t]*$")                 { fo=1; next }
-        ft && fo && /^[ ]+(windows|linux|darwin):[ \t]*$/  { fo=0; next }
+        ft && fo && /^[ ]+[A-Za-z0-9_]+:[ \t]*$/           { fo=0; next }
         ft && fo && $0 ~ ("^[ ]+" field ": ") {
             line=$0
             sub("^[ ]+" field ": *", "", line)
@@ -523,6 +531,35 @@ get_yaml_os_field() {
             exit
         }
     ' "$YAML_FILE"
+}
+
+# ----------------------------------------------------------------------------
+# Host architecture. The prebuilt tools (cmake, ninja, yq, portable python)
+# are per architecture: tools.yml keeps the x86_64 ones under `linux` and any
+# other architecture under `linux_<arch>` (linux_aarch64, ...), so a missing
+# entry means upstream ships nothing for this host.
+# normalize_arch <uname -m>: x86_64 and aarch64 get their canonical names,
+# anything else is returned as reported.
+# ----------------------------------------------------------------------------
+normalize_arch() {
+    case "$1" in
+    x86_64|amd64) echo "x86_64" ;;
+    aarch64|arm64) echo "aarch64" ;;
+    *) echo "$1" ;;
+    esac
+}
+
+HOST_ARCH=$(normalize_arch "$(uname -m)")
+if [[ "$HOST_ARCH" == "x86_64" ]]; then
+    DOWNLOAD_OS_KEY="$SELECTED_OS"
+else
+    DOWNLOAD_OS_KEY="${SELECTED_OS}_${HOST_ARCH}"
+fi
+
+# get_yaml_download_field <tool> <field>: source/sha256 of the prebuilt tool
+# for this host architecture. Versions stay shared, read with get_yaml_os_field.
+get_yaml_download_field() {
+    get_yaml_os_field "$1" "$2" "$DOWNLOAD_OS_KEY"
 }
 
 # ----------------------------------------------------------------------------
@@ -1544,20 +1581,54 @@ resilient_batch_install() {
     return 0
 }
 
+# Maps an os-release ID and ID_LIKE to the family of package manager that
+# installs the system packages: debian, fedora, arch or clear-linux, else
+# "unknown". The distribution's own ID wins, then its ID_LIKE ancestors in
+# order, so derivatives (Linux Mint, Rocky Linux, Manjaro, ...) share the
+# packages of the family they come from.
+# distro_family <ID> <ID_LIKE>
+distro_family() {
+    local candidate
+    # Unquoted on purpose: ID_LIKE is a space separated list.
+    for candidate in $1 $2; do
+        case "$candidate" in
+        ubuntu|debian) echo "debian"; return 0 ;;
+        fedora|rhel|centos) echo "fedora"; return 0 ;;
+        arch) echo "arch"; return 0 ;;
+        clear-linux-os) echo "clear-linux"; return 0 ;;
+        esac
+    done
+    echo "unknown"
+}
+
+# System packages are installed as root: directly when this already runs as
+# root (containers, CI), else through sudo.
+can_run_as_root() {
+    [[ $EUID -eq 0 ]] || command -v sudo >/dev/null 2>&1
+}
+
+run_as_root() {
+    if [[ $EUID -eq 0 ]]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
 apt_install() {
-    sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends "$@"
+    run_as_root env DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends "$@"
 }
 
 dnf_install() {
-    sudo dnf install -y "$@"
+    run_as_root dnf install -y "$@"
 }
 
 swupd_install() {
-    sudo swupd bundle-add "$@"
+    run_as_root swupd bundle-add "$@"
 }
 
 pacman_install() {
-    sudo pacman -S --noconfirm "$@"
+    run_as_root pacman -S --noconfirm "$@"
 }
 
 step_system() {
@@ -1566,46 +1637,61 @@ step_system() {
         pr_minimum_packages_note
         return 0
     fi
+    ID="" ID_LIKE="" PRETTY_NAME="" VERSION_ID=""
     . /etc/os-release
-    case "$ID" in
-    ubuntu)
-        echo "This is Ubuntu."
-        if [ "$(lsb_release -rs 2>/dev/null | awk -F. '{print $1$2}')" -ge 2004 ] 2>/dev/null; then
-            echo "Ubuntu version is equal to or higher than 20.04"
-        else
-            pr_warn "Ubuntu versions lower than 20.04 are not officially supported."
-            pr_minimum_packages_note
-            echo "Attempting install anyway..."
+    local family
+    family=$(distro_family "$ID" "$ID_LIKE")
+    echo "Detected ${PRETTY_NAME:-$ID} (package family: $family)."
+    if [[ "$family" != "unknown" ]] && ! can_run_as_root; then
+        step_error "Installing system packages needs root: run as root or install sudo."
+        pr_minimum_packages_note
+        return 1
+    fi
+    case "$family" in
+    debian)
+        if [[ "$ID" == "ubuntu" ]]; then
+            # VERSION_ID (22.04) comes with os-release; lsb_release does not
+            # exist on minimal installs and containers.
+            local ubuntu_release="${VERSION_ID//./}"
+            if [[ ! "$ubuntu_release" =~ ^[0-9]+$ ]]; then
+                pr_warn "Cannot read the Ubuntu version; assuming it is supported."
+            elif (( 10#$ubuntu_release >= 2004 )); then
+                echo "Ubuntu version is equal to or higher than 20.04"
+            else
+                pr_warn "Ubuntu versions lower than 20.04 are not officially supported."
+                pr_minimum_packages_note
+                echo "Attempting install anyway..."
+            fi
         fi
-        sudo DEBIAN_FRONTEND=noninteractive apt-get update \
+        run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update \
             || step_warn "apt-get update failed (exit $?); package lists may be stale"
+        # The 32-bit multilib packages only exist on x86.
+        local multilib_packages=()
+        [[ "$HOST_ARCH" == "x86_64" ]] && multilib_packages=(gcc-multilib g++-multilib)
         resilient_batch_install apt_install \
             git cmake ninja-build gperf ccache dfu-util device-tree-compiler wget \
             python3-dev python3-venv python3-pip python3-setuptools python3-tk python3-wheel \
-            xz-utils file make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1 unzip \
+            xz-utils file make gcc "${multilib_packages[@]}" libsdl2-dev libmagic1 unzip \
             libhidapi-hidraw0 libhidapi-libusb0 \
             || return 1
         ;;
     fedora)
-        echo "This is Fedora."
-        sudo dnf upgrade -y || step_warn "dnf upgrade failed (exit $?); continuing"
-        sudo dnf group install -y "Development Tools" "C Development Tools and Libraries" \
+        run_as_root dnf upgrade -y || step_warn "dnf upgrade failed (exit $?); continuing"
+        run_as_root dnf group install -y "Development Tools" "C Development Tools and Libraries" \
             || step_warn "dnf group install failed (exit $?); continuing"
         resilient_batch_install dnf_install \
             cmake ninja-build gperf dfu-util dtc wget which python3-pip python3-tkinter \
             xz file python3-devel SDL2-devel \
             || return 1
         ;;
-    clear-linux-os)
-        echo "This is Clear Linux."
-        sudo swupd update || step_warn "swupd update failed (exit $?); continuing"
+    clear-linux)
+        run_as_root swupd update || step_warn "swupd update failed (exit $?); continuing"
         resilient_batch_install swupd_install \
             c-basic dev-utils dfu-util dtc os-core-dev python-basic python3-basic python3-tcl \
             || return 1
         ;;
     arch)
-        echo "This is Arch Linux."
-        sudo pacman -Syu --noconfirm || step_warn "pacman -Syu failed (exit $?); continuing"
+        run_as_root pacman -Syu --noconfirm || step_warn "pacman -Syu failed (exit $?); continuing"
         resilient_batch_install pacman_install \
             git cmake ninja gperf ccache dfu-util dtc wget python-pip python-setuptools \
             python-wheel tk xz file make \
@@ -1623,10 +1709,10 @@ step_yq() {
     pr_title "YQ"
     local YQ_FILENAME="yq"
     local yq_source yq_sha
-    yq_source=$(get_yaml_os_field yq source)
-    yq_sha=$(get_yaml_os_field yq sha256)
+    yq_source=$(get_yaml_download_field yq source)
+    yq_sha=$(get_yaml_download_field yq sha256)
     if [[ -z "$yq_source" || -z "$yq_sha" ]]; then
-        step_error "yq source/sha256 not found in tools.yml"
+        step_error "No prebuilt yq for $HOST_ARCH in tools.yml"
         return 1
     fi
 
@@ -1643,16 +1729,33 @@ step_yq() {
     return 0
 }
 
+# The Python AppImage mounts itself through FUSE, which containers and recent
+# distributions (Ubuntu without libfuse2) do not provide. Unpacking needs no
+# FUSE: the shims then point at the unpacked AppRun, which finds its own folder
+# and sets up Tcl/Tk and the SSL certificates.
+# unpack_python_appimage <python dir holding python.AppImage>
+unpack_python_appimage() {
+    local python_dir="$1"
+    rm -rf "$python_dir/squashfs-root" "$python_dir/app"
+    if ! (cd "$python_dir" && ./python.AppImage --appimage-extract >/dev/null 2>&1) \
+        || ! mv "$python_dir/squashfs-root" "$python_dir/app"; then
+        rm -rf "$python_dir/squashfs-root" "$python_dir/app"
+        return 1
+    fi
+    ln -sf "app/AppRun" "$python_dir/python"
+    ln -sf "app/AppRun" "$python_dir/python3"
+}
+
 step_python() {
     case "$PYTHON_MODE_EFFECTIVE" in
     portable)
         pr_title "Python (Portable AppImage)"
         # Download portable Python AppImage as defined in tools.yml
         local PY_APPIMAGE_URL PY_APPIMAGE_SHA
-        PY_APPIMAGE_URL=$(get_yaml_os_field python_portable source)
-        PY_APPIMAGE_SHA=$(get_yaml_os_field python_portable sha256)
+        PY_APPIMAGE_URL=$(get_yaml_download_field python_portable source)
+        PY_APPIMAGE_SHA=$(get_yaml_download_field python_portable sha256)
         if [[ -z "$PY_APPIMAGE_URL" || -z "$PY_APPIMAGE_SHA" ]]; then
-            step_error "python_portable source/sha256 not found in tools.yml"
+            step_error "No portable Python for $HOST_ARCH in tools.yml; install Python >= ${PYTHON_MIN_VERSION} with your package manager, or use --python-exe-path"
             return 1
         fi
         local PY_APPIMAGE_NAME="$(basename "$PY_APPIMAGE_URL")"
@@ -1673,7 +1776,11 @@ step_python() {
         export PATH="$TOOLS_DIR/python:$PATH"
         debug "PATH with portable: $PATH"
         if ! "$TOOLS_DIR/python/python3" --version >/dev/null 2>&1; then
-            step_warn "Portable Python installed but does not run here (missing FUSE?); the venv step may fall back to another python"
+            echo "The portable Python AppImage does not run here (FUSE is missing); unpacking it instead."
+            unpack_python_appimage "$TOOLS_DIR/python"
+            if ! "$TOOLS_DIR/python/python3" --version >/dev/null 2>&1; then
+                step_warn "Portable Python installed but does not run here; the venv step may fall back to another python"
+            fi
         fi
         ;;
     custom)
@@ -1714,10 +1821,10 @@ step_ninja() {
     pr_title "Ninja"
     local NINJA_ARCHIVE_NAME="ninja-linux.zip"
     local ninja_source ninja_sha
-    ninja_source=$(get_yaml_os_field ninja source)
-    ninja_sha=$(get_yaml_os_field ninja sha256)
+    ninja_source=$(get_yaml_download_field ninja source)
+    ninja_sha=$(get_yaml_download_field ninja sha256)
     if [[ -z "$ninja_source" || -z "$ninja_sha" ]]; then
-        step_error "ninja source/sha256 not found in tools.yml"
+        step_error "No prebuilt ninja for $HOST_ARCH in tools.yml; install ninja with your package manager"
         return 1
     fi
     download_and_check_hash "$ninja_source" "$ninja_sha" "$NINJA_ARCHIVE_NAME" \
@@ -1732,10 +1839,10 @@ step_cmake() {
     pr_title "CMake"
     local CMAKE_ARCHIVE_NAME="${CMAKE_FOLDER_NAME}.tar.gz"
     local cmake_source cmake_sha
-    cmake_source=$(get_yaml_os_field cmake source)
-    cmake_sha=$(get_yaml_os_field cmake sha256)
+    cmake_source=$(get_yaml_download_field cmake source)
+    cmake_sha=$(get_yaml_download_field cmake sha256)
     if [[ -z "$cmake_source" || -z "$cmake_sha" ]]; then
-        step_error "cmake source/sha256 not found in tools.yml"
+        step_error "No prebuilt cmake for $HOST_ARCH in tools.yml; install cmake with your package manager"
         return 1
     fi
     download_and_check_hash "$cmake_source" "$cmake_sha" "$CMAKE_ARCHIVE_NAME" \
@@ -1843,6 +1950,80 @@ fi
 # Dev-only selftests (no downloads, no package installs)
 # ----------------------------------------------------------------------------
 
+if [[ $selftest_platform_bool == true ]]; then
+    selftest_failures=0
+    # selftest_expect <description> <expected> <actual>
+    selftest_expect() {
+        if [[ "$2" == "$3" ]]; then
+            echo "ok   $1 -> $3"
+        else
+            echo "FAIL $1: expected '$2', got '$3'"
+            selftest_failures=$((selftest_failures+1))
+        fi
+    }
+
+    # <ID> <ID_LIKE> <expected family>, as the distributions ship them in /etc/os-release
+    while IFS='|' read -r st_id st_id_like st_expected; do
+        selftest_expect "distro_family '$st_id' '$st_id_like'" "$st_expected" "$(distro_family "$st_id" "$st_id_like")"
+    done <<'EOF'
+ubuntu|debian|debian
+debian||debian
+linuxmint|ubuntu debian|debian
+pop|ubuntu debian|debian
+elementary|ubuntu|debian
+zorin|ubuntu debian|debian
+kali|debian|debian
+fedora||fedora
+rhel|fedora|fedora
+centos|rhel fedora|fedora
+rocky|rhel centos fedora|fedora
+almalinux|rhel centos fedora|fedora
+amzn|fedora|fedora
+arch||arch
+manjaro|arch|arch
+endeavouros|arch|arch
+clear-linux-os||clear-linux
+opensuse-tumbleweed|opensuse suse|unknown
+alpine||unknown
+||unknown
+EOF
+
+    # <uname -m> <expected architecture>
+    while IFS='|' read -r st_uname st_expected; do
+        selftest_expect "normalize_arch '$st_uname'" "$st_expected" "$(normalize_arch "$st_uname")"
+    done <<'EOF'
+x86_64|x86_64
+amd64|x86_64
+aarch64|aarch64
+arm64|aarch64
+armv7l|armv7l
+riscv64|riscv64
+i686|i686
+EOF
+
+    # tools.yml: <tool> <field> <os key> <expected value, empty when there is none>
+    while IFS='|' read -r st_tool st_field st_os st_expected; do
+        selftest_expect "tools.yml $st_tool $st_field ($st_os)" "$st_expected" "$(get_yaml_os_field "$st_tool" "$st_field" "$st_os")"
+    done <<'EOF'
+cmake|source|linux|https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz
+cmake|source|linux_aarch64|https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz
+cmake|version|linux_aarch64|
+cmake|source|linux_riscv64|
+ninja|source|linux_aarch64|https://github.com/ninja-build/ninja/releases/download/v1.13.1/ninja-linux-aarch64.zip
+yq|source|linux_aarch64|https://github.com/mikefarah/yq/releases/download/v4.43.1/yq_linux_arm64
+python_portable|source|linux_aarch64|
+cmake|version|linux|4.1.2
+gperf|version|linux|
+EOF
+
+    if [[ $selftest_failures -gt 0 ]]; then
+        echo "$selftest_failures platform selftest(s) failed"
+        exit 1
+    fi
+    echo "All platform selftests passed"
+    exit 0
+fi
+
 if [[ $engine_selftest_bool == true ]]; then
     selftest_ok() { echo "ok body ran"; }
     selftest_warn() { step_warn "something minor happened"; }
@@ -1884,7 +2065,7 @@ if [[ $selftest_env_merge_bool == true ]]; then
     [[ "$PYTHON_MODE_EFFECTIVE" == "auto" ]] && PYTHON_MODE_EFFECTIVE="system"
     CMAKE_VERSION=$(get_yaml_os_field cmake version)
     NINJA_VERSION=$(get_yaml_os_field ninja version)
-    CMAKE_FOLDER_NAME="cmake-${CMAKE_VERSION:-4.1.2}-linux-x86_64"
+    CMAKE_FOLDER_NAME="cmake-${CMAKE_VERSION:-4.1.2}-linux-${HOST_ARCH}"
     write_env_yaml
     merge_status=$?
     rm -rf "$TMP_DIR"
@@ -1978,7 +2159,11 @@ if [[ $non_root_packages == true ]]; then
     PYTHON_MODE_EFFECTIVE="$PYTHON_MODE"
     if [[ "$PYTHON_MODE" == "auto" ]]; then
         check_python_version_requirement || true
-        if [[ "$PYTHON_TOO_OLD" == true ]]; then
+        if [[ "$PYTHON_TOO_OLD" == true && -z "$(get_yaml_download_field python_portable source)" ]]; then
+            pr_warn "System Python is older than ${PYTHON_MIN_VERSION} or missing, and there is no portable Python for ${HOST_ARCH}."
+            pr_warn "Install Python >= ${PYTHON_MIN_VERSION} with your package manager, or use --python-exe-path."
+            PYTHON_MODE_EFFECTIVE="system"
+        elif [[ "$PYTHON_TOO_OLD" == true ]]; then
             pr_warn "System Python is older than ${PYTHON_MIN_VERSION} or missing."
             pr_warn "Applying workaround: installing portable Python via AppImage."
             pr_warn "More info: https://python-appimage.readthedocs.io"
@@ -2009,7 +2194,7 @@ if [[ $non_root_packages == true ]]; then
         pr_warn "cmake version missing from tools.yml; assuming 4.1.2"
         CMAKE_VERSION="4.1.2"
     fi
-    CMAKE_FOLDER_NAME="cmake-${CMAKE_VERSION}-linux-x86_64"
+    CMAKE_FOLDER_NAME="cmake-${CMAKE_VERSION}-linux-${HOST_ARCH}"
 
     # Download sources are read straight from tools.yml (awk line scan), so
     # no step depends on the yq binary: it is installed as a managed tool for

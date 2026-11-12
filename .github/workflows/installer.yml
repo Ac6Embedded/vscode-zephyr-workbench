@@ -1,0 +1,104 @@
+# Host tools installer (scripts/hosttools): checks the Linux installer.
+#
+# Runs once a week, on Friday evening, and on demand (Run workflow). Never on
+# a push or a pull request. Two jobs:
+#   - quick: no installs, a few seconds.
+#   - distros: runs the real installer in containers of the supported Linux
+#     distributions, on x86_64 and arm64. It downloads a few hundred MB.
+#
+# macOS and Windows are not covered yet.
+
+name: Installer
+
+on:
+  schedule:
+    - cron: '0 18 * * 5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Syntax check
+        run: bash -n scripts/hosttools/install.sh
+
+      - name: ShellCheck (errors only)
+        # SC2152: check_packages returns a negative count; it predates this check.
+        run: shellcheck --severity=error --exclude=SC2152 scripts/hosttools/install.sh
+
+      - name: Help text
+        run: scripts/hosttools/install.sh --help > /dev/null
+
+      - name: Platform detection (distro families, arch, tools.yml entries)
+        run: scripts/hosttools/install.sh --selftest-platform
+
+      - name: Step engine
+        # The mock steps include a failing one, so the engine exits 1 on purpose.
+        run: |
+          set +e
+          scripts/hosttools/install.sh --engine-selftest "$RUNNER_TEMP/zi-engine"
+          status=$?
+          test "$status" -eq 1
+          ZI_SELFTEST_PASS=1 scripts/hosttools/install.sh --engine-selftest "$RUNNER_TEMP/zi-engine"
+
+      - name: env.yml merge
+        run: scripts/hosttools/install.sh --selftest-env-merge "$RUNNER_TEMP/zi-env"
+
+  distros:
+    needs: quick
+    name: ${{ matrix.image }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The portable Python is only published for x86_64, so arm64 uses the system one.
+          - { image: 'ubuntu:22.04',      arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
+          - { image: 'ubuntu:24.04',      arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
+          - { image: 'ubuntu:26.04',      arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
+          - { image: 'debian:12',         arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
+          - { image: 'debian:13',         arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
+          - { image: 'fedora:latest',     arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
+          - { image: 'archlinux:latest',  arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
+          - { image: 'rockylinux:9',      arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
+          - { image: 'rockylinux:10',      arch: x86_64,  runner: ubuntu-latest,    args: '--tools system,cmake,ninja,python,venv' }
+          - { image: 'ubuntu:24.04',      arch: aarch64, runner: ubuntu-24.04-arm, args: '--use-system-python --tools system,cmake,ninja,venv' }
+          - { image: 'debian:12',         arch: aarch64, runner: ubuntu-24.04-arm, args: '--use-system-python --tools system,cmake,ninja,venv' }
+          - { image: 'fedora:latest',     arch: aarch64, runner: ubuntu-24.04-arm, args: '--use-system-python --tools system,cmake,ninja,venv' }
+    steps:
+      # A container image ships neither curl nor git. The installer needs one
+      # of wget or curl, and the checkout step is faster with git.
+      - name: Prerequisites of a minimal image
+        shell: sh
+        run: |
+          if command -v apt-get >/dev/null; then
+            apt-get update && apt-get install -y curl ca-certificates git
+          elif command -v dnf >/dev/null; then
+            dnf install -y --allowerasing curl ca-certificates git
+          elif command -v pacman >/dev/null; then
+            pacman -Sy --noconfirm --needed curl ca-certificates git
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Platform detection
+        run: scripts/hosttools/install.sh --selftest-platform
+
+      - name: Install, as root and without sudo, as in a fresh container
+        run: scripts/hosttools/install.sh ${{ matrix.args }} "$RUNNER_TEMP/zinstaller"
+
+      - name: Installed tools run
+        run: |
+          dir="$RUNNER_TEMP/zinstaller"
+          "$dir"/tools/cmake-*/bin/cmake --version
+          "$dir"/tools/ninja/ninja --version
+          "$dir"/.venv/bin/python --version
+          "$dir"/.venv/bin/west --version
