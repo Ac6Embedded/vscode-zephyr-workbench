@@ -4,6 +4,29 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [4.3.5]
+
+### Kconfig Manager
+- Save opens a dialog with Save and exit, Save and Cancel. It reminds you that a pristine build discards saved values, with a link to export them to prj.conf.
+- Checkboxes, buttons and fields have clearer borders, and string, int and hex values show as text fields. Keys typed in a text field no longer act as tree shortcuts.
+- Exporting to prj.conf writes only the lines the next build needs. A value set back to its default is written when another file, such as the board defconfig, sets it otherwise, and a line the build no longer needs is removed instead of being set to n. Disabled options are written as `CONFIG_FOO=n`.
+- On Windows, the Kconfig tree loads when CMake moves the menuconfig command to a script, as it does with a deep build folder or many modules. Running the CMake configure stage again is only suggested when build.ninja is missing.
+
+### Applications
+- The inline Kconfig button of an application or build configuration opens the Kconfig Manager instead of guiconfig.
+- The shield picker also lists the shields of the board roots the application and its build configuration add, as the board picker does.
+
+### AI Manager
+- The Third-party skills page is now Third party. It lists the MCP servers of Silicon Labs, STMicroelectronics, Renesas, Infineon, Nordic Semiconductor, Espressif, Microchip, NXP and Analog Devices above the skill collections, with the setup steps where they are known.
+
+### Host Tools
+- The Linux installer finds the package manager of distributions derived from Ubuntu, Debian, Fedora, RHEL or Arch, such as Linux Mint, Rocky Linux or Manjaro.
+- The Linux host tools install on arm64 hosts, with the system Python.
+- The Ubuntu version is read from /etc/os-release, so lsb_release is no longer needed. System packages install as root without sudo, as in a container, and the portable Python is unpacked when FUSE is missing.
+
+### Other
+- Updated npm dependencies.
+
 ## [4.3.4]
 
 ### Terminal
