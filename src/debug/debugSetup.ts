@@ -38,6 +38,7 @@ import { readDomainsForBuildDir } from '../utils/zephyr/domainsYamlUtils';
 import { ZephyrApplication } from '../models/ZephyrApplication';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { getSetupCommands } from './gdbUtils';
+import { gdbClientPort, isGdbCore, MAX_GDB_CORE, runnerHasCores } from './gdbCore';
 import { StlinkGdbserver } from './runners/StlinkGdbserver';
 import { readPanelStateFromConfig } from './backends/backendState';
 import { buildCortexWestLaunchConfig } from './backends/cortexWest';
@@ -56,7 +57,13 @@ export interface DebugSetupInput {
   svdPath: string;
   gdbPath: string;
   gdbAddress: string;
+  /** The port the GDB server is started on; for a multicore target, the one of the first core. */
   gdbPort: string;
+  /**
+   * The core to debug, 0 (the default) for the first. Only runners that serve each
+   * core on its own port take it: the debugger then connects to gdbPort + gdbCore.
+   */
+  gdbCore?: number;
   gdbMode: GdbMode;
   runnerPath?: string;
   runnerArgs?: string;
@@ -67,7 +74,7 @@ export interface DebugSetupInput {
 }
 
 export type DebugSetupFailure =
-  | 'no-runner' | 'no-program' | 'no-gdb' | 'no-gdb-address' | 'no-gdb-port' | 'no-device'
+  | 'no-runner' | 'no-program' | 'no-gdb' | 'no-gdb-address' | 'no-gdb-port' | 'bad-gdb-core' | 'no-device'
   | 'no-build-config' | 'no-cortex-debug' | 'qemu-not-arm' | 'not-native-runner' | 'pyocd-target'
   | 'launch-json-unreadable';
 
@@ -175,10 +182,18 @@ function checkForm(input: DebugSetupInput): DebugSetupResult | undefined {
     if (!input.gdbPort) {
       return fail('no-gdb-port', 'Debug manager: GDB port is required before applying or debugging.');
     }
+    if (input.gdbCore !== undefined && !isGdbCore(input.gdbCore)) {
+      return fail('bad-gdb-core', `Debug manager: Core must be a whole number from 0 to ${MAX_GDB_CORE}.`);
+    }
   } else if (input.runnerName === 'jlink' && !input.device) {
     return fail('no-device', 'Debug manager: Device name is required for J-Link. Enter the SEGGER device name (e.g. STM32F429ZI, EFR32MG24BxxxF1536).');
   }
   return undefined;
+}
+
+/** The port the debugger connects to: the server's own, or the one of the core to debug. */
+function debuggerPort(input: DebugSetupInput, runnerName: string): string {
+  return runnerHasCores(runnerName) ? gdbClientPort(input.gdbPort, input.gdbCore) : input.gdbPort;
 }
 
 /** True when the build's Kconfig lets a debugger see the Zephyr threads. */
@@ -228,7 +243,7 @@ async function buildCortexEntry(
       gdbPath: input.gdbPath,
       gdbMode: input.gdbMode,
       gdbAddress: input.gdbAddress,
-      gdbPort: input.gdbPort,
+      gdbPort: debuggerPort(input, runner.name),
     }, debugServerArgs);
     if (runner.name === 'qemu') {
       // `west build -t debugserver_qemu` may recompile before QEMU starts,
@@ -308,7 +323,7 @@ async function buildCppdbgEntry(
   config.debugServerArgs = getWestDebugArgsForProject(runner, project, buildConfig, domain);
   config.debugServerArgs = runnerPathArg(config.debugServerArgs, runner.name, input.runnerPath);
   config.setupCommands = [];
-  for (const arg of getSetupCommands(input.programPath, runner.serverAddress, runner.serverPort, input.gdbMode, runner.name)) {
+  for (const arg of getSetupCommands(input.programPath, runner.serverAddress, debuggerPort(input, runner.name), input.gdbMode, runner.name)) {
     config.setupCommands.push(arg);
   }
   // pyOCD requires specialized GDB configuration with specific setup commands
@@ -450,6 +465,7 @@ export function debugEntryFields(entry: any): Record<string, unknown> {
     svd_path: state.svdPath,
     gdb_path: state.gdbPath,
     ...(native ? {} : { gdb_address: state.gdbAddress, gdb_port: Number(state.gdbPort) || state.gdbPort }),
+    ...(state.gdbCore > 0 ? { gdb_core: state.gdbCore } : {}),
     ...(runnerPath ? { runner_path: runnerPath } : {}),
     ...(runnerArgs ? { runner_args: runnerArgs } : {}),
     ...(native ? { device: state.device ?? '', interface: state.deviceInterface ?? 'swd' } : {}),
