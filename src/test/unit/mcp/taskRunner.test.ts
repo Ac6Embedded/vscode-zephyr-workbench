@@ -406,7 +406,9 @@ describe('mcp/host/taskRunner', () => {
 
     it('ends with the shell when a process it left in the background holds the output', async () => {
       const { EXIT_GRACE_MS } = require('../../../mcp/host/capturedTask');
-      const run = await within(runner.runCapturedTask(task(`${background()} && echo started`) as never, sink, new AbortController().signal), EXIT_GRACE_MS + 5000);
+      // On a POSIX shell `&` already ends the command, and `& &&` is a syntax error.
+      const line = windows ? `${background()} && echo started` : `${background()} echo started`;
+      const run = await within(runner.runCapturedTask(task(line) as never, sink, new AbortController().signal), EXIT_GRACE_MS + 5000);
       assert.deepEqual(run, { exitCode: 0, started: true });
       assert.match(sink.all, /started/);
       assert.match(sink.all, /still holds its output/);

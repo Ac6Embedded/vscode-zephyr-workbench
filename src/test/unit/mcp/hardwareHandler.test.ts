@@ -630,7 +630,7 @@ describe('mcp/host/handlers/hardware (serial)', function () {
       [{ action: 'serial_read', text: 'x' }, /does not take text/],
       [{ action: 'list_ports', port: BOARD_PORT }, /does not take port/],
       [{ action: 'serial_stop', wait_for: 'x' }, /does not take wait_for/],
-      [{ action: 'flash' }, /action must be one of/],
+      [{ action: 'reboot' }, /action must be one of/],
       [{ action: 'serial_start', baud_rate: 100 }, /baud_rate/],
     ] as const) {
       const error = await errorOf(call(h, args));
