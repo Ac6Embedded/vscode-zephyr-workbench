@@ -2523,7 +2523,7 @@
     "@types/node-7z": "^2.1.11",
     "@types/vscode": "^1.88.0",
     "@types/vscode-webview": "^1.57.5",
-    "@typescript-eslint/eslint-plugin": "^8.70.0",
+    "@typescript-eslint/eslint-plugin": "^8.71.1",
     "@typescript-eslint/parser": "^8.64.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
@@ -2531,11 +2531,11 @@
     "cross-env": "^10.1.0",
     "esbuild": "^0.28.2",
     "esbuild-plugin-copy": "^2.1.1",
-    "eslint": "^10.11.0",
+    "eslint": "^10.12.0",
     "mocha": "^11.7.6",
     "nyc": "^18.0.0",
     "ovsx": "^1.2.0",
-    "prettier": "^3.9.8",
+    "prettier": "^3.9.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
@@ -2545,7 +2545,7 @@
     "@types/react-dom": "^19.3.0",
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "7zip-bin": "^5.2.0",
-    "immer": "^11.1.18",
+    "immer": "^11.1.21",
     "JSON": "^1.0.0",
     "node-7z": "^3.0.0",
     "react": "^19.3.0",
@@ -2553,7 +2553,7 @@
     "sudo-prompt": "^9.2.1",
     "ts-pattern": "^5.9.0",
     "yaml": "^2.9.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "extensionDependencies": [
     "mindaro-dev.file-downloader",
