@@ -1,4 +1,5 @@
 import { getGdbMode } from '../gdbUtils';
+import { runnerHasCores, splitGdbCore } from '../gdbCore';
 import { WestRunner } from '../runners/WestRunner';
 import { getRunner, getServerAddressFromConfig } from '../../utils/debugTools/debugUtils';
 import {
@@ -41,7 +42,10 @@ export interface NormalizedPanelState extends BackendSelection {
   svdPath: string;
   gdbPath: string;
   gdbAddress: string;
+  /** The port the GDB server is started on; for a multicore target, the one of the first core. */
   gdbPort: string;
+  /** The core the debugger connects to, 0 for the first: the server serves it on gdbPort + gdbCore. */
+  gdbCore: number;
   gdbMode: GdbMode;
   runnerName?: string;
   /** Present for cppdbg / zephyr-workbench entries; parsed by WestRunner. */
@@ -70,6 +74,16 @@ function splitGdbTarget(gdbTarget: unknown): { address: string; port: string } |
   return { address, port };
 }
 
+/** The `--gdb-port` a stored `debugServerArgs` starts the server with. */
+function serverPortOfArgs(runnerName: string | undefined, debugServerArgs: string): string | undefined {
+  if (!runnerName || !debugServerArgs) {
+    return undefined;
+  }
+  const runner = getRunner(runnerName);
+  runner?.loadArgs(debugServerArgs);
+  return runner?.serverPort;
+}
+
 /**
  * Read the Debug Manager form state out of a stored launch entry of any of the
  * three supported types. Never throws on shape mismatches — cortex entries
@@ -88,6 +102,7 @@ export function readPanelStateFromConfig(config: any): NormalizedPanelState {
       gdbPath: asString(config?.gdbPath),
       gdbAddress: 'localhost',
       gdbPort: getDefaultGdbPort(runnerName),
+      gdbCore: 0,
       gdbMode: config?.request === 'attach' ? 'attach' : 'program',
       runnerName,
       runnerPath: asString(config?.serverpath),
@@ -109,20 +124,18 @@ export function readPanelStateFromConfig(config: any): NormalizedPanelState {
     const debugServerArgs = asString(config?.debugServerArgs);
     const runnerName = debugServerArgs ? WestRunner.extractRunner(debugServerArgs) : undefined;
     // Same port precedence as the provider: the explicit --gdb-port inside
-    // debugServerArgs is authoritative, gdbTarget is the fallback.
-    let argsPort: string | undefined;
-    if (runnerName && debugServerArgs) {
-      const runner = getRunner(runnerName);
-      runner?.loadArgs(debugServerArgs);
-      argsPort = runner?.serverPort;
-    }
+    // debugServerArgs is authoritative, gdbTarget is the fallback, and for a
+    // runner that serves each core on its own port it holds the core's port.
+    const argsPort = serverPortOfArgs(runnerName, debugServerArgs);
+    const cores = runnerHasCores(runnerName) ? splitGdbCore(argsPort, target?.port) : undefined;
     return {
       ...selection,
       programPath: asString(config?.program),
       svdPath: asString(config?.svdPath),
       gdbPath: asString(config?.miDebuggerPath),
       gdbAddress: target?.address ?? 'localhost',
-      gdbPort: argsPort ?? target?.port ?? getDefaultGdbPort(runnerName),
+      gdbPort: cores?.serverPort ?? argsPort ?? target?.port ?? getDefaultGdbPort(runnerName),
+      gdbCore: cores?.core ?? 0,
       gdbMode: config?.gdbMode === 'attach' || config?.request === 'attach' ? 'attach' : 'program',
       runnerName,
       debugServerArgs,
@@ -143,13 +156,18 @@ export function readPanelStateFromConfig(config: any): NormalizedPanelState {
   }
   const debugServerArgs = asString(config?.debugServerArgs);
   const runnerName = debugServerArgs ? WestRunner.extractRunner(debugServerArgs) : undefined;
+  // gdbPort above is where the debugger connects; the form shows the server's.
+  const cores = runnerHasCores(runnerName)
+    ? splitGdbCore(serverPortOfArgs(runnerName, debugServerArgs), gdbPort)
+    : undefined;
   return {
     ...selection,
     programPath: asString(config?.program),
     svdPath: asString(config?.svdPath),
     gdbPath: asString(config?.miDebuggerPath),
     gdbAddress,
-    gdbPort,
+    gdbPort: cores?.serverPort ?? gdbPort,
+    gdbCore: cores?.core ?? 0,
     gdbMode: getGdbMode(setupCommands, runnerName) === 'attach' ? 'attach' : 'program',
     runnerName,
     debugServerArgs,
