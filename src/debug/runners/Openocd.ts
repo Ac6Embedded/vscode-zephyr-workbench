@@ -33,9 +33,27 @@ export class Openocd extends WestRunner {
     return process.platform === 'win32' ? 'openocd.exe' : 'openocd';
   }
 
+  /** The board config file passed when the user gives none of their own. */
+  static readonly DEFAULT_CONFIG_FILE = 'openocd.cfg';
+
+  /** True when the user's own args already pass a config file, in either `--config <f>` or `--config=<f>` form. */
+  private get hasUserConfig(): boolean {
+    return WestRunner.tokenizeArgs(this.userArgs).some(t => t === '--config' || t.startsWith('--config='));
+  }
+
+  /**
+   * Passes `--config openocd.cfg` by default, which boards that rely on it need.
+   * It is left out once the user gives a `--config` of their own, so theirs wins
+   * instead of being added to ours.
+   */
+  override get autoArgs(): string {
+    const args = super.autoArgs;
+    return this.hasUserConfig ? args : `${args} --config ${Openocd.DEFAULT_CONFIG_FILE}`;
+  }
+
   /** Adds the gdb.cfg generated in the build configuration's debug folder. */
   protected override getDebugAutoArgs(relativeBuildDir: string): string {
-    return `${super.autoArgs} ${Openocd.getGdbCfgArg(relativeBuildDir)}`;
+    return `${this.autoArgs} ${Openocd.getGdbCfgArg(relativeBuildDir)}`;
   }
 
   /**
@@ -43,14 +61,12 @@ export class Openocd extends WestRunner {
    * stripped on read instead of being mistaken for user-provided args. The
    * gdb.cfg ones are matched by pattern, as its folder depends on the build.
    *
-   * `openocd.cfg` is no longer emitted: it overrode the board's own config from
-   * runners.yaml (board_runner_args). The `--config` forms stay listed so
-   * launch.json files written by older versions are cleaned up instead of
-   * keeping them as user args.
+   * `--config openocd.cfg` is ours, so it is not read back as a user arg. The
+   * `--config <gdb.cfg>` form is what older versions wrote.
    */
   protected getExtraAutoTokens() {
     return [
-      { flag: '--config', value: 'openocd.cfg' },
+      { flag: '--config', value: Openocd.DEFAULT_CONFIG_FILE },
       { flag: '--config', value: Openocd.GDB_CFG_PATTERN },
       { flag: '--cmd-pre-init', value: Openocd.GDB_CFG_SOURCE_PATTERN },
     ];

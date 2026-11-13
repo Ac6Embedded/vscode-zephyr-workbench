@@ -82,7 +82,7 @@ describe('OpenOCD gdb.cfg', () => {
     const args = openocdArgs(app);
     createOpenocdCfg(app, 'primary');
 
-    assert.ok(args.includes('--cmd-pre-init "source {${workspaceFolder}/build/primary/.debug/gdb.cfg}"'), args);
+    assert.ok(args.includes('--config openocd.cfg --cmd-pre-init "source {${workspaceFolder}/build/primary/.debug/gdb.cfg}"'), args);
     assert.ok(fs.existsSync(gdbCfgArg(args, app.appRootPath)!));
   });
 
@@ -120,12 +120,25 @@ describe('OpenOCD gdb.cfg', () => {
     }
   });
 
-  it('does not force --config openocd.cfg, so the board config from runners.yaml is used', () => {
+  it('passes --config openocd.cfg by default, for debug and flash', () => {
     const { app } = workspaceApplication();
-    assert.ok(!openocdArgs(app).includes('openocd.cfg'), openocdArgs(app));
-    assert.ok(!new Openocd().autoArgs.includes('--config'));
-    assert.ok(!new Openocd().getWestFlashArgs('primary').includes('openocd.cfg'));
+    assert.ok(openocdArgs(app).includes('--config openocd.cfg'), openocdArgs(app));
+    assert.ok(new Openocd().autoArgs.includes('--config openocd.cfg'));
+    assert.ok(new Openocd().getWestFlashArgs('primary').includes('--config openocd.cfg'));
   });
+
+  for (const userConfig of ['--config board.cfg', '--config=board.cfg']) {
+    it(`drops the default openocd.cfg once the user passes ${userConfig}`, () => {
+      const { app } = workspaceApplication();
+      const runner = new Openocd();
+      runner.loadArgs(`${openocdArgs(app)} ${userConfig}`);
+      assert.equal(runner.userArgs, userConfig);
+      for (const args of [runner.getWestDebugArgs('build/primary'), runner.getWestFlashArgs('primary')]) {
+        assert.ok(!args.includes('openocd.cfg'), args);
+        assert.ok(args.includes(userConfig), args);
+      }
+    });
+  }
 
   it('keeps a --cmd-pre-init of the user, and reads only the one sourcing gdb.cfg as generated', () => {
     const { app } = workspaceApplication();
