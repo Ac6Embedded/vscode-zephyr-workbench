@@ -1,8 +1,10 @@
 // The OpenOCD gdb.cfg (Ac6Embedded/vscode-zephyr-workbench#225): createOpenocdCfg
-// writes it in the build configuration's .debug folder, and the `--config`
+// writes it in the build configuration's .debug folder, and the argument
 // passing it to `west debugserver` must name that file, for a freestanding app
 // and for a West workspace application, whose ${workspaceFolder} is the west
-// workspace rather than the app.
+// workspace rather than the app. It is passed as `--cmd-pre-init "source {...}"`,
+// not as a `--config` file: west's OpenOCD runner fails on a --config file when
+// the board has no `support` folder.
 
 import { strict as assert } from 'assert';
 import * as fs from 'fs';
@@ -28,7 +30,9 @@ function argValue(debugServerArgs: string, flag: string, workspaceFolder: string
     ?.split('${workspaceFolder}').join(workspaceFolder);
 }
 
-const gdbCfgArg = (args: string, folder: string) => argValue(args, '--config', folder, 'gdb.cfg');
+// The gdb.cfg the args source, with ${workspaceFolder} expanded.
+const gdbCfgArg = (args: string, folder: string) =>
+  argValue(args, '--cmd-pre-init', folder, 'gdb.cfg}')?.replace(/^source \{(.*)\}$/, '$1');
 
 function openocdArgs(app: ZephyrApplication, domain?: string): string {
   return getWestDebugArgsForProject(new Openocd(), app, app.getBuildConfiguration('primary')!, domain);
@@ -66,7 +70,8 @@ describe('OpenOCD gdb.cfg', () => {
     const args = openocdArgs(app);
     createOpenocdCfg(app, 'primary');
 
-    assert.ok(args.includes('--config "${workspaceFolder}/zephyr/samples/hello_world/build/primary/.debug/gdb.cfg"'), args);
+    assert.ok(args.includes('--cmd-pre-init "source {${workspaceFolder}/zephyr/samples/hello_world/build/primary/.debug/gdb.cfg}"'), args);
+    assert.ok(!/--config\s+"?[^\s"]*gdb\.cfg/.test(args), 'not a --config file');
     const cfg = gdbCfgArg(args, ws)!;
     assert.equal(path.normalize(cfg), path.join(app.getBuildConfiguration('primary')!.getInternalDebugDir(app), 'gdb.cfg'));
     assert.ok(fs.existsSync(cfg));
@@ -77,7 +82,7 @@ describe('OpenOCD gdb.cfg', () => {
     const args = openocdArgs(app);
     createOpenocdCfg(app, 'primary');
 
-    assert.ok(args.includes('--config openocd.cfg --config "${workspaceFolder}/build/primary/.debug/gdb.cfg"'), args);
+    assert.ok(args.includes('--config openocd.cfg --cmd-pre-init "source {${workspaceFolder}/build/primary/.debug/gdb.cfg}"'), args);
     assert.ok(fs.existsSync(gdbCfgArg(args, app.appRootPath)!));
   });
 
@@ -107,11 +112,19 @@ describe('OpenOCD gdb.cfg', () => {
       openocdArgs(app),
       `debugserver --runner openocd --config openocd.cfg --config ${LEGACY_GDB_CFG}`,
       `debugserver --runner openocd --config openocd.cfg --config ${path.join(app.appRootPath, 'build', 'primary', '.debug', 'gdb.cfg')}`,
+      `debugserver --runner openocd --config openocd.cfg --cmd-pre-init "source {${LEGACY_GDB_CFG}}"`,
     ]) {
       const runner = new Openocd();
       runner.loadArgs(`${stored} --config board-extra.cfg`);
       assert.equal(runner.userArgs, '--config board-extra.cfg', stored);
     }
+  });
+
+  it('keeps a --cmd-pre-init of the user, and reads only the one sourcing gdb.cfg as generated', () => {
+    const { app } = workspaceApplication();
+    const runner = new Openocd();
+    runner.loadArgs(`${openocdArgs(app)} --cmd-pre-init "echo hello" --cmd-pre-init "source {/work/other.cfg}"`);
+    assert.equal(runner.userArgs, '--cmd-pre-init "echo hello" --cmd-pre-init "source {/work/other.cfg}"');
   });
 
   it('leaves other runners without a gdb.cfg', () => {
@@ -130,10 +143,31 @@ describe('OpenOCD gdb.cfg', () => {
       };
       syncLaunchConfigurationProjectPaths(config, app, 'primary');
 
+      // The older --config form is written again as the --cmd-pre-init one.
       assert.ok(config.debugServerArgs.endsWith(
-        '--config openocd.cfg --config "${workspaceFolder}/zephyr/samples/hello_world/build/primary/.debug/gdb.cfg" --config board-extra.cfg',
+        '--config openocd.cfg --cmd-pre-init "source {${workspaceFolder}/zephyr/samples/hello_world/build/primary/.debug/gdb.cfg}" '
+        + '--config board-extra.cfg',
       ), config.debugServerArgs);
       assert.equal(gdbCfgArg(config.debugServerArgs, ws), `${argValue(config.debugServerArgs, '--build-dir', ws)}/.debug/gdb.cfg`);
     });
   }
+
+  it('re-targets an entry that sources the older per-app gdb.cfg, and leaves the user\'s own --cmd-pre-init alone', () => {
+    const { app } = workspaceApplication();
+    const config = {
+      name: 'Zephyr Workbench Debug: zephyr/samples/hello_world [primary]',
+      type: 'zephyr-workbench',
+      miDebuggerPath: '/usr/bin/gdb',
+      debugServerArgs: 'debugserver --build-dir "${workspaceFolder}/zephyr/samples/hello_world/build/primary" --runner openocd '
+        + `--cmd-pre-init "source {${LEGACY_GDB_CFG}}" --cmd-pre-init "echo hello"`,
+    };
+    syncLaunchConfigurationProjectPaths(config, app, 'primary');
+    assert.ok(config.debugServerArgs.endsWith(
+      '--cmd-pre-init "source {${workspaceFolder}/zephyr/samples/hello_world/build/primary/.debug/gdb.cfg}" --cmd-pre-init "echo hello"',
+    ), config.debugServerArgs);
+
+    const again = config.debugServerArgs;
+    syncLaunchConfigurationProjectPaths(config, app, 'primary');
+    assert.equal(config.debugServerArgs, again, 'writing it again changes nothing');
+  });
 });

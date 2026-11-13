@@ -21,6 +21,9 @@ export class Openocd extends WestRunner {
    */
   static readonly GDB_CFG_PATTERN = /(?:^|[\\/])\.debug[\\/]gdb\.cfg$/;
 
+  /** Matches the `--cmd-pre-init` value that sources the generated gdb.cfg: `source {<path>}`. */
+  static readonly GDB_CFG_SOURCE_PATTERN = /^source\s+\{(?:.*[\\/])?\.debug[\\/]gdb\.cfg\}$/;
+
   /**
    * Returns the executable name based on the current platform.
    * On Windows: openocd.exe
@@ -42,18 +45,21 @@ export class Openocd extends WestRunner {
 
   /** Adds the gdb.cfg generated in the build configuration's debug folder. */
   protected override getDebugAutoArgs(relativeBuildDir: string): string {
-    return `${this.autoArgs} --config "${Openocd.getGdbCfgLaunchPath(relativeBuildDir)}"`;
+    return `${this.autoArgs} ${Openocd.getGdbCfgArg(relativeBuildDir)}`;
   }
 
   /**
-   * Tell the base parser about the two `--config` lines we add, so they are
-   * stripped on read instead of being mistaken for user-provided args. The
-   * gdb.cfg one is matched by pattern, as its folder depends on the build.
+   * Tell the base parser about the lines we add, so they are stripped on read
+   * instead of being mistaken for user-provided args. The gdb.cfg ones are
+   * matched by pattern, as its folder depends on the build. The `--config`
+   * form is what older versions wrote: it stays listed so those launch.json
+   * files are read as before.
    */
   protected getExtraAutoTokens() {
     return [
       { flag: '--config', value: 'openocd.cfg' },
       { flag: '--config', value: Openocd.GDB_CFG_PATTERN },
+      { flag: '--cmd-pre-init', value: Openocd.GDB_CFG_SOURCE_PATTERN },
     ];
   }
 
@@ -63,6 +69,18 @@ export class Openocd extends WestRunner {
    */
   static getGdbCfgLaunchPath(relativeBuildDir: string): string {
     return path.posix.join('${workspaceFolder}', relativeBuildDir, ZEPHYR_WORKBENCH_DEBUG_DIRNAME, GDB_CFG_FILENAME);
+  }
+
+  /**
+   * The argument that has OpenOCD run the generated gdb.cfg. It goes through
+   * `--cmd-pre-init`, not `--config`: west's OpenOCD runner compares the folder
+   * of every `--config` file with the board's `support` folder and fails when
+   * the board has none. The script is sourced after the board's configuration,
+   * so its targets exist. The path sits in Tcl braces, which keep spaces; it
+   * must not hold unbalanced braces.
+   */
+  static getGdbCfgArg(relativeBuildDir: string): string {
+    return `--cmd-pre-init "source {${Openocd.getGdbCfgLaunchPath(relativeBuildDir)}}"`;
   }
 
   /**

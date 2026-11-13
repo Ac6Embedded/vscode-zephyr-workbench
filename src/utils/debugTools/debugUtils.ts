@@ -892,19 +892,23 @@ function withDebugServerBuildDir(debugServerArgs: string | undefined, buildDirEx
     : `${debugServerArgs} --build-dir ${quotedBuildDir}`;
 }
 
-// Point the OpenOCD `--config` of the generated gdb.cfg at the build
+// Point the OpenOCD argument that runs the generated gdb.cfg at the build
 // configuration's debug folder. Entries written before it lived there carry
 // ${workspaceFolder}/build/.debug/gdb.cfg, which for a West workspace
-// application is under the west workspace, where no gdb.cfg is written.
+// application is under the west workspace, where no gdb.cfg is written. Entries
+// written before it went through --cmd-pre-init pass it as a --config file,
+// which west's OpenOCD runner cannot take for a board without a support
+// folder: they are written again in the current form.
 function withOpenocdGdbCfg(debugServerArgs: string | undefined, workspaceRelativeBuildDir: string): string | undefined {
   if (!debugServerArgs) {
     return debugServerArgs;
   }
 
-  return debugServerArgs.replace(/--config(?:\s+|=)("[^"]*"|\S+)/g, (match, value: string) =>
-    Openocd.GDB_CFG_PATTERN.test(value.replace(/^"(.*)"$/, '$1'))
-      ? `--config "${Openocd.getGdbCfgLaunchPath(workspaceRelativeBuildDir)}"`
-      : match);
+  return debugServerArgs.replace(/--(config|cmd-pre-init)(?:\s+|=)("[^"]*"|\S+)/g, (match, flag: string, value: string) => {
+    const unquoted = value.replace(/^"(.*)"$/, '$1');
+    const isGdbCfg = flag === 'config' ? Openocd.GDB_CFG_PATTERN.test(unquoted) : Openocd.GDB_CFG_SOURCE_PATTERN.test(unquoted);
+    return isGdbCfg ? Openocd.getGdbCfgArg(workspaceRelativeBuildDir) : match;
+  });
 }
 
 function resolveWorkspaceExpression(value: string | undefined, workspaceFolder: vscode.WorkspaceFolder): string | undefined {
