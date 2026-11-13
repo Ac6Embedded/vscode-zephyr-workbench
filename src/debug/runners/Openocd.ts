@@ -21,6 +21,9 @@ export class Openocd extends WestRunner {
    */
   static readonly GDB_CFG_PATTERN = /(?:^|[\\/])\.debug[\\/]gdb\.cfg$/;
 
+  /** Matches the `--cmd-pre-init` value that sources the generated gdb.cfg: `source {<path>}`. */
+  static readonly GDB_CFG_SOURCE_PATTERN = /^source\s+\{(?:.*[\\/])?\.debug[\\/]gdb\.cfg\}$/;
+
   /**
    * Returns the executable name based on the current platform.
    * On Windows: openocd.exe
@@ -30,30 +33,42 @@ export class Openocd extends WestRunner {
     return process.platform === 'win32' ? 'openocd.exe' : 'openocd';
   }
 
+  /** The board config file passed when the user gives none of their own. */
+  static readonly DEFAULT_CONFIG_FILE = 'openocd.cfg';
+
+  /** True when the user's own args already pass a config file, in either `--config <f>` or `--config=<f>` form. */
+  private get hasUserConfig(): boolean {
+    return WestRunner.tokenizeArgs(this.userArgs).some(t => t === '--config' || t.startsWith('--config='));
+  }
+
   /**
-   * Automatically builds command-line arguments.
-   * You can adjust default config file arguments here as needed.
+   * Passes `--config openocd.cfg` by default, which boards that rely on it need.
+   * It is left out once the user gives a `--config` of their own, so theirs wins
+   * instead of being added to ours.
    */
-  get autoArgs(): string {
-    let cmdArgs = super.autoArgs;
-    cmdArgs += ' --config openocd.cfg';
-    return cmdArgs;
+  override get autoArgs(): string {
+    const args = super.autoArgs;
+    return this.hasUserConfig ? args : `${args} --config ${Openocd.DEFAULT_CONFIG_FILE}`;
   }
 
   /** Adds the gdb.cfg generated in the build configuration's debug folder. */
   protected override getDebugAutoArgs(relativeBuildDir: string): string {
-    return `${this.autoArgs} --config "${Openocd.getGdbCfgLaunchPath(relativeBuildDir)}"`;
+    return `${this.autoArgs} ${Openocd.getGdbCfgArg(relativeBuildDir)}`;
   }
 
   /**
-   * Tell the base parser about the two `--config` lines we add, so they are
+   * Tell the base parser about the lines we add (or used to add), so they are
    * stripped on read instead of being mistaken for user-provided args. The
-   * gdb.cfg one is matched by pattern, as its folder depends on the build.
+   * gdb.cfg ones are matched by pattern, as its folder depends on the build.
+   *
+   * `--config openocd.cfg` is ours, so it is not read back as a user arg. The
+   * `--config <gdb.cfg>` form is what older versions wrote.
    */
   protected getExtraAutoTokens() {
     return [
-      { flag: '--config', value: 'openocd.cfg' },
+      { flag: '--config', value: Openocd.DEFAULT_CONFIG_FILE },
       { flag: '--config', value: Openocd.GDB_CFG_PATTERN },
+      { flag: '--cmd-pre-init', value: Openocd.GDB_CFG_SOURCE_PATTERN },
     ];
   }
 
@@ -63,6 +78,18 @@ export class Openocd extends WestRunner {
    */
   static getGdbCfgLaunchPath(relativeBuildDir: string): string {
     return path.posix.join('${workspaceFolder}', relativeBuildDir, ZEPHYR_WORKBENCH_DEBUG_DIRNAME, GDB_CFG_FILENAME);
+  }
+
+  /**
+   * The argument that has OpenOCD run the generated gdb.cfg. It goes through
+   * `--cmd-pre-init`, not `--config`: west's OpenOCD runner compares the folder
+   * of every `--config` file with the board's `support` folder and fails when
+   * the board has none. The script is sourced after the board's configuration,
+   * so its targets exist. The path sits in Tcl braces, which keep spaces; it
+   * must not hold unbalanced braces.
+   */
+  static getGdbCfgArg(relativeBuildDir: string): string {
+    return `--cmd-pre-init "source {${Openocd.getGdbCfgLaunchPath(relativeBuildDir)}}"`;
   }
 
   /**
