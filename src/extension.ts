@@ -4149,7 +4149,10 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+	// Only CMake Tools opens the popups these settings prevent, and without it
+	// VS Code cannot write them (they are not registered).
+	if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+		&& vscode.extensions.getExtension('ms-vscode.cmake-tools')) {
 		(async () => {
 			const cmakeConfig = vscode.workspace.getConfiguration('cmake');
 
