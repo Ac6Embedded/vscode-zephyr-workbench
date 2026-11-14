@@ -1574,11 +1574,14 @@ export function buildDirectTask(
     taskLabel = `${taskName} [${targetConfig.name}]`;
   }
 
+  // The problem matchers of the definition ($gcc for builds) put the compiler errors in the Problems view.
   const task = new vscode.Task(
     definition,
     workspaceFolder,
     taskLabel,
     ZephyrTaskProvider.ZephyrType,
+    undefined,
+    definition.problemMatcher,
   );
 
   const groupKind = typeof definition.group === 'object' ? definition.group?.kind : definition.group;
