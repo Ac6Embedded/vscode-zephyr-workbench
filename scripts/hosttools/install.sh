@@ -1683,7 +1683,7 @@ step_system() {
             || run_as_root dnf group install -y "Development Tools" \
             || step_warn "dnf group install failed (exit $?); continuing"
         resilient_batch_install dnf_install \
-            cmake ninja-build gperf dfu-util dtc wget which python3-pip python3-tkinter \
+            cmake ninja-build gperf ccache dfu-util dtc wget which python3-pip python3-tkinter \
             xz file python3-devel SDL2-devel \
             || return 1
         ;;
