@@ -83,6 +83,23 @@ describe('debug tool status', () => {
     });
   });
 
+  describe('a tool only a file tells, such as the udev rules', () => {
+    it('is installed once the file exists, with no update to offer', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zw-detect-'));
+      const file = path.join(dir, '49-stlinkv3.rules').replace(/\\/g, '/');
+      const rules: DebugToolEntry = { tool: 'zw-rules', version: '1.0.0', ['explicit-detect']: { linux: [file], windows: [file], darwin: [file] } };
+      try {
+        assert.equal((await probeDebugToolStatus(MANIFEST, rules, {})).status, 'Not installed');
+        fs.writeFileSync(file, '');
+        const found = await probeDebugToolStatus(MANIFEST, rules, {});
+        assert.equal(found.installed, true);
+        assert.equal(found.status, 'Installed');
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('probing through the env-sourced shell', function () {
     this.timeout(20000);
     let saved: string | undefined;

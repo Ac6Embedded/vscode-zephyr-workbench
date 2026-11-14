@@ -457,6 +457,10 @@ debug_tools:
       sha256: 0cd477139825438cef3e1f15ec01be801c9b9dfcf3085c43d7af284122f862b9
     windows: false
     darwin: false
+  # Rules files have no version command: one of the installed files tells.
+  explicit-detect:
+    linux:
+      - "/etc/udev/rules.d/49-stlinkv3.rules"
 packs:
 - pack: stm32
   name: STM32
