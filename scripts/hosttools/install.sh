@@ -1682,9 +1682,11 @@ step_system() {
         run_as_root dnf group install -y development-tools c-development \
             || run_as_root dnf group install -y "Development Tools" \
             || step_warn "dnf group install failed (exit $?); continuing"
+        # gawk: the host tools of the Zephyr SDK need awk, which a minimal
+        # Fedora lacks (zephyrproject-rtos/zephyr#120675).
         resilient_batch_install dnf_install \
             cmake ninja-build gperf ccache dfu-util dtc wget which python3-pip python3-tkinter \
-            xz file python3-devel SDL2-devel \
+            xz file python3-devel SDL2-devel libusb1-devel gawk \
             || return 1
         ;;
     clear-linux)
@@ -1699,7 +1701,7 @@ step_system() {
         # pip needs to build the Python packages without a wheel.
         resilient_batch_install pacman_install \
             base-devel git cmake ninja gperf ccache dfu-util dtc wget python-pip python-setuptools \
-            python-wheel tk xz file make \
+            python-wheel tk xz file make which \
             || return 1
         ;;
     *)
