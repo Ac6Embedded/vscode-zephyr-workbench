@@ -114,7 +114,15 @@ async function downloadOnce(url: string, partPath: string, options: DownloadOpti
     const watchdog = new Watchdog(idleTimeoutMs, options.token);
     let response: Response | undefined;
     try {
-      response = await fetcher.fetch(url, { signal: watchdog.signal });
+      const answer = await fetcher.fetch(url, { signal: watchdog.signal });
+      // 202 (a bot challenge, as gitlab.arm.com gives Electron) and 204 carry
+      // no file: like no response at all, it is worth asking the next fetcher.
+      if (answer.status === 202 || answer.status === 204) {
+        await answer.body?.cancel().catch(() => undefined);
+        failures.push(new HttpStatusError(answer.status));
+        continue;
+      }
+      response = answer;
       if (!response.ok || !response.body) {
         throw new HttpStatusError(response.status);
       }
@@ -132,6 +140,9 @@ async function downloadOnce(url: string, partPath: string, options: DownloadOpti
     } finally {
       watchdog.dispose();
     }
+  }
+  if (failures.length > 0 && failures.every(failure => failure instanceof HttpStatusError)) {
+    throw failures[0];
   }
   throw new AggregateError(failures, 'No fetcher got a response');
 }

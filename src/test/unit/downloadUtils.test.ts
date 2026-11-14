@@ -89,6 +89,25 @@ describe('downloadFile', () => {
     assert.equal(node.calls, 1);
   });
 
+  it('asks the next fetcher when the first is answered without the file (HTTP 202)', async () => {
+    const electron = fakeFetcher('electron', async () => new Response(null, { status: 202 }));
+    const node = fakeFetcher('node', async (_call, init) => bodyResponse(['ok'], init?.signal ?? undefined));
+
+    await downloadFile(ASSET_URL, target, { fetchers: [electron, node], retryDelaysMs: [] });
+
+    assert.equal(fs.readFileSync(target, 'utf8'), 'ok');
+    assert.equal(electron.calls, 1);
+    assert.equal(node.calls, 1);
+  });
+
+  it('fails, without an empty file, when every fetcher is answered HTTP 202', async () => {
+    const electron = fakeFetcher('electron', async () => new Response(null, { status: 202 }));
+    const node = fakeFetcher('node', async () => new Response(null, { status: 202 }));
+
+    await assert.rejects(downloadFile(ASSET_URL, target, { fetchers: [electron, node], retryDelaysMs: [] }), /example\.test answered HTTP 202 for toolchain\.7z/);
+    assert.equal(fs.existsSync(target), false);
+  });
+
   it('reports certificate failures from every fetcher without retrying', async () => {
     const electron = fakeFetcher('electron', async () => { throw new Error('net::ERR_CERT_DATE_INVALID'); });
     const node = fakeFetcher('node', async () => {
