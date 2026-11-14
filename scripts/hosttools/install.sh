@@ -1677,7 +1677,10 @@ step_system() {
         ;;
     fedora)
         run_as_root dnf upgrade -y || step_warn "dnf upgrade failed (exit $?); continuing"
-        run_as_root dnf group install -y "Development Tools" "C Development Tools and Libraries" \
+        # The group ids of the Zephyr docs, which dnf5 (Fedora 41 and newer)
+        # needs. RHEL-like systems use other ids: install theirs by name.
+        run_as_root dnf group install -y development-tools c-development \
+            || run_as_root dnf group install -y "Development Tools" \
             || step_warn "dnf group install failed (exit $?); continuing"
         resilient_batch_install dnf_install \
             cmake ninja-build gperf dfu-util dtc wget which python3-pip python3-tkinter \
