@@ -16,7 +16,7 @@ import {
 import { prependRustBinPath } from '../../models/ToolchainInstallations';
 import { tryGetZephyrSdkInstallation } from '../utils';
 import { expandAndNormalizeWestArgs, getWestBuildSourceDirArgValue, hasWestBuildSourceDirArg, splitWestBuildArgs } from './westArgUtils';
-import { getWestBuildStatePath, WestBuildState } from './westBuildState';
+import { getWestBuildStatePath, needsPristineRebuild, WestBuildState } from './westBuildState';
 
 export interface PrepareWestBuildExecutionOptions {
   pristine: 'never' | 'always';
@@ -105,8 +105,11 @@ export function prepareWestBuildExecution(
   );
 
   const buildDirConfigured = hasWestBuildConfiguration(buildDirPath);
-  const stateChanged = !buildStatesMatch(readWestBuildState(buildDirPath), buildState);
-  const needsConfigure = runOptions.pristine === 'always' || !buildDirConfigured || stateChanged;
+  const previousState = readWestBuildState(buildDirPath);
+  const stateChanged = !buildStatesMatch(previousState, buildState);
+  // A change CMake cannot apply to the configured folder (board, toolchain, sysbuild...) rebuilds from scratch.
+  const pristine = buildDirConfigured && needsPristineRebuild(previousState, buildState) ? 'always' : runOptions.pristine;
+  const needsConfigure = pristine === 'always' || !buildDirConfigured || stateChanged;
 
   const venvPath = zephyrProject.venvPath ?? getConfiguredVenvPath(zephyrProject.appWorkspaceFolder) ?? '';
   const baseEnv = { ...sdkEnv, ...workspaceEnv, ...toolchainEnv };
@@ -138,7 +141,7 @@ export function prepareWestBuildExecution(
     `west build` +
     (runOptions.target ? ` -t ${runOptions.target}` : '') +
     (runOptions.cmakeOnly ? ' --cmake-only' : '') +
-    ` --pristine ${runOptions.pristine}` +
+    ` --pristine ${pristine}` +
     (needsConfigure && buildDirConfigured ? ' --cmake' : '') +
     (needsConfigure ? ` --board ${buildConfig.boardIdentifier}` : '') +
     ` --build-dir "${buildDir}"` +
