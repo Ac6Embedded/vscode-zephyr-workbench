@@ -4,6 +4,26 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [4.3.6]
+
+### Build
+- Changing the board, the toolchain, sysbuild, the snippets or the shields of a build configuration now rebuilds it from scratch. Before, the build failed (west refuses another board in the same build folder) or quietly kept the previous toolchain.
+- Compiler errors of a build show in the Problems view.
+
+### Toolchains
+- The Arm GNU toolchain downloads again: when a download is answered without the file, the next download method is tried instead of saving an empty archive.
+- The Zephyr SDK version no longer ends with a stray line break in the Toolchains view.
+
+### Runners
+- Install Runners shows the udev rules as installed once they are.
+
+### Host Tools
+- Fedora 41 and newer: the development tools install, with the group ids dnf5 knows, and ccache, libusb1-devel and gawk are installed too.
+- Arch Linux: base-devel and which are installed, so the Python packages that need a C compiler install.
+
+### Other
+- The prompt to apply CMake settings only shows when the CMake Tools extension is installed.
+
 ## [4.3.5]
 
 ### Kconfig Manager
