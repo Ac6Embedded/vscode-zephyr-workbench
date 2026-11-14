@@ -100,7 +100,8 @@ export class ZephyrSdkInstallation {
 
   private parseVersion() {
     const filePath = this.versionFile.fsPath;
-    this.version = fs.readFileSync(filePath, 'utf-8');
+    // The file ends with a newline, which would show in labels.
+    this.version = fs.readFileSync(filePath, 'utf-8').trim();
   }
 
   private parseGnuToolchains() {
