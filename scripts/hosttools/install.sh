@@ -1695,8 +1695,10 @@ step_system() {
         ;;
     arch)
         run_as_root pacman -Syu --noconfirm || step_warn "pacman -Syu failed (exit $?); continuing"
+        # base-devel brings the C compiler, which a minimal install lacks and
+        # pip needs to build the Python packages without a wheel.
         resilient_batch_install pacman_install \
-            git cmake ninja gperf ccache dfu-util dtc wget python-pip python-setuptools \
+            base-devel git cmake ninja gperf ccache dfu-util dtc wget python-pip python-setuptools \
             python-wheel tk xz file make \
             || return 1
         ;;
