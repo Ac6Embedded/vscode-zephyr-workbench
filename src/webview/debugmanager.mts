@@ -1,4 +1,5 @@
 import { Button, RadioGroup, TextField, allComponents, provideVSCodeDesignSystem } from "@vscode/webview-ui-toolkit/";
+import { runnerHasCores } from "../debug/gdbCore.js";
 
 provideVSCodeDesignSystem().register(allComponents);
 
@@ -115,6 +116,8 @@ function applyBackendVisibility() {
 
   setRowVisible('gdbAddressRow', !native);
   setRowVisible('gdbPortRow', !native);
+  // Only a server that serves each core of the target on its own port has a core to pick.
+  setRowVisible('gdbCoreRow', !native && runnerHasCores(runnerName));
   setRowVisible('deviceRow', native);
   setRowVisible('interfaceRow', native);
   // QEMU takes no runner executable path (it is started through the
@@ -642,6 +645,7 @@ function applyHandler(this: HTMLElement, ev: MouseEvent) {
     gdbPath: gdbPath.value,
     gdbAddress: gdbAddress.value,
     gdbPort: gdbPort.value,
+    gdbCore: (document.getElementById('gdbCore') as TextField | null)?.value ?? '',
     gdbMode: gdbModeRadioGroup.value,
     runner: runnerInput.getAttribute('data-value'),
     runnerPath: runnerPath.value,
@@ -681,6 +685,7 @@ function debugHandler(this: HTMLElement, ev: MouseEvent) {
     gdbPath: gdbPath.value,
     gdbAddress: gdbAddress.value,
     gdbPort: gdbPort.value,
+    gdbCore: (document.getElementById('gdbCore') as TextField | null)?.value ?? '',
     gdbMode: gdbModeRadioGroup.value,
     runner: runnerInput.getAttribute('data-value'),
     runnerPath: runnerPath.value,
@@ -997,6 +1002,10 @@ function updateConfig(data: any) {
   gdbPathText.value = gdbPath ?? '';
   gdbAddressText.value = gdbAddress ?? '';
   gdbPortText.value = gdbPort ?? '';
+  const gdbCoreText = document.getElementById('gdbCore') as TextField | null;
+  if (gdbCoreText) {
+    gdbCoreText.value = data.gdbCore ?? '0';
+  }
   gdbModeRadioGroup.value = gdbMode ?? 'program';
   // Domain row state always rides with the configuration payload: shown only
   // when this config is sysbuild (missing fields mean hide, e.g. older senders).

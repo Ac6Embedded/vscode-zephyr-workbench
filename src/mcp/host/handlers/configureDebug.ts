@@ -590,6 +590,8 @@ async function applyEntry(args: Record<string, unknown>, ctx: Ctx) {
       gdbPath,
       gdbAddress,
       gdbPort,
+      // The tool has no core argument: keep the one the Debug Manager stored.
+      gdbCore: sameRunner && !native ? stored.gdbCore : 0,
       gdbMode,
       runnerPath,
       runnerArgs,

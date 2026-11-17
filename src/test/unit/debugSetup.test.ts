@@ -23,6 +23,7 @@ import { getSetupCommands } from '../../debug/gdbUtils';
 import { StlinkGdbserver } from '../../debug/runners/StlinkGdbserver';
 import { buildCortexWestLaunchConfig } from '../../debug/backends/cortexWest';
 import { buildCortexNativeLaunchConfig } from '../../debug/backends/cortexNative';
+import { readPanelStateFromConfig } from '../../debug/backends/backendState';
 import { DebugBackendId, runnerNameToNativeServer } from '../../debug/backends/types';
 import { ZephyrApplication } from '../../models/ZephyrApplication';
 import { DebugFixture, makeDebugFixture } from './debugTestFixture';
@@ -264,6 +265,104 @@ describe('debug setup: the Debug Manager Apply without its panel', () => {
       assert.equal(!result.ok && result.failure, 'qemu-not-arm');
       assert.match((!result.ok && result.message) || '', /only supported for ARM boards/);
       assert.ok(!fs.existsSync(f.launchJsonPath));
+    });
+  });
+
+  describe('a core of a multicore target', () => {
+    // OpenOCD serves core N on its GDB port + N: the server starts on the base
+    // port and the debugger connects to the one of the core.
+    it('starts OpenOCD on the base port and connects the cortex-west entry to the core', async () => {
+      f = makeDebugFixture();
+      const result = await applyDebugSetup(input(f, f.app(), { backend: 'cortex-west', gdbCore: 1 }), hooks());
+      assert.ok(result.ok);
+      assert.match(result.plan.entry.debugServerArgs, /--runner openocd --gdb-port 3333 /);
+      assert.equal(result.plan.entry.gdbTarget, 'localhost:3334');
+      const state = readPanelStateFromConfig(result.plan.entry);
+      assert.equal(state.gdbPort, '3333');
+      assert.equal(state.gdbCore, 1);
+    });
+
+    it('starts OpenOCD on the base port and connects the cppdbg entry to the core', async () => {
+      f = makeDebugFixture();
+      const result = await applyDebugSetup(input(f, f.app(), { gdbCore: 2 }), hooks());
+      assert.ok(result.ok);
+      assert.match(result.plan.entry.debugServerArgs, /--runner openocd --gdb-port 3333 /);
+      const commands = result.plan.entry.setupCommands.map((c: { text: string }) => c.text);
+      assert.ok(commands.includes('-target-select remote localhost:3335'), commands.join(' | '));
+      const state = readPanelStateFromConfig(result.plan.entry);
+      assert.equal(state.gdbPort, '3333');
+      assert.equal(state.gdbCore, 2);
+    });
+
+    it('writes the same entry as before for the first core, given or not', async () => {
+      f = makeDebugFixture();
+      const without = await applyDebugSetup(input(f, f.app(), { backend: 'cortex-west' }), hooks());
+      const first = await applyDebugSetup(input(f, f.app(), { backend: 'cortex-west', gdbCore: 0 }), hooks());
+      assert.ok(without.ok && first.ok);
+      assert.deepEqual(first.plan.entry, without.plan.entry);
+      assert.equal(first.plan.entry.gdbTarget, 'localhost:3333');
+      assert.equal(readPanelStateFromConfig(first.plan.entry).gdbCore, 0);
+    });
+
+    it('ignores the core for a runner that has none', async () => {
+      f = makeDebugFixture();
+      const result = await applyDebugSetup(
+        input(f, f.app(), { backend: 'cortex-west', runnerName: 'jlink', gdbPort: '2331', gdbCore: 1 }), hooks());
+      assert.ok(result.ok);
+      assert.equal(result.plan.entry.gdbTarget, 'localhost:2331');
+      assert.equal(readPanelStateFromConfig(result.plan.entry).gdbCore, 0);
+    });
+
+    it('refuses a core that is not a whole number from 0 to 15, and writes nothing', async () => {
+      for (const gdbCore of [-1, 1.5, 16, NaN]) {
+        f = makeDebugFixture();
+        const result = await applyDebugSetup(input(f, f.app(), { backend: 'cortex-west', gdbCore }), hooks());
+        assert.ok(!result.ok && result.failure === 'bad-gdb-core', String(gdbCore));
+        assert.match(result.message ?? '', /Core must be a whole number from 0 to 15/);
+        assert.ok(!fs.existsSync(f.launchJsonPath), String(gdbCore));
+        f.restore();
+      }
+    });
+
+    it('shows the core in the fields of an entry only when it is not the first', async () => {
+      f = makeDebugFixture();
+      const second = await applyDebugSetup(input(f, f.app(), { backend: 'cortex-west', gdbCore: 1 }), hooks());
+      assert.ok(second.ok);
+      assert.equal(debugEntryFields(second.plan.entry).gdb_core, 1);
+      assert.equal(debugEntryFields(second.plan.entry).gdb_port, 3333);
+      const first = await applyDebugSetup(input(f, f.app(), { backend: 'cortex-west' }), hooks());
+      assert.ok(first.ok);
+      assert.ok(!('gdb_core' in debugEntryFields(first.plan.entry)));
+    });
+
+    it('reads entries written before cores existed as the first core', () => {
+      const entry = {
+        type: 'zephyr-workbench',
+        debugServerArgs: 'debugserver --build-dir "${workspaceFolder}/build/primary" --runner openocd --gdb-port 3333',
+        gdbTarget: 'localhost:3333',
+      };
+      const state = readPanelStateFromConfig(entry);
+      assert.equal(state.gdbPort, '3333');
+      assert.equal(state.gdbCore, 0);
+    });
+
+    it('reads no core from a hand-edited gdbTarget the server cannot be serving', () => {
+      const args = 'debugserver --build-dir "${workspaceFolder}/build/primary" --runner openocd --gdb-port 3333';
+      for (const gdbTarget of ['localhost:3000', 'localhost:4000', 'localhost']) {
+        const state = readPanelStateFromConfig({ type: 'zephyr-workbench', debugServerArgs: args, gdbTarget });
+        assert.equal(state.gdbPort, '3333', gdbTarget);
+        assert.equal(state.gdbCore, 0, gdbTarget);
+      }
+    });
+
+    it('keeps the old port rule for a runner that has no cores: the arguments win over gdbTarget', () => {
+      const state = readPanelStateFromConfig({
+        type: 'zephyr-workbench',
+        debugServerArgs: 'debugserver --build-dir "${workspaceFolder}/build/primary" --runner jlink --gdb-port 2331',
+        gdbTarget: 'localhost:2332',
+      });
+      assert.equal(state.gdbPort, '2331');
+      assert.equal(state.gdbCore, 0);
     });
   });
 

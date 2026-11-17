@@ -12,6 +12,7 @@ import {
 } from '../utils/debugTools/debugUtils';
 import { runWestBuildPreLaunch } from '../utils/debugTools/debugPreLaunch';
 import { WestRunner } from '../debug/runners/WestRunner';
+import { resolveDebuggerPort } from '../debug/gdbCore';
 import { ZephyrApplication } from '../models/ZephyrApplication';
 import { activateCortexDebug, ensureCortexDebugAvailable } from '../debug/backends/cortexDebugExtension';
 import { transformToExternalCortexConfig } from '../debug/backends/cortexWest';
@@ -125,13 +126,15 @@ export class ZephyrWestServerDebugConfigurationProvider implements vscode.DebugC
 
     // The stored debugServerArgs are authoritative for the port (they contain
     // the explicit --gdb-port passed to west); gdbTarget only supplies the
-    // host and is the fallback for hand-edited entries.
+    // host and is the fallback for hand-edited entries. A runner that serves
+    // each core of the target on its own port is started on the first core's
+    // port, and gdbTarget holds the port of the core to debug.
     const runnerName = WestRunner.extractRunner(config.debugServerArgs);
     const runner = runnerName ? getRunner(runnerName) : undefined;
     runner?.loadArgs(config.debugServerArgs);
     const target = splitGdbTarget(config.gdbTarget);
     const host = target.host ?? 'localhost';
-    const port = runner?.serverPort ?? target.port ?? getDefaultGdbPort(runnerName);
+    const port = resolveDebuggerPort(runnerName, runner?.serverPort, target.port) ?? getDefaultGdbPort(runnerName);
     const gdbTarget = `${host}:${port}`;
 
     const finishTransform = async (serverToken?: string): Promise<undefined> => {

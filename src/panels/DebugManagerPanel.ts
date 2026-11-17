@@ -274,6 +274,10 @@ export class DebugManagerPanel {
                 <vscode-text-field size="50" type="text" id="gdbPort" value="">GDB Port:</vscode-text-field>
               </div>
 
+              <div id="gdbCoreRow" class="grid-group-div">
+                <vscode-text-field size="50" type="text" id="gdbCore" value="0" title="0 is the first core. The server serves core N on the GDB port + N.">Core:</vscode-text-field>
+              </div>
+
               <div class="grid-group-div">
                 <vscode-radio-group id="gdbMode" orientation="horizontal">            
                   <vscode-radio value="program" checked>Program</vscode-radio>
@@ -1050,6 +1054,7 @@ export class DebugManagerPanel {
           gdbPath: state.gdbPath,
           gdbAddress: `${state.gdbAddress}`,
           gdbPort: `${state.gdbPort}`,
+          gdbCore: `${state.gdbCore}`,
           gdbMode: `${state.gdbMode}`,
           runnersHTML: `${getRunnersHtml(compatibleRunners, runnerValue || runnerName)}`,
           nativeRunnersHTML: `${getNativeRunnersHtml()}`,
@@ -1193,6 +1198,7 @@ export class DebugManagerPanel {
         gdbPath: state.gdbPath,
         gdbAddress: `${state.gdbAddress}`,
         gdbPort: `${gdbPort}`,
+        gdbCore: '0',
         gdbMode: 'program',
         runnersHTML: `${getRunnersHtml(compatibleRunners, runnerValue || runnerName)}`,
         nativeRunnersHTML: `${getNativeRunnersHtml()}`,
@@ -1235,6 +1241,8 @@ export class DebugManagerPanel {
         gdbPath: typeof message.gdbPath === 'string' ? message.gdbPath.trim() : '',
         gdbAddress: typeof message.gdbAddress === 'string' ? message.gdbAddress.trim() : '',
         gdbPort: typeof message.gdbPort === 'string' ? message.gdbPort.trim() : '',
+        // Left empty or hidden in the form means the first core; text that is no number is refused by the setup.
+        gdbCore: typeof message.gdbCore === 'string' && message.gdbCore.trim() !== '' ? Number(message.gdbCore.trim()) : undefined,
         gdbMode: message.gdbMode,
         runnerPath: message.runnerPath,
         runnerArgs: message.runnerArgs,
