@@ -14,6 +14,7 @@ import {
   exec, execFile, spawn
 } from 'child_process';
 import { writeWestBuildState, WestBuildState } from './zephyr/westBuildState';
+import { windowsPowerShellEnv, windowsPowerShellModulePath } from './powershellUtils';
 
 let _channel: vscode.OutputChannel;
 const pyOCDOutput = vscode.window.createOutputChannel('pyOCD');
@@ -1258,7 +1259,12 @@ export function buildShellTask(
     throw new Error('Missing command to execute');
   }
 
-  const shExec = new vscode.ShellExecution(cmd, options);
+  // A Windows PowerShell the task starts must not see PowerShell 7's module
+  // folders (see windowsPowerShellModulePath). Unchanged in every other case.
+  const psModulePath = windowsPowerShellModulePath(options.env?.PSModulePath ?? process.env.PSModulePath);
+  const shExec = new vscode.ShellExecution(cmd, psModulePath === undefined
+    ? options
+    : { ...options, env: { ...options.env, PSModulePath: psModulePath } });
   const task = new vscode.Task(
     { label: cmdName, type: 'zephyr-workbench-shell' },
     vscode.TaskScope.Workspace,
@@ -1450,7 +1456,7 @@ export async function execCommandWithEnv(
 /** The environment an env-sourced command runs with, shared by the exec and capture paths. */
 function envSourcedProcessEnv(prepared: EnvSourcedShellCommand): NodeJS.ProcessEnv {
   return {
-    ...process.env,
+    ...windowsPowerShellEnv(),
     ...(prepared.needsChere ? { CHERE_INVOKING: '1' } : {}),
     ...getProfileEnv(),
     ...(prepared.venvPath ? { PYTHON_VENV_PATH: prepared.venvPath } : {})
@@ -1533,7 +1539,7 @@ export function captureCommand(cmd: string, options: CaptureCommandOptions): Pro
     // probe sees exactly what the panels' probes always saw.
     let command = cmd;
     let shell: string | boolean = true;
-    let env: NodeJS.ProcessEnv = process.env;
+    let env: NodeJS.ProcessEnv = windowsPowerShellEnv();
     if (options.sourceEnv !== false) {
       try {
         const prepared = buildEnvSourcedShellCommand(cmd, undefined, options.executableOverride ?? getShellExe());

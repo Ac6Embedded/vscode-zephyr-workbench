@@ -15,6 +15,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ### Debug Manager
 - For a QEMU board, the GDB port field now shows the port QEMU listens on (1234, or the value of `CONFIG_QEMU_GDBSERVER_LISTEN_DEV`) the first time the Debug Manager opens. Before, it showed 3333 and the debugger could not reach QEMU unless the port was changed by hand.
 
+### Host Tools
+- On Windows, the host tools, venv and runner installers work when VS Code was started from a PowerShell 7 terminal. Before, they stopped on "PowerShell script execution appears disabled" although scripts were allowed: the Windows PowerShell the extension starts inherited PowerShell 7's module folders and could not load its own commands. These folders are now left out, as PowerShell 7 itself does when it starts Windows PowerShell.
+
 ## [4.3.6]
 
 ### Build

@@ -1,8 +1,67 @@
 import { ExecException, exec } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
 import * as vscode from "vscode";
 import { ZEPHYR_DOCS_BASE_URL } from "../constants";
 
-// Run a PowerShell command with Bypass execution policy and no profile
+/**
+ * True for a PSModulePath folder that belongs to PowerShell 7: the Modules
+ * folder of a PowerShell 7 install, wherever it is (a pwsh.dll sits next to
+ * it), or one of its folders for installed modules, which end in
+ * \PowerShell\Modules (in Documents and in Program Files).
+ */
+export function isPowerShell7ModuleFolder(folder: string): boolean {
+  const f = folder.trim();
+  return f.length > 0
+    && (/[\\/]PowerShell[\\/]Modules[\\/]?$/i.test(f) || fs.existsSync(path.join(path.dirname(f), 'pwsh.dll')));
+}
+
+/**
+ * The PSModulePath to give a Windows PowerShell the extension starts, or
+ * undefined when `value` can be passed on as it is: off Windows, or when it
+ * holds no PowerShell 7 folder, which is the case unless VS Code was started
+ * from PowerShell 7.
+ *
+ * VS Code started from a PowerShell 7 session inherits PowerShell 7's module
+ * folders at the front of PSModulePath. Windows PowerShell then finds
+ * PowerShell 7's copies of its own modules first, cannot load them, and loses
+ * commands such as Get-ExecutionPolicy and Get-FileHash. PowerShell 7 drops
+ * these folders itself for a Windows PowerShell it starts directly (see
+ * about_PSModulePath), but not when another program sits in between. This
+ * drops them the same way and keeps every other folder, in order.
+ */
+export function windowsPowerShellModulePath(
+  value: string | undefined,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  if (platform !== 'win32' || !value) {
+    return undefined;
+  }
+  const folders = value.split(';');
+  const kept = folders.filter(folder => !isPowerShell7ModuleFolder(folder));
+  return kept.length === folders.length ? undefined : kept.join(';');
+}
+
+/**
+ * The environment for a process that may start Windows PowerShell: `env`
+ * itself when its PSModulePath needs no change, else a copy with the value
+ * from windowsPowerShellModulePath.
+ */
+export function windowsPowerShellEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
+  // Windows variable names ignore case: replace the variable under the name it has.
+  const key = Object.keys(env).find(name => name.toUpperCase() === 'PSMODULEPATH');
+  if (key === undefined) {
+    return env;
+  }
+  const value = windowsPowerShellModulePath(env[key], platform);
+  return value === undefined ? env : { ...env, [key]: value };
+}
+
+// Run a PowerShell command with Bypass execution policy, no profile, and a
+// PSModulePath without PowerShell 7's folders (see windowsPowerShellModulePath).
 export type PowerShellFlavor = 'powershell' | 'pwsh';
 export function runPowershellCommand(
   cmd: string,
@@ -15,7 +74,7 @@ export function runPowershellCommand(
   const exe = flavor === 'pwsh' ? 'pwsh' : 'powershell';
   const full = `${exe} -ExecutionPolicy Bypass -NoProfile -NonInteractive -Command ${cmd}`;
   return new Promise((resolve, reject) => {
-    exec(full, { timeout: timeoutMs }, (error: ExecException | null, stdout: string, stderr: string) => {
+    exec(full, { timeout: timeoutMs, env: windowsPowerShellEnv() }, (error: ExecException | null, stdout: string, stderr: string) => {
       if (error) { return reject(Object.assign(error, { stdout, stderr })); }
       resolve({ stdout, stderr });
     });
