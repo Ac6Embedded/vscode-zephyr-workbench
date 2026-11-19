@@ -126,7 +126,7 @@ export class KconfigServerClient {
       return Promise.reject(new KconfigServerError(`Server not ready (state '${this._state}')`, 'not-ready'));
     }
     const id = String(++this.idCounter);
-    const budget = timeoutMs ?? this.opts.callTimeoutMs ?? 15000;
+    const budget = timeoutMs ?? this.opts.callTimeoutMs ?? 30000;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
