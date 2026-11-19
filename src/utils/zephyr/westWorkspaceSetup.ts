@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
 import * as vscode from 'vscode';
-import { ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../../constants';
+import { ZEPHYR_DOCS_BASE_URL, ZEPHYR_WORKBENCH_SETTING_SECTION_KEY, ZEPHYR_WORKBENCH_VENV_PATH_SETTING_KEY } from '../../constants';
 import { WestWorkspace } from '../../models/WestWorkspace';
 import { resolveEffectiveVenv } from '../env/venvResolution';
 import { getConfiguredVenvPath } from '../execUtils';
@@ -67,6 +67,25 @@ export function westWorkspaceImportProblem(workspacePath: string | undefined): s
     return 'The west workspace location folder is invalid or already exists';
   }
   return WestWorkspace.isWestWorkspacePath(workspacePath) ? undefined : 'The folder is not a West workspace';
+}
+
+/**
+ * On Windows, a west workspace path longer than this gets a warning: the build
+ * nests deeply (CMake repeats the workspace path in the object file folders),
+ * so its paths can go past the 260 characters most Windows programs accept.
+ */
+export const LONG_WORKSPACE_PATH_LENGTH = 50;
+
+/** The Known Issues section on long workspace paths. */
+export const LONG_WORKSPACE_PATH_DOCS_URL = `${ZEPHYR_DOCS_BASE_URL}/known-issues#workspace-path-too-long-on-windows`;
+
+/** The warning for a west workspace at a long path on Windows, undefined for a short path or another host. */
+export function longWorkspacePathWarning(workspacePath: string, platform: NodeJS.Platform = process.platform): string | undefined {
+  if (platform !== 'win32' || workspacePath.length <= LONG_WORKSPACE_PATH_LENGTH) {
+    return undefined;
+  }
+  return `The west workspace path is ${workspacePath.length} characters long. Long paths can make builds fail on Windows, `
+    + 'so a short path is recommended, such as C:\\zephyrproject.';
 }
 
 export interface WestInitOptions {

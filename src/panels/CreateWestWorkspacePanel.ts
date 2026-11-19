@@ -4,7 +4,7 @@ import { getUri } from "../utilities/getUri";
 import { getNonce } from "../utilities/getNonce";
 import { getGitTags, getGitBranches } from "../utils/execUtils";
 import { getUpstreamProjectNames, loadTemplateConfig } from "../utils/zephyr/manifestUtils";
-import { resolveWorkspaceDestination } from "../utils/zephyr/westWorkspaceSetup";
+import { LONG_WORKSPACE_PATH_DOCS_URL, longWorkspacePathWarning, resolveWorkspaceDestination } from "../utils/zephyr/westWorkspaceSetup";
 
 export class CreateWestWorkspacePanel {
   public static currentPanel: CreateWestWorkspacePanel | undefined;
@@ -500,6 +500,20 @@ export class CreateWestWorkspacePanel {
             if (srcType === 'template' && (!manifestDir || !manifestDir.trim())) {
               vscode.window.showWarningMessage('Please provide a value for "west.yml subfolder".');
               return;
+            }
+
+            // Windows only: a long workspace path can make builds fail. Not
+            // awaited, so the import starts at once.
+            const longPathWarning = longWorkspacePathWarning(workspacePath);
+            if (longPathWarning) {
+              const learnMore = 'Learn More';
+              void Promise.resolve(vscode.window.showWarningMessage(longPathWarning, learnMore))
+                .then(async choice => {
+                  if (choice === learnMore) {
+                    await vscode.env.openExternal(vscode.Uri.parse(LONG_WORKSPACE_PATH_DOCS_URL));
+                  }
+                })
+                .catch(() => undefined);
             }
 
             const dedicatedVenv = message.dedicatedVenv === true;

@@ -7,8 +7,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-  deleteWestWorkspace, initWestWorkspace, removeWorkspaceVenv, resolveWorkspaceDestination, WestInitSteps,
-  westInitProblem, westWorkspaceImportProblem, writeFolderSettingsFile,
+  deleteWestWorkspace, initWestWorkspace, LONG_WORKSPACE_PATH_LENGTH, longWorkspacePathWarning, removeWorkspaceVenv,
+  resolveWorkspaceDestination, WestInitSteps, westInitProblem, westWorkspaceImportProblem, writeFolderSettingsFile,
 } from '../../utils/zephyr/westWorkspaceSetup';
 
 const stub = require('vscode') as { workspace: Record<string, unknown> };
@@ -115,6 +115,19 @@ describe('utils/zephyr/westWorkspaceSetup', () => {
       assert.equal(westWorkspaceImportProblem(root), 'The folder is not a West workspace');
       fs.mkdirSync(path.join(root, '.west'));
       assert.equal(westWorkspaceImportProblem(root), undefined);
+    });
+  });
+
+  describe('longWorkspacePathWarning', () => {
+    it('warns on Windows only, once the path is over the limit', () => {
+      assert.match(longWorkspacePathWarning('C:\\Users\\MyUser\\Desktop\\Zephyr\\TI-demo\\zephyrproject', 'win32') ?? '',
+        /^The west workspace path is 52 characters long\..*C:\\zephyrproject\.$/);
+      const atLimit = `C:\\${'x'.repeat(LONG_WORKSPACE_PATH_LENGTH - 3)}`;
+      assert.equal(longWorkspacePathWarning(atLimit, 'win32'), undefined);
+      assert.match(longWorkspacePathWarning(`${atLimit}y`, 'win32') ?? '', /is 51 characters long/);
+      assert.equal(longWorkspacePathWarning('C:\\zephyrproject', 'win32'), undefined);
+      assert.equal(longWorkspacePathWarning(`/home/${'x'.repeat(80)}/zephyrproject`, 'linux'), undefined);
+      assert.equal(longWorkspacePathWarning(`/Users/${'x'.repeat(80)}/zephyrproject`, 'darwin'), undefined);
     });
   });
 

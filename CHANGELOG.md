@@ -4,6 +4,11 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [Unreleased]
+
+### West Workspace
+- On Windows, adding a west workspace whose path is longer than 50 characters shows a warning, as long paths can make builds fail. Learn More opens the Known Issues page, which recommends a short path such as `C:\zephyrproject` or a Dev Drive. The manage_west_workspace tool returns the same warning.
+
 ## [4.3.6]
 
 ### Build

@@ -40,8 +40,9 @@ import {
   renderWorkspaceState, WestManagerApplyState,
 } from '../../../utils/zephyr/westManifestEdit';
 import {
-  deleteWestWorkspace, describeWorkspaceVenv, initWestWorkspace, managedWorkspaceVenvDir, removeWorkspaceVenv,
-  resolveWorkspaceDestination, setWorkspaceVenvPath, storeWorkspaceVenvPath, WEST_WORKSPACE_FOLDER_SETTINGS, writeFolderSettingsFile,
+  deleteWestWorkspace, describeWorkspaceVenv, initWestWorkspace, LONG_WORKSPACE_PATH_DOCS_URL, longWorkspacePathWarning, managedWorkspaceVenvDir,
+  removeWorkspaceVenv, resolveWorkspaceDestination, setWorkspaceVenvPath, storeWorkspaceVenvPath, WEST_WORKSPACE_FOLDER_SETTINGS,
+  writeFolderSettingsFile,
 } from '../../../utils/zephyr/westWorkspaceSetup';
 import { assertEnvListElement, assertInside, isInside, isPlainPath, normalizeForCompare } from '../../core/argSafety';
 import { editList, ListEdit, toEnvList } from '../../core/buildConfigEdit';
@@ -419,6 +420,12 @@ function refuseFor(source: string, args: Record<string, unknown>, keys: readonly
   }
 }
 
+/** The long path warning the wizard shows on Windows, with the page that explains it. */
+function longPathWarnings(workspacePath: string): string[] {
+  const warning = longWorkspacePathWarning(workspacePath);
+  return warning ? [`${warning} See ${LONG_WORKSPACE_PATH_DOCS_URL}`] : [];
+}
+
 async function planCreate(args: Record<string, unknown>, ctx: Ctx): Promise<CreatePlan> {
   const source = str(args.source);
   if (source !== 'template' && source !== 'remote' && source !== 'manifest') {
@@ -430,7 +437,7 @@ async function planCreate(args: Record<string, unknown>, ctx: Ctx): Promise<Crea
   }
   const target = checkNewWorkspaceTarget(ctx, destination, str(args.folder_name) ?? DEFAULT_FOLDER_NAME, source);
   const enableRust = bool(args.enable_rust) === true;
-  const warnings: string[] = [];
+  const warnings = longPathWarnings(target);
 
   if (source === 'remote') {
     refuseFor(source, args, ['manifest_path', 'template_mode', 'templates', 'projects']);
@@ -755,7 +762,7 @@ async function importWorkspace(args: Record<string, unknown>, ctx: Ctx) {
   const outcome = await ctx.deps.confirmations.require(ctx, args, subjectOf({
     summary: `add the west workspace ${root} (Zephyr ${workspace.version}) to the window`, folder: root, scope: root, scopeLabel: 'this west workspace',
   }, args));
-  const warnings: string[] = [];
+  const warnings = longPathWarnings(root);
   const folderSettings = await services.withFolderSettingsLock(root, () => writeFolderSettingsFile(root, WEST_WORKSPACE_FOLDER_SETTINGS));
   if (folderSettings === 'unparsable') {
     warnings.push(`${path.join(root, '.vscode', 'settings.json')} could not be parsed, so cmake.enableAutomaticKitScan was not set to false.`);
