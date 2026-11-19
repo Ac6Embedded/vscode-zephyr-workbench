@@ -13,7 +13,7 @@ import {
 } from '../../utils/debugTools/debugToolManifestUtils';
 import type { DebugToolsManifest } from '../../utils/debugTools/debugToolVersionUtils';
 import { removeRunnerPath, saveDoNotUse, saveRunnerPath } from '../../utils/debugTools/debugToolEnvUtils';
-import { installPyOCDTargetSupport, PyOCDTargetOps } from '../../utils/debugTools/pyocdTargetSetup';
+import { describePyOCDInstallFailure, installPyOCDTargetSupport, PyOCDTargetOps } from '../../utils/debugTools/pyocdTargetSetup';
 import { getExtraPaths, setExtraPaths } from '../../utils/env/envYamlUtils';
 import { buildDebugToolsInstallCommand, planHostDebugToolsInstall, runPanelDebugToolsInstall } from '../../utils/installUtils';
 
@@ -152,7 +152,7 @@ describe('runner tools install and settings', () => {
   });
 
   describe('installPyOCDTargetSupport', () => {
-    function ops(script: { available: boolean[]; packs: string[][] }) {
+    function ops(script: { available: boolean[]; packs: string[][]; installed?: string[] }) {
       const calls: string[] = [];
       const shown: Array<boolean | undefined> = [];
       const fake: PyOCDTargetOps = {
@@ -160,6 +160,10 @@ describe('runner tools install and settings', () => {
         dryRunInstall: async (pattern, opts) => { calls.push(`dry ${pattern}`); shown.push(opts.show); return script.packs.shift() ?? []; },
         updateIndex: async opts => { calls.push('update'); shown.push(opts.show); return ''; },
         install: async (name, opts) => { calls.push(`install ${name}`); shown.push(opts.show); return ''; },
+        missingPacks: async (packs, venv) => {
+          calls.push(`missing ${packs.join(',')} ${venv ?? ''}`.trim());
+          return packs.filter(pack => !(script.installed ?? []).includes(pack));
+        },
       };
       return { fake, calls, shown };
     }
@@ -178,6 +182,24 @@ describe('runner tools install and settings', () => {
       assert.deepEqual(result.packs, ['Keil.STM32F4xx_DFP.2.17.1']);
       assert.deepEqual(calls, ['check stm32f429zitx', 'dry stm32f429zitx', 'install stm32f429zitx', 'check stm32f429zitx']);
       assert.ok(shown.every(value => value === false));
+    });
+
+    it('reports the packs that did not download when pyocd exits 0 after a failed download', async () => {
+      const { fake, calls } = ops({ available: [false, false], packs: [['Keil.STM32F4xx_DFP.2.17.1']] });
+      const result = await installPyOCDTargetSupport('stm32f429zitx', { venvPath: '/venv' }, fake);
+      assert.equal(result.available, false);
+      assert.deepEqual(result.missingPacks, ['Keil.STM32F4xx_DFP.2.17.1']);
+      assert.equal(calls[calls.length - 1], 'missing Keil.STM32F4xx_DFP.2.17.1 /venv', 'checked in the venv of the target');
+      assert.match(describePyOCDInstallFailure('stm32f429zitx', result.packs, result.missingPacks!),
+        /^The download of Keil\.STM32F4xx_DFP\.2\.17\.1 did not complete\./);
+    });
+
+    it('tells a pack that installed without giving pyOCD the target from a failed download', async () => {
+      const { fake } = ops({ available: [false, false], packs: [['Keil.STM32F4xx_DFP.2.17.1']], installed: ['Keil.STM32F4xx_DFP.2.17.1'] });
+      const result = await installPyOCDTargetSupport('stm32f429zitx', {}, fake);
+      assert.deepEqual(result.missingPacks, []);
+      assert.equal(describePyOCDInstallFailure('stm32f429zitx', result.packs, result.missingPacks!),
+        'pyOCD installed Keil.STM32F4xx_DFP.2.17.1 but does not list the target stm32f429zitx.');
     });
 
     it('refreshes a stale index once, and reports a target no pack provides', async () => {

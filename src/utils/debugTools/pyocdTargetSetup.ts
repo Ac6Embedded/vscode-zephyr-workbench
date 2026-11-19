@@ -1,6 +1,7 @@
 import {
   checkPyOCDTarget,
   dryRunInstallPyOCDPacks,
+  getMissingPyOCDPacks,
   installPyOCDTarget,
   PyOCDExecOptions,
   updatePyOCDPack,
@@ -19,6 +20,7 @@ export interface PyOCDTargetOps {
   dryRunInstall(pattern: string, opts: PyOCDExecOptions): Promise<string[]>;
   updateIndex(opts: PyOCDExecOptions): Promise<string>;
   install(name: string, opts: PyOCDExecOptions): Promise<string>;
+  missingPacks(packs: string[], venvPath?: string): Promise<string[]>;
 }
 
 export const DEFAULT_PYOCD_TARGET_OPS: PyOCDTargetOps = {
@@ -26,6 +28,7 @@ export const DEFAULT_PYOCD_TARGET_OPS: PyOCDTargetOps = {
   dryRunInstall: dryRunInstallPyOCDPacks,
   updateIndex: updatePyOCDPack,
   install: installPyOCDTarget,
+  missingPacks: getMissingPyOCDPacks,
 };
 
 export interface PyOCDTargetSetupResult {
@@ -38,6 +41,22 @@ export interface PyOCDTargetSetupResult {
   indexUpdated: boolean;
   /** pyOCD knows the target now. */
   available: boolean;
+  /**
+   * The packs pyOCD does not list after the install, which did not download.
+   * Set only when the install ran and the target is still unknown.
+   */
+  missingPacks?: string[];
+}
+
+/**
+ * Why an install of `packs` left `target` unknown to pyOCD. `missing` is the
+ * part of `packs` that is not installed afterwards.
+ */
+export function describePyOCDInstallFailure(target: string, packs: string[], missing: string[]): string {
+  if (missing.length > 0) {
+    return `The download of ${missing.join(', ')} did not complete. Check your network or proxy, then try again.`;
+  }
+  return `pyOCD installed ${packs.join(', ')} but does not list the target ${target}.`;
 }
 
 /**
@@ -45,7 +64,9 @@ export interface PyOCDTargetSetupResult {
  * session uses. `pyocd pack install` exits 0 even when the pattern matches
  * nothing, so the packs are resolved with a dry run first, the index is
  * refreshed once when that finds none, and the target is checked again after
- * the install. Throws what pyocd throws, including a CancellationError.
+ * the install. When it is still unknown, the installed packs tell a failed
+ * download from a pack that does not give pyOCD the target. Throws what pyocd
+ * throws, including a CancellationError.
  */
 export async function installPyOCDTargetSupport(
   target: string,
@@ -69,5 +90,9 @@ export async function installPyOCDTargetSupport(
     return { target, alreadyAvailable: false, packs, indexUpdated, available: false };
   }
   await ops.install(target, execOpts);
-  return { target, alreadyAvailable: false, packs, indexUpdated, available: await ops.checkTarget(target, opts.venvPath) };
+  if (await ops.checkTarget(target, opts.venvPath)) {
+    return { target, alreadyAvailable: false, packs, indexUpdated, available: true };
+  }
+  const missingPacks = await ops.missingPacks(packs, opts.venvPath);
+  return { target, alreadyAvailable: false, packs, indexUpdated, available: false, missingPacks };
 }

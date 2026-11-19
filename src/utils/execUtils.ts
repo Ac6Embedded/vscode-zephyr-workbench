@@ -2210,6 +2210,17 @@ export async function getInstalledPyOCDPacks(venvPath?: string): Promise<PyOCDPa
     .map(row => ({ pack: row[0], version: row[1] }));
 }
 
+/**
+ * The packs of `packs` that `pyocd pack show` does not list. Each entry is
+ * "Vendor.Pack.Version", as the install dry run prints it. `pyocd pack install`
+ * exits 0 when a download fails, so this is how a caller knows a pack arrived.
+ */
+export async function getMissingPyOCDPacks(packs: string[], venvPath?: string): Promise<string[]> {
+  const installed = new Set((await getInstalledPyOCDPacks(venvPath))
+    .map(p => `${p.pack}.${p.version ?? ''}`.toLowerCase()));
+  return packs.filter(p => !installed.has(p.toLowerCase()));
+}
+
 export async function findPyOCDPacks(pattern: string, opts: PyOCDExecOptions = {}): Promise<PyOCDPackInfo[]> {
   // Streams via execPyOCD: a missing pack index makes `pack find` download it
   // first, which is slow and emits progress ticks.

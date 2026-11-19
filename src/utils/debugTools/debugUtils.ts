@@ -7,7 +7,8 @@ import { ZEPHYR_APP_FILENAME, ZEPHYR_DIRNAME, ZEPHYR_WORKBENCH_PATH_TO_ENV_SCRIP
 import { Linkserver } from "../../debug/runners/Linkserver";
 import { Openocd } from "../../debug/runners/Openocd";
 import { WestRunner } from "../../debug/runners/WestRunner";
-import { checkPyOCDTarget, classifyShell, concatCommands, dryRunInstallPyOCDPacks, expandEnvVariables, getConfiguredVenvPath, getConfiguredWorkbenchPath, getPyOCDOutputChannel, getShell, getShellExe, getShellSetEnvCommand, getShellSourceCommand, installPyOCDTarget, makeConfiguredVariableResolver, normalizePathForShell, updatePyOCDPack } from '../execUtils';
+import { checkPyOCDTarget, classifyShell, concatCommands, dryRunInstallPyOCDPacks, expandEnvVariables, getConfiguredVenvPath, getConfiguredWorkbenchPath, getMissingPyOCDPacks, getPyOCDOutputChannel, getShell, getShellExe, getShellSetEnvCommand, getShellSourceCommand, installPyOCDTarget, makeConfiguredVariableResolver, normalizePathForShell, updatePyOCDPack } from '../execUtils';
+import { describePyOCDInstallFailure } from './pyocdTargetSetup';
 import { ZephyrApplication } from "../../models/ZephyrApplication";
 import { prependRustBinPath } from '../../models/ToolchainInstallations';
 import { findBoardByHierarchicalIdentifier, getSupportedBoards } from '../zephyr/boardDiscovery';
@@ -1217,11 +1218,12 @@ export async function setupPyOCDTarget(project: ZephyrApplication, buildConfigNa
       return true;
     }
 
-    const installed = await vscode.window.withProgress({
+    // undefined when pyOCD knows the target afterwards, else why it does not.
+    const failure = await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
       title: `pyOCD: installing target support for '${target}'`,
       cancellable: true,
-    }, async (progress, token) => {
+    }, async (progress, token): Promise<string | undefined> => {
       progress.report({ message: 'resolving CMSIS-Pack...' });
       // The dry run downloads the pack index when it is missing; give it the
       // tick reporter so that download is visible too.
@@ -1232,18 +1234,23 @@ export async function setupPyOCDTarget(project: ZephyrApplication, buildConfigNa
         packs = await dryRunInstallPyOCDPacks(target!, { token, venvPath });
       }
       if (packs.length === 0) {
-        return false;
+        return 'No CMSIS-Pack provides this target. Check the target name or install a pack manually.';
       }
       const packLabel = packs.length > 1 ? `${packs.length} packs` : packs[0];
       progress.report({ message: `downloading ${packLabel}...` });
       await installPyOCDTarget(target!, { token, venvPath, onProgress: makePyOCDTickReporter(progress, `downloading ${packLabel}`) });
-      return await checkPyOCDTarget(target!, venvPath);
+      if (await checkPyOCDTarget(target!, venvPath)) {
+        return undefined;
+      }
+      // pyocd exits 0 when the download fails: the installed packs tell that
+      // from a pack that does not give pyOCD the target.
+      return describePyOCDInstallFailure(target!, packs, await getMissingPyOCDPacks(packs, venvPath));
     });
 
-    if (!installed) {
-      showSetupError(`pyOCD could not install target support for '${target}': no CMSIS-Pack provides this target. Check the target name or install a pack manually.`);
+    if (failure) {
+      showSetupError(`pyOCD could not install target support for '${target}'. ${failure}`);
     }
-    return installed;
+    return !failure;
   } catch (e) {
     if (e instanceof vscode.CancellationError) {
       return false;

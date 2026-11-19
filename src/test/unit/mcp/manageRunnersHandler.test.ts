@@ -126,6 +126,7 @@ function harness(): Harness {
       dryRunInstall: async (pattern: string) => { h.calls.push(`dry ${pattern}`); return h.pyocd.dryPacks.shift() ?? []; },
       updateIndex: async () => { h.calls.push('update'); return ''; },
       install: async (name: string, opts: { show?: boolean }) => { h.calls.push(`install ${name} show=${opts.show}`); return ''; },
+      missingPacks: async (packs: string[]) => packs.filter(pack => !h.pyocd.packs.some(p => `${p.pack}.${p.version}` === pack)),
     },
   } as unknown as typeof runnerTools.pyocd;
   return h;
@@ -639,6 +640,16 @@ describe('mcp/host/handlers/manageRunners', function () {
       assert.deepEqual(result.result.packs, ['Keil.STM32F4xx_DFP.2.17.1']);
       assert.ok(h.calls.includes('install stm32f429zitx show=false'));
       assert.match(h.asked[0].message, /pyocd pack install stm32f429zitx/);
+    });
+
+    it('fails the job with the failed download when pyocd exits 0 without installing the pack', async () => {
+      h.confirmActions = [];
+      h.pyocd.packs = [];
+      h.pyocd.available = [false, false, false];
+      h.pyocd.dryPacks = [['Keil.STM32F4xx_DFP.2.17.1']];
+      const result = await call(h, { action: 'pyocd_install_pack', pyocd_target: 'stm32f429zitx' });
+      assert.equal(result.status, 'failed');
+      assert.match(result.result.error, /The download of Keil\.STM32F4xx_DFP\.2\.17\.1 did not complete/);
     });
 
     it('fails the job when no pack provides the target', async () => {

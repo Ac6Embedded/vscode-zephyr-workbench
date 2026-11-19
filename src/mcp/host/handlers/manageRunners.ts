@@ -21,7 +21,7 @@ import {
 } from '../../../utils/debugTools/debugToolManifestUtils';
 import { getDebugToolExecutableName } from '../../../utils/debugTools/debugToolStatusUtils';
 import { DebugToolsManifest } from '../../../utils/debugTools/debugToolVersionUtils';
-import { installPyOCDTargetSupport } from '../../../utils/debugTools/pyocdTargetSetup';
+import { describePyOCDInstallFailure, installPyOCDTargetSupport } from '../../../utils/debugTools/pyocdTargetSetup';
 import { getEnvYamlPath, readEnvYamlObjectStrict } from '../../../utils/env/envYamlFileUtils';
 import { getExtraPaths, normalizePath, setExtraPaths } from '../../../utils/env/envYamlUtils';
 import { normalizeForCompare } from '../../core/argSafety';
@@ -878,7 +878,7 @@ async function pyocdInstallPack(args: Record<string, unknown>, ctx: Ctx): Promis
           if (!setup.available) {
             throw new Error(setup.packs.length === 0
               ? `No CMSIS pack provides the pyOCD target ${pyocdTarget}. Check the target name.`
-              : `${setup.packs.join(', ')} installed, but pyOCD still does not list the target ${pyocdTarget}.`);
+              : describePyOCDInstallFailure(pyocdTarget, setup.packs, setup.missingPacks ?? []));
           }
           return setup;
         }, stepOptions(ctx));

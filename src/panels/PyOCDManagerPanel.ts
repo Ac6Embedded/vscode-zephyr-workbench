@@ -8,6 +8,7 @@ import {
   dryRunInstallPyOCDPacks,
   findPyOCDPacks,
   getInstalledPyOCDPacks,
+  getMissingPyOCDPacks,
   hasPyOCDPackIndex,
   getPyOCDOutputChannel,
   getPyOCDTargetsJson,
@@ -16,6 +17,7 @@ import {
   updatePyOCDPack,
 } from "../utils/execUtils";
 import { getDebugSessionVenvPath, setupPyOCDTarget } from "../utils/debugTools/debugUtils";
+import { describePyOCDInstallFailure } from "../utils/debugTools/pyocdTargetSetup";
 import { ZephyrApplication } from "../models/ZephyrApplication";
 import { ZephyrBuildConfig } from "../models/ZephyrBuildConfig";
 
@@ -342,8 +344,15 @@ export class PyOCDManagerPanel {
             if (!pattern) {
               break;
             }
+            // The pack of the clicked row, as "Vendor.Pack.Version".
+            const pack = `${message.pack ?? ''}`.trim();
             if (await this.runPyOCDOp('install-pack', `installing pack for '${pattern}'`, async (opts) => {
               await installPyOCDTarget(pattern, opts);
+              // pyocd exits 0 when the download fails: check the pack arrived.
+              const missing = pack ? await getMissingPyOCDPacks([pack]) : [];
+              if (missing.length > 0) {
+                throw new Error(describePyOCDInstallFailure(pattern, [pack], missing));
+              }
             })) {
               await this.refreshAfterPackChange();
             }

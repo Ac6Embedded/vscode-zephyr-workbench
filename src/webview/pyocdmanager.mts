@@ -56,8 +56,9 @@ function clearRows(table: HTMLTableElement) {
 }
 
 // Same look as the install buttons in the Install Runners panel: an icon
-// button with the desktop-download codicon.
-function makeInstallButton(pattern: string, installed: boolean | undefined): Node {
+// button with the desktop-download codicon. `pack` ("Vendor.Pack.Version") is
+// what the panel checks is installed afterwards.
+function makeInstallButton(pattern: string, pack: string, installed: boolean | undefined): Node {
   if (installed) {
     const span = document.createElement('span');
     span.textContent = '● Installed';
@@ -73,7 +74,7 @@ function makeInstallButton(pattern: string, installed: boolean | undefined): Nod
   btn.appendChild(icon);
   btn.addEventListener('click', (e) => {
     e.preventDefault();
-    webviewApi.postMessage({ command: 'install-pack', pattern });
+    webviewApi.postMessage({ command: 'install-pack', pattern, pack });
   });
   return btn;
 }
@@ -174,7 +175,7 @@ function onFindPacksResult(msg: any) {
       pack.vendor ?? '',
       pack.pack ?? '',
       pack.version ?? '',
-      makeInstallButton(pack.part ?? '', pack.installed),
+      makeInstallButton(pack.part ?? '', pack.pack && pack.version ? `${pack.pack}.${pack.version}` : '', pack.installed),
     ]);
   }
 }
