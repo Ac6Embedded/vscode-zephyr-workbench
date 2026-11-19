@@ -135,8 +135,8 @@ debug_tools:
 - tool: openocd-ti
   alias: openocd
   name: OpenOCD TI
-  version: 0.12.0+dev-00003-gcb22a31e5
-  tooltip: TI OpenOCD 1.5.0 (CCSTUDIO-OPENOCD), supports XDS110 probes
+  version: 0.12.0+dev-00002-g47bf60761
+  tooltip: TI OpenOCD 1.5.2 (CCSTUDIO-OPENOCD), supports XDS110 probes
   website: https://www.ti.com/tool/CCSTUDIO-OPENOCD
   vendor: Texas Instruments
   type: debug_server
@@ -152,14 +152,14 @@ debug_tools:
   root: false
   os:
     windows:
-      source: https://dr-download.ti.com/software-development/ide-configuration-compiler-or-debugger/MD-NsfxBoR0Rv/1.5.0/openocd_win_1.5.0.75.zip
-      sha256: e5cc61ae20c3e44a5e19d9a8e9a9208253281587ee2243e7b52710c1b01056dd
+      source: https://dr-download.ti.com/software-development/ide-configuration-compiler-or-debugger/MD-NsfxBoR0Rv/1.5.2/openocd_win_1.5.2.82.zip
+      sha256: 54a8600924de40249b8ee61e8441a8c583e547726cc57d356607429177a4d361
     linux:
-      source: https://dr-download.ti.com/software-development/ide-configuration-compiler-or-debugger/MD-NsfxBoR0Rv/1.5.0/openocd_linux_1.5.0.75.zip
-      sha256: 54bc7183f7f03c6380aeb2b08183509885e3c08e7153d8554c4a41b02617025c
+      source: https://dr-download.ti.com/software-development/ide-configuration-compiler-or-debugger/MD-NsfxBoR0Rv/1.5.2/openocd_linux_1.5.2.82.zip
+      sha256: 12c549af1a29e03167b1005005efdbd5fc83c00ae561946e10be7f703e4718e9
     darwin:
-      source: https://dr-download.ti.com/software-development/ide-configuration-compiler-or-debugger/MD-NsfxBoR0Rv/1.5.0/openocd_mac_1.5.0.75.zip
-      sha256: 0ba6c28b47aa0e8611e3bd05ef7bfd8903177e9f33e21017912fd7f0346f2538
+      source: https://dr-download.ti.com/software-development/ide-configuration-compiler-or-debugger/MD-NsfxBoR0Rv/1.5.2/openocd_mac_1.5.2.82.zip
+      sha256: abb2d89dadfab4ed5bdcd36021f0a39a071f9e15f9a1a7735657f0adf4d42d11
 - tool: openocd-modustoolbox
   alias: openocd
   name: OpenOCD Infineon
