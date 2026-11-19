@@ -7,6 +7,7 @@ import { Qemu } from '../../debug/runners/Qemu';
 import { RunnerType, WestRunner } from '../../debug/runners/WestRunner';
 import { getSetupCommands, getGdbMode } from '../../debug/gdbUtils';
 import { getExternalLaunchOverrides } from '../../debug/backends/cortexWest';
+import { panelGdbPort } from '../../debug/backends/types';
 import { ZephyrBoard } from '../../models/ZephyrBoard';
 
 const BOARDS_FIXTURE_DIR = path.join(__dirname, 'fixtures', 'boards');
@@ -111,6 +112,30 @@ describe('QEMU debug runner', () => {
 
     it('attach mode has no overrides', () => {
       assert.deepEqual(getExternalLaunchOverrides('qemu', 'attach'), {});
+    });
+  });
+
+  describe('panelGdbPort (Debug Manager first open)', () => {
+    it('shows the Kconfig port instead of the template 3333 for qemu', () => {
+      assert.equal(panelGdbPort('3333', undefined, 'qemu', '1234'), '1234');
+    });
+
+    it('follows a port changed in CONFIG_QEMU_GDBSERVER_LISTEN_DEV', () => {
+      assert.equal(panelGdbPort('3333', undefined, 'qemu', '4444'), '4444');
+    });
+
+    it('keeps the port of an applied qemu entry', () => {
+      assert.equal(panelGdbPort('5555', 'qemu', 'qemu', '1234'), '5555');
+      assert.equal(panelGdbPort('3333', 'qemu', 'qemu', '1234'), '3333');
+    });
+
+    it('keeps a port written into an entry that names no runner', () => {
+      assert.equal(panelGdbPort('5555', undefined, 'qemu', '1234'), '5555');
+    });
+
+    it('keeps 3333 for the hardware runners west passes the port to', () => {
+      assert.equal(panelGdbPort('3333', undefined, 'jlink', '2331'), '3333');
+      assert.equal(panelGdbPort('3333', undefined, 'openocd', '3333'), '3333');
     });
   });
 

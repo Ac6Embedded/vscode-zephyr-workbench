@@ -12,6 +12,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ### Runners
 - OpenOCD TI updated to 1.5.2, with TI's bug fixes for CC35XXE.
 
+### Debug Manager
+- For a QEMU board, the GDB port field now shows the port QEMU listens on (1234, or the value of `CONFIG_QEMU_GDBSERVER_LISTEN_DEV`) the first time the Debug Manager opens. Before, it showed 3333 and the debugger could not reach QEMU unless the port was changed by hand.
+
 ## [4.3.6]
 
 ### Build

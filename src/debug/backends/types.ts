@@ -51,6 +51,26 @@ export function getDefaultGdbPort(runnerName: string | undefined): string {
   return (runnerName && RUNNER_DEFAULT_GDB_PORT[runnerName]) || '3333';
 }
 
+/**
+ * The GDB port the Debug Manager shows for an entry read from launch.json.
+ * An entry that names no runner and holds 3333 is the cppdbg template of a
+ * configuration not applied yet. Its 3333 is not where QEMU listens: QEMU
+ * takes its port from the build's Kconfig, given here as `runnerDefaultPort`.
+ * Every other runner gets the port from west, so 3333 is kept for them, and
+ * so is a port written into the entry.
+ */
+export function panelGdbPort(
+  storedPort: string,
+  storedRunner: string | undefined,
+  runnerName: string | undefined,
+  runnerDefaultPort: string,
+): string {
+  if (runnerName === 'qemu' && !storedRunner && storedPort === '3333') {
+    return runnerDefaultPort;
+  }
+  return storedPort;
+}
+
 /** West runner names offered by the cortex-native backend. */
 export const CORTEX_NATIVE_RUNNER_NAMES = ['jlink', 'stlink_gdbserver'] as const;
 

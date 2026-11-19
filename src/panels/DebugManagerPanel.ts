@@ -9,7 +9,7 @@ import { WestRunner } from '../debug/runners/WestRunner';
 import { ZephyrBuildConfig } from '../models/ZephyrBuildConfig';
 import { checkPyOCDTarget } from '../utils/execUtils';
 import { getOpenocdSelectionInfo } from '../utils/debugTools/debugToolSelectionUtils';
-import { CORTEX_NATIVE_RUNNER_NAMES, DebugBackendId, getDefaultGdbPort } from '../debug/backends/types';
+import { CORTEX_NATIVE_RUNNER_NAMES, DebugBackendId, getDefaultGdbPort, panelGdbPort } from '../debug/backends/types';
 import { ensureCortexDebugAvailable, installCortexDebug, isCortexDebugInstalled } from '../debug/backends/cortexDebugExtension';
 import { detectJlinkDevice } from '../debug/backends/cortexNative';
 import { readPanelStateFromConfig } from '../debug/backends/backendState';
@@ -1041,6 +1041,7 @@ export class DebugManagerPanel {
         // row can never be left visible for a stale or missing selection.
         const parsedDomains = buildConfig ? readSysbuildDomains(project, buildConfig) : undefined;
         const domainsHTML = buildDomainsHtml(parsedDomains);
+        const defaultGdbPort = defaultPortForRunner(runnerName, project, buildConfig, domain);
 
         webview.postMessage({
           command: 'updateConfig',
@@ -1049,7 +1050,7 @@ export class DebugManagerPanel {
           svdPath: `${resolveDisplaySvd(state.svdPath, currentArtifacts)}`,
           gdbPath: state.gdbPath,
           gdbAddress: `${state.gdbAddress}`,
-          gdbPort: `${state.gdbPort}`,
+          gdbPort: panelGdbPort(state.gdbPort, state.runnerName, runnerName, defaultGdbPort),
           gdbMode: `${state.gdbMode}`,
           runnersHTML: `${getRunnersHtml(compatibleRunners, runnerValue || runnerName)}`,
           nativeRunnersHTML: `${getNativeRunnersHtml()}`,
@@ -1061,7 +1062,7 @@ export class DebugManagerPanel {
           runnerDefaultPathInfo: `${runnerDefaultPathInfo}`,
           device: `${state.device ?? ''}`,
           deviceInterface: `${state.deviceInterface ?? 'swd'}`,
-          defaultGdbPort: defaultPortForRunner(runnerName, project, buildConfig, domain),
+          defaultGdbPort,
           domainsVisible: domainsHTML.length > 0 ? 'true' : 'false',
           domainsHTML,
           selectedDomain: domain ?? '',
