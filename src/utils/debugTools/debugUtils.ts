@@ -8,7 +8,7 @@ import { Linkserver } from "../../debug/runners/Linkserver";
 import { Openocd } from "../../debug/runners/Openocd";
 import { WestRunner } from "../../debug/runners/WestRunner";
 import { checkPyOCDTarget, classifyShell, concatCommands, dryRunInstallPyOCDPacks, expandEnvVariables, getConfiguredVenvPath, getConfiguredWorkbenchPath, getMissingPyOCDPacks, getPyOCDOutputChannel, getShell, getShellExe, getShellSetEnvCommand, getShellSourceCommand, installPyOCDTarget, makeConfiguredVariableResolver, normalizePathForShell, updatePyOCDPack } from '../execUtils';
-import { describePyOCDInstallFailure } from './pyocdTargetSetup';
+import { describePyOCDDownloadRetry, describePyOCDInstallFailure } from './pyocdTargetSetup';
 import { ZephyrApplication } from "../../models/ZephyrApplication";
 import { prependRustBinPath } from '../../models/ToolchainInstallations';
 import { findBoardByHierarchicalIdentifier, getSupportedBoards } from '../zephyr/boardDiscovery';
@@ -1243,8 +1243,19 @@ export async function setupPyOCDTarget(project: ZephyrApplication, buildConfigNa
         return undefined;
       }
       // pyocd exits 0 when the download fails: the installed packs tell that
-      // from a pack that does not give pyOCD the target.
-      return describePyOCDInstallFailure(target!, packs, await getMissingPyOCDPacks(packs, venvPath));
+      // from a pack that does not give pyOCD the target. A failed download is
+      // tried once more.
+      let missing = await getMissingPyOCDPacks(packs, venvPath);
+      if (missing.length > 0) {
+        getPyOCDOutputChannel().appendLine(describePyOCDDownloadRetry(missing));
+        progress.report({ message: `downloading ${packLabel} again...` });
+        await installPyOCDTarget(target!, { token, venvPath, onProgress: makePyOCDTickReporter(progress, `downloading ${packLabel} again`) });
+        if (await checkPyOCDTarget(target!, venvPath)) {
+          return undefined;
+        }
+        missing = await getMissingPyOCDPacks(packs, venvPath);
+      }
+      return describePyOCDInstallFailure(target!, packs, missing);
     });
 
     if (failure) {

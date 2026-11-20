@@ -60,13 +60,23 @@ export function describePyOCDInstallFailure(target: string, packs: string[], mis
 }
 
 /**
+ * The line logged before a pack install runs a second time. pyocd exits 0
+ * when a download breaks off, which happens now and then with the vendors'
+ * servers, and a second try usually gets the pack, as it would for a user who
+ * installs again.
+ */
+export function describePyOCDDownloadRetry(missing: string[]): string {
+  return `The download of ${missing.join(', ')} did not complete: installing once more.`;
+}
+
+/**
  * Make sure pyOCD has target support for `target`, in the venv a debug
  * session uses. `pyocd pack install` exits 0 even when the pattern matches
  * nothing, so the packs are resolved with a dry run first, the index is
  * refreshed once when that finds none, and the target is checked again after
  * the install. When it is still unknown, the installed packs tell a failed
- * download from a pack that does not give pyOCD the target. Throws what pyocd
- * throws, including a CancellationError.
+ * download, which is tried once more, from a pack that does not give pyOCD
+ * the target. Throws what pyocd throws, including a CancellationError.
  */
 export async function installPyOCDTargetSupport(
   target: string,
@@ -93,6 +103,14 @@ export async function installPyOCDTargetSupport(
   if (await ops.checkTarget(target, opts.venvPath)) {
     return { target, alreadyAvailable: false, packs, indexUpdated, available: true };
   }
-  const missingPacks = await ops.missingPacks(packs, opts.venvPath);
+  let missingPacks = await ops.missingPacks(packs, opts.venvPath);
+  if (missingPacks.length > 0) {
+    opts.onLine?.(describePyOCDDownloadRetry(missingPacks));
+    await ops.install(target, execOpts);
+    if (await ops.checkTarget(target, opts.venvPath)) {
+      return { target, alreadyAvailable: false, packs, indexUpdated, available: true };
+    }
+    missingPacks = await ops.missingPacks(packs, opts.venvPath);
+  }
   return { target, alreadyAvailable: false, packs, indexUpdated, available: false, missingPacks };
 }

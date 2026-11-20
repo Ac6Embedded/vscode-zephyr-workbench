@@ -184,11 +184,25 @@ describe('runner tools install and settings', () => {
       assert.ok(shown.every(value => value === false));
     });
 
-    it('reports the packs that did not download when pyocd exits 0 after a failed download', async () => {
-      const { fake, calls } = ops({ available: [false, false], packs: [['Keil.STM32F4xx_DFP.2.17.1']] });
+    it('installs once more when a download breaks off, and stops there when the target shows', async () => {
+      const lines: string[] = [];
+      const { fake, calls } = ops({ available: [false, false, true], packs: [['Keil.STM32F4xx_DFP.2.17.1']] });
+      const result = await installPyOCDTargetSupport('stm32f429zitx', { onLine: line => lines.push(line) }, fake);
+      assert.equal(result.available, true);
+      assert.equal(result.missingPacks, undefined);
+      assert.deepEqual(calls, [
+        'check stm32f429zitx', 'dry stm32f429zitx', 'install stm32f429zitx', 'check stm32f429zitx',
+        'missing Keil.STM32F4xx_DFP.2.17.1', 'install stm32f429zitx', 'check stm32f429zitx',
+      ]);
+      assert.deepEqual(lines, ['The download of Keil.STM32F4xx_DFP.2.17.1 did not complete: installing once more.']);
+    });
+
+    it('reports the packs that did not download when pyocd exits 0 after a failed download, twice', async () => {
+      const { fake, calls } = ops({ available: [false, false, false], packs: [['Keil.STM32F4xx_DFP.2.17.1']] });
       const result = await installPyOCDTargetSupport('stm32f429zitx', { venvPath: '/venv' }, fake);
       assert.equal(result.available, false);
       assert.deepEqual(result.missingPacks, ['Keil.STM32F4xx_DFP.2.17.1']);
+      assert.equal(calls.filter(call => call.startsWith('install ')).length, 2, 'installed twice, then gave up');
       assert.equal(calls[calls.length - 1], 'missing Keil.STM32F4xx_DFP.2.17.1 /venv', 'checked in the venv of the target');
       assert.match(describePyOCDInstallFailure('stm32f429zitx', result.packs, result.missingPacks!),
         /^The download of Keil\.STM32F4xx_DFP\.2\.17\.1 did not complete\./);
