@@ -4,7 +4,7 @@ All notable changes to the "zephyr-workbench" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
+## [4.3.8]
 
 ### pyOCD Manager
 - A CMSIS-Pack download that breaks off is tried once more before it is reported as failed, as a user would install again. The pyOCD output then says "did not complete: installing once more". Debug Manager Apply, Install target support and the manage_runners tool do the same.
